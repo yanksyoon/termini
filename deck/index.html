@@ -350,7 +350,7 @@
       </div>
       <div class="card">
         <h3><span class="num">3</span> Self-healing with a boundary</h3>
-        <p>Kill a disk or OOM a VM live. Telemetry crosses a threshold, the operator <b>detects → decides → executes → audits</b> — while a C2 field is <b>rejected by the governance gate before any byte is stored</b>.</p>
+        <p>OOM a VM live. Telemetry crosses a threshold, the operator <b>detects → decides → executes → audits</b> — while a C2 field is <b>rejected by the governance gate before any byte is stored</b>.</p>
       </div>
     </div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">06</span></div>
@@ -360,7 +360,7 @@
   <section class="slide">
     <div class="kicker"><span class="n">06</span> &nbsp;Spec question 1 of 4 — resolved</div>
     <div class="q"><span class="qnum">Q1</span><span class="qtext">What operations scenarios do we showcase, and how do we simulate them?</span></div>
-    <div class="resolve"><span class="tag">Resolved</span><span class="ans">Two real failures, two real fixes — <b>A: out-of-memory</b> and <b>B: disk degradation</b> — simulated with off-the-shelf tools, so a judge sees the exact failure a production customer would.</span></div>
+    <div class="resolve"><span class="tag">Resolved</span><span class="ans">Two real failure scenarios, each with a pre-approved remediation — <b>A: out-of-memory</b> (shown live) and <b>B: disk degradation</b> (documented playbook) — simulated with off-the-shelf tools.</span></div>
     <div class="cols two" style="margin-top:18px;">
       <div class="card">
         <h3><span class="num">A</span> Out-of-memory</h3>
@@ -460,7 +460,7 @@
     <div class="see-list">
       <div class="see-item"><span class="idx">1</span><div><div class="t">Node powers on → registered in &lt;5s</div><div class="d">Pre-baked image activates, joins the LXD cluster, role assigned. No package installs.</div></div></div>
       <div class="see-item"><span class="idx">2</span><div><div class="t">Plain English → validated plan</div><div class="d">“Deploy 3 worker agents for coding.” Spec extracted on-prem, clamped, validated.</div></div></div>
-      <div class="see-item"><span class="idx">3</span><div><div class="t">OOM a VM / kill a disk — live</div><div class="d">The operator detects, decides, executes the fix, and writes the audit trail.</div></div></div>
+      <div class="see-item"><span class="idx">3</span><div><div class="t">OOM a VM — live</div><div class="d">The operator detects, decides, executes the fix, and writes the audit trail.</div></div></div>
       <div class="see-item"><span class="idx">4</span><div><div class="t">Zero C2 data leaves</div><div class="d">Watch the governance gate reject a C2 batch fail-closed.</div></div></div>
     </div>
     <div class="cue">▸ Narration takes over now — over to the live cluster.</div>
@@ -474,11 +474,11 @@
     <div class="cols three" style="margin-top:30px;">
       <div class="metric"><div class="v">&lt;5s</div><div class="k">Bare-metal registration, <b>zero package installs</b></div></div>
       <div class="metric"><div class="v">clamped</div><div class="k">Natural-language intent → <b>valid allocation</b>, from→to clamping visible</div></div>
-      <div class="metric"><div class="v">audited</div><div class="k">Deterministic OOM &amp; disk remediation, <b>end-to-end traceable</b></div></div>
+      <div class="metric"><div class="v">audited</div><div class="k">Deterministic OOM remediation, <b>end-to-end traceable</b></div></div>
     </div>
     <div class="cols three" style="margin-top:18px;">
       <div class="metric"><div class="v good">0</div><div class="k"><b>C2 egress</b> — the boundary held on every call</div></div>
-      <div class="metric"><div class="v">2</div><div class="k"><b>Fixes</b> executed autonomously (restart, stop) from threshold rules</div></div>
+      <div class="metric"><div class="v">1</div><div class="k"><b>Fix</b> executed autonomously (restart) from a threshold rule</div></div>
       <div class="metric"><div class="v">3</div><div class="k"><b>Proof points</b> shown live, not claimed</div></div>
     </div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">12</span></div>

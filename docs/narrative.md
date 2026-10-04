@@ -50,7 +50,7 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 
 **2. Natural-language intent, guardrail-enforced.** The presenter types *"deploy 3 worker agents for coding."* An on-prem model extracts a structured allocation; the deterministic guardrail clamps any impossible spec (`vcpus: 128` → host ceiling) and returns a validated, clamped plan — field by field, visible in the audit record.
 
-**3. Governed self-healing with a data boundary.** Kill a node's disk (or OOM a VM) live. Telemetry crosses a threshold, a deterministic rule selects a pre-approved playbook action (`restart` the runaway workload on OOM, `stop` the heaviest workload on disk failure), and the action lands with a full audit trail — while a C2 field injected into the stream is rejected by the controller-side governance gate **before any byte is stored or forwarded.**
+**3. Governed self-healing with a data boundary.** OOM a VM live. Telemetry crosses a threshold, a deterministic rule selects a pre-approved playbook action (`restart` the runaway workload), and the action lands with a full audit trail — while a C2 field injected into the stream is rejected by the controller-side governance gate **before any byte is stored or forwarded.**
 
 ---
 
