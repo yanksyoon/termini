@@ -73,6 +73,7 @@ REASON_MALFORMED = "malformed_component"
 REASON_TOO_MANY = "max_component_count_exceeded"
 REASON_EMPTY = "empty_components"
 REASON_EXTRACTION_FAILED = "extraction_failed"
+REASON_GPU_PASSTHROUGH_NOT_IN_DEMO = "gpu_passthrough_not_in_demo"
 
 
 # ---------------------------------------------------------------------------
