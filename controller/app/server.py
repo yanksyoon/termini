@@ -612,6 +612,14 @@ class ControllerHandler(BaseHTTPRequestHandler):
                     "node_id": None, "vm_ids": [],
                 })
                 outcome = "rejected"
+                # Surface role-level rejections in the top-level reject_reasons
+                # (the 422 details[]) so clients can audit why an otherwise
+                # valid spec was refused at the role guardrail (W7 F3).
+                reject_reasons.append({
+                    "index": i,
+                    "reason": role_reason,
+                    "detail": _ROLE_REJECT_DETAILS.get(role_reason, role_reason),
+                })
                 continue
             clamped = [d.to_dict() for d in result.decisions if d.index == i]
             realized_as = "host_service" if spec.type == "inference_vm" else "vm"
@@ -1138,3 +1146,13 @@ def _role_check(spec, resolved_node) -> tuple[bool, str | None]:
     if resolved_node is None:
         return False, "invalid_target_node"
     return True, None
+
+
+# Human-readable detail for each role-level rejection reason (surfaced in the
+# top-level 422 details[] alongside the machine-readable code). Values are the
+# same frozen codes as vm-allocation.schema.json §clamped_field.reason.
+_ROLE_REJECT_DETAILS = {
+    "invalid_target_node_type": "inference_vm must resolve to the inference node",
+    "invalid_target_node": "agent_vm target node could not be resolved to a compute node",
+    "gpu_not_allowed_for_agent": "GPU passthrough is not permitted on agent_vm",
+}
