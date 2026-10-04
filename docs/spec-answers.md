@@ -133,14 +133,16 @@ LXD, time-sync, a default-deny firewall, and SSH already on
 disk; the guest image ("agent-vm") carries Python/Node and the agent runtime; and the
 llama.cpp binary plus model weights are pre-warmed on Node C. At demo time cloud-init only
 registers the node — under 5 seconds. Access is browser-first:
-the controller holds an SSH key and the dashboard offers a one-click web terminal plus an
-`ssh` string — no passwords.
+the operator generates a keypair locally in the browser, uploads only the public half, and
+the controller signs it into a short-lived (≤8 h), principal-bound OpenSSH certificate. The
+dashboard then offers a one-click web terminal plus an `ssh` string — no passwords.
 
 **Technical justification (verifiable).** The frozen decisions are `infra-decisions.md`
 D3 (immutable images + offline-preloaded workloads + activation-only cloud-init), D4
-(controller-held SSH key), and D6 (outbound-only mTLS control channel). The dashboard
-terminal is brokered over that outbound channel (`architecture.md` R14), and the `ssh`
-string plus web terminal are served from the controller-held key.
+(controller-held SSH CA signing short-lived certificates), and D6 (outbound-only mTLS
+control channel). The dashboard terminal is brokered over that outbound channel
+(`architecture.md` R14), and the `ssh` string plus web terminal are served from the
+controller's CA (`auth_model: ssh_ca`), which signs the operator's browser-local public key.
 
 **The contested area — data governance ("zero data leaves on-prem").** The fair challenge
 is that a prompt parser and an error-log analyzer normally send workload context to cloud
@@ -151,7 +153,9 @@ governance gate re-verifies every inbound payload against the taxonomy and
 fails closed on any anomaly — a non-conforming batch is rejected whole. External model calls are scoped to C0
 telemetry only, through a static, versioned prompt template. On the SSH side, the
 `project.md` idea of displaying a project private key on the frontend is replaced by a
-controller-held key surfaced as a web terminal and an `ssh` string.
+controller-held SSH CA: the operator's keypair is generated in the browser, only the public
+half is uploaded, and the controller signs a short-lived, principal-bound certificate —
+surfacing access as a web terminal and an `ssh` string.
 
 **How the demo proves this.** Power on a node and watch it reach *registered* in under 5
 seconds with zero package installs; open the web terminal to get a live shell with no

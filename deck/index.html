@@ -346,7 +346,7 @@
       </div>
       <div class="card">
         <h3><span class="num">2</span> NL intent, guardrail-enforced</h3>
-        <p>Type <i>“deploy 3 worker agents for coding.”</i> An on-prem model extracts a structured allocation; the <b>deterministic guardrail clamps</b> the impossible into a <b>validated, clamped plan</b>.</p>
+        <p>Type <i>“deploy 3 worker agents for coding — plus a fast LLM.”</i> An on-prem model extracts a structured allocation; the <b>deterministic guardrail clamps</b> the impossible into a <b>validated, clamped plan</b> — and the fast-LLM reference resolves to the always-on Node C inference service, not a VM.</p>
       </div>
       <div class="card">
         <h3><span class="num">3</span> Self-healing with a boundary</h3>
@@ -433,9 +433,9 @@
       <div class="card">
         <h3><span class="num">◈</span> Access without passwords</h3>
         <ul>
-          <li>Controller holds the <b>SSH key</b></li>
-          <li>One-click <b>web terminal</b> + an <b>ssh</b> string</li>
-          <li><b>No passwords</b> — access is brokered by the controller</li>
+          <li>Keypair generated <b>in the browser</b> — only the public half is uploaded</li>
+          <li>Controller’s <b>SSH CA</b> signs a <b>short-lived cert</b> (≤8 h, principal-bound)</li>
+          <li>One-click <b>web terminal</b> + an <b>ssh</b> string, revocable — <b>no passwords</b></li>
         </ul>
       </div>
       <div class="card">
@@ -459,7 +459,7 @@
     <div class="lede">A live, on-premise cluster running on bare hardware. Four moments, in order:</div>
     <div class="see-list">
       <div class="see-item"><span class="idx">1</span><div><div class="t">Node powers on → registered in &lt;5s</div><div class="d">Pre-baked image activates, joins the LXD cluster, role assigned. No package installs.</div></div></div>
-      <div class="see-item"><span class="idx">2</span><div><div class="t">Plain English → validated plan</div><div class="d">“Deploy 3 worker agents for coding.” Spec extracted on-prem, clamped, validated.</div></div></div>
+      <div class="see-item"><span class="idx">2</span><div><div class="t">Plain English → validated plan</div><div class="d">“Deploy 3 worker agents for coding, plus a fast LLM.” Spec extracted on-prem — the fast-LLM reference resolves to the Node C inference service — clamped, validated.</div></div></div>
       <div class="see-item"><span class="idx">3</span><div><div class="t">OOM a VM — live</div><div class="d">The operator detects, decides, executes the fix, and writes the audit trail.</div></div></div>
       <div class="see-item"><span class="idx">4</span><div><div class="t">Zero C2 data leaves</div><div class="d">Watch the governance gate reject a C2 batch fail-closed.</div></div></div>
     </div>

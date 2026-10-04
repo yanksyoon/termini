@@ -105,10 +105,11 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
 - `[CLICK]` focus the intent box.
 - `[TALK]` "Now the fun part. I type a plain-English request and we watch it
   become a validated plan."
-- `[CLICK]` type: `deploy 3 worker agents for coding`.
-- `[TALK]` "Three worker agents. An on-prem model — on our own GPU,
-  so this sentence never leaves the premises — extracts a structured allocation."
-- `[CLICK]` submit; show the extracted JSON (agent_vm ×3).
+- `[CLICK]` type: `deploy 3 worker agents for coding, plus a fast LLM`.
+- `[TALK]` "Three worker agents, plus a fast LLM. An on-prem model — so this
+  sentence never leaves the premises — extracts a structured allocation: three
+  agent VMs, plus an inference reference to Node C's host service."
+- `[CLICK]` submit; show the extracted JSON (agent_vm ×3 + inference_vm → host_service).
 - `[TALK]` "The model recommends. Then the guardrail decides. Watch what happens
   when I ask for the impossible."
 - `[CLICK]` type: `128 vCPU, 512 GB RAM worker`.
@@ -189,9 +190,10 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
 - `[TALK]` "Every fix is in the log, and it's checkable, not asserted —
   a judge can pull this exact endpoint."
 - `[CLICK]` open the web terminal / show the `ssh` string.
-- `[TALK]` "Access is browser-first: the controller holds the key and offers a
-  one-click terminal and an ssh string — no passwords. Your hardware. Your data.
-  Our operations."
+- `[TALK]` "Access is browser-first: your keypair is generated in the browser,
+  only the public half uploaded, and the controller's CA signs a short-lived,
+  principal-bound cert — one click, one ssh string, no passwords.
+  Your hardware. Your data. Our operations."
 - `[TALK]` "Back to the results."
 - `[FALLBACK]` (audit endpoint slow) "The audit is a real query over the live
   records — if it's slow, the dashboard already told the same story. Zero C2
@@ -221,11 +223,11 @@ the source docs) follow.
 
 ## 3. Timed dry-run — actual vs planned
 
-**Method.** The full narration (all `[TALK]` lines, 531 words) was read aloud by
+**Method.** The full narration (all `[TALK]` lines, 555 words) was read aloud by
 a TTS engine (edge) and measured with `ffprobe` at a pace of **~132.6 wpm** — a
 real spoken reading, not a word-count estimate. Per-beat spoken time applies that
-measured rate to each beat's word count (recomputed after the red-team wording
-fixes). Action time counts `[CLICK]` at
+measured rate to each beat's word count (recomputed after the SSH CA + fast-LLM
+re-advance). Action time counts `[CLICK]` at
 2 s each plus every `[WAIT n]`/`[HOLD n]` at face value. The reproducible
 word-count harness lives at `scripts/timing/demo-dry-run.py`.
 
@@ -233,14 +235,15 @@ word-count harness lives at `scripts/timing/demo-dry-run.py`.
 |------|---------|-------------------|---------|--------------|---|
 | 0 Handoff | 0:35 | 0:36 (35.7 s) | 0:02 | 0:38 | +0:03 |
 | 1 Register | 0:40 | 0:30 (30.3 s) | 0:11 | 0:41 | +0:01 |
-| 2 NL intent | 1:05 | 0:52 (52.0 s) | 0:12 | 1:04 | −0:01 |
+| 2 NL intent | 1:05 | 0:58 (57.5 s) | 0:12 | 1:10 | +0:05 |
 | 3 Cross-node | 0:40 | 0:34 (33.9 s) | 0:06 | 0:40 | 0:00 |
 | 4 Self-heal | 1:15 | 1:01 (60.6 s) | 0:12 | 1:13 | −0:02 |
-| 5 Wrap | 0:35 | 0:28 (27.6 s) | 0:04 | 0:32 | −0:03 |
-| **Total** | **4:50** | **4:00 (240.3 s)** | **0:47** | **4:47** | **−0:03** |
+| 5 Wrap | 0:35 | 0:33 (33.0 s) | 0:04 | 0:37 | +0:02 |
+| **Total** | **4:50** | **4:11 (251.1 s)** | **0:47** | **4:58** | **+0:08** |
 
-**Verdict: FITS.** Actual total **4:47** against the **6:00** slot leaves
-**1:13 of margin (20%)**, and sits under the 5:00 target. No trimming was
-required; the reworded narration landed within 3 s of the planned read.
+**Verdict: FITS.** Actual total **4:58** against the **6:00** slot leaves
+**1:02 of margin (17%)**, and sits under the 5:00 target. No trimming was
+required; the re-advanced narration (richer SSH CA + fast-LLM claims) landed
+within 8 s of the planned read.
 Every demo step (beats 0–5) has a matching narration beat and an inline
 `[FALLBACK]` plus its appendix entry, so the presenter never goes silent.
