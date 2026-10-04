@@ -1,0 +1,28 @@
+{
+  "url": "http://10.10.0.13:8123/v1/chat/completions",
+  "prompt_bytes": 65644,
+  "duration_s": 180.0,
+  "concurrency": 2,
+  "requests": 334,
+  "completed": 334,
+  "dropped": 0,
+  "aborted": 0,
+  "tokens": 21376,
+  "bytes_in": 4190698,
+  "first_token_ms": {
+    "p50": 2.23,
+    "p95": 4.92,
+    "max": 15.68
+  },
+  "inter_token_ms": {
+    "p50": 16.99,
+    "p95": 17.49,
+    "max": 27.23
+  },
+  "request_total_ms": {
+    "p50": 1091.21,
+    "p95": 1110.58,
+    "max": 1142.16
+  },
+  "errors": []
+}

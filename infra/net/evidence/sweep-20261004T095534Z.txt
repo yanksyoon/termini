@@ -1,0 +1,2 @@
+path-mtu sweep 10.10.0.13: max DF payload=1472 bytes -> path MTU=1500
+path-mtu sweep 10.99.0.13: max DF payload=1422 bytes -> path MTU=1450
