@@ -37,5 +37,23 @@ inference_model_alias = "deepseek-flash"
 ssh_source_ranges = ["0.0.0.0/0"]
 ssh_user          = "ubuntu"
 
+# SSH custody (node-bootstrap.md §7). Cloud-init injects team_ssh_public_key into
+# every node's authorized_keys (+ sshd hardening); empty falls back to
+# ssh_public_key. ssh_public_key is additionally injected via GCP instance
+# metadata as the break-glass key. Leave both empty for activation-only nodes.
+team_ssh_public_key = "" # e.g. "ssh-ed25519 AAAA... termini-team"
+ssh_public_key      = "" # e.g. "ssh-ed25519 AAAA... break-glass"
+
+# Controller wiring written into every node's cloud-init.
+controller_url           = "https://controller.termini.internal"
+controller_ssh_ca_pubkey = "" # e.g. "ssh-ed25519 AAAA... termini-ssh-ca"
+# Single-use, short-TTL token written to /var/lib/termini/enrollment.token
+# (node-bootstrap.md §3.2). Empty = nodes activate but cannot register.
+enrollment_token = "" # e.g. "eyJhbGciOi..."
+
+# Informational label written to /etc/termini/bootstrap-origin. Empty falls back
+# to the boot image family.
+node_image_version = ""
+
 # Where downstream tasks read the node inventory from.
 inventory_path = "/home/ubuntu/.termini/inventory.json"

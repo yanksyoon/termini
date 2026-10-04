@@ -5,10 +5,16 @@
 # explicit list), so shell `$lower` references inside the embedded helper scripts
 # are left untouched. Print the rendered user-data on stdout.
 #
+# This is the SHARED template: infra/gcp/main.tf renders the very same file with
+# Terraform templatefile, so the variable set below must stay in sync with the
+# templatefile() call in infra/gcp/main.tf (task t_5e9c9d96 unifies the two).
+#
 # Inputs (env): controller_url, node_name, enrollment_token, team_ssh_pubkey
 #   optional: role_hint (auto) underlay_ip underlay_gw seed_ip
 #             telemetry_interval_ms (1000) controller_ca_pubkey image_alias
 #             (agentic-os/w3) image_version (2026.10.0)
+#             ssh_authorized_keys_block (built from team_ssh_pubkey when unset)
+#             extra_write_files extra_runcmd (pre-rendered YAML; empty by default)
 set -euo pipefail
 
 TPL="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cloud-init/node-bootstrap.yaml.tftpl}"
@@ -25,12 +31,21 @@ TPL="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cloud-init/node-bootstra
 : "${controller_ca_pubkey:=# Termini controller SSH CA not configured for this node}"
 : "${image_alias:=agentic-os/w3}"
 : "${image_version:=2026.10.0}"
+
+# Native, idempotent cloud-init key injection. Built here (not in the template)
+# because envsubst has no conditionals and the GCP path may pass its own block.
+if [ -z "${ssh_authorized_keys_block:-}" ]; then
+  ssh_authorized_keys_block="ssh_authorized_keys:"$'\n'"  - ${team_ssh_pubkey}"
+fi
+: "${extra_write_files:=}"
+: "${extra_runcmd:=}"
+
 export controller_url node_name enrollment_token team_ssh_pubkey role_hint \
        underlay_ip underlay_gw seed_ip telemetry_interval_ms controller_ca_pubkey \
-       image_alias image_version
+       image_alias image_version ssh_authorized_keys_block extra_write_files extra_runcmd
 
 VARS='$controller_url $node_name $enrollment_token $team_ssh_pubkey $role_hint \
 $underlay_ip $underlay_gw $seed_ip $telemetry_interval_ms $controller_ca_pubkey \
-$image_alias $image_version'
+$image_alias $image_version $ssh_authorized_keys_block $extra_write_files $extra_runcmd'
 
 envsubst "$VARS" < "$TPL"

@@ -144,6 +144,12 @@ variable "boot_disk_type" {
   default     = "pd-balanced"
 }
 
+variable "node_image_version" {
+  description = "Image version label written to /etc/termini/bootstrap-origin (informational). Empty falls back to the boot image family."
+  type        = string
+  default     = ""
+}
+
 # --- Access -------------------------------------------------------------------
 
 variable "ssh_user" {
@@ -154,6 +160,17 @@ variable "ssh_user" {
 
 variable "ssh_public_key" {
   description = "Optional break-glass SSH public key injected at provisioning (node-bootstrap.md §7). Empty = none."
+  type        = string
+  default     = ""
+}
+
+variable "team_ssh_public_key" {
+  description = <<-EOT
+    Team SSH public key cloud-init injects into every node's authorized_keys
+    (node-bootstrap.md §7 — the injected-key login the acceptance requires).
+    Empty falls back to ssh_public_key; if both are empty no ssh_authorized_keys
+    stanza is emitted (activation-only).
+  EOT
   type        = string
   default     = ""
 }
@@ -176,6 +193,13 @@ variable "controller_ssh_ca_pubkey" {
   description = "Controller SSH CA public key injected into TrustedUserCAKeys on every node (D4). Empty = skip."
   type        = string
   default     = ""
+}
+
+variable "enrollment_token" {
+  description = "Single-use controller enrollment token written to /var/lib/termini/enrollment.token on every node (node-bootstrap.md §3.2). Empty = nodes activate but cannot register."
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "telemetry_interval_ms" {

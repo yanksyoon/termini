@@ -1,0 +1,74 @@
+== 1. infra/gcp/cloud-init/node.yaml.tftpl is the bootstrap template
+  PASS  node.yaml.tftpl -> ../../bootstrap/cloud-init/node-bootstrap.yaml.tftpl
+== 2. terraform renders the shared template (provider-free, offline)
+  PASS  node-a rendered (5473 bytes)
+  PASS  node-b rendered (5473 bytes)
+  PASS  node-c rendered (10606 bytes)
+== 3. no placeholder / unresolved token remains
+  PASS  node-a: no 'placeholder' string
+  PASS  node-a: no Terraform directive
+  PASS  node-a: no unresolved ${var}
+  PASS  node-a: no '__TOKEN__' left
+  PASS  node-b: no 'placeholder' string
+  PASS  node-b: no Terraform directive
+  PASS  node-b: no unresolved ${var}
+  PASS  node-b: no '__TOKEN__' left
+  PASS  node-c: no 'placeholder' string
+  PASS  node-c: no Terraform directive
+  PASS  node-c: no unresolved ${var}
+  PASS  node-c: no '__TOKEN__' left
+== 4. SSH custody + config on every node
+  PASS  node-a: team SSH key injected
+  PASS  node-a: ssh_authorized_keys stanza present
+  PASS  node-a: PasswordAuthentication no
+  PASS  node-a: PermitRootLogin prohibit-password
+  PASS  node-a: TrustedUserCAKeys wired
+  PASS  node-a: controller CA public key present
+  PASS  node-a: config.yaml written
+  PASS  node-a: enrollment token written
+  PASS  node-a: bootstrap service start
+  PASS  node-b: team SSH key injected
+  PASS  node-b: ssh_authorized_keys stanza present
+  PASS  node-b: PasswordAuthentication no
+  PASS  node-b: PermitRootLogin prohibit-password
+  PASS  node-b: TrustedUserCAKeys wired
+  PASS  node-b: controller CA public key present
+  PASS  node-b: config.yaml written
+  PASS  node-b: enrollment token written
+  PASS  node-b: bootstrap service start
+  PASS  node-c: team SSH key injected
+  PASS  node-c: ssh_authorized_keys stanza present
+  PASS  node-c: PasswordAuthentication no
+  PASS  node-c: PermitRootLogin prohibit-password
+  PASS  node-c: TrustedUserCAKeys wired
+  PASS  node-c: controller CA public key present
+  PASS  node-c: config.yaml written
+  PASS  node-c: enrollment token written
+  PASS  node-c: bootstrap service start
+  PASS  node-a config has its node_name
+  PASS  node-c config has role_hint inference
+== 5. only Node C carries the llama.cpp serve block
+  PASS  node-a: no llama serve block
+  PASS  node-b: no llama serve block
+  PASS  node-c: llama serve script written
+  PASS  node-c: llama serve runcmd present
+  PASS  node-c: model alias resolved
+  PASS  node-c: port resolved
+== 5b. rendered user-data is valid YAML
+  PASS  node-a: valid YAML
+  PASS  node-b: valid YAML
+  PASS  node-c: valid YAML
+== 6. the same template also renders through envsubst (bootstrap path)
+  PASS  envsubst render has the team key
+  PASS  envsubst render has no unresolved ${var}
+  PASS  envsubst render has no placeholder
+== 7. provision.sh (gcloud fallback) renders the same cloud-init
+  PASS  provision.sh node-a: team key injected
+  PASS  provision.sh node-a: sshd hardened
+  PASS  provision.sh node-a: controller CA present
+  PASS  provision.sh node-a: no placeholder
+  PASS  provision.sh node-a: no llama block
+  PASS  provision.sh node-c: llama block present
+  PASS  provision.sh node-c: valid YAML
+
+RESULT: PASS — infra/gcp renders the shared bootstrap template with SSH custody, no placeholder, Node C serve block.
