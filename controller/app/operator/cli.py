@@ -12,12 +12,15 @@ Run directly:
     python3 -m app.operator.cli --controller-url http://127.0.0.1:8080 \
         --lxd-url http://127.0.0.1:8443 --node <node_id> --project-token <tok>
 
-It polls the controller's telemetry store over HTTP (GET /v1/telemetry/recent,
-the endpoint named in the task), evaluates the frozen thresholds, selects a
-playbook action, and issues a real LXD REST command against --lxd-url. Each
-remediation is audited to --audit-out (JSONL, one entry per fired rule) and is
-fired at most once per rule per run (idempotency guard). --dry-run logs the
-intended command without sending it.
+It polls the controller's telemetry store over HTTP (GET /v1/telemetry/recent),
+evaluates the frozen thresholds through the same stateful `TriggerEngine` the
+in-process loop uses (hysteresis + debounce), selects a playbook action, and
+issues a real LXD REST command against --lxd-url. Trigger latch state persists to
+--state-file (JSON) so a cold restart of the operator process re-arms the exact
+same latch — this is what lets the dry-run exercise "persisted triggers" from a
+cold process. Each remediation is audited to --audit-out (JSONL) with detection
+and remediation latency recorded. --dry-run logs the intended command without
+sending it.
 """
 from __future__ import annotations
 
@@ -34,7 +37,7 @@ if str(_CONTROLLER_DIR) not in sys.path:
     sys.path.insert(0, str(_CONTROLLER_DIR))
 
 from app import ulid  # noqa: E402
-from app.operator import detect, executor, playbook  # noqa: E402
+from app.operator import detect, executor, playbook, triggers  # noqa: E402
 
 
 def _http_json(method: str, url: str, body=None, token: str | None = None,
@@ -58,9 +61,27 @@ def _http_json(method: str, url: str, body=None, token: str | None = None,
         return 0, f"{type(e).__name__}: {e}"
 
 
-def _now_iso() -> str:
-    import datetime
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def _load_state(state_file: str | None) -> dict:
+    if not state_file:
+        return {}
+    p = pathlib.Path(state_file)
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text())
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_state(state_file: str | None, state: dict) -> None:
+    if not state_file:
+        return
+    p = pathlib.Path(state_file)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(state, sort_keys=True))
+    tmp.replace(p)
 
 
 def run_operator(
@@ -78,10 +99,13 @@ def run_operator(
     dry_run: bool,
     audit_out: str | None,
     limit: int,
+    state_file: str | None = None,
     log=print,
 ) -> dict:
     recent_url = f"{controller_url.rstrip('/')}/v1/telemetry/recent?node={node_id}&limit={limit}"
     lxd = executor.LxdExecutor(lxd_url, dry_run=dry_run, retry_max=2, backoff_s=0.5)
+    engine = triggers.TriggerEngine(thresholds)
+    state = _load_state(state_file)
     fired: set[str] = set()
     audits: list[dict] = []
     started = time.monotonic()
@@ -97,18 +121,22 @@ def run_operator(
         samples = [s for s in body.get("samples", []) if isinstance(s, dict)]
         samples.reverse()  # controller returns DESC; evaluate ascending
 
-        events = detect.evaluate(node_id, samples, thresholds, _now_iso())
+        now = triggers.now_iso_ms()
+        events, state = engine.evaluate(node_id, samples, state, now)
+        _save_state(state_file, state)
+
         for event in events:
-            if event.rule_id in fired:
-                continue
+            fired.add(event.rule_id)
+            detect_lat = triggers.detection_latency_s(event)
             action = playbook.choose(event, playbooks, instance_names, default_instance_name)
             if action is None:
                 log(f"[operator] {event.rule_id} fired but no playbook action")
                 continue
+            t_fire = time.monotonic()
             result = lxd.execute(action)
-            fired.add(event.rule_id)
+            remed_lat = round(time.monotonic() - t_fire, 3)
             entry = {
-                "ts": _now_iso(),
+                "ts": now,
                 "node_id": node_id,
                 "event_id": event.event_id,
                 "rule": event.rule_id,
@@ -116,6 +144,11 @@ def run_operator(
                 "metric": event.metric,
                 "value": event.value,
                 "threshold": event.threshold,
+                "breach_started_at": event.breach_started_at,
+                "fired_at": event.fired_at,
+                "episode": event.episode,
+                "detection_latency_s": detect_lat,
+                "remediation_latency_s": remed_lat,
                 "action": action.kind,
                 "action_params": action.params,
                 "reason": action.reason,
@@ -131,8 +164,9 @@ def run_operator(
             if audit_out:
                 with open(audit_out, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps(entry) + "\n")
-            log(f"[operator] FIRED {event.rule_id} -> {action.kind} "
-                f"({result.method} {lxd_url.rstrip('/')}{result.path}) result={result.result}")
+            log(f"[operator] FIRED {event.rule_id} (episode {event.episode}) -> {action.kind} "
+                f"({result.method} {lxd_url.rstrip('/')}{result.path}) result={result.result} "
+                f"detect={detect_lat}s remediate={remed_lat}s")
         time.sleep(poll_interval_s)
 
     return {"polls": polls, "fired": sorted(fired), "audits": audits}
@@ -156,6 +190,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--limit", type=int, default=100)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--audit-out", default=None, help="append audit records (JSONL) here")
+    ap.add_argument("--state-file", default=None,
+                    help="persist trigger latch state (JSON) across restarts")
     args = ap.parse_args(argv)
 
     try:
@@ -191,6 +227,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         audit_out=args.audit_out,
         limit=args.limit,
+        state_file=args.state_file,
     )
     return 0
 

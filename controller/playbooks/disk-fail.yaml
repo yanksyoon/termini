@@ -1,0 +1,19 @@
+# Disk-failure remediation playbook — Termini controller.
+# Frozen rule: disk-fail-01 (docs/contracts/node-telemetry.md §5): any
+# disk[].mount_ro == true (EXT4 remount read-only after an I/O error).
+# Thresholds (debounce/re-arm counts) live in config (env): see
+# TERMINI_DISK_FAIL_CONSECUTIVE, TERMINI_DISK_FAIL_CLEAR_CONSECUTIVE.
+#
+# Remediation: drain the affected node immediately (stop the heaviest workload)
+# so traffic moves off the failing disk before the mount's read-only state
+# degrades the run.
+version: 1
+rule_id: disk-fail-01
+type: disk_fail
+description: Drain the heaviest workload off a node whose disk remounted read-only.
+action:
+  kind: instance.stop
+  target: heaviest
+  params:
+    force: true
+reason: disk remounted read-only (EXT4 I/O error); drain the heaviest workload off the failing node.

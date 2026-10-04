@@ -11,6 +11,7 @@ Modes (`--mode`), all cadence- and threshold-driven from chaos/chaos.json:
     healthy       steady baseline (false-positive guard) — nothing crosses a rule
     oom           ramp ram_used_bytes past the OOM threshold, then hold it
     disk-degrade  consume free disk toward the floor and raise write latency
+    disk-fail     flip a disk mount read-only (EXT4 remount-ro, Scenario B)
     latency       raise reported network latency above the latency threshold
 
 Register-only usage (no telemetry loop) is `--samples 0 --duration 0`.
@@ -92,6 +93,7 @@ def generate_sample(
     net_latency_ms = 0.8
     instance_ram_pct = 55.0
     instance_disk_pct = 20.0
+    mount_ro = False
 
     if mode == "oom":
         ramp = max(0.1, float(params.get("ramp_s", 3.0)))
@@ -112,6 +114,11 @@ def generate_sample(
         instance_disk_pct = 20.0 + 70.0 * frac
     elif mode == "latency":
         net_latency_ms = float(params.get("latency_ms", 600.0))
+    elif mode == "disk-fail":
+        # Scenario B: EXT4 remount read-only. The mount flips read-only shortly
+        # after injection and stays ro for the rest of the run.
+        fail_after = float(params.get("fail_after_s", 1.0))
+        mount_ro = elapsed_s >= fail_after
     elif mode != "healthy":
         raise ValueError(f"unknown mode {mode!r}")
 
@@ -143,7 +150,7 @@ def generate_sample(
                 "total_bytes": disk_total,
                 "free_bytes": free_bytes,
                 "write_latency_ms": round(write_latency_ms, 2),
-                "mount_ro": False,
+                "mount_ro": mount_ro,
             }
         ],
         "net": [{"iface": "eth0", "rx_bytes": 123000 + seq * 100, "tx_bytes": 11000, "latency_ms": round(net_latency_ms, 2)}],
@@ -294,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--url", required=True, help="controller base URL")
     ap.add_argument("--bootstrap-token", required=True)
     ap.add_argument("--hostname", default="node-chaos")
-    ap.add_argument("--mode", default="healthy", choices=["healthy", "oom", "disk-degrade", "latency"])
+    ap.add_argument("--mode", default="healthy", choices=["healthy", "oom", "disk-degrade", "latency", "disk-fail"])
     ap.add_argument("--duration", type=float, default=8.0, help="seconds to stream")
     ap.add_argument("--cadence-ms", type=int, default=1000)
     ap.add_argument("--gpu", action="store_true", help="advertise a GPU (inference role)")

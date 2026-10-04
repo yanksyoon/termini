@@ -22,13 +22,15 @@ EVIDENCE_SAMPLE_CAP = 20  # bound the evidence window we persist
 def insert_health_event(conn, event) -> None:
     conn.execute(
         "INSERT INTO health_events (id, node_id, rule_id, type, metric, value,"
-        " threshold, evidence_seq_start, evidence_seq_end, evidence_json, fired_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " threshold, evidence_seq_start, evidence_seq_end, evidence_json, fired_at,"
+        " breach_started_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             event.event_id, event.node_id, event.rule_id, event.type, event.metric,
             event.value, event.threshold,
             _seq_of(event.evidence, first=True), _seq_of(event.evidence, first=False),
             _evidence_json(event.evidence), event.fired_at,
+            getattr(event, "breach_started_at", None),
         ),
     )
 
@@ -82,8 +84,13 @@ def recent_audit(conn, node_id: str, rule_id: str, within_s: float) -> dict | No
     return dict(row) if row else None
 
 
-def idempotency_key_for(node_id: str, rule_id: str, action_kind: str, target: str) -> str:
-    return f"{node_id}:{rule_id}:{action_kind}:{target}"
+def idempotency_key_for(node_id: str, rule_id: str, action_kind: str, target: str,
+                        episode: int = 0) -> str:
+    # Episode-scoped: a genuine re-occurrence (after clear + re-breach) gets a new
+    # episode number and thus a new key, so it is NOT wrongly deduplicated against
+    # the prior episode's command. Within one episode the latch prevents re-fire,
+    # so this key is a belt-and-suspenders guard only.
+    return f"{node_id}:{rule_id}:{action_kind}:{target}:{episode}"
 
 
 def audit_by_idempotency_key(conn, key: str) -> dict | None:
@@ -151,9 +158,8 @@ def _evidence_json(evidence: list) -> str:
 
 def _iso_from_epoch(epoch: float) -> str:
     import datetime
-    return datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    dt = datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
 
 
 def _event_view(row) -> dict:
@@ -164,3 +170,64 @@ def _event_view(row) -> dict:
         pass
     d.pop("evidence_json", None)
     return d
+
+
+# ------------------------------------------------------------------ triggers
+# Durable threshold config + per-(node, rule) trigger latch state (migration
+# 0003). The loop reads config on every poll and state per node, and writes
+# both back in the same transaction as the health-event/decision/audit writes.
+
+def load_trigger_configs(conn) -> dict:
+    """Return {rule_id: config_subset_dict} from durable storage."""
+    out: dict = {}
+    for r in conn.execute("SELECT rule_id, config_json FROM trigger_config").fetchall():
+        try:
+            out[r["rule_id"]] = json.loads(r["config_json"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return out
+
+
+def save_trigger_config(conn, rule_id: str, config_dict: dict, source: str, now: str) -> None:
+    conn.execute(
+        "INSERT INTO trigger_config (rule_id, config_json, source, updated_at)"
+        " VALUES (?, ?, ?, ?)"
+        " ON CONFLICT(rule_id) DO UPDATE SET config_json=excluded.config_json,"
+        " source=excluded.source, updated_at=excluded.updated_at",
+        (rule_id, json.dumps(config_dict), source, now),
+    )
+
+
+def load_trigger_state(conn, node_id: str) -> dict:
+    """Return {rule_id: {state, last_fired_at, last_cleared_at, fired_count}}."""
+    out: dict = {}
+    rows = conn.execute(
+        "SELECT rule_id, state, last_fired_at, last_cleared_at, fired_count"
+        " FROM trigger_state WHERE node_id = ?",
+        (node_id,),
+    ).fetchall()
+    for r in rows:
+        out[r["rule_id"]] = {
+            "state": r["state"],
+            "last_fired_at": r["last_fired_at"],
+            "last_cleared_at": r["last_cleared_at"],
+            "fired_count": r["fired_count"],
+        }
+    return out
+
+
+def save_trigger_state(conn, node_id: str, rule_id: str, state: dict, now: str) -> None:
+    conn.execute(
+        "INSERT INTO trigger_state (node_id, rule_id, state, last_fired_at,"
+        " last_cleared_at, fired_count, updated_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT(node_id, rule_id) DO UPDATE SET state=excluded.state,"
+        " last_fired_at=excluded.last_fired_at,"
+        " last_cleared_at=excluded.last_cleared_at,"
+        " fired_count=excluded.fired_count, updated_at=excluded.updated_at",
+        (
+            node_id, rule_id, state.get("state", "armed"),
+            state.get("last_fired_at"), state.get("last_cleared_at"),
+            int(state.get("fired_count", 0)), now,
+        ),
+    )

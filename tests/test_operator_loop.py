@@ -18,7 +18,8 @@ sys.path.insert(0, str(REPO / "tests"))
 
 from app import db, store, ulid  # noqa: E402
 from app.operator import Thresholds, OperatorLoop  # noqa: E402
-from app.operator import playbook, store as opstore  # noqa: E402
+from app.operator import detect, playbook, triggers  # noqa: E402
+from app.operator import store as opstore  # noqa: E402
 from app.operator.executor import LxdExecutor  # noqa: E402
 from stub_lxd import StubLxd  # noqa: E402
 
@@ -151,17 +152,100 @@ class LoopIntegrationTest(unittest.TestCase):
         self.assertEqual(len(decisions), 1)
         self.assertEqual(decisions[0]["action_kind"], "instance.restart")
 
-    def test_idempotent_repeat_does_not_duplicate_command(self):
+    def test_sustained_breach_fires_once_latched(self):
         self._insert([oom_sample(100 + i, f"2026-10-04T08:00:{i:02d}Z", self.vm_id)
                       for i in range(3)])
         loop = self._make_loop()
         loop.run_once()
-        loop.run_once()  # same sustained condition re-detected on the next poll
+        produced = loop.run_once()  # same sustained condition on the next poll
 
+        # Hysteresis latch: the trigger stays "fired" until the metric recovers,
+        # so the sustained breach produces exactly one command and one audit.
+        self.assertEqual(len(produced), 0)
         self.assertEqual(len(self.lxd.restart_requests()), 1)  # still exactly one
-        audits = self._audits()
-        self.assertEqual(len(audits), 2)
-        self.assertEqual(audits[1]["result"], "already_applied")
+        self.assertEqual(len(self._audits()), 1)
+
+    def test_refire_after_recovery_is_a_new_episode(self):
+        # Episode 1: sustained OOM fires and is remediated.
+        self._insert([oom_sample(100 + i, f"2026-10-04T08:00:{i:02d}Z", self.vm_id)
+                      for i in range(3)])
+        loop = self._make_loop()
+        loop.run_once()
+        self.assertEqual(len(self.lxd.restart_requests()), 1)
+
+        # Recovery: memory returns to a healthy band long enough to re-arm the latch.
+        self._recover_ram(loop)
+        self.assertEqual(len(self.lxd.restart_requests()), 1)  # no re-fire while recovering
+
+        # Episode 2: the fault re-occurs and must fire again (a new episode).
+        self._insert([oom_sample(600 + i, f"2026-10-04T08:10:{i:02d}Z", self.vm_id)
+                      for i in range(3)])
+        produced = loop.run_once()
+        self.assertEqual(len(produced), 1)
+        self.assertEqual(len(self.lxd.restart_requests()), 2)  # a genuine new command
+
+    def _recover_ram(self, loop):
+        # To re-arm, the last `oom_clear_consecutive` samples must be healthy.
+        # Insert healthy samples and poll so the latch clears.
+        for i in range(6):
+            self._insert([{
+                "seq": 500 + i,
+                "ts": f"2026-10-04T08:06:{i:02d}Z",
+                "ram_total_bytes": RAM_TOTAL,
+                "ram_used_bytes": RAM_TOTAL // 4,  # ~25%, healthy
+                "disk": [{"path": "/dev/sda", "total_bytes": 274_877_906_944,
+                          "free_bytes": 200_000_000_000, "write_latency_ms": 3.0,
+                          "mount_ro": False}],
+                "net": [{"iface": "eth0", "rx_bytes": 1, "tx_bytes": 1, "latency_ms": 0.8}],
+            }])
+            loop.run_once()
+
+    def test_disk_fail_mount_ro_fires(self):
+        # Scenario B signature: EXT4 remount read-only -> disk-fail-01.
+        for i in range(1):
+            self._insert([disk_sample(100 + i, f"2026-10-04T08:00:{i:02d}Z",
+                                      200_000_000_000, self.vm_id)
+                          | {"disk": [{"path": "/dev/sda", "total_bytes": 274_877_906_944,
+                                       "free_bytes": 200_000_000_000, "write_latency_ms": 3.0,
+                                       "mount_ro": True}]}])
+        loop = self._make_loop()
+        produced = loop.run_once()
+        self.assertEqual(len(produced), 1)
+        self.assertEqual(produced[0]["rule_id"], "disk-fail-01")
+        stops = [(m, p, b) for (m, p, b) in self.lxd.requests
+                 if m == "PUT" and p.endswith("/state") and isinstance(b, dict)
+                 and b.get("action") == "stop"]
+        self.assertEqual(len(stops), 1)
+
+    def test_persisted_latch_survives_restart(self):
+        self._insert([oom_sample(100 + i, f"2026-10-04T08:00:{i:02d}Z", self.vm_id)
+                      for i in range(3)])
+        loop1 = self._make_loop()
+        loop1.run_once()
+        self.assertEqual(len(self.lxd.restart_requests()), 1)
+
+        # Simulate a controller restart: a brand-new loop over the same DB. The
+        # latch must reload from storage and NOT re-fire the already-remediated fault.
+        loop2 = self._make_loop()
+        produced = loop2.run_once()
+        self.assertEqual(len(produced), 0)
+        self.assertEqual(len(self.lxd.restart_requests()), 1)
+
+    def test_thresholds_are_seeded_and_persisted(self):
+        self._insert([oom_sample(100 + i, f"2026-10-04T08:00:{i:02d}Z", self.vm_id)
+                      for i in range(3)])
+        loop = self._make_loop()
+        loop.run_once()
+
+        with db.session(self.db_path) as conn:
+            configs = opstore.load_trigger_configs(conn)
+        # Every frozen rule has a persisted config subset after the first poll.
+        self.assertEqual(set(configs), {"oom-guard-01", "disk-fail-01",
+                                        "disk-degrade-01", "latency-01"})
+        # And a fresh loop over the same DB reconstructs equivalent thresholds.
+        merged = triggers.merge_config(configs)
+        self.assertEqual(merged.oom_ram_pct, detect.Thresholds().oom_ram_pct)
+        self.assertEqual(merged.disk_fail_consecutive, 1)
 
     def test_dry_run_logs_without_executing(self):
         self._insert([oom_sample(100 + i, f"2026-10-04T08:00:{i:02d}Z", self.vm_id)

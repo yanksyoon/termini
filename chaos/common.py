@@ -187,6 +187,7 @@ def evaluate_series(samples: list[dict], thresholds: dict) -> dict:
     disk_lat_run = _longest_run(
         samples, lambda s: (_disk_first(s).get("write_latency_ms") or -1.0) >= num("disk_write_latency_ms", 50.0)
     )
+    mount_ro_run = _longest_run(samples, lambda s: _disk_first(s).get("mount_ro") is True)
     def free_below(s: dict) -> bool:
         fp = _free_pct(s)
         return fp is not None and fp <= num("disk_free_pct", 5.0)
@@ -201,6 +202,11 @@ def evaluate_series(samples: list[dict], thresholds: dict) -> dict:
             "fired": oom_run >= int(num("oom_consecutive", 2)),
             "run": oom_run,
             "needed": int(num("oom_consecutive", 2)),
+        },
+        "disk-fail-01": {
+            "fired": mount_ro_run >= int(num("disk_fail_consecutive", 1)),
+            "run": mount_ro_run,
+            "needed": int(num("disk_fail_consecutive", 1)),
         },
         "disk-degrade-01": {
             "fired": disk_lat_run >= int(num("disk_latency_consecutive", 5))
