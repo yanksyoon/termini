@@ -17,7 +17,7 @@ to match (all such updates are applied in the same change set that added this fi
 
 | Area | Document | Owns |
 |------|----------|------|
-| Infra decisions | `docs/contracts/infra-decisions.md` | D1–D8 (LXD cluster, underlay network, images, SSH CA, GPU, control channel, storage, telemetry) |
+| Infra decisions | `docs/contracts/infra-decisions.md` | D1–D8 (LXD cluster, underlay network, images, SSH key, GPU, control channel, storage, telemetry) |
 | Node bootstrap | `docs/contracts/node-bootstrap.md` | Node-side boot → register → LXD join → telemetry → SSH injection; failure/retry matrix |
 | Controller API | `docs/contracts/controller-api.md` | REST/WS surface, tokens, error envelope, guardrail/clamp validator, command channel, event stream |
 | Node telemetry | `docs/contracts/node-telemetry.md` | C0/C1 telemetry schema, ingest validation, threshold-trigger linkage |
@@ -28,7 +28,7 @@ to match (all such updates are applied in the same change set that added this fi
 | W0 research | `docs/research/tech-landscape.md` | Build-vs-adopt verdicts, tool shortlist, BQ-1 model pin |
 
 **Net moat (from `tech-landscape.md` §2):** adopt the substrate (LXD + Ubuntu), the connectivity
-(underlay + SSH CA), and the model (llama.cpp + GGUF Q4_K_M); build only two things — the
+(underlay + controller-held SSH key), and the model (llama.cpp + GGUF Q4_K_M); build only two things — the
 governance boundary and the deterministic AI-operator control loop.
 
 ---
@@ -46,14 +46,13 @@ governance boundary and the deterministic AI-operator control loop.
                           │       │ governanceGate          │                   │
                           │  ┌────▼─────────────────────────▼───────────────┐   │
                           │  │        AI operator loop (reconcile)           │   │
-                          │  │  telemetry → threshold rule → advisory model  │   │
-                          │  │  → clamp → commandAllowlist() → command/ack   │   │
-                          │  └────┬──────────────────────────────┬──────────┘   │
-                          │       │ externalModelCall() (C0 only) │              │
-                          └───────┼────────────────────────────────┼──────────────┘
-                                  │                                │ external model (GCP, C0 telemetry only)
-            outbound-only mTLS    │  WebSocket /node/v1/{id}/channel│  (advisory only)
-                                  │  heartbeat + telemetry + cmds + ack
+                          │  │  telemetry → threshold rule → playbook action │   │
+                          │  │  → LXD REST (audited) → command/ack           │   │
+                          │  └───────────────────────────────────────────────┘   │
+                          └──────────────────────────────────────────────────────┘
+                                                  │
+            outbound-only mTLS                    │  WebSocket /node/v1/{id}/channel
+                                                  │  heartbeat + telemetry + cmds + ack
   ┌───────────────────────────────▼─────────────────────────────────────────────┐
   │                          customer premises (underlay 10.10.0.0/24)           │
   │                                                                              │
@@ -109,12 +108,15 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 ### 4.2 Deploy agent VMs
 
 1. Frontend `POST /v1/projects/{id}/intents` (NL prompt or structured `spec`).
-2. NL prompt → on-prem `deepseek-flash` extraction (grammar-constrained JSON) → `AllocationRequest`.
+2. NL prompt → on-prem `deepseek-flash` extraction (`json_object` response format) → `AllocationRequest`.
 3. Guardrail validator → `AllocationPlan` (all-or-nothing; clamp numeric, reject structural).
-4. Frontend `POST /v1/projects/{id}/vms/apply` → controller fans out `vm.launch` commands to the
-   resolved node's daemon over the command channel.
-5. Node daemon calls the local LXD API (`POST /1.0/instances?target=<member>`), boots the
-   preloaded `agent-vm/<version>` image, acks `running`. Target **< 10 s** to task-ready.
+4. Frontend `POST /v1/projects/{id}/vms/apply` → controller accepts the plan, publishes
+   `vm.provisioned` with `vm_ids: []`. There is **no `vm.launch` fan-out in the demo**:
+   LXD materialization is the node command-channel / LXD task's scope and is not wired
+   in the committed controller (`controller/app/server.py _apply_plan`).
+5. (Future) node daemon calls its local LXD API (`POST /1.0/instances?target=<member>`),
+   boots the preloaded `agent-vm/<version>` image, acks `running`. Target **< 10 s** to
+   task-ready.
 
 ### 4.3 Telemetry
 
@@ -126,13 +128,15 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 ### 4.4 Remediation (AI operator reconcile loop)
 
 1. Threshold rule fires on a telemetry sample (e.g. `oom-guard-01`).
-2. Operator builds a **static, versioned** prompt over typed C0 fields only; `externalModelCall()`
-   wraps the model call and asserts all-C0.
-3. Model output is **advisory**: it passes `guardrailClamp()` then `commandAllowlist()`; a command
-   is issued only if it survives both.
-4. Node executes the typed command, acks `succeeded|failed` with a result object.
-5. Every autonomous change writes a `guardrail_audit` record linking the telemetry trigger
-   (`actor: ai_operator`, `trigger`, `command_id`).
+2. The operator maps the rule to a fixed playbook action — `instance.restart` /
+   `instance.stop` / `instance.delete` / `image.prune` — deterministically, with no
+   model call in the loop.
+3. The action executes against the node's LXD REST API; the executor reports the
+   exact request it made (method/path/body + result).
+4. Every autonomous change writes an audit record linking the telemetry trigger
+   (`actor: ai_operator`, `trigger`, rule_id) to the action and result.
+5. An **external model in the loop is day-2** (governance.md §7 governs the boundary
+   if/when it is added); the demo loop is purely deterministic.
 
 ### 4.5 Inference (on-prem only)
 
@@ -153,8 +157,8 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 | Agent VM → inference | Bearer token + underlay-scoped `:8080` only. | Router auth + Node C firewall |
 | Node → Controller (egress) | **C0/C1 hardware/OS telemetry only.** C2 never egresses; fail-closed. | On-node redactor + controller `governanceGate` |
 | Controller → Node (inbound) | Typed commands only; task envelope may carry C2 **transiently** (never persisted/model-processed). | `commandAllowlist()` + inbound shape check |
-| Controller → external model | C0 telemetry only, static versioned template, advisory output. | `externalModelCall()` |
-| User SSH | CA-signed, short-lived (8 h), principal/source-bound certs; browser-local private keys. | Controller SSH CA (D4) |
+| Controller → external model | **Not in the demo loop** (the operator is deterministic). Day-2 only: C0 telemetry + static versioned template. | `governance.md` §7 (future) |
+| User SSH | Controller-held SSH key surfaced as a one-click web terminal + `ssh` string; the SSH CA + short-lived-cert model is day-2 (B7). | Controller-held key (D4) |
 
 ---
 
@@ -165,9 +169,9 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 | Controller unreachable | connect timeout | Backoff-retry forever; local services still start; no data egress (`node-bootstrap.md` §9) |
 | Bad enrollment token | 401/403 | Terminal → `REGISTRATION_FAILED` (operator re-provisions) |
 | LXD join mismatch | version/pool/network | Degrade, keep telemetry flowing; standalone fallback (D2) |
-| Node disk degrading / read-only | `disk[].mount_ro` / `write_latency_ms` | `node.drain` + alert (Scenario B) |
-| RAM exhaustion | `ram_used_bytes` ≥ 95% ×2 | `vm.resize` or evacuate (Scenario A) |
-| GPU / inference down | `inference.server_up=false` ×3 | Restart llama-cpp, alert; degrade to flash if opted in |
+| Node disk degrading / read-only | `disk[].mount_ro` / `write_latency_ms` | `instance.stop` the heaviest workload + alert (Scenario B) |
+| RAM exhaustion | `ram_used_bytes` ≥ 95% ×2 | `instance.restart` the heaviest workload (Scenario A) |
+| GPU / inference down | `inference.server_up=false` ×3 | Alert operator (surfaced, no autonomous action); degrade to flash if opted in |
 | Model unavailable | router probe | `503 MODEL_UNAVAILABLE` / `MODEL_NOT_FOUND`; never a wrong-but-plausible answer |
 | Redactor crash / C2 detected | pipeline | Fail-closed: no socket, no egress (`governance.md` §6) |
 
@@ -231,20 +235,23 @@ upgrade, and `/node/v1` joins `/stream/v1` and `/terminal/v1` as a WebSocket roo
 **Rationale:** resolves the three-way disagreement between D6 (single WS), `node-bootstrap.md`
 (one `/channel`), and `controller-api.md` (REST-primary) without discarding any surface.
 
-### R5 — Command allowlist
+### R5 — Command surfaces (was "command allowlist")
 
-**Answer:** the canonical command types (the `commandAllowlist()`) are:
+**Answer:** the demo wires two command surfaces, neither of which includes `vm.launch`:
 
-`vm.launch · vm.resize · vm.migrate · vm.stop · vm.start · vm.destroy · node.drain ·
-node.reboot · agent.dispatch_task · agent.cancel_task`
+1. **AI-operator remediation** — the LXD REST actions the executor issues
+   (`controller/app/operator/executor.py`): `instance.restart`, `instance.stop`,
+   `instance.delete`, `image.prune`. These are the only autonomous actions.
+2. **Human node actions** — `node.reboot` and `node.drain`
+   (`POST /v1/projects/{pid}/nodes/{nid}/actions/{reboot,drain}`).
 
-`node-bootstrap.md` §11's illustrative verbs (`resize_instance`, `evacuate_instance`,
-`set_telemetry_interval`, `issue_cert`, `run_healthcheck`) map to `vm.resize`, `node.drain`,
-registration-response config (not a command), SSH certificate issuance (controller-side
-`POST /v1/projects/{project_id}/ssh-key`, §4.3 — not a node command), and telemetry health
-(not a command), respectively. The retired `ssh.inject_key` verb is removed from the
-allowlist. **Rationale:** `vm.launch`/`agent.*` are required by
-`agent-runtime.md` §17; `vm.*`/`node.*`/`agent.*` namespaces are unambiguous.
+The broader `commandAllowlist()` set declared in `controller/app/commands.py`
+(`vm.resize`, `vm.migrate`, `vm.stop`, `vm.start`, `vm.destroy`, `agent.dispatch_task`,
+`agent.cancel_task`) is **declared but not wired to any execution path in the demo** — marked
+future/day-2. `vm.launch` is **not** in the allowlist and there is **no launch path**
+(`_apply_plan` returns `vm_ids: []`); VM materialization is the node command-channel / LXD
+task's scope. **Rationale:** the doc now matches the committed controller; the `vm.*`/`agent.*`
+verbs are honest about being future work, not shipped behavior.
 
 ### R6 — Error codes
 
@@ -305,7 +312,8 @@ HF GGUF files are pinned by the Node C bake (infra) against these aliases.
 **Answer:** (a) `infra-decisions.md` D5 notes `:8080` is realized as an **OpenAI-compatible
 router** fronting llama.cpp workers (single-model deployments collapse to passthrough) — port and
 scope unchanged. (b) D7 wording is corrected: LXD local-pool **stateful** migration exists but
-copies the disk; the demo still uses resize + evacuation. **Rationale:** `agent-runtime.md` §17
+copies the disk; the demo's AI operator remediates via `instance.restart`/`instance.stop`
+(`node-telemetry.md` §5), not resize/evacuation. **Rationale:** `agent-runtime.md` §17
 item 5 and `tech-landscape.md` §5 item 3.
 
 ### R13 — `machine.provisioning` (W0 recommendation, non-blocking)
@@ -327,21 +335,26 @@ node host (break-glass/debug); the VM shell is a secondary surface for agent ins
 
 ### R15 — SSH user access (W1-review D1/A1)
 
-**Answer:** the **D4 CA model** is authoritative everywhere. The controller holds an SSH CA; the
-operator's browser generates a keypair locally (private key never transits the controller) and
-the controller signs a short-lived (8 h, principal-bound) certificate via
-`POST /v1/projects/{project_id}/ssh-key`. The infra-injected break-glass key is a one-time
-recovery path **removed after registration** (`node-bootstrap.md` §7). The `ssh.inject_key`
-command and the shared project keypair are **removed everywhere**. **Rationale:** one
-revocable, scoped, time-bounded model; no fleet-wide secret.
+**Answer:** user access is a **controller-held SSH key**, surfaced in the dashboard as a
+one-click web terminal plus an `ssh` string (`GET /v1/projects/{pid}/nodes/{nid}/ssh`). No
+passwords, no project private key shown in the UI. The **SSH CA + short-lived, principal-bound
+certificate** model is the day-2/B7 hardening (tracked as controller task t_53df37ef), not the
+demo path. The infra-injected break-glass key is a one-time recovery path **removed after
+registration** (`node-bootstrap.md` §7). The `ssh.inject_key` command and the shared project
+keypair are **removed everywhere**. **Rationale:** the demo shows real, honest access
+(controller-held key + web terminal + `ssh` string); full CA-based revocation/rotation is a
+future hardening, not a shipped claim.
 
 ### R16 — `inference_vm` is a reference, not a launchable VM (W1-review D2)
 
 **Answer:** `inference_vm` is a **reference to the always-on, host-exposed llama.cpp service on
 Node C** (D5), recorded and surfaced in the plan but NOT launched in the demo (zero VMs, zero GPU
 allocation). `passthrough_gpu` is day-2 only: any `true` value is a structural rejection
-(`gpu_passthrough_not_in_demo`). The `1 GPU-bound VM max` bookkeeping and the
-`inference_vm`-requires-passthrough rule are removed from `controller-api.md` §5 and the schema.
+(`gpu_passthrough_not_in_demo`), enforced by `clamp_validate` (`termini/intent/validator.py`) and
+the schema. **B5 note (doc↔code):** the committed `_role_check` in `controller/app/server.py`
+still requires `passthrough_gpu` for `inference_vm` (rejecting it with `gpu_required_for_inference`),
+so an `inference_vm` allocation is rejected end-to-end until the controller B5 fix (t_53df37ef)
+removes that rule and realizes `inference_vm` as `host_service` (no passthrough).
 **Rationale:** the intent extractor must never emit a spec the demo guardrail cannot satisfy.
 
 ### R17 — Registration C1 bootstrap exception (W1-review D3)
@@ -394,17 +407,20 @@ unambiguous mapping for frontend/controller devs.
 
 ### R23 — Controller launch path (W1-review N2)
 
-**Answer:** the controller does **not** drive LXD placement. It mints join tokens at
-registration (seed `8443`, cluster admin only); VM placement is a typed `vm.launch` command to
-the node daemon, which calls its **local** LXD API (AR-2). **Rationale:** matches D6's
-outbound-only topology and keeps exactly one control path per node.
+**Answer:** the controller does **not** drive LXD placement, and in the demo there is **no launch
+path at all** — `_apply_plan` accepts the plan and returns `vm_ids: []`. The controller mints
+join tokens at registration (seed `8443`, cluster admin only). VM placement via a typed
+`vm.launch` command to the node daemon (which calls its **local** LXD API, AR-2) is the
+day-2 / wired-out path. **Rationale:** matches D6's outbound-only topology and keeps exactly one
+control path per node.
 
 ### R24 — OOM remediation determinism (W1-review N3)
 
-**Answer:** `oom-guard-01` has a **local fast-path** (threshold→`vm.resize` without an external
-model call) so remediation is not gated on model latency, plus a **synthetic persistent trigger
-injection** so the demo fires even when `stress-ng --vm-bytes 85%` never reaches 95%×2. The
-kernel-OOM race is stated honestly as best-effort. **Rationale:** the external model is advisory;
+**Answer:** `oom-guard-01` has a **deterministic local fast-path** (threshold →
+`instance.restart` of the heaviest workload, no model call) so remediation is not gated on model
+latency, plus a **deterministic chaos ramp** (the chaos harness drives the metric across the
+threshold on cue) so the demo fires even when `stress-ng --vm-bytes 85%` never reaches 95%×2. The
+kernel-OOM race is stated honestly as best-effort. **Rationale:** there is no model in the loop;
 the demo must deterministically demonstrate a real remediation.
 
 ---

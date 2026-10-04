@@ -270,8 +270,8 @@ Allowlist: `termini-bootstrap`, `lxd`, `sshd`, `llama-cpp`.
 
 ### 4.9 Extension registration note
 
-§4.6–§4.8 are C0 hardware/OS metrics required by the AI operator (per-VM resize,
-llama.cpp health) and the charts. They are **now registered** in
+§4.6–§4.8 are C0 hardware/OS metrics required by the AI operator (per-VM instance
+state, llama.cpp health) and the charts. They are **now registered** in
 `governance.md` §4.1.1 as C0 allowlist groups (deny-by-default review complete,
 integration pass t_5fb81d14). The node redactor treats these exact keys as C0
 allowlist entries. No field in this document is C2 or carries customer data.
@@ -295,7 +295,7 @@ trigger with the command so every autonomous action is traceable:
     "rule_id": "oom-guard-01",
     "fired_at": "2026-10-04T07:49:05Z"
   },
-  "action": "vm.resize",
+  "action": "instance.restart",
   "command_id": "01M4349RPY26W8Q453PZYK05CB"
 }
 ```
@@ -308,10 +308,18 @@ Threshold rules (demo, frozen):
 
 | rule_id | metric | condition | action |
 |---------|--------|-----------|--------|
-| `oom-guard-01` | `ram_used_bytes` | ≥ 95% of `ram_total_bytes` for 2 consecutive samples | resize/migrate agent VM |
-| `disk-fail-01` | `disk[].mount_ro` | any `true` | drain node, alert user |
-| `disk-degrade-01` | `disk[].write_latency_ms` | ≥ 50 for 5 consecutive samples | flag degrading disk, alert user |
-| `gpu-oos-01` | `inference.server_up` | `false` for 3 consecutive samples | restart llama-cpp, alert user |
+| `oom-guard-01` | `ram_used_bytes` | ≥ 95% of `ram_total_bytes` for 2 consecutive samples | `instance.restart` the heaviest workload |
+| `disk-fail-01` | `disk[].mount_ro` | any `true` | `instance.stop` the heaviest workload |
+| `disk-degrade-01` | `disk[].write_latency_ms` | ≥ 50 for 5 consecutive samples | `instance.stop` the heaviest workload |
+| `gpu-oos-01` | `inference.server_up` | `false` for 3 consecutive samples | alert user (inference down is surfaced; no autonomous action) |
+
+The `action` column is the LXD REST remediation kind the operator executor issues
+(`controller/app/operator/executor.py`: `instance.restart`, `instance.stop`,
+`instance.delete`, `image.prune`). The oom/disk rules map to restart/stop exactly as
+the playbooks declare (`controller/playbooks/oom.yaml`, `disk-fail.yaml`,
+`disk-degrade.yaml`); there is no `vm.resize`/`node.drain` remediation in the loop.
+`node.drain`/`node.reboot` exist only as human-initiated node actions
+(`controller-api.md` §4.2 / `dashboard.md` §4).
 
 ---
 
