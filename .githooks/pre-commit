@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Termini pre-commit: refuse to stage secrets / agent runtime / credentials.
+# Do NOT bypass with --no-verify.
+set -euo pipefail
+
+blocked='(^|/)\.hermes/|(^|/)\.ssh/|(^|/)\.env($|\.)|(^|/)\.cache/|(^|/)\.local/|(^|/)\.config/|\.pem$|\.key$|(^|/)id_rsa|(^|/)id_ed25519'
+
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+bad="$(printf '%s\n' "$staged" | grep -nE "$blocked" || true)"
+if [ -n "$bad" ]; then
+  echo "pre-commit: refusing to commit secrets/runtime/credential paths:" >&2
+  echo "$bad" >&2
+  echo "Unstage them: git restore --staged <path>" >&2
+  exit 1
+fi
+exit 0

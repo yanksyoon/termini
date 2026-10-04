@@ -1,0 +1,42 @@
+# --- secrets & credentials (NEVER commit) ---
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+.ssh/
+
+# --- Hermes / agent runtime state ---
+.hermes/
+.cache/
+.config/
+.local/
+.npm/
+.prime/
+*.log
+
+# --- this home-is-repo: ignore the OS/shell layer ---
+.bash_history
+.bash_logout
+.bashrc
+.profile
+.viminfo
+.lesshst
+.wget-hsts
+.sudo_as_admin_successful
+.gitconfig
+
+# --- language / tooling ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
