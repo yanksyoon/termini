@@ -157,6 +157,10 @@ class AgentRuntime:
             self._publish_inflight()
 
     def _execute(self, task: Task) -> dict[str, Any]:
+        payload = task.payload or {}
+        if task.kind in ("agent.multiturn", "multiturn") or payload.get("turns"):
+            return self._execute_multiturn(task)
+
         model = self.inference.resolve_model(task.model_preference)
         messages = task.payload.get("messages") or [
             {"role": "user", "content": task.payload.get("prompt", "ping")}
@@ -173,6 +177,35 @@ class AgentRuntime:
         # token count is a C0 counter: characters/4 is good enough for telemetry
         return {"task_id": task.task_id, "model": model, "content": content,
                 "tokens": max(1, len(content) // 4)}
+
+    def _execute_multiturn(self, task: Task) -> dict[str, Any]:
+        """Run the ADK multi-turn call path for one task (§5.2, cross-node W4)."""
+        from .multiturn import DEFAULT_INSTRUCTION, run_multiturn, turns_from_spec
+
+        payload = task.payload or {}
+        model = self.inference.resolve_model(task.model_preference or payload.get("model"))
+        turns = turns_from_spec([str(t) for t in payload.get("turns", [])] or None)
+        report = run_multiturn(
+            self.cfg,
+            turns,
+            model=model,
+            instruction=str(payload.get("instruction", DEFAULT_INSTRUCTION)),
+            max_tokens=int(payload.get("max_tokens", 256)),
+            temperature=float(payload.get("temperature", 0.2)),
+            streaming=bool(payload.get("stream", self.cfg.inference.stream)),
+        )
+        # C0 summary only crosses the boundary; the answer text stays on-prem (§7.3).
+        return {
+            "task_id": task.task_id,
+            "model": model,
+            "kind": "agent.multiturn",
+            "turns": report["total_turns"],
+            "streamed_deltas": report["total_streamed_deltas"],
+            "first_token_ms": report["first_token_ms"],
+            "total_ms": report["total_ms"],
+            "content": "\n".join(t.get("answer", "") for t in report["turns"]),
+            "tokens": max(1, sum(t.get("streamed_deltas", 0) for t in report["turns"])),
+        }
 
     # -- helpers --------------------------------------------------------------
     def _inflight_count(self) -> int:

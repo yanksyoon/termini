@@ -1,0 +1,1 @@
+{"host": "10.14.100.11", "port": 8080, "tcp_connect_ms": 10.01, "health_status": 200, "health_body": "{\"status\":\"ok\"}", "health_rtt_ms": 107.8}

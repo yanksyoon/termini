@@ -79,6 +79,26 @@ launches the image, and confirms the instance is `RUNNING` with
 project key; then it restores the route and removes the test key. Emits JSON.
 Recorded run: [`evidence/placement-verification.json`](evidence/placement-verification.json).
 
+## Cross-node agent → llama.cpp call path (`t_fd8eee6c`)
+
+The card above places the image; this one **wires it to inference**. One command
+launches a fresh Agent VM on Node A from the local alias, installs the current
+tree's `termini-agent`, runs a multi-turn **ADK** session whose every turn is served
+by llama.cpp on Node C over the frozen direct host route, and asserts the acceptance:
+
+```bash
+infra/agent-vm/verify-callpath.sh            # demo-node-a -> demo-node-c:8080
+infra/agent-vm/verify-callpath.sh --node-a node-a --node-c node-c --turns 3
+```
+
+It asserts, from raw evidence, that **every turn streamed** (`>= 2` discrete SSE
+deltas arriving at distinct times — not one buffered blob) and that **first-token +
+per-turn + run latency were recorded**, then writes
+`evidence/callpath-evidence.json` (`callpath-report.json`,
+`callpath-env.json`, `callpath-probe.json`, `callpath-run.txt` alongside).
+Exit 0 = PASS. Files: `tools/callpath-runner.sh` (in-VM half),
+`tools/check_callpath.py` (host-side gate).
+
 ## Honest scope / coordination
 
 - The lab's `demo-node-a/b/c` containers are **recreated** by the pre-warm task
@@ -92,6 +112,17 @@ Recorded run: [`evidence/placement-verification.json`](evidence/placement-verifi
   one image) and idempotent, but do not concurrently reconfigure those nodes.
 - The image is a container image (`lxc launch`), matching the parent card's acceptance.
   The same provisioning applies to a `--vm` launch; no KVM is available on this host.
+- **Call-path acceptance ran on the lab footprint** (`demo-node-a` → `demo-node-c`,
+  10.14.100.11), which is the frozen `http://<nodeC>:8080` role realised as nested
+  LXD on this host — not the GCP 3-node underlay (unreachable from this host). On
+  the frozen Node C config (`--reasoning-format none`, `t_95528ae8`) the R1-distill
+  `` block is **inline in `delta.content`**; the lab `llama-cpp.service`
+  (no such flag) splits it into `delta.reasoning_content`, so the lab report shows
+  `reasoning_deltas` > 0 with `content_deltas` for the final answer. The client
+  counts both as streamed tokens; the GCP run would show them all as `content`.
+- **Hotspot:** the lab `llama-cpp.service` on `demo-node-c` (infra/warm) does not
+  set `--reasoning-format none`, unlike the W3 endpoint contract; flagged for the
+  verifier (t_9549b286).
 
 ## Layout
 
@@ -100,7 +131,11 @@ infra/agent-vm/
   README.md                        this file
   place-agent-image.sh             export -> push -> import + profile + user-data
   verify-placement.sh              acceptance: local alias, blocked-egress launch, ssh
+  verify-callpath.sh               acceptance: cross-node multi-turn ADK streaming + latency
   agent-user-data.cloud-init.yaml  launch-time cloud-init (project SSH key, sshd)
   termini-agent.profile.yaml       the termini-agent LXD profile (documentation)
+  tools/callpath-runner.sh         in-VM half of the call-path acceptance
+  tools/check_callpath.py          host-side acceptance gate + evidence writer
   evidence/placement-verification.json
+  evidence/callpath-evidence.json  cross-node call-path acceptance evidence
 ```

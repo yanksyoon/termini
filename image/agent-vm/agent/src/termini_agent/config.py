@@ -6,7 +6,7 @@ import ipaddress
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import yaml
 
@@ -15,6 +15,14 @@ import yaml
 # a re-IPA'd demo host does not silently fall back to a public endpoint.
 ALLOWED_INFERENCE_NETWORKS = ("10.10.0.0/24",)
 ALLOWED_INFERENCE_PORTS = (8080,)
+# Extra on-prem networks a deployment may whitelist (e.g. the nested-LXD lab, where
+# "Node C" is `demo-node-c` on the 10.14.100.0/24 host bridge). They must still be
+# private and specific: a public range or 0.0.0.0/0 is always refused.
+_PRIVATE_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+)
 
 DEFAULT_CONFIG_PATH = "/etc/termini/agent.yaml"
 DEFAULT_INFERENCE_TOKEN_FILE = "/etc/termini/inference.token"
@@ -33,6 +41,8 @@ class InferenceConfig:
     stream: bool = True
     connect_timeout_s: float = 2.0
     request_timeout_s: float = 120.0
+    # On-prem CIDRs an operator explicitly whitelisted (default: the frozen D5 range).
+    allowed_networks: tuple[str, ...] = ALLOWED_INFERENCE_NETWORKS
 
 
 @dataclass(frozen=True)
@@ -77,6 +87,7 @@ class AgentConfig:
                 "base_url": self.inference.base_url,
                 "default_model": self.inference.default_model,
                 "allowed_models": list(self.inference.allowed_models),
+                "allowed_networks": list(self.inference.allowed_networks),
                 "stream": self.inference.stream,
             },
             "broker": {"endpoint": self.broker.endpoint,
@@ -91,22 +102,48 @@ def _require(mapping: dict[str, Any], key: str, where: str) -> Any:
     return mapping[key]
 
 
-def validate_inference_url(base_url: str, *, dev_override: bool = False) -> None:
+def _validate_networks(allowed_networks: Sequence[str]) -> tuple[str, ...]:
+    """Refuse a whitelist that is empty, malformed, or not strictly private."""
+    if not allowed_networks:
+        raise ConfigError("inference.allowed_networks may not be empty")
+    validated: list[str] = []
+    for net in allowed_networks:
+        try:
+            parsed = ipaddress.ip_network(str(net), strict=True)
+        except ValueError as exc:
+            raise ConfigError(f"inference.allowed_networks entry {net!r} is not a CIDR: {exc}") from exc
+        if parsed.version != 4:
+            raise ConfigError(f"inference.allowed_networks entry {net!r} must be IPv4")
+        if not any(parsed.subnet_of(private) for private in _PRIVATE_NETWORKS):
+            raise ConfigError(
+                f"inference.allowed_networks entry {net!r} is not a private (RFC1918) range"
+            )
+        validated.append(str(parsed))
+    return tuple(validated)
+
+
+def validate_inference_url(
+    base_url: str,
+    *,
+    dev_override: bool = False,
+    allowed_networks: Sequence[str] | None = None,
+) -> None:
     """Refuse any inference base URL outside the on-prem allow-list (§5.5)."""
     if dev_override:
         return
     from urllib.parse import urlparse
 
+    networks = tuple(allowed_networks) if allowed_networks is not None else ALLOWED_INFERENCE_NETWORKS
     parsed = urlparse(base_url)
     if parsed.scheme != "http":
         raise ConfigError(f"inference.base_url must be http, got {parsed.scheme!r}")
     if not parsed.hostname:
         raise ConfigError(f"inference.base_url has no host: {base_url!r}")
     addr = ipaddress.ip_address(parsed.hostname)
-    if not any(addr in ipaddress.ip_network(net) for net in ALLOWED_INFERENCE_NETWORKS):
+    if not any(addr in ipaddress.ip_network(net) for net in networks):
         raise ConfigError(
             f"inference.base_url {base_url!r} is outside the on-prem allow-list "
-            f"{ALLOWED_INFERENCE_NETWORKS}; the agent VM has no route to anything else"
+            f"{networks}; the agent VM has no route to anything else"
         )
     if parsed.port not in ALLOWED_INFERENCE_PORTS:
         raise ConfigError(f"inference.base_url port {parsed.port} not in {ALLOWED_INFERENCE_PORTS}")
@@ -132,8 +169,12 @@ def load_config(path: str | os.PathLike[str] = DEFAULT_CONFIG_PATH, *,
     brk = data.get("broker") or {}
     log = data.get("logging") or {}
 
+    allowed_networks = _validate_networks(
+        inj.get("allowed_networks") or list(ALLOWED_INFERENCE_NETWORKS)
+    )
     base_url = str(_require(inj, "base_url", "inference"))
-    validate_inference_url(base_url, dev_override=dev_override)
+    validate_inference_url(base_url, dev_override=dev_override,
+                           allowed_networks=allowed_networks)
 
     allowed = tuple(inj.get("allowed_models") or ["deepseek-flash"])
     default_model = str(inj.get("default_model", allowed[0]))
@@ -153,6 +194,7 @@ def load_config(path: str | os.PathLike[str] = DEFAULT_CONFIG_PATH, *,
             stream=bool(inj.get("stream", True)),
             connect_timeout_s=float(inj.get("connect_timeout_s", 2.0)),
             request_timeout_s=float(inj.get("request_timeout_s", 120.0)),
+            allowed_networks=allowed_networks,
         ),
         broker=BrokerConfig(
             endpoint=str(_require(brk, "endpoint", "broker")),

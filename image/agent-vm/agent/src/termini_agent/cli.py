@@ -51,6 +51,42 @@ def _cmd_status(args: argparse.Namespace) -> int:
         return 1
 
 
+def _cmd_multiturn(args: argparse.Namespace) -> int:
+    """Run a multi-turn ADK task against the on-prem inference endpoint.
+
+    This is the cross-node call path exercised by the acceptance harness; it
+    needs only the validated agent config (no broker), so it can run inside an
+    Agent VM the moment the host route to Node C is up.
+    """
+    from .config import load_config
+    from .multiturn import DEFAULT_INSTRUCTION, run_multiturn, turns_from_spec
+
+    cfg = load_config(args.config, dev_override=args.dev)
+    turns: list[str] = list(args.turn or [])
+    if args.turns_file:
+        with open(args.turns_file, encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if isinstance(payload, dict):
+            payload = payload.get("turns", [])
+        turns.extend(str(t) for t in payload)
+
+    report = run_multiturn(
+        cfg,
+        turns_from_spec(turns),
+        model=args.model,
+        instruction=args.instruction or DEFAULT_INSTRUCTION,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+        streaming=not args.no_stream,
+    )
+    text = json.dumps(report, indent=2)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as handle:
+            handle.write(text + "\n")
+    print(text)
+    return 0 if report["ok"] else 1
+
+
 def _cmd_selfcheck(args: argparse.Namespace) -> int:
     report: dict[str, Any] = {
         "kind": "termini.agent_selfcheck",
@@ -126,6 +162,21 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--frameworks-dir", default="/opt/termini/venvs")
     sc.add_argument("--dev", action="store_true", help="relax the inference allow-list (tests)")
     sc.set_defaults(func=_cmd_selfcheck)
+
+    mt = sub.add_parser("multiturn", help="run a multi-turn ADK task against inference")
+    mt.add_argument("--config", default="/etc/termini/agent.yaml")
+    mt.add_argument("--turn", action="append", default=[],
+                    help="a user turn (repeatable, in order); defaults to the built-in task")
+    mt.add_argument("--turns-file", default="", help="JSON list (or {\"turns\": [...]}) of user turns")
+    mt.add_argument("--model", default=None, help="alias to serve (default: inference.default_model)")
+    mt.add_argument("--instruction", default=None,
+                    help="ADK agent system instruction (default: built-in ops instruction)")
+    mt.add_argument("--max-tokens", type=int, default=256)
+    mt.add_argument("--temperature", type=float, default=0.2)
+    mt.add_argument("--no-stream", action="store_true", help="disable ADK SSE streaming mode")
+    mt.add_argument("--out", default="", help="write the JSON report here")
+    mt.add_argument("--dev", action="store_true", help="relax the inference allow-list (tests)")
+    mt.set_defaults(func=_cmd_multiturn)
 
     return p
 

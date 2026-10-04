@@ -120,7 +120,33 @@ NIC**), waits for `termini-agent` to become active, runs
 Committed evidence lives in `evidence/` (`offline-acceptance.json`,
 `first-boot.json`, `selfcheck.json`, `status.json`, `boot-journal.txt`).
 
-## 6. Honest scope
+## 6. Cross-node ADK call path (`t_fd8eee6c`)
+
+The runtime now wires the **agent → llama.cpp** path the W4 card asks for: an ADK
+`LlmAgent` session runs several turns inside the Agent VM, and every turn is served
+by llama.cpp on Node C over the frozen direct host route (`http://<nodeC>:8080`,
+D2/D5). New in this tree:
+
+| Module | Role |
+|--------|------|
+| `agent/src/termini_agent/adk_llm.py` | `LlamaCppLlm`, a first-class ADK `BaseLlm` over the OpenAI-compatible endpoint. The image ships `google-adk` but **not** `litellm`, so this replaces ADK's `LiteLlm` adapter without adding a dependency. Attribution headers + SSE streaming; tolerates both server reasoning configs. |
+| `agent/src/termini_agent/multiturn.py` | `run_multiturn` — an ADK `InMemoryRunner` session (history carried across turns) with `RunConfig(streaming_mode=SSE)`, returning a per-turn latency/streaming report. |
+| `agent/src/termini_agent/stream_metrics.py` | `ChunkRecorder` — pure-stdlib per-delta arrival accounting (first-token, inter-token, per-turn total). |
+| `agent/src/termini_agent/cli.py` | `termini-agent multiturn` — runs a scripted multi-turn task and writes the JSON report (no broker needed). |
+| `agent/src/termini_agent/runtime.py` | The task loop routes `kind: agent.multiturn` / a `payload.turns` list to `run_multiturn`, so the production broker path runs the same call path. |
+
+`inference.allowed_networks` (default `["10.10.0.0/24"]`, the frozen D5 range) lets
+a deployment whitelist an extra **private** CIDR explicitly — the nested-LXD lab,
+where “Node C” is `demo-node-c` on `10.14.100.0/24`. Public ranges and `0.0.0.0/0`
+are always refused, so the allow-list stays closed.
+
+Verify the path end to end from a real Agent VM on Node A:
+
+```bash
+infra/agent-vm/verify-callpath.sh          # launch VM on Node A, run the ADK task vs Node C, assert streaming + latency
+```
+
+## 7. Honest scope
 
 - The image was **built and booted for real on this host's LXD 5.21.8** (container
   variant). The **VM (`--vm`) variant was not built here** (no nested-virt KVM in
@@ -130,9 +156,10 @@ Committed evidence lives in `evidence/` (`offline-acceptance.json`,
   router at `http://10.10.0.13:8080`; the server is W3 `t_95528ae8`.
 - Registry distribution to Nodes A/B is `t_7c40f9a3`; this card produces the
   alias + exportable tarball + launch profile.
-- Cross-node streaming against the real endpoint is `t_fd8eee6c`.
+- Cross-node streaming against the real endpoint is wired + verified by
+  `t_fd8eee6c` (`infra/agent-vm/verify-callpath.sh`); see §6.
 
-## 7. Layout
+## 8. Layout
 
 ```
 image/agent-vm/
@@ -151,6 +178,10 @@ image/agent-vm/
   provision/35-agent-selftest.sh    bake-time unit tests (quality gate)
   systemd/*.service                 agent + first-boot preflight units
   agent/                            the termini-agent python package (pip-installable)
+    src/termini_agent/adk_llm.py      ADK BaseLlm adapter for the OpenAI-compatible endpoint
+    src/termini_agent/multiturn.py    multi-turn ADK session runner + latency report
+    src/termini_agent/stream_metrics.py  per-delta streaming accounting
+    tests/                            bake-time unit tests (incl. stream_metrics + config allow-list)
   tools/offline-acceptance.sh       in-VM acceptance checks
   tools/validate_manifest.py        manifest schema/structural validation
   manifests/agent-image-manifest.schema.json
