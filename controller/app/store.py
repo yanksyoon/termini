@@ -23,8 +23,54 @@ def now_iso() -> str:
 
 
 # --- metrics registry: name -> (extractor, unit). Mirrors docs/telemetry-schema.md. ---
-def _first(arr: Any) -> dict:
-    return arr[0] if isinstance(arr, list) and arr and isinstance(arr[0], dict) else {}
+# Nested -> flat mapping (resolves W1 review A6: the flattening is now defined).
+# The node emits *nested* device objects (disk[], net[], gpu[], inference{}); the
+# dashboard charts consume *flat* series. Aggregation rules, frozen here:
+#
+#   * bytes/counter metrics aggregate by SUM across all devices/interfaces
+#     (disk_total_bytes = sum of every disk's total_bytes, net_rx_bytes = sum of
+#     every interface's rx_bytes, gpu_vram_* = sum across GPUs).
+#   * utilization / latency metrics take the MAX across devices (the "worst
+#     device drives the chart" convention: gpu_util_pct, disk_write_latency_ms,
+#     net_latency_ms).
+#   * inference_* passthrough from the single inference{} object.
+#
+# The demo has one disk / one NIC / one GPU, so SUM == MAX == first for every
+# series; the rules above are what keep the contract unambiguous for multi-device
+# hosts.
+def _arr(sample: dict, key: str) -> list:
+    a = sample.get(key)
+    return a if isinstance(a, list) else []
+
+
+def _sum_of(key: str):
+    def fn(sample: dict) -> Any:
+        vals = [d.get(key) for d in _arr(sample, _CONTAINER_OF[key]) if isinstance(d, dict)]
+        nums = [v for v in vals if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        return sum(nums) if nums else None
+    return fn
+
+
+def _max_of(key: str):
+    def fn(sample: dict) -> Any:
+        vals = [d.get(key) for d in _arr(sample, _CONTAINER_OF[key]) if isinstance(d, dict)]
+        nums = [v for v in vals if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        return max(nums) if nums else None
+    return fn
+
+
+# Which nested container each flat device metric is drawn from.
+_CONTAINER_OF = {
+    "util_pct": "gpu",
+    "vram_used_bytes": "gpu",
+    "vram_total_bytes": "gpu",
+    "rx_bytes": "net",
+    "tx_bytes": "net",
+    "latency_ms": "net",
+    "total_bytes": "disk",
+    "free_bytes": "disk",
+    "write_latency_ms": "disk",
+}
 
 
 def _inf(sample: dict) -> dict:
@@ -39,15 +85,15 @@ METRICS: dict[str, tuple[Any, str]] = {
     "swap_used_bytes": (lambda s: s.get("swap_used_bytes"), "bytes"),
     "load_avg_1m": (lambda s: s.get("load_avg_1m"), "loadavg"),
     "cpu_temp_celsius": (lambda s: s.get("cpu_temp_celsius"), "celsius"),
-    "gpu_util_pct": (lambda s: _first(s.get("gpu")).get("util_pct"), "percent"),
-    "gpu_vram_used_bytes": (lambda s: _first(s.get("gpu")).get("vram_used_bytes"), "bytes"),
-    "gpu_vram_total_bytes": (lambda s: _first(s.get("gpu")).get("vram_total_bytes"), "bytes"),
-    "net_rx_bytes": (lambda s: _first(s.get("net")).get("rx_bytes"), "bytes"),
-    "net_tx_bytes": (lambda s: _first(s.get("net")).get("tx_bytes"), "bytes"),
-    "net_latency_ms": (lambda s: _first(s.get("net")).get("latency_ms"), "ms"),
-    "disk_total_bytes": (lambda s: _first(s.get("disk")).get("total_bytes"), "bytes"),
-    "disk_free_bytes": (lambda s: _first(s.get("disk")).get("free_bytes"), "bytes"),
-    "disk_write_latency_ms": (lambda s: _first(s.get("disk")).get("write_latency_ms"), "ms"),
+    "gpu_util_pct": (_max_of("util_pct"), "percent"),
+    "gpu_vram_used_bytes": (_sum_of("vram_used_bytes"), "bytes"),
+    "gpu_vram_total_bytes": (_sum_of("vram_total_bytes"), "bytes"),
+    "net_rx_bytes": (_sum_of("rx_bytes"), "bytes"),
+    "net_tx_bytes": (_sum_of("tx_bytes"), "bytes"),
+    "net_latency_ms": (_max_of("latency_ms"), "ms"),
+    "disk_total_bytes": (_sum_of("total_bytes"), "bytes"),
+    "disk_free_bytes": (_sum_of("free_bytes"), "bytes"),
+    "disk_write_latency_ms": (_max_of("write_latency_ms"), "ms"),
     "inference_tokens_per_s": (lambda s: _inf(s).get("tokens_per_s"), "tok/s"),
     "inference_active_requests": (lambda s: _inf(s).get("active_requests"), "count"),
     "inference_vram_used_bytes": (lambda s: _inf(s).get("vram_used_bytes"), "bytes"),
@@ -305,3 +351,108 @@ def metric_series(
 
     return {"node_id": node_id, "resolution": resolution,
             "series": [series[n] for n in metric_names if n in series]}
+
+
+# ---------------------------------------------------------------------------
+# Node SSH / inventory mapping (GET /nodes/{id}/ssh, terminal bridge)
+# ---------------------------------------------------------------------------
+
+def set_node_public_ip(conn, node_id: str, public_ip: str | None) -> None:
+    conn.execute("UPDATE nodes SET public_ip = ? WHERE id = ?", (public_ip, node_id))
+
+
+# ---------------------------------------------------------------------------
+# Remediation / operation commands (dashboard.md §4.4, controller-api.md §6)
+# ---------------------------------------------------------------------------
+
+def insert_command(conn, cmd: dict) -> None:
+    conn.execute(
+        "INSERT INTO commands (command_id, project_id, node_id, type, payload_json,"
+        " approval, state, issued_by, issued_at, timeout_s, trigger_json)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            cmd["command_id"], cmd["project_id"], cmd.get("node_id"), cmd["type"],
+            json.dumps(cmd.get("payload") or {}), cmd["approval"], cmd["state"],
+            cmd["issued_by"], cmd["issued_at"], cmd.get("timeout_s", 60),
+            json.dumps(cmd["trigger"]) if cmd.get("trigger") else None,
+        ),
+    )
+
+
+def get_command(conn, command_id: str) -> dict | None:
+    row = conn.execute("SELECT * FROM commands WHERE command_id = ?", (command_id,)).fetchone()
+    return _command_row(row) if row else None
+
+
+def list_commands(conn, project_id: str, state: str | None = None) -> list[dict]:
+    q = "SELECT * FROM commands WHERE project_id = ?"
+    args: list[Any] = [project_id]
+    if state:
+        q += " AND state = ?"
+        args.append(state)
+    q += " ORDER BY issued_at DESC"
+    return [_command_row(r) for r in conn.execute(q, args).fetchall()]
+
+
+def pending_approval_commands(conn, project_id: str) -> list[dict]:
+    return list_commands(conn, project_id, state="pending_approval")
+
+
+def _command_row(row) -> dict:
+    c = dict(row)
+    c["payload"] = json.loads(c.pop("payload_json") or "{}")
+    c["trigger"] = json.loads(c.pop("trigger_json")) if c.get("trigger_json") else None
+    c["result"] = json.loads(c.pop("result_json")) if c.get("result_json") else None
+    return c
+
+
+def transition_command(conn, command_id: str, **fields) -> None:
+    if not fields:
+        return
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    conn.execute(f"UPDATE commands SET {cols} WHERE command_id = ?", (*fields.values(), command_id))
+
+
+# ---------------------------------------------------------------------------
+# Operator log store (SSE/WS backfill tail)
+# ---------------------------------------------------------------------------
+
+def insert_log(conn, log: dict) -> None:
+    conn.execute(
+        "INSERT INTO operator_logs (log_id, project_id, ts, node_id, severity, actor,"
+        " message, remediation_json, truncated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            log["log_id"], log["project_id"], log["ts"], log.get("node_id"),
+            log["severity"], log["actor"], log["message"],
+            json.dumps(log["remediation"]) if log.get("remediation") else None,
+            1 if log.get("truncated") else 0,
+        ),
+    )
+
+
+def logs_since(conn, project_id: str, since_log_id: str | None, limit: int = 10000) -> list[dict]:
+    q = "SELECT * FROM operator_logs WHERE project_id = ?"
+    args: list[Any] = [project_id]
+    if since_log_id:
+        q += " AND log_id > ?"
+        args.append(since_log_id)
+    q += " ORDER BY log_id ASC LIMIT ?"
+    args.append(limit)
+    rows = conn.execute(q, args).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["remediation"] = json.loads(d.pop("remediation_json")) if d.get("remediation_json") else None
+        d["truncated"] = bool(d.get("truncated"))
+        out.append(d)
+    return out
+
+
+def trim_logs(conn, project_id: str, ring_size: int) -> None:
+    """Drop the oldest log rows beyond `ring_size` for the project."""
+    conn.execute(
+        "DELETE FROM operator_logs WHERE project_id = ? AND log_id NOT IN ("
+        " SELECT log_id FROM operator_logs WHERE project_id = ?"
+        " ORDER BY log_id DESC LIMIT ?)",
+        (project_id, project_id, ring_size),
+    )
