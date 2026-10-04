@@ -715,15 +715,17 @@ Additive to controller-api §7.1 (proposed): `task.queued`, `task.state_changed`
 
 ## 17. Cross-document reconciliation items (for the architect, `t_5fb81d14`)
 
-These are the only places this contract extends a sibling document; the architect must fold them in:
+These are the only places this contract extends a sibling document. **All five are now
+landed** in the integration pass (t_5fb81d14, `docs/architecture.md` §8):
 
-1. **`controller-api.md` §6** — add `vm.launch`, `agent.dispatch_task`, `agent.cancel_task` to the node command envelope / `commandAllowlist()`.
-2. **`controller-api.md` §7.1** — add `task.queued` / `task.state_changed` / `task.completed` events.
-3. **`node-telemetry.md` §4.6 / `governance.md` §4.1** — register the `agents[]` C0 extension (§13.2) in the egress allowlist (same treatment as the existing `lxd_instances[]`/`inference`/`services` extension).
-4. **`governance.md` §12** — ratify invariant **G-AR-1/G-AR-2** (§7.1): the node→controller direction never carries C2; the controller carries task content only transiently (no persistence, no external model call).
-5. **`infra-decisions.md` D5** — note that the `:8080` listener is realized as an OpenAI-compatible **router** fronting llama.cpp workers (single-model deployments collapse to passthrough). D5's endpoint, port, and scope are unchanged.
+1. **`controller-api.md` §6** — `vm.launch`, `agent.dispatch_task`, `agent.cancel_task` added to the node command envelope / `commandAllowlist()`. ✅
+2. **`controller-api.md` §7.1** — `task.queued` / `task.state_changed` / `task.completed` events added. ✅
+3. **`node-telemetry.md` §4.6 / `governance.md` §4.1.1** — the `agents[]` C0 extension (§13.2) registered in the egress allowlist (same treatment as `lxd_instances[]`/`inference`/`services`). ✅
+4. **`governance.md` §12** — invariant **G-AR-1/G-AR-2** ratified: the node→controller direction never carries C2; the controller carries task content only transiently (no persistence, no external model call). ✅
+5. **`infra-decisions.md` D5** — `:8080` realized as an OpenAI-compatible **router** fronting llama.cpp workers (single-model deployments collapse to passthrough); endpoint, port, and scope unchanged. ✅
 
-Until (3) lands, the node redactor must be configured with the `agents[]` keys as C0 allowlist entries (the same interim rule node-telemetry §4.9 already states for its extensions).
+The node redactor treats the `agents[]` keys as C0 allowlist entries per the registered
+group in `governance.md` §4.1.1.
 
 ---
 

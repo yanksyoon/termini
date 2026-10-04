@@ -169,7 +169,7 @@ Node bootstrap                                          Controller
      │                                                       │
      │ 3. persist identity; run LXD seed/join (§6)          │
      │                                                       │
-     │ 4. OPEN wss://controller/v1/nodes/{id}/channel (mTLS)│
+     │ 4. OPEN wss://controller/node/v1/{node_id}/channel (mTLS)│
      │    ◄──► heartbeat + telemetry + command/response      │
 ```
 
@@ -217,45 +217,54 @@ Step 1 uses the enrollment token because the node has no cert yet. TLS certifica
 
 ### 5.3 Response — `201 Created` `NodeRegistrationResponse`
 
+Canonical response (agreed with `controller-api.md` §4.1; the controller adds the
+`project_id` / `node_token` / `config` fields the node needs for REST-fallback auth
+and project scoping):
+
 ```json
 {
   "schema_version": "1.0",
-  "node_id": "node_01HZX8Y2K4Q7",
-  "assigned_role": "compute",
+  "node_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E",
+  "project_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D",
+  "role": "compute",
+  "node_token": "opaque-node-secret",
+  "identity": {
+    "client_cert_pem": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n",
+    "ca_chain_pem": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+  },
   "cluster": {
     "name": "termini",
     "role": "joiner",
     "member_name": "node-b",
     "server_address": "10.10.0.11:8443",
-    "join_token": "eyJzZXJ2ZXJfbmFtZSI6...joiner-token"
+    "join_token": "eyJzZX...ZSI6...joiner-token"
   },
-  "identity": {
-    "client_cert_pem": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n",
-    "ca_chain_pem": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
-  },
-  "telemetry": { "interval_ms": 1000, "channel": "wss://controller.termini.example/v1/nodes/node_01HZX8Y2K4Q7/channel" },
+  "telemetry": { "interval_ms": 1000, "channel": "wss://controller.termini.example/node/v1/01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E/channel" },
+  "config": { "heartbeat_interval_s": 5, "telemetry_interval_ms": 1000, "telemetry_batch_max": 200, "command_channel": "websocket" },
   "controller_time": "2026-10-04T07:59:00Z",
   "registration_ttl_s": 3600
 }
 ```
 
 - Seed node response: `cluster.role = "seed"`, `join_token = null`.
-- `assigned_role = "inference"` only for Node C.
+- `role = "inference"` only for Node C.
+- `node_token` authenticates the REST fallback endpoints (`controller-api.md` §4.1); `identity` drives the mTLS control channel (D6).
 - `registration_ttl_s` bounds how long the issued client cert is valid before the daemon must re-issue over the authenticated channel.
 
 ### 5.4 Errors
 
 | Status | `code` | Meaning | Node behaviour |
 |--------|--------|---------|----------------|
-| 400 | `invalid_request` | Schema/parse failure | Log, backoff-retry up to 3, then `REGISTRATION_FAILED`. |
-| 401 | `token_invalid` | Missing/malformed/expired/consumed token | Terminal → `REGISTRATION_FAILED` (no blind retry; §9). |
-| 403 | `token_scope_mismatch` | Token bound to a different machine/role | Terminal → `REGISTRATION_FAILED`. |
-| 409 | `already_registered` | `machine_id` exists | If body cert is valid → treat as reconnect; else server returns existing `node_id` and the node performs §10 reconnect. |
-| 422 | `unsupported_version` | `schema_version` unsupported | Terminal; alert operator (image/controller skew). |
-| 429 | `rate_limited` | Too many attempts | Honour `Retry-After`; backoff. |
-| 5xx | — | Controller error | Backoff-retry indefinitely (bounded by max backoff 60 s). |
+| 400 | `INVALID_ARGUMENT` | Schema/parse failure | Log, backoff-retry up to 3, then `REGISTRATION_FAILED`. |
+| 401 | `UNAUTHENTICATED` | Missing/malformed/expired/consumed token | Terminal → `REGISTRATION_FAILED` (no blind retry; §9). |
+| 403 | `PERMISSION_DENIED` | Token bound to a different machine/role | Terminal → `REGISTRATION_FAILED`. |
+| 409 | `CONFLICT` | `machine_id` exists | If body cert is valid → treat as reconnect; else server returns existing `node_id` and the node performs §10 reconnect. |
+| 426 | `UNSUPPORTED_VERSION` | `schema_version` unsupported | Terminal; alert operator (image/controller skew). |
+| 429 | `RATE_LIMITED` | Too many attempts | Honour `Retry-After`; backoff. |
+| 5xx | `INTERNAL` | Controller error | Backoff-retry indefinitely (bounded by max backoff 60 s). |
 
-All error bodies: `{ "code": "...", "message": "...", "request_id": "..." }`.
+Error codes are the canonical UPPER_SNAKE set from `controller-api.md` §3. All error
+bodies use the controller error envelope: `{ "error": { "code", "message", "details", "request_id" } }`.
 
 ---
 
@@ -410,7 +419,7 @@ Guiding rules: **registration and join failures must never leave a node unreacha
 ## 11. Security and governance constraints (node side)
 
 - The bootstrap daemon is the **sole egress path** for platform data; it emits **hardware/OS telemetry only**.
-- Controller commands are a **fixed typed verb set** (e.g. `resize_instance`, `evacuate_instance`, `set_telemetry_interval`, `issue_cert`, `run_healthcheck`). The daemon validates and executes known verbs only; it never `eval`s controller strings.
+- Controller commands are a **fixed typed verb set** — the `commandAllowlist()` from `controller-api.md` §6: `vm.launch`, `vm.resize`, `vm.migrate`, `vm.stop`, `vm.start`, `vm.destroy`, `node.drain`, `node.reboot`, `ssh.inject_key`, `agent.dispatch_task`, `agent.cancel_task`. The daemon validates and executes known verbs only; it never `eval`s controller strings. Telemetry cadence is set via the registration response (not a command); health probes are folded into telemetry.
 - Enrollment tokens are single-use and short-TTL; the enrollment endpoint is the only unauthenticated (token-auth) controller call a node makes.
 - No private keys transit the controller (user keys stay in the browser; node keys stay on the node — only CSR/public keys move).
 - The break-glass SSH key is removed after registration (§7); standing SSH is CA-signed, short-lived, and scoped.
@@ -430,10 +439,10 @@ A fresh node is considered correctly bootstrapped when **all** of the following 
    ```
 2. **From the controller:**
    ```bash
-   curl -sS -H "Authorization: Bearer $ADMIN_TOKEN" \
-     https://controller.termini.example/v1/nodes | jq '.[] | {node_id,role,state,last_seen}'
-   curl -sS -H "Authorization: Bearer $ADMIN_TOKEN" \
-     https://controller.termini.example/v1/nodes/node_01HZX8Y2K4Q7 | jq .health
+   curl -sS -H "Authorization: Bearer ***" \
+     https://controller.termini.example/v1/projects/{project_id}/nodes | jq '.nodes[] | {node_id,role,status,last_seen_at}'
+   curl -sS -H "Authorization: Bearer ***" \
+     https://controller.termini.example/v1/projects/{project_id}/nodes/01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E | jq .metrics_latest
    ```
 3. **Cross-node networking (from an agent VM on Node A) — the D2 acceptance:**
    ```bash
