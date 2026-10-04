@@ -8,11 +8,25 @@ zone    = "us-central1-a"
 # Frozen underlay plan (docs/contracts/infra-decisions.md D2).
 network_cidr = "10.10.0.0/24"
 
-# Acceptance: A/B compute-optimized, C a real GPU with an attached L4.
-compute_machine_type  = "n2-standard-4"
-gpu_machine_type      = "g2-standard-4"
-gpu_accelerator_type  = "nvidia-l4"
-gpu_accelerator_count = 1
+# Node C is CPU-only by default (free-tier billing rejects every non-TPU
+# accelerator). A/B compute-optimized; C is CPU-heavy to host llama.cpp on CPU.
+#
+# Mind the project's CPUS_ALL_REGIONS quota: 4 + 4 + 8 = 16 vCPU. The demo project
+# is capped at 12, so its tfvars uses compute_machine_type = "n2-standard-2"
+# (2 + 2 + 8 = 12) to keep Node C at n2-standard-8.
+compute_machine_type   = "n2-standard-4"
+inference_machine_type = "n2-standard-8"
+gpu_accelerator_type   = "nvidia-l4"
+gpu_accelerator_count  = 0
+
+# Node C serves a small quantized model on CPU on the frozen contract port.
+serve_inference      = true
+inference_port       = 8080
+inference_model_file = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+
+# To re-enable the GPU after upgrading the billing account to paid, set:
+#   inference_machine_type = "g2-standard-4"
+#   gpu_accelerator_count  = 1
 
 # DEMO ONLY — lock this down before any real use (your admin CIDR or 35.235.240.0/20 for IAP).
 ssh_source_ranges = ["0.0.0.0/0"]

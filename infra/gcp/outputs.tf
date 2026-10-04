@@ -22,7 +22,7 @@ output "nodes" {
       machine_type = google_compute_instance.node[name].machine_type
       private_ip   = google_compute_instance.node[name].network_interface[0].network_ip
       public_ip    = google_compute_instance.node[name].network_interface[0].access_config[0].nat_ip
-      accelerator  = local.node_spec[name].gpu ? var.gpu_accelerator_type : null
+      accelerator  = (local.node_spec[name].inference && local.accelerate_node_c) ? var.gpu_accelerator_type : null
       ssh          = "ssh ${var.ssh_user}@${google_compute_instance.node[name].network_interface[0].access_config[0].nat_ip}"
     }
   }

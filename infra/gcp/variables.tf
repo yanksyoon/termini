@@ -14,7 +14,7 @@ variable "region" {
 }
 
 variable "zone" {
-  description = "GCP zone for all three VMs. Must offer the GPU accelerator (L4 is in us-central1-a/b/c/f)."
+  description = "GCP zone for all three VMs. Must be a zone that offers the machine types below (and, if the accelerator is re-enabled, one that offers it)."
   type        = string
   default     = "us-central1-a"
 }
@@ -33,7 +33,7 @@ variable "network_cidr" {
   default     = "10.10.0.0/24"
 }
 
-# --- Machine types (task acceptance: A/B compute-optimized, C a real GPU) -----
+# --- Machine types (task acceptance: A/B compute-optimized, C CPU-heavy) ------
 
 variable "compute_machine_type" {
   description = "Machine type for Nodes A and B (compute nodes)."
@@ -41,22 +41,69 @@ variable "compute_machine_type" {
   default     = "n2-standard-4"
 }
 
-variable "gpu_machine_type" {
-  description = "Machine type for Node C (GPU node). g2-standard-4 ships exactly one NVIDIA L4."
+variable "inference_machine_type" {
+  description = <<-EOT
+    Machine type for Node C (the inference host). Default n2-standard-8: CPU-only
+    llama.cpp needs several cores to run a small quantized model acceptably.
+    When the GPU is re-enabled (gpu_accelerator_count = 1) set this to
+    g2-standard-4, which ships exactly one NVIDIA L4.
+  EOT
   type        = string
-  default     = "g2-standard-4"
+  default     = "n2-standard-8"
 }
 
 variable "gpu_accelerator_type" {
-  description = "Accelerator type attached to Node C (must match gpu_machine_type)."
+  description = "Accelerator type attached to Node C when gpu_accelerator_count > 0 (must match inference_machine_type, e.g. nvidia-l4 on g2-standard-4)."
   type        = string
   default     = "nvidia-l4"
 }
 
 variable "gpu_accelerator_count" {
-  description = "Number of accelerators on Node C (g2-standard-4 == 1)."
+  description = <<-EOT
+    Number of accelerators on Node C. 0 (default) = CPU-only Node C: no
+    guest_accelerator block is emitted and Node C is a plain CPU VM. Set to 1
+    (and inference_machine_type = "g2-standard-4") to re-enable the GPU after the
+    billing account is upgraded from free tier.
+  EOT
   type        = number
-  default     = 1
+  default     = 0
+
+  validation {
+    condition     = var.gpu_accelerator_count == 0 || var.gpu_accelerator_count == 1
+    error_message = "gpu_accelerator_count must be 0 (CPU-only) or 1 (single accelerator)."
+  }
+}
+
+# --- Node C inference serving (CPU llama.cpp) ---------------------------------
+
+variable "serve_inference" {
+  description = "Provision a CPU llama.cpp server (Qwen2.5-1.5B-Instruct Q4_K_M) on Node C at boot. Set false to keep Node C activation-only."
+  type        = bool
+  default     = true
+}
+
+variable "inference_model_url" {
+  description = "GGUF model URL downloaded onto Node C when serve_inference is true."
+  type        = string
+  default     = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+}
+
+variable "inference_model_file" {
+  description = "Filename the GGUF model is saved as under /var/lib/termini/models on Node C."
+  type        = string
+  default     = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+}
+
+variable "inference_port" {
+  description = "TCP port Node C serves llama.cpp on (frozen contract: 8080, underlay-only)."
+  type        = number
+  default     = 8080
+}
+
+variable "llamacpp_commit" {
+  description = "Pinned llama.cpp commit built on Node C (matches image/models.lock.json)."
+  type        = string
+  default     = "7fe450e19305b828c199d602c23a8337aaa1f03b"
 }
 
 # --- Boot image / disk --------------------------------------------------------

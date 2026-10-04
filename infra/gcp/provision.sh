@@ -6,7 +6,9 @@
 #   - static internal IPs 10.10.0.11 (node-a), .12 (node-b), .13 (node-c)
 #   - firewall rules for SSH(22), controller API(443), LXD cluster(8443),
 #     VXLAN/UDP(4789) and llama.cpp HTTP(8080, node C only)
-#   - node-a/b = compute machine type, node-c = real GPU + attached accelerator
+#   - node-a/b = compute machine type; node-c = CPU-heavy inference host
+#     (CPU-only by default — free-tier billing rejects every non-TPU accelerator)
+#   - node-c additionally serves CPU llama.cpp on :8080 (small GGUF model)
 #   - an inventory JSON at $INVENTORY_PATH for downstream tasks
 #
 # Requires an authenticated gcloud (GOOGLE_APPLICATION_CREDENTIALS or
@@ -23,9 +25,14 @@ ZONE="${ZONE:-us-central1-a}"
 PREFIX="${PREFIX:-termini}"
 NETWORK_CIDR="${NETWORK_CIDR:-10.10.0.0/24}"
 COMPUTE_MACHINE_TYPE="${COMPUTE_MACHINE_TYPE:-n2-standard-4}"
-GPU_MACHINE_TYPE="${GPU_MACHINE_TYPE:-g2-standard-4}"
+INFERENCE_MACHINE_TYPE="${INFERENCE_MACHINE_TYPE:-n2-standard-8}"
 GPU_ACCELERATOR_TYPE="${GPU_ACCELERATOR_TYPE:-nvidia-l4}"
-GPU_ACCELERATOR_COUNT="${GPU_ACCELERATOR_COUNT:-1}"
+GPU_ACCELERATOR_COUNT="${GPU_ACCELERATOR_COUNT:-0}"
+SERVE_INFERENCE="${SERVE_INFERENCE:-1}"
+INFERENCE_PORT="${INFERENCE_PORT:-8080}"
+INFERENCE_MODEL_URL="${INFERENCE_MODEL_URL:-https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf}"
+INFERENCE_MODEL_FILE="${INFERENCE_MODEL_FILE:-qwen2.5-1.5b-instruct-q4_k_m.gguf}"
+LLAMACPP_COMMIT="${LLAMACPP_COMMIT:-7fe450e19305b828c199d602c23a8337aaa1f03b}"
 IMAGE_PROJECT="${IMAGE_PROJECT:-ubuntu-os-cloud}"
 IMAGE_FAMILY="${IMAGE_FAMILY:-ubuntu-2404-lts-amd64}"
 BOOT_DISK_GB="${BOOT_DISK_GB:-60}"
@@ -33,6 +40,14 @@ BOOT_DISK_TYPE="${BOOT_DISK_TYPE:-pd-balanced}"
 SSH_SOURCE_RANGES="${SSH_SOURCE_RANGES:-0.0.0.0/0}"
 SSH_USER="${SSH_USER:-ubuntu}"
 INVENTORY_PATH="${INVENTORY_PATH:-$HOME/.termini/inventory.json}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LLAMA_SERVE_SCRIPT="$SCRIPT_DIR/cloud-init/llama-serve.sh"
+
+# GPU only when the accelerator count is non-zero (single switch, mirrors the
+# Terraform gpu_accelerator_count variable).
+use_accel=false
+if [[ "$GPU_ACCELERATOR_COUNT" != "0" ]]; then use_accel=true; fi
 
 die() { echo "error: $*" >&2; exit 1; }
 log() { echo "==> $*"; }
@@ -44,7 +59,7 @@ while [[ $# -gt 0 ]]; do
     --zone) ZONE="$2"; shift 2 ;;
     --prefix) PREFIX="$2"; shift 2 ;;
     --inventory) INVENTORY_PATH="$2"; shift 2 ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -73,6 +88,9 @@ trap 'rm -rf "$WORKDIR"' EXIT
 
 userdata() { # $1=node $2=role $3=underlay_ip $4=seed_ip
   local node="$1" role="$2" ip="$3" seed="$4"
+  local serve=false
+  [[ "$node" == "node-c" && "$SERVE_INFERENCE" == "1" ]] && serve=true
+
   cat <<EOF
 #cloud-config
 write_files:
@@ -87,12 +105,31 @@ write_files:
       underlay_gw: ${GW_IP}
       bootstrap_seed_ip: ${seed}
       telemetry_interval_ms: 1000
-runcmd:
-  - [ systemctl, enable, --now, termini-bootstrap.service ]
 EOF
+
+  if [[ "$serve" == "true" ]]; then
+    [[ -f "$LLAMA_SERVE_SCRIPT" ]] || die "missing $LLAMA_SERVE_SCRIPT"
+    local script
+    script="$(cat "$LLAMA_SERVE_SCRIPT")"
+    script="${script//__LLAMACPP_COMMIT__/$LLAMACPP_COMMIT}"
+    script="${script//__MODEL_URL__/$INFERENCE_MODEL_URL}"
+    script="${script//__MODEL_FILE__/$INFERENCE_MODEL_FILE}"
+    script="${script//__PORT__/$INFERENCE_PORT}"
+    printf '  - path: /usr/local/sbin/termini-llama-serve.sh\n'
+    printf '    permissions: %s\n' "'0755'"
+    printf '    owner: root:root\n'
+    printf '    content: |\n'
+    while IFS= read -r line; do printf '      %s\n' "$line"; done <<< "$script"
+  fi
+
+  printf 'runcmd:\n'
+  printf '  - [ systemctl, enable, --now, termini-bootstrap.service ]\n'
+  if [[ "$serve" == "true" ]]; then
+    printf '  - [ /usr/local/sbin/termini-llama-serve.sh ]\n'
+  fi
 }
 
-log "project=$PROJECT region=$REGION zone=$ZONE prefix=$PREFIX cidr=$NETWORK_CIDR"
+log "project=$PROJECT region=$REGION zone=$ZONE prefix=$PREFIX cidr=$NETWORK_CIDR accel=$use_accel"
 
 # --- Network ----------------------------------------------------------------
 if ! gcloud compute networks describe "$VPC" --project "$PROJECT" >/dev/null 2>&1; then
@@ -132,7 +169,7 @@ fw "${PREFIX}-allow-ssh"            "tcp:22"     "$SSH_SOURCE_RANGES" "$COMMON_T
 fw "${PREFIX}-allow-controller-api" "tcp:443"    "$NETWORK_CIDR"      "$COMMON_TAGS"
 fw "${PREFIX}-allow-lxd-cluster"    "tcp:8443"   "$NETWORK_CIDR"      "$COMMON_TAGS"
 fw "${PREFIX}-allow-vxlan"          "udp:4789"   "$NETWORK_CIDR"      "$COMMON_TAGS"
-fw "${PREFIX}-allow-inference"      "tcp:8080"   "$NETWORK_CIDR"      "${PREFIX}-node-c"
+fw "${PREFIX}-allow-inference"      "tcp:${INFERENCE_PORT}" "$NETWORK_CIDR" "${PREFIX}-node-c"
 
 # --- Instances -----------------------------------------------------------------
 create_node() { # $1=node $2=role $3=ip $4=machine_type $5=gpu(true/false)
@@ -158,15 +195,15 @@ create_node() { # $1=node $2=role $3=ip $4=machine_type $5=gpu(true/false)
   if [[ "$gpu" == "true" ]]; then
     args+=( --accelerator "type=${GPU_ACCELERATOR_TYPE},count=${GPU_ACCELERATOR_COUNT}"
             --maintenance-policy TERMINATE --restart-on-failure )
-    log "create instance $name ($mtype, GPU=${GPU_ACCELERATOR_TYPE}x${GPU_ACCELERATOR_COUNT})"
+    log "create instance $name ($mtype, accel=${GPU_ACCELERATOR_TYPE}x${GPU_ACCELERATOR_COUNT})"
   else
-    log "create instance $name ($mtype)"
+    log "create instance $name ($mtype, CPU-only)"
   fi
   gcloud compute instances create "$name" "${args[@]}"
 }
-create_node "node-a" "compute"   "$IP_A" "$COMPUTE_MACHINE_TYPE" false
-create_node "node-b" "compute"   "$IP_B" "$COMPUTE_MACHINE_TYPE" false
-create_node "node-c" "inference" "$IP_C" "$GPU_MACHINE_TYPE"     true
+create_node "node-a" "compute"   "$IP_A" "$COMPUTE_MACHINE_TYPE"   false
+create_node "node-b" "compute"   "$IP_B" "$COMPUTE_MACHINE_TYPE"   false
+create_node "node-c" "inference" "$IP_C" "$INFERENCE_MACHINE_TYPE" "$use_accel"
 
 # --- Inventory -----------------------------------------------------------------
 mkdir -p "$(dirname "$INVENTORY_PATH")"
@@ -188,11 +225,16 @@ node_json() { # $1=node $2=role $3=ip $4=mtype $5=accel_json
       labels:{"managed-by":"gcloud","node":$name,"role":$role}}'
 }
 
+if [[ "$use_accel" == "true" ]]; then
+  ACCEL_JSON="$(jq -n --arg t "$GPU_ACCELERATOR_TYPE" --argjson c "$GPU_ACCELERATOR_COUNT" '{type:$t,count:$c}')"
+else
+  ACCEL_JSON="null"
+fi
+
 NODES_JSON="$(jq -s '.' \
   <(node_json node-a compute   "$IP_A" "$COMPUTE_MACHINE_TYPE" null) \
   <(node_json node-b compute   "$IP_B" "$COMPUTE_MACHINE_TYPE" null) \
-  <(node_json node-c inference "$IP_C" "$GPU_MACHINE_TYPE" \
-      "$(jq -n --arg t "$GPU_ACCELERATOR_TYPE" --argjson c "$GPU_ACCELERATOR_COUNT" '{type:$t,count:$c}')"))"
+  <(node_json node-c inference "$IP_C" "$INFERENCE_MACHINE_TYPE" "$ACCEL_JSON"))"
 
 jq -n \
   --arg ts "$now" --arg project "$PROJECT" --arg region "$REGION" --arg zone "$ZONE" \
@@ -207,4 +249,4 @@ jq -n \
 log "inventory written to $INVENTORY_PATH"
 jq -r '.nodes[] | "  \(.name)\t\(.role)\t\(.machine_type)\t\(.private_ip)\t\(.public_ip // "-")"' "$INVENTORY_PATH"
 
-log "inference endpoint: http://${IP_C}:8080   lxd seed: ${IP_A}:8443"
+log "inference endpoint: http://${IP_C}:${INFERENCE_PORT}   lxd seed: ${IP_A}:8443"
