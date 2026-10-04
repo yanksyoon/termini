@@ -23,6 +23,12 @@ def now_iso() -> str:
 
 
 # --- metrics registry: name -> (extractor, unit). Mirrors docs/contracts/node-telemetry.md. ---
+# Nested -> flat mapping (frozen in docs/contracts/dashboard.md §1.4): the wire
+# telemetry is nested (disk[], net[], gpu[], inference{}) and the controller
+# derives flat chart series by taking the FIRST element of each device array.
+# The demo has exactly one disk/NIC/GPU per node, so "first element" is the only
+# element; day-2 defines per-device series + sum/max aggregation for multi-device
+# hosts. `store.py METRICS` is the reference implementation.
 def _first(arr: Any) -> dict:
     return arr[0] if isinstance(arr, list) and arr and isinstance(arr[0], dict) else {}
 
@@ -305,3 +311,108 @@ def metric_series(
 
     return {"node_id": node_id, "resolution": resolution,
             "series": [series[n] for n in metric_names if n in series]}
+
+
+# ---------------------------------------------------------------------------
+# Node SSH / inventory mapping (GET /nodes/{id}/ssh, terminal bridge)
+# ---------------------------------------------------------------------------
+
+def set_node_public_ip(conn, node_id: str, public_ip: str | None) -> None:
+    conn.execute("UPDATE nodes SET public_ip = ? WHERE id = ?", (public_ip, node_id))
+
+
+# ---------------------------------------------------------------------------
+# Remediation / operation commands (dashboard.md §4.4, controller-api.md §6)
+# ---------------------------------------------------------------------------
+
+def insert_command(conn, cmd: dict) -> None:
+    conn.execute(
+        "INSERT INTO commands (command_id, project_id, node_id, type, payload_json,"
+        " approval, state, issued_by, issued_at, timeout_s, trigger_json)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            cmd["command_id"], cmd["project_id"], cmd.get("node_id"), cmd["type"],
+            json.dumps(cmd.get("payload") or {}), cmd["approval"], cmd["state"],
+            cmd["issued_by"], cmd["issued_at"], cmd.get("timeout_s", 60),
+            json.dumps(cmd["trigger"]) if cmd.get("trigger") else None,
+        ),
+    )
+
+
+def get_command(conn, command_id: str) -> dict | None:
+    row = conn.execute("SELECT * FROM commands WHERE command_id = ?", (command_id,)).fetchone()
+    return _command_row(row) if row else None
+
+
+def list_commands(conn, project_id: str, state: str | None = None) -> list[dict]:
+    q = "SELECT * FROM commands WHERE project_id = ?"
+    args: list[Any] = [project_id]
+    if state:
+        q += " AND state = ?"
+        args.append(state)
+    q += " ORDER BY issued_at DESC"
+    return [_command_row(r) for r in conn.execute(q, args).fetchall()]
+
+
+def pending_approval_commands(conn, project_id: str) -> list[dict]:
+    return list_commands(conn, project_id, state="pending_approval")
+
+
+def _command_row(row) -> dict:
+    c = dict(row)
+    c["payload"] = json.loads(c.pop("payload_json") or "{}")
+    c["trigger"] = json.loads(c.pop("trigger_json")) if c.get("trigger_json") else None
+    c["result"] = json.loads(c.pop("result_json")) if c.get("result_json") else None
+    return c
+
+
+def transition_command(conn, command_id: str, **fields) -> None:
+    if not fields:
+        return
+    cols = ", ".join(f"{k} = ?" for k in fields)
+    conn.execute(f"UPDATE commands SET {cols} WHERE command_id = ?", (*fields.values(), command_id))
+
+
+# ---------------------------------------------------------------------------
+# Operator log store (SSE/WS backfill tail)
+# ---------------------------------------------------------------------------
+
+def insert_log(conn, log: dict) -> None:
+    conn.execute(
+        "INSERT INTO operator_logs (log_id, project_id, ts, node_id, severity, actor,"
+        " message, remediation_json, truncated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            log["log_id"], log["project_id"], log["ts"], log.get("node_id"),
+            log["severity"], log["actor"], log["message"],
+            json.dumps(log["remediation"]) if log.get("remediation") else None,
+            1 if log.get("truncated") else 0,
+        ),
+    )
+
+
+def logs_since(conn, project_id: str, since_log_id: str | None, limit: int = 10000) -> list[dict]:
+    q = "SELECT * FROM operator_logs WHERE project_id = ?"
+    args: list[Any] = [project_id]
+    if since_log_id:
+        q += " AND log_id > ?"
+        args.append(since_log_id)
+    q += " ORDER BY log_id ASC LIMIT ?"
+    args.append(limit)
+    rows = conn.execute(q, args).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["remediation"] = json.loads(d.pop("remediation_json")) if d.get("remediation_json") else None
+        d["truncated"] = bool(d.get("truncated"))
+        out.append(d)
+    return out
+
+
+def trim_logs(conn, project_id: str, ring_size: int) -> None:
+    """Drop the oldest log rows beyond `ring_size` for the project."""
+    conn.execute(
+        "DELETE FROM operator_logs WHERE project_id = ? AND log_id NOT IN ("
+        " SELECT log_id FROM operator_logs WHERE project_id = ?"
+        " ORDER BY log_id DESC LIMIT ?)",
+        (project_id, project_id, ring_size),
+    )
