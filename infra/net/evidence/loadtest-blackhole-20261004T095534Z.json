@@ -1,0 +1,35 @@
+{
+  "url": "http://10.32.0.2:8123/v1/chat/completions",
+  "prompt_bytes": 65644,
+  "duration_s": 30.0,
+  "concurrency": 2,
+  "requests": 8,
+  "completed": 0,
+  "dropped": 6,
+  "aborted": 2,
+  "tokens": 0,
+  "bytes_in": 0,
+  "first_token_ms": {
+    "p50": 0.0,
+    "p95": 0.0,
+    "max": 0.0
+  },
+  "inter_token_ms": {
+    "p50": 0.0,
+    "p95": 0.0,
+    "max": 0.0
+  },
+  "request_total_ms": {
+    "p50": 0.0,
+    "p95": 0.0,
+    "max": 0.0
+  },
+  "errors": [
+    "TimeoutError: timed out",
+    "TimeoutError: timed out",
+    "TimeoutError: timed out",
+    "TimeoutError: timed out",
+    "TimeoutError: timed out",
+    "TimeoutError: timed out"
+  ]
+}

@@ -1,6 +1,8 @@
 services:
   controller:
-    build: .
+    build:
+      context: ..
+      dockerfile: controller/Dockerfile
     ports:
       - "${TERMINI_PORT:-8080}:8080"
     environment:
@@ -11,6 +13,13 @@ services:
       TERMINI_GPU_VRAM_MIN_BYTES: "${TERMINI_GPU_VRAM_MIN_BYTES:-12884901888}"
       TERMINI_MIN_REDACTOR_VERSION: "${TERMINI_MIN_REDACTOR_VERSION:-3}"
       TERMINI_TELEMETRY_INTERVAL_MS: "${TERMINI_TELEMETRY_INTERVAL_MS:-1000}"
+      # W5 dashboard surfaces
+      TERMINI_INVENTORY_PATH: "${TERMINI_INVENTORY_PATH:-/data/inventory.json}"
+      TERMINI_SSH_KEY_PATH: "${TERMINI_SSH_KEY_PATH:-}"
+      TERMINI_SSH_PUBLIC_KEY: "${TERMINI_SSH_PUBLIC_KEY:-}"
+      TERMINI_SSH_KEY_COMMENT: "${TERMINI_SSH_KEY_COMMENT:-termini-breakglass}"
+      TERMINI_SSH_USER: "${TERMINI_SSH_USER:-ubuntu}"
+      TERMINI_TERMINAL_BACKEND: "${TERMINI_TERMINAL_BACKEND:-ssh}"
     volumes:
       - controller-data:/data
 

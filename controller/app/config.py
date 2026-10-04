@@ -40,6 +40,18 @@ def _bool_env(name: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _opt_str(name: str) -> str | None:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return None
+    return raw.strip()
+
+
+def _opt_list(name: str) -> tuple[str, ...]:
+    raw = os.environ.get(name, "")
+    return tuple(t.strip() for t in raw.split(",") if t.strip())
+
+
 def _require_nonempty(name: str) -> str:
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
@@ -68,6 +80,19 @@ class Config:
     heartbeat_interval_s: int
     telemetry_interval_ms: int
     telemetry_batch_max: int
+    # W5 dashboard surfaces (t_3468e5f0).
+    inventory_path: str | None      # infra inventory.json (public_ip/ssh user+port)
+    ssh_key_path: str | None        # controller-held key for the terminal bridge proxy
+    ssh_public_key: str | None      # public half (fingerprint/comment), else derived
+    ssh_key_comment: str
+    ssh_client_key_path: str        # operator's local key path shown in the SSH string
+    ssh_user: str                   # fallback when no inventory is loaded
+    ssh_port: int
+    log_ring_size: int
+    approval_timeout_s: int         # pending_approval auto-deny after this many seconds
+    terminal_idle_timeout_s: int    # idle terminal session close (15 min default)
+    terminal_backend: str           # "ssh" (default) | "local" (test shell)
+    dashboard_origins: tuple[str, ...]  # Origin allowlist for terminal/WS (empty = any)
 
     # --- AI-operator remediation loop ---
     operator_enabled: bool
@@ -150,6 +175,21 @@ class Config:
             heartbeat_interval_s=_int_env("TERMINI_HEARTBEAT_INTERVAL_S", 5),
             telemetry_interval_ms=_int_env("TERMINI_TELEMETRY_INTERVAL_MS", 1000),
             telemetry_batch_max=_int_env("TERMINI_TELEMETRY_BATCH_MAX", 200),
+            inventory_path=_opt_str("TERMINI_INVENTORY_PATH"),
+            ssh_key_path=_opt_str("TERMINI_SSH_KEY_PATH"),
+            ssh_public_key=_opt_str("TERMINI_SSH_PUBLIC_KEY"),
+            ssh_key_comment=os.environ.get("TERMINI_SSH_KEY_COMMENT", "termini-operator-cert").strip()
+            or "termini-operator-cert",
+            ssh_client_key_path=os.environ.get("TERMINI_SSH_CLIENT_KEY_PATH", "~/.ssh/termini_operator").strip()
+            or "~/.ssh/termini_operator",
+            ssh_user=os.environ.get("TERMINI_SSH_USER", "ubuntu").strip() or "ubuntu",
+            ssh_port=_int_env("TERMINI_SSH_PORT", 22),
+            log_ring_size=_int_env("TERMINI_LOG_RING_SIZE", 10000),
+            approval_timeout_s=_int_env("TERMINI_APPROVAL_TIMEOUT_S", 300),
+            terminal_idle_timeout_s=_int_env("TERMINI_TERMINAL_IDLE_TIMEOUT_S", 900),
+            terminal_backend=os.environ.get("TERMINI_TERMINAL_BACKEND", "ssh").strip()
+            or "ssh",
+            dashboard_origins=_opt_list("TERMINI_DASHBOARD_ORIGINS"),
             operator_enabled=_bool_env("TERMINI_OPERATOR_ENABLED", True),
             operator_poll_interval_s=_float_env("TERMINI_OPERATOR_POLL_INTERVAL_S", 1.0),
             operator_window=_int_env("TERMINI_OPERATOR_WINDOW", 60),

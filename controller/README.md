@@ -73,21 +73,51 @@ is hardcoded.
 | `TERMINI_LXD_CLIENT_CERT` / `TERMINI_LXD_CLIENT_KEY` | unset | mTLS cert/key for a real LXD |
 | `TERMINI_LXD_TIMEOUT_S` | `10.0` | per-request timeout |
 | `TERMINI_LXD_RETRY_MAX` / `TERMINI_LXD_RETRY_BACKOFF_S` | `3` / `0.5` | retry with exponential backoff |
+| `TERMINI_INVENTORY_PATH` | (auto) | infra inventory.json (public_ip / ssh user+port) |
+| `TERMINI_SSH_KEY_PATH` | (none) | controller-held key for the terminal bridge proxy |
+| `TERMINI_SSH_PUBLIC_KEY` | (derived) | public half for the SSH-string fingerprint |
+| `TERMINI_SSH_KEY_COMMENT` | `termini-operator-cert` | key comment in the SSH string |
+| `TERMINI_SSH_CLIENT_KEY_PATH` | `~/.ssh/termini_operator` | operator key path rendered in the SSH string |
+| `TERMINI_SSH_USER` / `TERMINI_SSH_PORT` | `ubuntu` / `22` | fallback when no inventory is loaded |
+| `TERMINI_LOG_RING_SIZE` | `10000` | operator-log ring buffer capacity |
+| `TERMINI_APPROVAL_TIMEOUT_S` | `300` | pending_approval auto-deny timeout |
+| `TERMINI_TERMINAL_IDLE_TIMEOUT_S` | `900` | terminal idle close (15 min) |
+| `TERMINI_TERMINAL_BACKEND` | `ssh` | `ssh` (operator cert proxy) \| `local` (`bash -i`, tests) |
+| `TERMINI_DASHBOARD_ORIGINS` | (empty = any) | comma-separated Origin allowlist for the dashboard |
 
-## Endpoints (all under `/v1`)
+## Endpoints
+
+REST (all under `/v1`):
 
 | Method | Path | Auth | Returns |
 |--------|------|------|---------|
 | POST | `/v1/nodes/register` | bootstrap token | `201` node + role + node_token + config |
-| GET | `/v1/projects/{pid}/nodes` | project token | `200` node list (role + last-seen + capacity) |
+| POST | `/v1/nodes/{nid}/heartbeat` | node token | `204` (or `200 {pending_commands}`) |
+| GET | `/v1/projects/{pid}/nodes` | project token | `200` node list (status/health/capacity) |
 | GET | `/v1/projects/{pid}/nodes/{nid}` | project token | `200` node + `metrics_latest` |
 | GET | `/v1/projects/{pid}/nodes/{nid}/metrics` | project token | `200` time-series (`?start&end&resolution&metrics`) |
+| GET | `/v1/projects/{pid}/nodes/{nid}/ssh` | project token | `200` SSH string + fingerprint |
+| POST | `/v1/projects/{pid}/nodes/{nid}/actions/reboot` | project token | `202 {command_id,type,state}` |
+| POST | `/v1/projects/{pid}/nodes/{nid}/actions/drain` | project token | `202 {command_id,type,state}` |
+| POST | `/v1/projects/{pid}/intents` | project token | `200` plan / `422` guardrail-rejected |
+| POST | `/v1/projects/{pid}/vms/apply` | project token | `202 {job_id,state,vm_ids}` |
+| POST | `/v1/projects/{pid}/remediations/{cid}/approve` | project token | `200 {command_id,state:approved}` |
+| POST | `/v1/projects/{pid}/remediations/{cid}/deny` | project token | `200 {command_id,state:denied}` |
 | POST | `/v1/nodes/{nid}/telemetry` | node token | `202 {accepted, rejected, backpressure}` |
 | GET | `/v1/nodes/{nid}/telemetry/recent` | node token | `200` recent samples |
 | GET | `/v1/telemetry/recent?node=&limit=` | project token | `200` recent samples (dashboard/operator) |
 | GET | `/v1/operator/events?node=&limit=` | project token | `200` health events (AI operator) |
 | GET | `/v1/operator/decisions?limit=` | project token | `200` remediation decision log |
 | GET | `/v1/operator/audits?node=&limit=` | project token | `200` remediation audit trail |
+
+Streaming (WebSocket / SSE — token is a `?token=` query param because browsers
+cannot set headers on `EventSource` / `new WebSocket`):
+
+| Surface | Endpoint | Notes |
+|---------|----------|-------|
+| AI-operator logs (SSE) | `GET /v1/projects/{pid}/logs?token=…` | `text/event-stream`; `Last-Event-ID`/`?since=` backfill |
+| Unified event stream (WS) | `GET /stream/v1?token=…&since=…` | `node.telemetry`, `node.health_changed`, `log.line`, `remediation.*` |
+| Terminal (WS) | `GET /terminal/v1/nodes/{node_id}?token=…` | xterm.js framing; one session per node |
 
 Roles are `compute` / `inference` (the frozen contract's vocabulary; the task
 body's "agent-host / inference-host" maps to these). A node with ≥1 GPU whose
@@ -202,8 +232,9 @@ harness can exercise persisted triggers from a cold operator process.
 ## Verify
 
 ```bash
-make verify          # core acceptance: register→role, telemetry, 422-on-malformed
-make verify-operator # operator loop vs the chaos harness (oom/disk-degrade/disk-fail/latency/healthy)
+make verify           # core acceptance: register→role, telemetry, 422-on-malformed
+make verify-operator  # operator loop vs the chaos harness (oom/disk-degrade/disk-fail/latency/healthy)
+python3 -m unittest discover -s tests   # unit + integration (core + dashboard surfaces)
 ```
 
 `scripts/acceptance.py` exercises the core acceptance criteria (register → role,
@@ -212,10 +243,15 @@ no corruption, schema-doc↔code agreement). `scripts/acceptance_operator.py`
 drives the production operator loop against the chaos harness and asserts the
 remediation acceptance criteria; dry-run and idempotency are additionally
 exercised by the unit suite (`tests/test_operator_executor.py`,
-`tests/test_operator_loop.py`).
+`tests/test_operator_loop.py`). `tests/test_dashboard.py` covers the W5 dashboard
+surfaces (health/status derivation, SSH string, restart/drain, approve/deny,
+intent guardrail, SSE + WS log stream, and the WS terminal).
 
 ## Not in scope (other W1 cards)
 
-heartbeat, reconnect, command channel/acks, intents + guardrail validator,
-VMs, ssh-key, WebSocket event stream, terminal, full mTLS PKI / LXD join
-tokens. The route surface is stubbed to `404` for these.
+Node-side command execution (the node command channel / ack delivery that turns a
+queued `node.reboot`/`node.drain` into an executed action), the AI-operator
+remediation loop (threshold-rule → command issuance), LXD VM fan-out behind
+`/vms/apply`, and full mTLS PKI / LXD join tokens. The controller queues commands
+with the frozen guardrails and exposes the streaming/terminal surfaces those
+components consume.
