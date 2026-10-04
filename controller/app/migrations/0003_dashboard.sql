@@ -1,4 +1,4 @@
--- 0002_dashboard — W5 dashboard surfaces (t_3468e5f0).
+-- 0003_dashboard — W5 dashboard surfaces (t_3468e5f0).
 -- Adds: per-node SSH/inventory mapping, the remediation command store, and the
 -- persistent operator-log tail (SSE/WS backfill source).
 

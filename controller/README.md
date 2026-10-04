@@ -107,7 +107,7 @@ cannot set headers on `EventSource` / `new WebSocket`):
 |---------|----------|-------|
 | AI-operator logs (SSE) | `GET /v1/projects/{pid}/logs?token=…` | `text/event-stream`; `Last-Event-ID`/`?since=` backfill |
 | Unified event stream (WS) | `GET /stream/v1?token=…&since=…` | `node.telemetry`, `node.health_changed`, `log.line`, `remediation.*` |
-| Terminal (WS) | `GET /terminal/v1/{node_id}?token=…` | xterm.js framing; one session per node |
+| Terminal (WS) | `GET /terminal/v1/nodes/{node_id}?token=…` | xterm.js framing; one session per node |
 
 Roles are `compute` / `inference` (the frozen contract's vocabulary; the task
 body's "agent-host / inference-host" maps to these). A node with ≥1 GPU whose
