@@ -239,3 +239,85 @@ short-lived ticket or `Sec-WebSocket-Protocol`/header auth day-2.
 **Gate W1 back to owners.** D1–D4 are load-bearing and must be fixed and re-verified before W1 can
 sign off. N1–N7 should be fixed in the same pass or explicitly deferred with rationale. Re-review
 will check the committed state of the fix PR(s), not any working tree.
+
+---
+
+## 6. Addendum — `docs/contracts/dashboard.md` (PR #19, landed after the initial pass)
+
+`docs/contracts/dashboard.md` ("Customer Dashboard ↔ Controller Contract", 582 lines) landed on
+`origin/main` at `2f15771` while this review was being prepared. It is the frontend contract and is
+in scope for the "frontend/controller contract holes" red-team dimension. It does **not** resolve the
+blocking defects — it confirms one and adds two more.
+
+### A1 — SSH access model is now three-way contradictory (confirms + expands D1)
+
+`dashboard.md` §3.2 + §7 R-D2 make the infra-injected **break-glass key** the standing demo access
+path (`ssh -i <key> ubuntu@<public_ip>`), and demote the D4 CA-signed browser-key flow to
+"post-MVP, out of the 5-day scope". This contradicts two other frozen docs:
+
+- `node-bootstrap.md` §7: the break-glass key is **removed after successful registration** ("a
+  one-time recovery path, not standing access").
+- `infra-decisions.md` D4: no standing/shared private key; CA-signed short-lived certs are *the*
+  decision, not a post-MVP upgrade.
+
+And `dashboard.md` §4.4 still lists `ssh.inject_key` as "auto (controller-initiated rotation)" —
+the exact `controller-api.md` §4.3 project-keypair model that §7 R-D2 just rejected. So four
+documents (`controller-api.md` §4.3, `infra-decisions.md` D4, `node-bootstrap.md` §7,
+`dashboard.md` §3.2/§4.4) now describe three incompatible access models.
+
+**Fix (owner: architect + frontend + infra + controller).** Pick one model and propagate it across
+all four docs, including the break-glass lifecycle (standing vs removed-after-registration) and the
+fate of `ssh.inject_key` / §4.3.
+
+### A2 — Terminal target contradiction (new; left as "this doc wins" without reconciling)
+
+`controller-api.md` §7.3 freezes a **VM-level** terminal `/terminal/v1/{vm_id}` (`lxc exec`,
+"never node-level"). `dashboard.md` §3.1 + R-D1 freeze a **node-level** terminal
+`/terminal/v1/{node_id}` (host shell). R-D1 "resolves" this by declaring dashboard wins, but neither
+`controller-api.md` §7.3 nor `architecture.md` (the declared tie-breaker) is updated. Two live docs
+freeze opposite terminal surfaces.
+
+**Fix (owner: architect + controller).** Reconcile the terminal path in `controller-api.md` §7.3 and
+record the final answer in `architecture.md` §8, per the architecture doc's own "this doc wins"
+rule.
+
+### A3 — Confirms N1 (two telemetry schemas)
+
+`dashboard.md` §1/§1.2/§5 cite `docs/telemetry-schema.md` *alongside* `node-telemetry.md` as a
+source of truth, entrenching the two-schema drift rather than collapsing it.
+
+### A4 — N5 (project create endpoint) still open
+
+`dashboard.md` adds `GET /nodes/{id}/ssh`, `POST /nodes/{id}/actions/{reboot,drain}`,
+`POST /remediations/{id}/{approve,deny}` — but still no `POST /v1/projects` (create) or
+`GET /v1/projects` (list). The frontend still cannot bootstrap a project or obtain a `project_token`
+from a defined endpoint.
+
+### A5 — N6 (token-in-URL) downgraded to an acknowledged tradeoff
+
+`dashboard.md` §2.2/§3.1 explicitly document `?token=` and note it is because `EventSource` /
+`new WebSocket` cannot set an `Authorization` header. This is now a *documented* demo tradeoff, not a
+hidden gap; retain as a day-2 note (short-lived ticket / Origin check), not a blocker.
+
+### A6 — Metric name/struct drift (flattened vs nested; new, medium)
+
+`dashboard.md` §1.4 freezes 19 **flat** metric names (`disk_total_bytes`, `net_rx_bytes`,
+`gpu_util_pct`, `inference_tokens_per_s`, …), "mirroring `controller/app/store.py METRICS`", while
+`node-telemetry.md` §4 emits **nested** objects (`disk[]`, `net[]`, `gpu[]`, `inference{}`,
+`lxd_instances[]`). The flattening is undefined: for a host with multiple disks/NICs/GPUs, it is
+unspecified whether `disk_total_bytes` is a sum, first device, or per-device series, and the
+nested→flat name mapping (`gpu[].util_pct` → `gpu_util_pct`, `inference.tokens_per_s` →
+`inference_tokens_per_s`) is nowhere documented. A frontend/controller dev cannot implement the
+mapping without asking.
+
+**Fix (owner: controller + architect).** Define the nested→flat mapping (which field, which
+aggregation) in one place, and make `dashboard.md` §1.4, `telemetry-schema.md`/`node-telemetry.md`,
+and `store.py METRICS` agree.
+
+### Revised verdict
+
+Unchanged: **FAIL — gate W1 back to owners.** D1–D4 stand; A1 and A2 add two more load-bearing
+cross-doc contradictions, A6 adds an unresolved schema-mapping ambiguity. The frontend contract
+(dashboard.md) was frozen against a controller-api that it explicitly disagrees with in three places
+(R-D1, R-D2, R-D3) and defers reconciliation to "when the owning team touches it" — which is not
+"build without asking".
