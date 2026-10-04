@@ -6,7 +6,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="${1:-$HERE/evidence}"
 mkdir -p "$OUT/boot" "$OUT/net"
-cd "$HERE/../.."   # repo root
+cd "$HERE/../.." || exit 1   # repo root
 rm -f "$OUT/finish.done"
 
 echo "### boot: delayed registration (8s, N=3)"

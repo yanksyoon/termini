@@ -37,7 +37,7 @@ if ! ss -ltn | grep -q ":$PORT "; then
       nohup python3 -m app.main > "$OUT/controller.log" 2>&1 & echo $! > "$OUT/controller.pid" )
 fi
 # wait until the controller answers a project-scoped route for THIS project
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   code=$(curl -sS -m 2 -o /dev/null -w '%{http_code}' \
     "http://127.0.0.1:$PORT/v1/projects/$PROJECT_ID/nodes" \
     -H "Authorization: Bearer $PROJECT_TOKEN" 2>/dev/null)
@@ -76,8 +76,7 @@ EOF
 
 make_node() { # name snapshot role token gpu
   local name="$1" snap="$2" role="$3" token="$4" gpu="$5"
-  local i
-  for i in $(seq 1 10); do
+  for _ in $(seq 1 10); do
     lxc delete --force "$name" >/dev/null 2>&1 && break
     sleep 3
   done
@@ -96,8 +95,8 @@ make_node() { # name snapshot role token gpu
 }
 
 wait_online() { # name budget
-  local name="$1" budget="$2" i
-  for i in $(seq 1 "$budget"); do
+  local name="$1" budget="$2"
+  for _ in $(seq 1 "$budget"); do
     if lxc exec "$name" -- cat /var/lib/termini/state.json 2>/dev/null | grep -q '"state": "ONLINE"'; then return 0; fi
     sleep 1
   done
@@ -105,8 +104,8 @@ wait_online() { # name budget
 }
 
 wait_health() { # name budget
-  local name="$1" budget="$2" ip i h
-  for i in $(seq 1 "$budget"); do
+  local name="$1" budget="$2" ip h
+  for _ in $(seq 1 "$budget"); do
     ip=$(lxc list "$name" --format csv -c 4 | awk '{print $1}')
     h=$(lxc exec "$name" -- curl -sS -m 3 -o /dev/null -w '%{http_code}' "http://$ip:8080/health" 2>/dev/null)
     [ "$h" = "200" ] && return 0
