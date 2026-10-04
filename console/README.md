@@ -17,13 +17,24 @@ CONTROLLER_PORT=18085 CONSOLE_PORT=18090 console/run-demo.sh
 
 It starts, in order:
 
-1. the controller from this checkout (`python3 -m app.main`) on `CONTROLLER_PORT`;
-2. two seeded demo nodes with a 1 s telemetry heartbeat (`seed_demo.py`) — live
+1. the SSH CA + a demo **node sshd** on `SSH_PORT` (via `sudo`) that trusts the
+   CA (`TrustedUserCAKeys`) and the break-glass key — so the one-click terminal
+   has a real node to shell into (dashboard.md §3.1). Set `TERMINI_NODE_SSHD=off`
+   to use an externally-run node sshd instead;
+2. the controller from this checkout (`python3 -m app.main`) on `CONTROLLER_PORT`;
+3. two seeded demo nodes with a 1 s telemetry heartbeat (`seed_demo.py`) — live
    node health and a steady AI-operator log stream for the demo;
-3. the console (`serve.py`) in the foreground, serving the dashboard at `/` and
+4. the console (`serve.py`) in the foreground, serving the dashboard at `/` and
    the web terminal at `/terminal/`.
 
 Ctrl-C tears everything down.
+
+The terminal bridge reaches the node over SSH with a short-lived, CA-signed
+operator certificate (dashboard.md §3.1/§3.2, D4): `run-demo.sh` generates the
+SSH CA, pre-signs the controller-local operator key, and hands the controller
+`TERMINI_SSH_CA_KEY_PATH` / `TERMINI_SSH_OPERATOR_KEY_PATH` with
+`TERMINI_TERMINAL_BACKEND=ssh`. Without this wiring the terminal would fall back
+to a shell on the controller host, which is **not** the contract.
 
 ## Pieces
 
@@ -31,12 +42,14 @@ Ctrl-C tears everything down.
 |------|------|
 | `serve.py` | Static compose + runtime-config injector. Serves `dashboard/` at `/` and `frontend/terminal/` at `/terminal/`, injecting `apiBase`/`projectId`/`token` into the dashboard's `config.js` and the terminal's page defaults. Stdlib-only; it does **not** proxy the controller. |
 | `seed_demo.py` | Registers a compute + an inference node and streams telemetry (with an out-of-phase fault pattern) so health is live and the AI operator keeps emitting log lines. |
-| `run-demo.sh` | Brings up controller + seed + console with one command; generates the demo break-glass key + inventory. |
+| `run-demo.sh` | Brings up SSH CA + node sshd + controller + seed + console with one command; generates the CA, the operator key and the break-glass key + inventory. |
 
 Environment knobs: `CONTROLLER_PORT`, `CONSOLE_PORT`, `PROJECT_ID`,
 `PROJECT_TOKEN`, `BOOTSTRAP`, `SSH_USER`, `SSH_PORT`, `PUBLIC_IP`,
-`TERMINI_TERMINAL_BACKEND` (`local` for a hermetic host shell, `ssh` to proxy to
-the node host), `TERMINI_SSH_KEY`, `TERMINI_DEMO_STATE`.
+`TERMINI_TERMINAL_BACKEND` (`ssh` — the node path — is the default; `local` is a
+hermetic host-shell fallback for tests), `TERMINI_NODE_SSHD` (`auto`|`off`),
+`TERMINI_SSH_KEY` (break-glass private key, default
+`~/.ssh/termini_breakglass`), `TERMINI_DEMO_STATE`.
 
 ## Configuration injection
 
