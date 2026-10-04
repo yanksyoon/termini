@@ -11,6 +11,8 @@ Type=oneshot
 RemainAfterExit=yes
 # Exit non-zero => termini-bootstrap.service (Requisite) does not start, so a node
 # with missing/mismatched baked artifacts fails loudly instead of downloading.
+# NOTE: termini-bootstrap.service is not shipped yet (docs/contracts/node-bootstrap.md);
+# until that unit exists this ordering/gate is forward-looking and a no-op.
 ExecStart=/usr/local/sbin/termini-first-boot-preflight --log-out /var/log/termini/first-boot.json
 ExecStartPost=/usr/bin/touch /var/lib/termini/.preflight-done
 StandardOutput=journal

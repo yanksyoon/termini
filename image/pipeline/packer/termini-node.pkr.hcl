@@ -106,6 +106,8 @@ build {
       "sudo install -m 0644 /tmp/termini-firstboot-preflight.service /etc/systemd/system/termini-firstboot-preflight.service",
       "echo \"${local.image_stamp}\" | sudo tee /etc/termini/image-version >/dev/null",
       "echo \"baked $(date -u +%Y-%m-%dT%H:%M:%SZ) variant=${var.variant} version=${var.version} llama.cpp=${var.llamacpp_commit}\" | sudo tee /var/lib/termini/.baked-offline >/dev/null",
+      # termini-bootstrap.service is planned but not shipped yet (docs/contracts/node-bootstrap.md):
+      # the enable below is best-effort (|| true) and a no-op for that unit until it exists.
       "sudo systemctl enable termini-firstboot-preflight.service termini-bootstrap.service || true",
     ]
   }

@@ -1,9 +1,26 @@
 # Termini chaos / fault-injection harness
 
 Reproducible failure injection for the Termini control plane. This harness
-proves that the operator loop does something *real*: it impersonates nodes,
+proves that the operator loop does something *real*: it simulates nodes,
 posts a deterministic telemetry series that crosses the frozen health
 thresholds, and records the LXD REST command the loop issues in response.
+
+## What is real vs. simulated
+
+`chaos/node_sim.py` is a **simulator, not the on-node `termini-bootstrap`
+daemon**. That daemon — and the node-side redactor the telemetry envelope
+alludes to — is *specified* in
+[`docs/contracts/node-bootstrap.md`](../docs/contracts/node-bootstrap.md) but
+**not implemented**: the repo contains no `termini-bootstrap` binary, systemd
+unit, or node redactor. Every field the simulator emits is synthetic, including
+the `_redaction` envelope and the `termini-bootstrap` service entry (both are
+required by the frozen telemetry contract, which names the planned daemon).
+
+Content-based (C2) governance is therefore enforced **controller-side**: a
+non-conforming telemetry batch is rejected whole with `422 GOVERNANCE_REJECT`
+(`controller/app/governance.py scan_c2` → `controller/app/server.py
+_ingest_telemetry`). There is no "redact on the node before the socket opens"
+step in this build.
 
 ```
         telemetry (POST /v1/nodes/{id}/telemetry, 1 s cadence)

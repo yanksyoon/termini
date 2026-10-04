@@ -11,6 +11,17 @@
 
 **Reconciliation note.** Endpoint paths, field names, and error codes below are the **node-side canonical view** and were proposed to match the controller workstream. The controller workstream (`controller-api.md`, `node-telemetry.md`) owns the full controller API surface; where the two ever disagree, `docs/architecture.md` is the tie-breaker and both files must be updated to match it. No field in this document is left as TBD.
 
+**Implementation status (2026-10-04).** The `termini-bootstrap` daemon, the
+node-side redactor, and every node-local artifact specified in this document
+(the `termini-bootstrap` binary/unit, the LXD join automation, the telemetry
+spool, `termini status`) are a **specification, not shipped code**: this repo
+contains no daemon source, systemd unit, or node redactor. For the demo the node
+side is a simulator (`chaos/node_sim.py`), and content-based (C2) governance is
+enforced **controller-side** — a non-conforming telemetry batch is rejected whole
+with `422 GOVERNANCE_REJECT`, with no on-node "drop the field before the socket
+opens" step. §12 below describes the target acceptance state and is not yet
+runnable in this build.
+
 ---
 
 ## 1. Actors and topology

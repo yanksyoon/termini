@@ -1,7 +1,10 @@
 #cloud-config
 # Termini Node OS — activation-only cloud-init (docs/contracts/infra-decisions.md D3).
-# It writes the bootstrap daemon config and starts the pre-installed service.
-# It deliberately performs NO package installs and NO network downloads.
+# It writes the (planned) bootstrap-daemon config and starts that service only if
+# present: the on-node `termini-bootstrap` daemon is specified
+# (docs/contracts/node-bootstrap.md) but NOT shipped in this build — the node image
+# installs no such unit. It deliberately performs NO package installs and NO network
+# downloads.
 #
 # Node C is the one exception: when `serve_inference` is true (the default) its
 # cloud-init also provisions a CPU llama.cpp server on the frozen contract port
@@ -33,7 +36,10 @@ write_files:
       ${replace(llama_serve_script, "\n", "\n      ")}
 %{ endif ~}
 runcmd:
-  - [ systemctl, enable, --now, termini-bootstrap.service ]
+  # termini-bootstrap.service is not shipped yet (see header): guard the start so a
+  # missing unit does not fail activation and nothing claims a daemon that does not
+  # exist. Start it only if present.
+  - [ sh, -c, "systemctl enable --now termini-bootstrap.service 2>/dev/null || echo 'termini-bootstrap not installed (on-node daemon not shipped yet)'" ]
 %{ if serve_inference ~}
   - [ /usr/local/sbin/termini-llama-serve.sh ]
 %{ endif ~}

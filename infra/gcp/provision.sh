@@ -122,8 +122,12 @@ EOF
     while IFS= read -r line; do printf '      %s\n' "$line"; done <<< "$script"
   fi
 
+  local bootstrap_start="systemctl enable --now termini-bootstrap.service 2>/dev/null || echo 'termini-bootstrap not installed (on-node daemon not shipped yet)'"
   printf 'runcmd:\n'
-  printf '  - [ systemctl, enable, --now, termini-bootstrap.service ]\n'
+  printf '  # The on-node termini-bootstrap daemon is specified (docs/contracts/node-bootstrap.md)\n'
+  printf '  # but NOT shipped in this build: start it only if present so provisioning never\n'
+  printf '  # fails on a missing unit. Demo telemetry is chaos/node_sim.py; C2 is controller-side.\n'
+  printf '  - [ sh, -c, "%s" ]\n' "$bootstrap_start"
   if [[ "$serve" == "true" ]]; then
     printf '  - [ /usr/local/sbin/termini-llama-serve.sh ]\n'
   fi
