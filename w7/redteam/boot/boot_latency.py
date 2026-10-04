@@ -15,6 +15,19 @@ It runs against a *dedicated* controller instance (default :8099, its own DB and
 token list) so the live demo controller is never disturbed.
 
 Every run emits a JSON record; the harness writes runs.json and summary.json.
+
+Since t_ca7fc132 the harness also:
+  * pushes the repo's canonical daemon/unit into the node *before* it starts (the
+    same file-copy path as `provision-node.sh REFRESH_RUNTIME=1`), so a run
+    verifies the committed daemon and not the copy baked into the snapshot
+    (`--baked` restores the old behaviour; `--daemon-src`/`--unit-src` override);
+  * stops early and records `reached_terminal` / `terminal_state` / `fail_fast_s`
+    when a node parks in a terminal state (`REGISTRATION_FAILED`), so the fail-fast
+    paths (badtoken / dnsfail / refuse) are asserted directly;
+  * uses an absolute controller DB path (the controller runs with cwd=controller/,
+    so a relative `--out` used to resolve its DB somewhere the cleanup could not
+    reach, leaving a stale project that 403'd the next run);
+  * reports `register_ms` (the daemon's own sub-second §12.5 metric) per run.
 """
 from __future__ import annotations
 
@@ -23,6 +36,7 @@ import json
 import os
 import pathlib
 import random
+import re
 import string
 import subprocess
 import sys
@@ -42,6 +56,11 @@ except Exception:  # noqa: BLE001
 HOST = os.environ.get("TERMINI_HOST", "10.14.100.1")  # lxdbr0 gateway, reachable from nodes
 NODE_SNAPSHOT = os.environ.get("REDTEAM_SNAPSHOT", "demo-node-a/unregistered")
 PROJECT_TOKEN = "term-redteam-project-token"
+# The canonical daemon/unit in this repo (infra/warm/node/* are symlinks to them).
+DEFAULT_DAEMON_SRC = REPO / "infra" / "bootstrap" / "node" / "termini-bootstrap.py"
+DEFAULT_UNIT_SRC = REPO / "infra" / "bootstrap" / "node" / "termini-bootstrap.service"
+# The state a node parks in when registration is terminal (never auto-retried).
+TERMINAL_STATES = {"REGISTRATION_FAILED"}
 
 
 def sh(cmd: list[str], timeout: int = 120, check: bool = False) -> subprocess.CompletedProcess:
@@ -88,7 +107,10 @@ class Controller:
         env.update({
             "TERMINI_HOST": "0.0.0.0",
             "TERMINI_PORT": str(self.port),
-            "TERMINI_DB_PATH": str(self.db),
+            # Absolute path: the controller runs with cwd=CONTROLLER_DIR, so a
+            # relative --out would otherwise resolve its DB under controller/,
+            # out of reach of the stale-DB cleanup above.
+            "TERMINI_DB_PATH": str(self.db.resolve()),
             "TERMINI_BOOTSTRAP_TOKEN": ",".join(self.tokens),
             "TERMINI_PROJECT_TOKEN": PROJECT_TOKEN,
             "TERMINI_PROJECT_ID": PROJECT_ID,
@@ -203,9 +225,14 @@ def _journal_times(journal: str):
         ts = _parse_iso(head)
         if ts is None:
             continue
-        if "Started termini-bootstrap.service" in line:
+        low = line.lower()
+        # systemd logs "Starting ..." *before* the daemon's REGISTERED line and
+        # "Started ..." (after READY) *after* it, so the service-start anchor must
+        # accept "Starting" or the register step would never resolve.
+        if ("starting termini-bootstrap.service" in low
+                or "started termini-bootstrap.service" in low):
             svc = ts
-        if "registered node_id=" in line and reg is None and svc is not None:
+        if "registered node_id=" in low and reg is None and svc is not None:
             reg = ts
     return svc, reg
 
@@ -218,14 +245,38 @@ def node_state(name: str) -> dict | None:
         return None
 
 
+_REG_MS = re.compile(r"register_ms=(\d+)\s+boot_to_registered_ms=(\d+)")
+
+
+def _journal_reg_metrics(journal: str) -> dict:
+    """Extract the daemon's own sub-second `register_ms` / `boot_to_registered_ms`
+    from its REGISTERED log line (the journal's second-resolution timestamps are
+    too coarse for the <5 s §12.5 budget)."""
+    out: dict = {}
+    for line in journal.splitlines():
+        m = _REG_MS.search(line)
+        if m:
+            out["register_ms"] = int(m.group(1))
+            out["boot_to_registered_ms"] = int(m.group(2))
+    return out
+
+
 def one_boot(name: str, controller_url: str, token: str, role: str, budget_s: float,
-             run_dir: pathlib.Path, tag: str, controller: Controller, logf) -> dict:
-    """Restore a fresh node, start it, and time it to ONLINE. Returns a record."""
+             run_dir: pathlib.Path, tag: str, controller: Controller, logf,
+             snapshot: str = NODE_SNAPSHOT, daemon_src: pathlib.Path | None = None,
+             unit_src: pathlib.Path | None = None) -> dict:
+    """Restore a fresh node, start it, and time it to ONLINE or a terminal state.
+
+    When ``daemon_src``/``unit_src`` are given they are pushed into the node
+    *before it starts* (the same file-copy path as `provision-node.sh
+    REFRESH_RUNTIME=1`), so the run exercises the daemon in this repo rather than
+    the copy baked into the snapshot. Pass ``--baked`` to skip the push.
+    """
     sh(["lxc", "delete", "--force", name], timeout=60)
     t_copy0 = time.time()
     p = None
     for _attempt in range(3):
-        p = sh(["lxc", "copy", NODE_SNAPSHOT, name], timeout=240)
+        p = sh(["lxc", "copy", snapshot, name], timeout=240)
         if p.returncode == 0:
             break
         sh(["lxc", "delete", "--force", name], timeout=60)
@@ -246,6 +297,18 @@ def one_boot(name: str, controller_url: str, token: str, role: str, budget_s: fl
     for rel in ("identity/node.json", "state.json", "enrollment.token"):
         sh(["lxc", "file", "delete", f"{name}/var/lib/termini/{rel}"], timeout=20)
 
+    # Push the repo's canonical daemon (and unit) into the *stopped* node so this
+    # run verifies committed code, not the stale baked copy. See module docstring.
+    pushed = []
+    for src, dest in ((daemon_src, "/usr/local/bin/termini-bootstrap"),
+                      (unit_src, "/etc/systemd/system/termini-bootstrap.service")):
+        if src is None or not pathlib.Path(src).exists():
+            continue
+        r = sh(["lxc", "file", "push", "--mode", "0755", "--uid", "0", "--gid", "0",
+                str(src), f"{name}{dest}"], timeout=30)
+        if r.returncode == 0:
+            pushed.append(dest)
+
     t0 = time.time()
     started = False
     start_err = ""
@@ -262,7 +325,9 @@ def one_boot(name: str, controller_url: str, token: str, role: str, budget_s: fl
                 "start_to_online_s": None, "stderr": start_err}
 
     online_at = None
+    terminal_at = None
     first_error = None
+    failure_kind = None
     last_state = None
     node_id = None
     while time.time() - t0 < budget_s:
@@ -271,8 +336,15 @@ def one_boot(name: str, controller_url: str, token: str, role: str, budget_s: fl
             last_state = st.get("state")
             if st.get("last_error") and first_error is None:
                 first_error = st.get("last_error")
+            if st.get("failure_kind") and failure_kind is None:
+                failure_kind = st.get("failure_kind")
             if st.get("node_id"):
                 node_id = st.get("node_id")
+            if st.get("state") in TERMINAL_STATES:
+                # fail-fast path: the daemon has parked in a terminal state and
+                # will not auto-retry (F1/F2). Stop early — this is the evidence.
+                terminal_at = time.time()
+                break
             if st.get("state") == "ONLINE" and st.get("node_id"):
                 # require the controller to have a fresh sample for this node
                 try:
@@ -287,16 +359,29 @@ def one_boot(name: str, controller_url: str, token: str, role: str, budget_s: fl
         time.sleep(0.2)
 
     start_to_online = round(online_at - t0, 2) if online_at else None
+    fail_fast = round(terminal_at - t0, 2) if terminal_at else None
+    if online_at:
+        status = "online"
+    elif terminal_at:
+        status = "terminal"
+    else:
+        status = "timeout"
     rec = {
         "tag": tag,
-        "status": "online" if online_at else "timeout",
+        "status": status,
         "copy_s": round(copy_s, 2),
         "start_to_online_s": start_to_online,
         "total_s": round((time.time() - t0) + copy_s, 2),
         "last_state": last_state,
+        "reached_terminal": bool(terminal_at),
+        "fail_fast_s": fail_fast,
+        "failure_kind": failure_kind,
         "node_id": node_id,
         "first_error": first_error,
         "budget_s": budget_s,
+        "daemon_pushed": bool(daemon_src),
+        "pushed": pushed,
+        "snapshot": snapshot,
     }
     # capture the bootstrap journal for this boot and derive the activation ->
     # registration time from it (independent of container boot time)
@@ -306,6 +391,7 @@ def one_boot(name: str, controller_url: str, token: str, role: str, budget_s: fl
     svc_start, reg_at = _journal_times(jp.stdout)
     if svc_start and reg_at:
         rec["service_start_to_register_s"] = round((reg_at - svc_start).total_seconds(), 2)
+    rec.update(_journal_reg_metrics(jp.stdout))
     st = node_state(name)
     if st:
         (run_dir / f"boot-{tag}.state.json").write_text(json.dumps(st, indent=2))
@@ -360,9 +446,19 @@ def main() -> int:
     ap.add_argument("--budget", type=float, default=60.0, help="per-boot budget before TIMEOUT")
     ap.add_argument("--demo-timeout", type=float, default=30.0, help="demo reliability budget (s)")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--snapshot", default=NODE_SNAPSHOT,
+                    help="LXD snapshot to restore each run from (default %(default)s)")
+    ap.add_argument("--daemon-src", default=str(DEFAULT_DAEMON_SRC),
+                    help="daemon pushed into the node before start (repo canonical)")
+    ap.add_argument("--unit-src", default=str(DEFAULT_UNIT_SRC),
+                    help="systemd unit pushed into the node before start")
+    ap.add_argument("--baked", action="store_true",
+                    help="do NOT push the repo daemon; test the copy baked in the snapshot")
     args = ap.parse_args()
     args.controller_port = free_port(args.controller_port)
     args.proxy_port = free_port(args.proxy_port + 100)
+    daemon_src = None if args.baked else pathlib.Path(args.daemon_src)
+    unit_src = None if args.baked else pathlib.Path(args.unit_src)
 
     run_dir = pathlib.Path(args.out)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -424,12 +520,14 @@ def main() -> int:
                 # consume the single-use token with a throwaway boot first, so the
                 # measured boot exercises the contract §9 row-2 path (401)
                 one_boot("rt-badtoken-warmup", url, tok, "compute", args.budget,
-                         run_dir, "badtoken-warmup", ctl, logf)
+                         run_dir, "badtoken-warmup", ctl, logf,
+                         snapshot=args.snapshot, daemon_src=daemon_src, unit_src=unit_src)
             else:
                 url = f"http://{HOST}:{args.controller_port}"
                 tok = tokens[i]
             rec = one_boot(name, url, tok, "compute", args.budget, run_dir,
-                           f"{scenario}-{i + 1}", ctl, logf)
+                           f"{scenario}-{i + 1}", ctl, logf,
+                           snapshot=args.snapshot, daemon_src=daemon_src, unit_src=unit_src)
             rec["scenario"] = scenario
             rec["controller_url"] = url
             records.append(rec)
@@ -453,18 +551,43 @@ def main() -> int:
                 "mean": round(sum(vals) / n, 2),
                 "p50": vals[n // 2], "p95": vals[min(n - 1, int(n * 0.95))]}
 
-    summary = {"runs": records, "by_scenario": {}, "demo_timeout_s": args.demo_timeout}
+    summary = {"runs": records, "by_scenario": {}, "demo_timeout_s": args.demo_timeout,
+               "daemon_src": str(daemon_src) if daemon_src else None,
+               "snapshot": args.snapshot}
     for scenario, _ in scenarios:
-        v = [r.get("start_to_online_s") for r in records if r.get("scenario") == scenario]
-        vr = [r.get("service_start_to_register_s") for r in records if r.get("scenario") == scenario]
-        ok = [r for r in records if r.get("scenario") == scenario and r.get("status") == "online"]
+        rs = [r for r in records if r.get("scenario") == scenario]
+        v = [r.get("start_to_online_s") for r in rs]
+        vr = [r.get("service_start_to_register_s") for r in rs]
+        ff = [r.get("fail_fast_s") for r in rs]
+        rms = [r.get("register_ms") for r in rs]
+        ok = [r for r in rs if r.get("status") == "online"]
+        term = [r for r in rs if r.get("reached_terminal")]
+        states = sorted({r.get("last_state") for r in rs if r.get("last_state")})
         summary["by_scenario"][scenario] = {
-            "attempts": len([r for r in records if r.get("scenario") == scenario]),
+            "attempts": len(rs),
             "online": len(ok),
+            "terminal": len(term),
+            "terminal_states": states,
+            "fail_fast_s": stats(ff),
+            "register_ms": stats(rms),
             "start_to_online_s": stats(v),
             "service_start_to_register_s": stats(vr),
             "within_demo_timeout": all((x is not None and x <= args.demo_timeout) for x in v) if v else False,
         }
+    # Acceptance roll-up for t_ca7fc132: the degraded scenarios must all end in a
+    # *terminal* state (not a silent REGISTERING hang), and the happy path online.
+    degraded = [s for s in ("badtoken", "dnsfail", "refuse") if any(
+        r.get("scenario") == s for r in records)]
+    summary["acceptance"] = {
+        "degraded_scenarios": degraded,
+        "degraded_all_terminal": all(
+            summary["by_scenario"][s]["terminal"] == summary["by_scenario"][s]["attempts"]
+            for s in degraded) if degraded else None,
+        "baseline_all_online": (summary["by_scenario"].get("baseline", {}).get("online") ==
+                                summary["by_scenario"].get("baseline", {}).get("attempts")
+                                if "baseline" in summary["by_scenario"] else None),
+        "baseline_within_demo_timeout": summary["by_scenario"].get("baseline", {}).get("within_demo_timeout"),
+    }
     (run_dir / "runs.json").write_text(json.dumps(records, indent=2))
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     log(f"SUMMARY: {json.dumps(summary['by_scenario'])}", logf)

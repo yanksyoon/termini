@@ -1,0 +1,6 @@
+2026-10-04T13:55:24+00:00 rt-dnsfail-1 systemd[1]: Starting termini-bootstrap.service - Termini node bootstrap (register + telemetry)...
+2026-10-04T13:55:24+00:00 rt-dnsfail-1 termini-bootstrap[326]: 2026-10-04T13:55:24Z [termini-bootstrap] registration retry 1/3 in 1s: register unreachable (DNS name could not be resolved): [Errno -2] Name or service not known
+2026-10-04T13:55:25+00:00 rt-dnsfail-1 termini-bootstrap[326]: 2026-10-04T13:55:25Z [termini-bootstrap] registration retry 2/3 in 2s: register unreachable (DNS name could not be resolved): [Errno -2] Name or service not known
+2026-10-04T13:55:27+00:00 rt-dnsfail-1 termini-bootstrap[326]: 2026-10-04T13:55:27Z [termini-bootstrap] registration retry 3/3 in 4s: register unreachable (DNS name could not be resolved): [Errno -2] Name or service not known
+2026-10-04T13:55:31+00:00 rt-dnsfail-1 termini-bootstrap[326]: 2026-10-04T13:55:31Z [termini-bootstrap] REGISTRATION_FAILED (terminal, kind=unreachable_dns, attempts=4): register unreachable (DNS name could not be resolved): [Errno -2] Name or service not known
+2026-10-04T13:55:31+00:00 rt-dnsfail-1 termini-bootstrap[326]: 2026-10-04T13:55:31Z [termini-bootstrap] no auto-retry: operator must re-provision (fresh token / fix config) and restart termini-bootstrap

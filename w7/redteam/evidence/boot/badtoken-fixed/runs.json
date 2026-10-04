@@ -1,0 +1,24 @@
+[
+  {
+    "tag": "badtoken-1",
+    "status": "terminal",
+    "copy_s": 4.77,
+    "start_to_online_s": null,
+    "total_s": 15.4,
+    "last_state": "REGISTRATION_FAILED",
+    "reached_terminal": true,
+    "fail_fast_s": 10.63,
+    "failure_kind": "auth",
+    "node_id": null,
+    "first_error": "register failed: HTTP 401 UNAUTHENTICATED: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M43K6DJE5WKJ8AKJ6K08EG0W'}}",
+    "budget_s": 25.0,
+    "daemon_pushed": true,
+    "pushed": [
+      "/usr/local/bin/termini-bootstrap",
+      "/etc/systemd/system/termini-bootstrap.service"
+    ],
+    "snapshot": "demo-node-a/unregistered",
+    "scenario": "badtoken",
+    "controller_url": "http://10.14.100.1:8151"
+  }
+]

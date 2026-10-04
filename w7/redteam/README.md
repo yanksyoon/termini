@@ -16,6 +16,14 @@ The two per-failure-mode reports are **[`cloud-init-boot-latency.md`](cloud-init
 and **[`fan-network-packet-loss.md`](fan-network-packet-loss.md)**; raw evidence
 is under `evidence/`.
 
+> **Resolution (t_ca7fc132, owner infra).** The cloud-init report's F1/F2/F3 are
+> fixed in `infra/bootstrap/node/termini-bootstrap.py`: a consumed/invalid token
+> (401/403), a DNS failure and a connection-refused now fail fast to terminal
+> `REGISTRATION_FAILED` after ≤3 backoff retries (no more silent `REGISTERING`
+> hang), and cold boot is within the 30 s demo timeout on an unloaded footprint.
+> See [`cloud-init-boot-latency.md` §Resolution](cloud-init-boot-latency.md) and
+> the re-run evidence under `evidence/boot/*-fixed/`.
+
 ## What was tested, against what
 
 | Failure mode | Target | Harness |
@@ -43,10 +51,16 @@ bash w7/redteam/run.sh /tmp/redteam-evidence
 
 # or individually
 python3 w7/redteam/boot/boot_latency.py --scenario all --runs 5 --out /tmp/rt/boot
+python3 w7/redteam/boot/boot_latency.py --scenario badtoken --out /tmp/rt/badtoken   # -> terminal REGISTRATION_FAILED
+python3 w7/redteam/boot/boot_latency.py --baked --out /tmp/rt/baked                  # test the snapshot's baked daemon
 bash    w7/redteam/boot/legacy_apt_repro.sh /tmp/rt/legacy-apt 90
 bash    w7/redteam/net/env_up.sh /tmp/rt/net            # dedicated 3-node underlay
 python3 w7/redteam/net/net_chaos.py --scenario all --env /tmp/rt/net/env.json --out /tmp/rt/net
 ```
+
+The boot harness pushes the repo's canonical daemon (`infra/bootstrap/node/termini-bootstrap.py`)
+into each node before it starts, so a run verifies the committed code rather than
+the copy baked into the snapshot; `--baked` restores the baked-daemon behaviour.
 
 Requirements: `lxc`, `jq`, the `agentic-os/w3` node image (host snapshot
 `demo-node-a/unregistered`), and the repo `controller/` (stdlib-only). The boot

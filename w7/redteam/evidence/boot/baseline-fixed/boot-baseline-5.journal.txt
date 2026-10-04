@@ -1,0 +1,3 @@
+2026-10-04T13:54:28+00:00 rt-baseline-5 systemd[1]: Starting termini-bootstrap.service - Termini node bootstrap (register + telemetry)...
+2026-10-04T13:54:29+00:00 rt-baseline-5 systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (register + telemetry).
+2026-10-04T13:54:29+00:00 rt-baseline-5 termini-bootstrap[327]: 2026-10-04T13:54:29Z [termini-bootstrap] REGISTERED node_id=01M43K3NSPK5AMMM2JH9DA6B66 role=compute register_ms=91 boot_to_registered_ms=3140

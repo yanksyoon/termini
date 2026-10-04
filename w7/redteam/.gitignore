@@ -7,4 +7,5 @@
 **/finish.log
 **/controller.log
 **/boot_harness.log
+**/fault_proxy.*.log
 **/legacy-apt/stall-proxy.log

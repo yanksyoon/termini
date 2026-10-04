@@ -1,0 +1,174 @@
+{
+  "runs": [
+    {
+      "tag": "baseline-1",
+      "status": "online",
+      "copy_s": 3.24,
+      "start_to_online_s": 2.99,
+      "total_s": 6.23,
+      "last_state": "ONLINE",
+      "reached_terminal": false,
+      "fail_fast_s": null,
+      "failure_kind": null,
+      "node_id": "01M43K288TR0PR15GKZVT9DK8D",
+      "first_error": null,
+      "budget_s": 50.0,
+      "daemon_pushed": true,
+      "pushed": [
+        "/usr/local/bin/termini-bootstrap",
+        "/etc/systemd/system/termini-bootstrap.service"
+      ],
+      "snapshot": "demo-node-a/unregistered",
+      "service_start_to_register_s": 0.0,
+      "register_ms": 65,
+      "boot_to_registered_ms": 2290,
+      "scenario": "baseline",
+      "controller_url": "http://10.14.100.1:8151"
+    },
+    {
+      "tag": "baseline-2",
+      "status": "online",
+      "copy_s": 3.57,
+      "start_to_online_s": 3.59,
+      "total_s": 7.16,
+      "last_state": "ONLINE",
+      "reached_terminal": false,
+      "fail_fast_s": null,
+      "failure_kind": null,
+      "node_id": "01M43K2J6HJ3HT91M519H43VT3",
+      "first_error": null,
+      "budget_s": 50.0,
+      "daemon_pushed": true,
+      "pushed": [
+        "/usr/local/bin/termini-bootstrap",
+        "/etc/systemd/system/termini-bootstrap.service"
+      ],
+      "snapshot": "demo-node-a/unregistered",
+      "service_start_to_register_s": 0.0,
+      "register_ms": 72,
+      "boot_to_registered_ms": 2880,
+      "scenario": "baseline",
+      "controller_url": "http://10.14.100.1:8151"
+    },
+    {
+      "tag": "baseline-3",
+      "status": "online",
+      "copy_s": 3.6,
+      "start_to_online_s": 4.29,
+      "total_s": 7.9,
+      "last_state": "ONLINE",
+      "reached_terminal": false,
+      "fail_fast_s": null,
+      "failure_kind": null,
+      "node_id": "01M43K2XBE9S6466V5DDWFH4Z8",
+      "first_error": null,
+      "budget_s": 50.0,
+      "daemon_pushed": true,
+      "pushed": [
+        "/usr/local/bin/termini-bootstrap",
+        "/etc/systemd/system/termini-bootstrap.service"
+      ],
+      "snapshot": "demo-node-a/unregistered",
+      "service_start_to_register_s": 0.0,
+      "register_ms": 125,
+      "boot_to_registered_ms": 3910,
+      "scenario": "baseline",
+      "controller_url": "http://10.14.100.1:8151"
+    },
+    {
+      "tag": "baseline-4",
+      "status": "online",
+      "copy_s": 4.35,
+      "start_to_online_s": 5.22,
+      "total_s": 9.57,
+      "last_state": "ONLINE",
+      "reached_terminal": false,
+      "fail_fast_s": null,
+      "failure_kind": null,
+      "node_id": "01M43K3A2WQ1M27RCGZNDYHZSJ",
+      "first_error": null,
+      "budget_s": 50.0,
+      "daemon_pushed": true,
+      "pushed": [
+        "/usr/local/bin/termini-bootstrap",
+        "/etc/systemd/system/termini-bootstrap.service"
+      ],
+      "snapshot": "demo-node-a/unregistered",
+      "service_start_to_register_s": 0.0,
+      "register_ms": 69,
+      "boot_to_registered_ms": 4290,
+      "scenario": "baseline",
+      "controller_url": "http://10.14.100.1:8151"
+    },
+    {
+      "tag": "baseline-5",
+      "status": "online",
+      "copy_s": 4.39,
+      "start_to_online_s": 4.07,
+      "total_s": 8.46,
+      "last_state": "ONLINE",
+      "reached_terminal": false,
+      "fail_fast_s": null,
+      "failure_kind": null,
+      "node_id": "01M43K3NSPK5AMMM2JH9DA6B66",
+      "first_error": null,
+      "budget_s": 50.0,
+      "daemon_pushed": true,
+      "pushed": [
+        "/usr/local/bin/termini-bootstrap",
+        "/etc/systemd/system/termini-bootstrap.service"
+      ],
+      "snapshot": "demo-node-a/unregistered",
+      "service_start_to_register_s": 0.0,
+      "register_ms": 91,
+      "boot_to_registered_ms": 3140,
+      "scenario": "baseline",
+      "controller_url": "http://10.14.100.1:8151"
+    }
+  ],
+  "by_scenario": {
+    "baseline": {
+      "attempts": 5,
+      "online": 5,
+      "terminal": 0,
+      "terminal_states": [
+        "ONLINE"
+      ],
+      "fail_fast_s": {},
+      "register_ms": {
+        "n": 5,
+        "min": 65,
+        "max": 125,
+        "mean": 84.4,
+        "p50": 72,
+        "p95": 125
+      },
+      "start_to_online_s": {
+        "n": 5,
+        "min": 2.99,
+        "max": 5.22,
+        "mean": 4.03,
+        "p50": 4.07,
+        "p95": 5.22
+      },
+      "service_start_to_register_s": {
+        "n": 5,
+        "min": 0.0,
+        "max": 0.0,
+        "mean": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "within_demo_timeout": true
+    }
+  },
+  "demo_timeout_s": 30.0,
+  "daemon_src": "/home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_ca7fc132/infra/bootstrap/node/termini-bootstrap.py",
+  "snapshot": "demo-node-a/unregistered",
+  "acceptance": {
+    "degraded_scenarios": [],
+    "degraded_all_terminal": null,
+    "baseline_all_online": true,
+    "baseline_within_demo_timeout": true
+  }
+}

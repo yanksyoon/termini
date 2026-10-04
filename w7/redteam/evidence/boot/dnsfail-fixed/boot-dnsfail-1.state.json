@@ -1,0 +1,8 @@
+{
+  "state": "REGISTRATION_FAILED",
+  "updated_at": "2026-10-04T13:55:31Z",
+  "last_error": "register unreachable (DNS name could not be resolved): [Errno -2] Name or service not known",
+  "failure_kind": "unreachable_dns",
+  "registration_attempts": 4,
+  "terminal": true
+}

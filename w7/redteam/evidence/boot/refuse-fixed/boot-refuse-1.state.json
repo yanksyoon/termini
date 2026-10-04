@@ -1,0 +1,8 @@
+{
+  "state": "REGISTRATION_FAILED",
+  "updated_at": "2026-10-04T13:54:50Z",
+  "last_error": "register unreachable (connection reset): Remote end closed connection without response",
+  "failure_kind": "unreachable_refused",
+  "registration_attempts": 4,
+  "terminal": true
+}

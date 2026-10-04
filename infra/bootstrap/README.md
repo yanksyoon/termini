@@ -53,6 +53,31 @@ Key properties:
 * **Idempotent.** cloud-init's key installer de-dups the key line; a reboot
   reuses the persisted identity and reconnects instead of re-enrolling.
 
+### 1.1 Failure semantics — registration is bounded, never a silent hang
+
+The daemon classifies every registration failure and applies the contract §9
+policy (task `t_ca7fc132`; `termini-bootstrap.py` `RegistrationError` /
+`register_with_retries`):
+
+| `failure_kind` | Trigger | Behaviour |
+|---|---|---|
+| `auth` | HTTP 401/403 (bad/consumed/expired token) | ≤3 backoff retries → terminal `REGISTRATION_FAILED` |
+| `schema` / `unsupported` | HTTP 400 / 426 | ≤3 (400) / immediate (426) → terminal |
+| `conflict` | HTTP 409 | reconnect path (§10) |
+| `malformed` | 2xx without `node_id` | ≤3 backoff retries → terminal |
+| `unreachable_dns` / `unreachable_refused` / `unreachable_timeout` / `unreachable` | DNS failure, connection refused/reset, connect timeout | **fail fast:** `DEGRADED` while retrying, ≤3 backoff retries → terminal `REGISTRATION_FAILED` |
+| `rate_limited` / `server` | HTTP 429 / 5xx | backoff 1 s → 60 s, indefinitely (transient) |
+
+A terminal failure is **held**: because the unit is `Restart=always`, exiting
+would let systemd respawn the daemon straight back into the retry loop, so the
+daemon parks (READY is never sent, `state.json` stays observable) until an
+operator re-provisions and restarts. `termini-bootstrap status` shows
+`state: REGISTRATION_FAILED` with `failure_kind` and `registration_attempts`.
+Timing: `register_ms` / `boot_to_registered_ms` (ack) and `fail_fast_s`
+(start → terminal). Optional config knobs (`/etc/termini/config.yaml`):
+`register_timeout_s` (5), `registration_max_retries` (3),
+`registration_backoff_base_s` (1), `registration_backoff_cap_s` (60).
+
 ---
 
 ## 2. Files
