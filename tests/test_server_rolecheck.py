@@ -14,6 +14,7 @@ import pathlib
 import sys
 import types
 import unittest
+from unittest import mock
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 CONTROLLER = REPO / "controller"
@@ -23,6 +24,7 @@ sys.path.insert(0, str(REPO))
 from app import server as server_mod  # noqa: E402
 from termini.intent import clamp_validate  # noqa: E402
 from termini.intent import prompt as prompt_mod  # noqa: E402
+from termini.intent.types import AllocationSpec, ValidationResult  # noqa: E402
 
 INFERENCE_NODE = {"id": "01NODEC00000000000000000000", "role": "inference"}
 COMPUTE_NODE = {"id": "01NODEA00000000000000000000", "role": "compute"}
@@ -65,6 +67,56 @@ class RoleCheckTest(unittest.TestCase):
         ok, reason = server_mod._role_check(spec("agent_vm"), None)
         self.assertFalse(ok)
         self.assertEqual(reason, "invalid_target_node")
+
+
+class BuildPlanSurfacesRoleReasonsTest(unittest.TestCase):
+    """W7 F3 regression: role-level rejections must reach the top-level 422
+    details (plan.reject_reasons), not only allocations[i].guardrail."""
+
+    def _plan(self, alloc):
+        result = ValidationResult()
+        result.outcome = "accepted"
+        result.allocations = [alloc]
+        handler = object.__new__(server_mod.ControllerHandler)
+        with mock.patch.object(
+            server_mod.store, "list_nodes", return_value=[COMPUTE_NODE]
+        ):
+            return handler._build_plan(None, "p", result, [])
+
+    def test_agent_vm_hostile_target_node_surfaces_in_top_level(self):
+        alloc = AllocationSpec(
+            type="agent_vm", count=1, vcpus=2, ram_gb=4, disk_gb=8,
+            passthrough_gpu=False, target_node="controller.termini.internal",
+        )
+        plan = self._plan(alloc)
+        self.assertEqual(plan["outcome"], "rejected")
+        reasons = plan.get("reject_reasons", [])
+        self.assertTrue(reasons)
+        self.assertEqual(reasons[0]["index"], 0)
+        self.assertEqual(reasons[0]["reason"], "invalid_target_node")
+        self.assertTrue(reasons[0]["detail"])
+
+    def test_inference_vm_wrong_node_surfaces_in_top_level(self):
+        alloc = AllocationSpec(
+            type="inference_vm", count=1, vcpus=8, ram_gb=16, disk_gb=64,
+            passthrough_gpu=False, target_node=COMPUTE_NODE["id"],
+        )
+        # list_nodes returns only a compute node, so an inference_vm pinned to
+        # it must resolve to a non-inference node and be rejected.
+        plan = self._plan(alloc)
+        self.assertEqual(plan["outcome"], "rejected")
+        reasons = plan.get("reject_reasons", [])
+        self.assertTrue(reasons)
+        self.assertEqual(reasons[0]["reason"], "invalid_target_node_type")
+
+    def test_valid_agent_vm_has_no_top_level_rejections(self):
+        alloc = AllocationSpec(
+            type="agent_vm", count=1, vcpus=2, ram_gb=4, disk_gb=8,
+            passthrough_gpu=False, target_node=COMPUTE_NODE["id"],
+        )
+        plan = self._plan(alloc)
+        self.assertEqual(plan["outcome"], "accepted")
+        self.assertNotIn("reject_reasons", plan)
 
 
 class ResolveTargetTest(unittest.TestCase):

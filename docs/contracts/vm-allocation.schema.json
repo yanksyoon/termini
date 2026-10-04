@@ -118,6 +118,8 @@
             "exceeds_node_ram_ceiling",
             "exceeds_node_disk_ceiling",
             "gpu_passthrough_not_in_demo",
+            "gpu_not_allowed_for_agent",
+            "invalid_target_node",
             "invalid_target_node_type",
             "unknown_field"
           ]
