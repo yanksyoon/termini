@@ -1,0 +1,11 @@
+{
+  "name": "termini-web-terminal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Termini embedded xterm.js web terminal + SSH access string UX",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}
