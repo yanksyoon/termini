@@ -1,0 +1,24 @@
+#cloud-config
+# Termini agent VM — launch-time user-data (W4, task t_7c40f9a3).
+#
+# Injected on every `lxc launch agent-os/w4 ... -p termini-agent`. It does two
+# things and nothing else:
+#   1. writes the *project* SSH public key into /root/.ssh/authorized_keys
+#      (project.md §"SSH And Terminal": "Inject the project's public SSH key into
+#      /root/.ssh/authorized_keys"; contract node-bootstrap.md §7 injects the
+#      operator/project key into root's authorized_keys);
+#   2. enables + starts sshd. The baked container image ships openssh-server but
+#      sshd is disabled, and the agent VM has no init that turns it on otherwise.
+#
+# Replace @@PROJECT_SSH_KEY@@ with the project public key (place-agent-image.sh
+# does this automatically from --project-ssh-key). Password auth stays off.
+ssh_pwauth: false
+disable_root: false
+write_files:
+  - path: /root/.ssh/authorized_keys
+    owner: root:root
+    permissions: '0600'
+    content: |
+      @@PROJECT_SSH_KEY@@
+runcmd:
+  - [ systemctl, enable, --now, ssh.service ]

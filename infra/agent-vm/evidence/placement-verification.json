@@ -1,0 +1,38 @@
+{
+  "kind": "termini.agent_image_placement",
+  "alias": "agent-os/w4",
+  "host_alias": "agent-vm/2026.10.0",
+  "checked_at": "2026-10-04T11:49:37Z",
+  "nodes": {
+    "demo-node-a": {
+      "alias_resolves_local": true,
+      "fingerprint": "c3d039642a619e100ddf680c3d60e4d2641e568f377f5ed9ef420ad886b181e4",
+      "node_remotes": "images ubuntu ubuntu-daily ubuntu-minimal ubuntu-minimal-daily ",
+      "remote_pull_used": false,
+      "egress_blocked_before_launch": true,
+      "egress_blocked_after_launch": true,
+      "offline_launch_ok": true,
+      "launch_seconds": 80.9,
+      "instance_state": "RUNNING",
+      "network_downloads_at_boot": "0",
+      "ssh_via_injected_key": true,
+      "ssh_output": "agent-test\nagent-vm-2026.10.0+gb9f934d8f544 sha256:3aeaab4d16fa",
+      "pass": true
+    },
+    "demo-node-b": {
+      "alias_resolves_local": true,
+      "fingerprint": "c3d039642a619e100ddf680c3d60e4d2641e568f377f5ed9ef420ad886b181e4",
+      "node_remotes": "images ubuntu ubuntu-daily ubuntu-minimal ubuntu-minimal-daily ",
+      "remote_pull_used": false,
+      "egress_blocked_before_launch": true,
+      "egress_blocked_after_launch": true,
+      "offline_launch_ok": true,
+      "launch_seconds": 61.3,
+      "instance_state": "RUNNING",
+      "network_downloads_at_boot": "0",
+      "ssh_via_injected_key": true,
+      "ssh_output": "agent-test\nagent-vm-2026.10.0+gb9f934d8f544 sha256:3aeaab4d16fa",
+      "pass": true
+    }
+  }
+}

@@ -1,0 +1,30 @@
+# Termini agent VM — LXD profile (W4, task t_7c40f9a3).
+#
+# This is the `termini-agent` profile referenced by agent-runtime.md §4.2
+# ("Profile | termini-agent (base: limits.cpu, limits.memory, root disk, eth0)").
+# It is documentation of the applied shape; place-agent-image.sh creates it on
+# each node with `lxc profile create/set/device add` (deterministic, no editor).
+#
+#   lxc profile create termini-agent
+#   lxc profile set termini-agent limits.cpu 1
+#   lxc profile set termini-agent limits.memory 512MiB
+#   lxc profile device add termini-agent root disk path=/ pool=local
+#   lxc profile device add termini-agent eth0 nic name=eth0 network=lxdbr0
+#
+# `local` is the node's stock LXD pool ($TERMINI_POOL); `lxdbr0` is the node's
+# guest bridge (10.20.<n>.0/24 per infra-decisions.md D2). limits are deliberately
+# small so a fan-out of agent VMs fits on a 2 vCPU / 1 GiB demo node.
+name: termini-agent
+description: Termini agent VM (agent-os/w4) — root on the node local pool, one NIC on lxdbr0
+config:
+  limits.cpu: "1"
+  limits.memory: 512MiB
+devices:
+  root:
+    type: disk
+    path: /
+    pool: local
+  eth0:
+    type: nic
+    name: eth0
+    network: lxdbr0
