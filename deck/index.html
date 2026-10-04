@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Termini AI-Infra — Judge Deck (Cloud-VM Demo)</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --surface: #121820;
+    --surface-2: #18222d;
+    --line: #24303d;
+    --text: #e8eef5;
+    --muted: #93a1b0;
+    --accent: #54e0c8;      /* teal — product / build */
+    --accent2: #6ea8ff;     /* blue — decision / answer */
+    --warn: #f0b04a;        /* amber — governance / boundary */
+    --danger: #ff6b6b;      /* red — failure scenarios */
+    --good: #57d98a;        /* green — resolved / verified */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #05070a; }
+
+  .deck {
+    width: 1280px;
+    height: 720px;
+    position: relative;
+    transform-origin: top left;
+  }
+  .slide {
+    width: 1280px;
+    height: 720px;
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(84,224,200,0.08), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(110,168,255,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    padding: 52px 64px 44px;
+    display: flex;
+    flex-direction: column;
+    page-break-after: always;
+    break-after: page;
+  }
+  .slide::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 64px 64px;
+    opacity: 0.25;
+    mask-image: linear-gradient(180deg, rgba(0,0,0,0.5), transparent 70%);
+  }
+
+  /* ---------- chrome ---------- */
+  .kicker {
+    font-size: 15px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  .kicker .n {
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+  h1 { font-size: 46px; line-height: 1.08; font-weight: 800; letter-spacing: -0.01em; position: relative; }
+  h2 { font-size: 40px; line-height: 1.1; font-weight: 800; letter-spacing: -0.01em; position: relative; }
+  .lede { font-size: 21px; line-height: 1.45; color: var(--muted); position: relative; margin-top: 12px; max-width: 1000px; }
+  .lede strong, .lede b { color: var(--text); }
+  .accent { color: var(--accent); }
+  .blue { color: var(--accent2); }
+  .warn { color: var(--warn); }
+  .good { color: var(--good); }
+  .danger { color: var(--danger); }
+
+  .footer {
+    position: absolute;
+    left: 64px; right: 64px; bottom: 26px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--muted);
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+  .tagline-chip {
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .pageno { font-variant-numeric: tabular-nums; }
+
+  /* ---------- title slide ---------- */
+  .slide.title { justify-content: center; align-items: flex-start; }
+  .brand {
+    font-size: 15px; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 26px; font-weight: 600;
+  }
+  .slide.title h1 { font-size: 84px; line-height: 1.02; letter-spacing: -0.02em; }
+  .slide.title .sub {
+    font-size: 30px; color: var(--muted); margin-top: 22px; font-weight: 500; line-height: 1.35;
+  }
+  .slide.title .sub b { color: var(--text); }
+  .tagline-hero {
+    margin-top: 46px; font-size: 30px; font-weight: 700; letter-spacing: 0.01em;
+    color: var(--accent);
+  }
+  .title-meta { margin-top: 40px; display: flex; gap: 26px; flex-wrap: wrap; }
+  .meta-chip {
+    font-size: 15px; color: var(--muted); border: 1px solid var(--line);
+    padding: 8px 16px; border-radius: 20px; background: var(--surface);
+  }
+
+  /* ---------- content blocks ---------- */
+  .cols { display: grid; gap: 28px; position: relative; margin-top: 26px; }
+  .cols.two { grid-template-columns: 1fr 1fr; }
+  .cols.three { grid-template-columns: 1fr 1fr 1fr; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 24px 26px;
+  }
+  .card h3 { font-size: 20px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+  .card p, .card li { font-size: 17px; line-height: 1.5; color: var(--muted); }
+  .card p b, .card li b, .card li strong { color: var(--text); }
+  .card ul { list-style: none; margin-top: 6px; }
+  .card li { padding-left: 22px; position: relative; margin-bottom: 9px; }
+  .card li::before { content: "›"; position: absolute; left: 2px; color: var(--accent); font-weight: 700; }
+
+  .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 9px; font-weight: 800; font-size: 19px;
+    background: var(--surface-2); color: var(--accent); flex: none;
+  }
+
+  .big-line { font-size: 24px; line-height: 1.4; position: relative; margin-top: 18px; max-width: 1060px; }
+  .big-line .mark { color: var(--accent); font-weight: 700; }
+
+  /* loop diagram */
+  .loop {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 30px; position: relative;
+  }
+  .loop .step {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 16px; font-size: 16px; font-weight: 600; white-space: nowrap;
+  }
+  .loop .step.gate { border-color: rgba(240,176,74,0.5); color: var(--warn); }
+  .loop .arrow { color: var(--muted); font-weight: 700; }
+
+  /* spec question slides */
+  .q {
+    display: flex; align-items: baseline; gap: 14px; margin-top: 8px; position: relative;
+    background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent2);
+    border-radius: 10px; padding: 16px 20px;
+  }
+  .q .qnum { font-weight: 800; color: var(--accent2); font-size: 18px; flex: none; }
+  .q .qtext { font-size: 19px; color: var(--muted); }
+  .resolve {
+    display: flex; gap: 16px; align-items: center; margin-top: 20px; position: relative;
+  }
+  .resolve .tag {
+    font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700;
+    color: #04130f; background: var(--good); border-radius: 6px; padding: 5px 12px; flex: none;
+  }
+  .resolve .ans { font-size: 21px; font-weight: 600; line-height: 1.4; }
+  .resolve .ans b { color: var(--accent); }
+  .proof {
+    margin-top: 18px; position: relative; font-size: 17px; line-height: 1.5; color: var(--muted);
+    background: rgba(87,217,138,0.06); border: 1px solid rgba(87,217,138,0.25); border-radius: 10px;
+    padding: 14px 18px;
+  }
+  .proof .plabel { color: var(--good); font-weight: 700; text-transform: uppercase; font-size: 13px; letter-spacing: 0.1em; }
+  .proof b { color: var(--text); }
+  .risk {
+    margin-top: 12px; position: relative; font-size: 16px; line-height: 1.45; color: var(--muted);
+    border-top: 1px dashed var(--line); padding-top: 12px;
+  }
+  .risk .rlabel { color: var(--warn); font-weight: 700; }
+  .risk b { color: var(--text); }
+
+  /* what-you-will-see */
+  .see-list { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 30px; position: relative; }
+  .see-item {
+    display: flex; gap: 14px; align-items: flex-start;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px;
+  }
+  .see-item .idx { font-size: 30px; font-weight: 800; color: var(--accent); line-height: 1; }
+  .see-item .t { font-size: 18px; font-weight: 700; }
+  .see-item .d { font-size: 15px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+
+  .cue {
+    margin-top: 26px; position: relative; text-align: center; font-size: 22px; font-weight: 700; color: var(--warn);
+  }
+
+  /* results */
+  .metric {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px;
+  }
+  .metric .v { font-size: 38px; font-weight: 800; color: var(--accent); letter-spacing: -0.01em; }
+  .metric .k { font-size: 16px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+  .metric .k b { color: var(--text); }
+
+  /* roadmap */
+  .road { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 28px; position: relative; }
+  .road-item { display: flex; gap: 12px; align-items: flex-start; }
+  .road-item .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent2); margin-top: 7px; flex: none; }
+  .road-item .t { font-size: 17px; font-weight: 700; }
+  .road-item .d { font-size: 15px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+
+  .close-actions { display: flex; gap: 20px; margin-top: 40px; position: relative; }
+
+  @page { size: 1280px 720px; margin: 0; }
+  @media print {
+    html, body { background: #fff; }
+    .deck { transform: none !important; left: 0 !important; top: 0 !important; }
+    .slide { display: flex !important; box-shadow: none; }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+  }
+
+  /* hidden UI helpers (never printed) */
+  .ui-hint { position: fixed; right: 18px; bottom: 14px; font-size: 12px; color: #3a4652; z-index: 10; }
+  @media print { .ui-hint { display: none; } }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <!-- 1 · TITLE -->
+  <section class="slide title">
+    <div class="brand">Termini &nbsp;·&nbsp; AI Builder Cup &nbsp;·&nbsp; 5-day Cloud-VM demo</div>
+    <h1>Termini<br>AI-Infra</h1>
+    <div class="sub">Turning bare, on-premise hardware into a <b>self-operating AI fleet</b> — a cloud control plane bootstraps it, a <b>governed AI operator</b> runs it, and <b>your data never leaves</b>.</div>
+    <div class="tagline-hero">“Your hardware. Your data. Our operations.”</div>
+    <div class="title-meta">
+      <span class="meta-chip">Day-0 bootstrap</span>
+      <span class="meta-chip">Day-2 self-healing</span>
+      <span class="meta-chip">Fail-closed governance</span>
+    </div>
+  </section>
+
+  <!-- 2 · PROBLEM -->
+  <section class="slide">
+    <div class="kicker"><span class="n">01</span> &nbsp;The problem</div>
+    <h2>AI is stuck at the <span class="danger">on-prem gate</span></h2>
+    <div class="lede">Enterprises holding governance-sensitive data — customer records, source code, national-core IP — <strong>cannot ship that data to a SaaS cloud</strong> to get AI. They are stuck at three points no vendor has productized into one thing.</div>
+    <div class="cols three">
+      <div class="card">
+        <h3><span class="num">1</span> Day-0 — turn it on</h3>
+        <p>Standing up an AI-ready cluster (hypervisor, GPU serving, networking, agent VMs) today requires a specialist. A small or regulated business has <b>no SRE bench</b> to do it.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">2</span> Day-2 — keep it alive</h3>
+        <p>Once it runs, someone must watch disks, memory and GPU health and fix failures. On-prem means <b>you are the operations team</b>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">3</span> Governance — prove it</h3>
+        <p>“Your data never leaves” has to be an <b>enforceable property</b>, not a slogan in the sales deck.</p>
+      </div>
+    </div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">02</span></div>
+  </section>
+
+  <!-- 3 · INSIGHT -->
+  <section class="slide">
+    <div class="kicker"><span class="n">02</span> &nbsp;The insight</div>
+    <h2>Ops can be delegated. <span class="accent">Data doesn’t have to follow.</span></h2>
+    <div class="cols two">
+      <div class="card">
+        <h3><span class="num">A</span> Datadog proved delegation</h3>
+        <p>Best-in-class day-2 observability plus an agentic surface. But it is <b>SaaS-architected</b> — telemetry, traces and logs ship to <i>its</i> cloud, with no self-hosted / air-gapped AI offering. And it assumes the infrastructure <b>already exists</b>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">B</span> Samsung × Mistral proved demand</h3>
+        <p>The Sept 2026 partnership keeps AI on-prem for data sovereignty. But it is <b>bespoke, equity-backed</b>, mega-corp — and covers <b>models &amp; platform, not day-2 operations</b>. Small businesses can’t replicate it.</p>
+      </div>
+    </div>
+    <div class="big-line">The <span class="mark">missing middle</span>: nobody productizes the <b>bootstrap</b> + the <b>day-2 operator</b> + the <b>governance boundary</b> in one thing.</div>
+    <div class="big-line" style="margin-top:14px; font-size:20px; color:#c4ceda;">“Datadog proved ops can be delegated — but it does it by moving your telemetry to their cloud. We do the same job for people <span class="mark">who can’t send anything off-prem</span>.”</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">03</span></div>
+  </section>
+
+  <!-- 4 · WHAT IT IS -->
+  <section class="slide">
+    <div class="kicker"><span class="n">03</span> &nbsp;Termini AI-Infra</div>
+    <h2>Bootstrap the hardware. <span class="accent">Operate it with a governed AI.</span></h2>
+    <div class="lede">A cloud control plane bootstraps the hardware on day-0, an AI operator remediates it on day-2, and a fail-closed governance boundary makes data residency <strong>checkable — not asserted</strong>.</div>
+    <div class="loop">
+      <span class="step">Telemetry</span><span class="arrow">→</span>
+      <span class="step">Threshold rule</span><span class="arrow">→</span>
+      <span class="step">Advisory model</span><span class="arrow">→</span>
+      <span class="step">Deterministic clamp</span><span class="arrow">→</span>
+      <span class="step gate">Command allowlist</span><span class="arrow">→</span>
+      <span class="step">Audited action</span>
+    </div>
+    <div class="cols two" style="margin-top:26px;">
+      <div class="card">
+        <h3><span class="num">+</span> We build two things</h3>
+        <p>The <b>governance boundary</b> and the <b>deterministic AI-operator control loop</b> — the moat.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">=</span> We adopt the rest</h3>
+        <p>The substrate (LXD + Ubuntu), the connectivity (underlay + SSH CA), the model (llama.cpp + GGUF). Model choice is a <b>config knob</b> — the product is the ops + governance layer.</p>
+      </div>
+    </div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">04</span></div>
+  </section>
+
+  <!-- 5 · DIFFERENTIATION -->
+  <section class="slide">
+    <div class="kicker"><span class="n">04</span> &nbsp;How we’re different</div>
+    <h2>Same delegation. <span class="warn">Opposite data flow.</span></h2>
+    <div class="cols two">
+      <div class="card">
+        <h3>vs <span class="blue">Datadog</span> (infra ops)</h3>
+        <ul>
+          <li>Datadog <b>exfiltrates</b> telemetry to its SaaS; Termini runs a <b>self-hosted agentic remediation loop</b> — model on the customer’s own GPU.</li>
+          <li>Datadog has <b>no self-hosted / air-gapped AI</b>; Termini serves an entire market that can’t send anything off-prem.</li>
+          <li>Datadog assumes the infra <b>already exists</b>; Termini owns day-0 bootstrap too.</li>
+          <li>Only <b>C0 hardware/OS telemetry</b> ever leaves Termini’s boundary.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>vs <span class="blue">Samsung × Mistral</span> (on-site AI)</h3>
+        <ul>
+          <li>Bespoke, equity-backed, <b>mega-corp</b> engagement — not replicable by an SMB.</li>
+          <li>Covers <b>models and platform</b>, not maintenance and operations.</li>
+          <li>Termini <b>productizes the long tail</b>: open-weight self-hosted models <b>plus</b> the bootstrap and the governed operator.</li>
+          <li>Samsung has expert engineers; <b>SMBs do not</b> — that’s the wedge.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">05</span></div>
+  </section>
+
+  <!-- 6 · 3 PROOF POINTS -->
+  <section class="slide">
+    <div class="kicker"><span class="n">05</span> &nbsp;What the demo shows</div>
+    <h2>Three proof points</h2>
+    <div class="cols three">
+      <div class="card">
+        <h3><span class="num">1</span> Bare metal → AI-ready fleet</h3>
+        <p>A stock Ubuntu node boots the pre-baked image, registers to the controller in <b>under 5 seconds</b>, and joins the LXD cluster with its role assigned — <b>no SRE, no manual config</b>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">2</span> NL intent, guardrail-enforced</h3>
+        <p>Type <i>“deploy 3 worker agents and a fast LLM for coding.”</i> An on-prem model extracts a structured allocation; the <b>deterministic guardrail clamps</b> the impossible and the allowlist turns it into <b>real VMs</b>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">3</span> Self-healing with a boundary</h3>
+        <p>Kill a disk or OOM a VM live. Telemetry crosses a threshold, the operator <b>detects → decides → executes → audits</b> — while a C2 field is <b>blocked before any byte leaves</b>.</p>
+      </div>
+    </div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">06</span></div>
+  </section>
+
+  <!-- 7 · SPEC Q1 -->
+  <section class="slide">
+    <div class="kicker"><span class="n">06</span> &nbsp;Spec question 1 of 4 — resolved</div>
+    <div class="q"><span class="qnum">Q1</span><span class="qtext">What operations scenarios do we showcase, and how do we simulate them?</span></div>
+    <div class="resolve"><span class="tag">Resolved</span><span class="ans">Two real failures, two real fixes — <b>A: out-of-memory</b> and <b>B: disk degradation</b> — simulated with off-the-shelf tools, so a judge sees the exact failure a production customer would.</span></div>
+    <div class="cols two" style="margin-top:18px;">
+      <div class="card">
+        <h3><span class="num">A</span> Out-of-memory</h3>
+        <p><b>stress-ng</b> burns RAM, starves neighbor agents → operator detects, <b>resizes</b> the offending VM, restores the fleet.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">B</span> Disk degradation</h3>
+        <p>Injected <b>I/O error</b> (write latency climb / read-only mount) → operator <b>flags the drive, drains the node, alerts</b> the user.</p>
+      </div>
+    </div>
+    <div class="risk"><span class="rlabel">Contested:</span> beating the kernel OOM-killer is best-effort. Resolved with <b>1000&nbsp;ms telemetry</b> + a <b>local fast-path</b> (no model latency) + a <b>synthetic persistent trigger</b> — we demonstrate the <b>detect → decide → execute → audit</b> loop <b>deterministically</b>.</div>
+    <div class="proof"><span class="plabel">How the demo proves it</span> — dashboard shows RAM crossing 95% → a <b>vm.resize</b> acks <b>succeeded</b> → new ceiling visible, traceable end-to-end in the audit log.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">07</span></div>
+  </section>
+
+  <!-- 8 · SPEC Q2 -->
+  <section class="slide">
+    <div class="kicker"><span class="n">07</span> &nbsp;Spec question 2 of 4 — resolved</div>
+    <div class="q"><span class="qnum">Q2</span><span class="qtext">What cloud system ties the nodes together — LXD or OpenStack — and how do they share a network?</span></div>
+    <div class="resolve"><span class="tag">Resolved</span><span class="ans"><b>LXD</b> (5.21/stable) as a 3-member cluster. <b>OpenStack rejected</b> — hours-to-days of setup for problems this demo doesn’t have.</span></div>
+    <div class="cols two" style="margin-top:18px;">
+      <div class="card">
+        <h3><span class="num">▦</span> Networking — no overlay</h3>
+        <p>Each node keeps a <b>local NAT bridge</b> on its own subnet; cross-node traffic rides the <b>physical underlay by real IP</b>. GPU inference is reachable at <b>http://10.10.0.13:8080</b>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">◈</span> No tunnel to misconfigure</h3>
+        <p>A single static route either works or it doesn’t — <b>no encapsulation</b>. Guest MTU clamped to the underlay (<b>1460</b>) to avoid PMTU black holes.</p>
+      </div>
+    </div>
+    <div class="risk"><span class="rlabel">Contested:</span> overlay tunnels (OVN/Fan/VXLAN) silently drop packets on MTU mismatch and add per-call latency. Resolved by <b>removing the tunnel</b> entirely.</div>
+    <div class="proof"><span class="plabel">How the demo proves it</span> — from an agent VM on Node A, <b>curl http://10.10.0.13:8080/v1/models</b> returns the model list over standard HTTP; watch <b>traceroute</b> and streamed tokens with no tunnel in the path.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">08</span></div>
+  </section>
+
+  <!-- 9 · SPEC Q3 -->
+  <section class="slide">
+    <div class="kicker"><span class="n">08</span> &nbsp;Spec question 3 of 4 — resolved</div>
+    <div class="q"><span class="qnum">Q3</span><span class="qtext">How do we smartly allocate agent-VM resources — can we infer them from natural language?</span></div>
+    <div class="resolve"><span class="tag">Resolved</span><span class="ans">Yes. Plain English → <b>intent extraction</b> (on-prem, grammar-constrained JSON) → <b>deterministic validator</b>. <b>The model recommends; the validator decides.</b></span></div>
+    <div class="cols two" style="margin-top:18px;">
+      <div class="card">
+        <h3><span class="num">✓</span> Hard caps</h3>
+        <ul>
+          <li><b>vcpus ≤ 128</b>, <b>ram ≤ 512 GB</b>, <b>count ≤ 64</b></li>
+          <li>Per-node ceilings with <b>host reserve</b></li>
+          <li>Per-type ranges (agent_vm: vcpus 1–8, ram 1–16 GB)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="num">✕</span> All-or-nothing</h3>
+        <ul>
+          <li>Numbers are <b>clamped</b> to real capacity</li>
+          <li>Structural violations <b>rejected</b> outright</li>
+          <li>A rejected class creates <b>nothing</b></li>
+        </ul>
+      </div>
+    </div>
+    <div class="risk"><span class="rlabel">Contested:</span> a prompt like “super fast agent” yielding <b>vcpus:128, ram:512</b> that LXD can’t honor. Resolved with <b>deterministic hard guardrails, not model politeness</b>.</div>
+    <div class="proof"><span class="plabel">How the demo proves it</span> — type <b>“128 vCPU, 512 GB RAM worker”</b> → the plan shows <b>clamped values</b> within the host’s real capacity, with per-field <b>from → to</b> clamping visible in the audit record.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">09</span></div>
+  </section>
+
+  <!-- 10 · SPEC Q4 -->
+  <section class="slide">
+    <div class="kicker"><span class="n">09</span> &nbsp;Spec question 4 of 4 — resolved</div>
+    <div class="q"><span class="qnum">Q4</span><span class="qtext">How do we serve the pre-baked agentic OS — what’s pre-installed, and how do we hand it over AI-ready (SSH-able)?</span></div>
+    <div class="resolve"><span class="tag">Resolved</span><span class="ans"><b>Immutable pre-baked images</b> — nothing downloads at boot. cloud-init only <b>activates &amp; registers</b> in <b>&lt;5s</b>. Access is <b>browser-first</b>.</span></div>
+    <div class="cols two" style="margin-top:18px;">
+      <div class="card">
+        <h3><span class="num">◈</span> Access without passwords</h3>
+        <ul>
+          <li>Browser generates the <b>keypair locally</b></li>
+          <li>Controller signs a <b>short-lived cert (≤8h)</b></li>
+          <li>One-click <b>web terminal</b> + an <b>ssh</b> string</li>
+          <li><b>No shared private key</b> — one leak can’t compromise the fleet</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="num">▣</span> Data boundary (C0/C1/C2)</h3>
+        <ul>
+          <li>Only <b>C0 hardware/OS telemetry</b> + <b>C1 transformed IDs</b> egress</li>
+          <li><b>C2</b> (logs, payloads) <b>never leaves</b></li>
+          <li>On-node redactor <b>fails closed</b> before the socket opens</li>
+          <li>External model calls scoped to <b>C0 only</b></li>
+        </ul>
+      </div>
+    </div>
+    <div class="proof"><span class="plabel">How the demo proves it</span> — power on → <b>registered &lt;5s</b> with zero installs; open the terminal for a <b>passwordless shell</b>; pull the governance audit and show <b>zero C2 records</b>, every call traceable by its <b>call_id</b>.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">10</span></div>
+  </section>
+
+  <!-- 11 · WHAT YOU ARE ABOUT TO SEE (live demo handoff) -->
+  <section class="slide">
+    <div class="kicker"><span class="n">10</span> &nbsp;Live demo</div>
+    <h2>What you are about to see</h2>
+    <div class="lede">A live, on-premise cluster running on bare hardware. Four moments, in order:</div>
+    <div class="see-list">
+      <div class="see-item"><span class="idx">1</span><div><div class="t">Node powers on → registered in &lt;5s</div><div class="d">Pre-baked image activates, joins the LXD cluster, role assigned. No package installs.</div></div></div>
+      <div class="see-item"><span class="idx">2</span><div><div class="t">Plain English → real VMs</div><div class="d">“Deploy 3 worker agents and a fast LLM for coding.” Spec extracted on-prem, clamped, executed.</div></div></div>
+      <div class="see-item"><span class="idx">3</span><div><div class="t">OOM a VM / kill a disk — live</div><div class="d">The AI operator detects, decides, executes the fix, and writes the audit trail.</div></div></div>
+      <div class="see-item"><span class="idx">4</span><div><div class="t">Zero C2 data leaves</div><div class="d">Watch the governance audit: only C0/C1 egress, the redactor holds the line.</div></div></div>
+    </div>
+    <div class="cue">▸ Narration takes over now — over to the live cluster.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">11</span></div>
+  </section>
+
+  <!-- 12 · RESULTS -->
+  <section class="slide">
+    <div class="kicker"><span class="n">11</span> &nbsp;Results</div>
+    <h2>What we just demonstrated</h2>
+    <div class="cols three" style="margin-top:30px;">
+      <div class="metric"><div class="v">&lt;5s</div><div class="k">Bare-metal registration, <b>zero package installs</b></div></div>
+      <div class="metric"><div class="v">clamped</div><div class="k">Natural-language intent → <b>valid allocation</b> → real VMs, from→to visible</div></div>
+      <div class="metric"><div class="v">audited</div><div class="k">Deterministic OOM &amp; disk remediation, <b>end-to-end traceable</b></div></div>
+    </div>
+    <div class="cols three" style="margin-top:18px;">
+      <div class="metric"><div class="v good">0</div><div class="k"><b>C2 egress</b> — the boundary held on every call</div></div>
+      <div class="metric"><div class="v">2</div><div class="k"><b>Fixes</b> executed autonomously (resize, drain) from threshold rules</div></div>
+      <div class="metric"><div class="v">3</div><div class="k"><b>Proof points</b> shown live, not claimed</div></div>
+    </div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">12</span></div>
+  </section>
+
+  <!-- 13 · ROADMAP -->
+  <section class="slide">
+    <div class="kicker"><span class="n">12</span> &nbsp;Roadmap</div>
+    <h2>What’s next after the 5-day build</h2>
+    <div class="road">
+      <div class="road-item"><span class="dot"></span><div><div class="t">Learned baselines</div><div class="d">Netdata edge-ML anomaly detection replaces static thresholds.</div></div></div>
+      <div class="road-item"><span class="dot"></span><div><div class="t">Scale &amp; retention</div><div class="d">VictoriaMetrics for persistence; k3s when agent scheduling moves to Kubernetes.</div></div></div>
+      <div class="road-item"><span class="dot"></span><div><div class="t">HA shared storage</div><div class="d">MicroCloud / MicroCeph for shared storage, multi-tenant isolation, no migration copy.</div></div></div>
+      <div class="road-item"><span class="dot"></span><div><div class="t">Real bare-metal onboarding</div><div class="d">MAAS + iPXE netboot to onboard customer hardware end-to-end.</div></div></div>
+      <div class="road-item"><span class="dot"></span><div><div class="t">Model-agnostic serving</div><div class="d">Swap DeepSeek distills for any open-weight model — the product is ops + governance, not the weights.</div></div></div>
+      <div class="road-item"><span class="dot"></span><div><div class="t">Compliance alignment</div><div class="d">GDPR, EU AI Act, NIS2, DORA posture mapped to the governance boundary.</div></div></div>
+    </div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">13</span></div>
+  </section>
+
+  <!-- 14 · CLOSE -->
+  <section class="slide title">
+    <div class="brand">Termini &nbsp;·&nbsp; AI-Infra</div>
+    <h1 style="font-size:72px;">Your hardware.<br>Your data.<br><span class="accent">Our operations.</span></h1>
+    <div class="sub" style="margin-top:30px;">Bootstrap day-0. Self-heal day-2. Prove the data stays.</div>
+    <div class="close-actions">
+      <span class="meta-chip">Questions</span>
+      <span class="meta-chip">Live demo available</span>
+    </div>
+  </section>
+
+</div>
+
+<div class="ui-hint">← → to navigate · F fullscreen · S show all</div>
+
+<script>
+  (function () {
+    var deck = document.getElementById('deck');
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    var i = 0;
+    function fit() {
+      var s = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+      deck.style.transform = 'scale(' + s + ')';
+      deck.style.left = ((window.innerWidth - 1280 * s) / 2) + 'px';
+      deck.style.top = ((window.innerHeight - 720 * s) / 2) + 'px';
+    }
+    function show(n) {
+      i = Math.max(0, Math.min(slides.length - 1, n));
+      slides.forEach(function (el, idx) { el.style.display = idx === i ? 'flex' : 'none'; });
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { show(i + 1); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { show(i - 1); e.preventDefault(); }
+      else if (e.key === 'Home') { show(0); }
+      else if (e.key === 'End') { show(slides.length - 1); }
+      else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+      else if (e.key === 's' || e.key === 'S') { slides.forEach(function (el) { el.style.display = 'flex'; }); deck.style.transform = 'none'; deck.style.left = '0'; deck.style.top = '0'; document.documentElement.style.overflow = 'auto'; }
+    });
+    fit();
+    show(0);
+  })();
+</script>
+</body>
+</html>
