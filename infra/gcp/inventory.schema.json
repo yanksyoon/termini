@@ -24,6 +24,47 @@
         "gateway": { "type": "string" }
       }
     },
+    "overlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Single-CIDR overlay across the cluster members (written by infra/cluster once the overlay is up; absent before that).",
+      "required": ["cidr", "mode", "gateway", "pool", "vni", "udp_port", "bridge", "members", "instances"],
+      "properties": {
+        "cidr": { "type": "string", "description": "One logical subnet for instances on every member." },
+        "mode": { "type": "string", "enum": ["vxlan-bridge", "ovn", "fan"] },
+        "gateway": { "type": "string" },
+        "pool": { "type": "string", "description": "DHCP range served to instances across the overlay." },
+        "vni": { "type": "integer" },
+        "udp_port": { "type": "integer" },
+        "bridge": { "type": "string" },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "underlay_ip", "vtep"],
+            "properties": {
+              "name": { "type": "string" },
+              "underlay_ip": { "type": "string" },
+              "vtep": { "type": "string" }
+            }
+          }
+        },
+        "instances": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["instance", "node", "ipv4"],
+            "properties": {
+              "instance": { "type": "string" },
+              "node": { "type": "string" },
+              "ipv4": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
     "ssh": {
       "type": "object",
       "additionalProperties": false,

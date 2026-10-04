@@ -1,0 +1,22 @@
+== LXD cluster members (online?) ==
+node-a,https://10.10.0.11:8443,"database-leader,database",x86_64,default,,ONLINE,Fully operational
+node-b,https://10.10.0.12:8443,database,x86_64,default,,ONLINE,Fully operational
+node-c,https://10.10.0.13:8443,database,x86_64,default,,ONLINE,Fully operational
+  PASS  cluster member node-a ONLINE
+  PASS  cluster member node-c ONLINE
+== ephemeral instances on node-a and node-c (containers: no KVM on this footprint) ==
+Creating ovlverify-a
+Creating ovlverify-b
+  PASS  ovlverify-a(node-a) DHCP address 10.99.0.253
+  PASS  ovlverify-b(node-c) DHCP address 10.99.0.219
+  PASS  same CIDR: 10.99.0.253 and 10.99.0.219
+== ping across members ==
+  PASS  ping node-a -> node-c
+round-trip min/avg/max = 0.283/0.306/0.343 ms
+  PASS  ping node-c -> node-a
+round-trip min/avg/max = 0.207/0.250/0.274 ms
+== HTTP across members ==
+  PASS  HTTP node-c -> node-a returned: overlay-ok
+== teardown ==
+
+RESULT: PASS

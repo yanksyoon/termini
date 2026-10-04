@@ -1,0 +1,152 @@
+# Termini cluster + overlay — live evidence
+captured_utc: 2026-10-04T11:33:08Z
+
+## LXD version (every member runs the same snap revision)
+Client version: 5.21.8 LTS
+lxd   5.21.8-3a06799  40958  5.21/stable/…  canonical**  -
+
+## lxc cluster list
++--------+-------------------------+-----------------+--------------+----------------+-------------+--------+-------------------+
+|  NAME  |           URL           |      ROLES      | ARCHITECTURE | FAILURE DOMAIN | DESCRIPTION | STATE  |      MESSAGE      |
++--------+-------------------------+-----------------+--------------+----------------+-------------+--------+-------------------+
+| node-a | https://10.10.0.11:8443 | database-leader | x86_64       | default        |             | ONLINE | Fully operational |
+|        |                         | database        |              |                |             |        |                   |
++--------+-------------------------+-----------------+--------------+----------------+-------------+--------+-------------------+
+| node-b | https://10.10.0.12:8443 | database        | x86_64       | default        |             | ONLINE | Fully operational |
++--------+-------------------------+-----------------+--------------+----------------+-------------+--------+-------------------+
+| node-c | https://10.10.0.13:8443 | database        | x86_64       | default        |             | ONLINE | Fully operational |
++--------+-------------------------+-----------------+--------------+----------------+-------------+--------+-------------------+
+
+## lxc storage list (local ZFS per member, D7)
++-------+--------+-------------+---------+---------+
+| NAME  | DRIVER | DESCRIPTION | USED BY |  STATE  |
++-------+--------+-------------+---------+---------+
+| local | zfs    |             | 7       | CREATED |
++-------+--------+-------------+---------+---------+
+
+name: local
+description: ""
+driver: zfs
+status: Created
+config: {}
+used_by:
+- /1.0/images/3fd53eb1e249160d82677702946733429cbbba978d1ef66fba52b32138d8411b?target=node-a
+- /1.0/images/3fd53eb1e249160d82677702946733429cbbba978d1ef66fba52b32138d8411b?target=node-b
+
+## LXD overlay network
+name: termini-overlay
+description: ""
+type: bridge
+managed: true
+status: Created
+config:
+  bridge.mtu: "1400"
+  ipv4.address: none
+  ipv6.address: none
+used_by:
+- /1.0/instances/ovl-a
+- /1.0/instances/ovl-b
+- /1.0/instances/ovl-c
+- /1.0/profiles/default
+locations:
+- node-a
+- node-b
+- node-c
+project: default
+
+## VXLAN transit + FDB on each member
+--- node-a
+4: vxlan-termini: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1410 qdisc noqueue master termini-overlay state UNKNOWN mode DEFAULT group default qlen 1000
+    link/ether 72:de:d1:5a:59:e3 brd ff:ff:ff:ff:ff:ff promiscuity 1  allmulti 1 minmtu 68 maxmtu 65535 
+  fdb:
+    00:16:3e:72:38:b1 vlan 1 master termini-overlay 
+    00:16:3e:d9:1f:fe vlan 1 master termini-overlay 
+    00:16:3e:46:c0:86 vlan 1 master termini-overlay 
+    aa:6f:78:ed:10:8a vlan 1 master termini-overlay 
+    d6:25:17:41:13:8a vlan 1 master termini-overlay 
+    72:de:d1:5a:59:e3 vlan 1 master termini-overlay permanent
+    72:de:d1:5a:59:e3 master termini-overlay permanent
+    33:33:00:00:00:00 dst 10.10.0.12 self permanent
+    33:33:00:00:00:00 dst 10.10.0.13 self permanent
+    01:00:5e:00:00:00 dst 10.10.0.12 self permanent
+    01:00:5e:00:00:00 dst 10.10.0.13 self permanent
+    00:00:00:00:00:00 dst 10.10.0.12 self permanent
+    00:00:00:00:00:00 dst 10.10.0.13 self permanent
+--- node-b
+3: vxlan-termini: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1410 qdisc noqueue master termini-overlay state UNKNOWN mode DEFAULT group default qlen 1000
+    link/ether aa:6f:78:ed:10:8a brd ff:ff:ff:ff:ff:ff promiscuity 1  allmulti 1 minmtu 68 maxmtu 65535 
+  fdb:
+    00:16:3e:72:38:b1 vlan 1 master termini-overlay 
+    00:16:3e:f1:81:0e vlan 1 master termini-overlay 
+    00:16:3e:a3:f1:2e vlan 1 master termini-overlay 
+    00:16:3e:46:c0:86 vlan 1 master termini-overlay 
+    00:16:3e:48:f8:d2 vlan 1 master termini-overlay 
+    d6:25:17:41:13:8a vlan 1 master termini-overlay 
+    72:de:d1:5a:59:e3 vlan 1 master termini-overlay 
+    aa:6f:78:ed:10:8a vlan 1 master termini-overlay permanent
+    aa:6f:78:ed:10:8a master termini-overlay permanent
+    33:33:00:00:00:00 dst 10.10.0.11 self permanent
+    33:33:00:00:00:00 dst 10.10.0.13 self permanent
+    01:00:5e:00:00:00 dst 10.10.0.11 self permanent
+    01:00:5e:00:00:00 dst 10.10.0.13 self permanent
+    00:00:00:00:00:00 dst 10.10.0.11 self permanent
+    00:00:00:00:00:00 dst 10.10.0.13 self permanent
+--- node-c
+3: vxlan-termini: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1410 qdisc noqueue master termini-overlay state UNKNOWN mode DEFAULT group default qlen 1000
+    link/ether d6:25:17:41:13:8a brd ff:ff:ff:ff:ff:ff promiscuity 1  allmulti 1 minmtu 68 maxmtu 65535 
+  fdb:
+    00:16:3e:f1:81:0e vlan 1 master termini-overlay 
+    00:16:3e:d9:1f:fe vlan 1 master termini-overlay 
+    00:16:3e:48:f8:d2 vlan 1 master termini-overlay 
+    aa:6f:78:ed:10:8a vlan 1 master termini-overlay 
+    72:de:d1:5a:59:e3 vlan 1 master termini-overlay 
+    00:16:3e:a3:f1:2e vlan 1 master termini-overlay 
+    d6:25:17:41:13:8a vlan 1 master termini-overlay permanent
+    d6:25:17:41:13:8a master termini-overlay permanent
+    33:33:00:00:00:00 dst 10.10.0.11 self permanent
+    33:33:00:00:00:00 dst 10.10.0.12 self permanent
+    01:00:5e:00:00:00 dst 10.10.0.11 self permanent
+    01:00:5e:00:00:00 dst 10.10.0.12 self permanent
+    00:00:00:00:00:00 dst 10.10.0.11 self permanent
+    00:00:00:00:00:00 dst 10.10.0.12 self permanent
+
+## LXD overlay bridge membership on each member
+--- node-a
+4: vxlan-termini: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1410 master termini-overlay state forwarding priority 32 cost 100 
+termini-overlay  UP             10.99.0.1/24 
+--- node-b
+3: vxlan-termini: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1410 master termini-overlay state forwarding priority 32 cost 100 
+termini-overlay  UP             
+--- node-c
+3: vxlan-termini: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1410 master termini-overlay state forwarding priority 32 cost 100 
+termini-overlay  UP             
+
+## Instances (DHCP from the single overlay server)
++-------+---------+--------------------+------+-----------+-----------+----------+
+| NAME  |  STATE  |        IPV4        | IPV6 |   TYPE    | SNAPSHOTS | LOCATION |
++-------+---------+--------------------+------+-----------+-----------+----------+
+| ovl-a | RUNNING | 10.99.0.131 (eth0) |      | CONTAINER | 0         | node-a   |
++-------+---------+--------------------+------+-----------+-----------+----------+
+| ovl-b | RUNNING | 10.99.0.187 (eth0) |      | CONTAINER | 0         | node-b   |
++-------+---------+--------------------+------+-----------+-----------+----------+
+| ovl-c | RUNNING | 10.99.0.156 (eth0) |      | CONTAINER | 0         | node-c   |
++-------+---------+--------------------+------+-----------+-----------+----------+
+
+## DHCP leases on the seed
+Oct 04 11:26:58 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[7424]: 970615895 DHCPDISCOVER(termini-overlay) 00:16:3e:46:c0:86
+Oct 04 11:26:58 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[7424]: 970615895 DHCPACK(termini-overlay) 10.99.0.156 00:16:3e:46:c0:86 ovl-c
+Oct 04 11:29:21 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[7424]: 1014678375 DHCPDISCOVER(termini-overlay) 00:16:3e:d9:1f:fe
+Oct 04 11:29:21 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[7424]: 1014678375 DHCPDISCOVER(termini-overlay) 00:16:3e:d9:1f:fe
+Oct 04 11:29:21 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[7424]: 1014678375 DHCPACK(termini-overlay) 10.99.0.187 00:16:3e:d9:1f:fe ovl-b
+Oct 04 11:32:13 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[10738]: 759800123 DHCPDISCOVER(termini-overlay) 00:16:3e:f1:81:0e
+Oct 04 11:32:16 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[10738]: 409331739 DHCPDISCOVER(termini-overlay) 00:16:3e:72:38:b1
+Oct 04 11:32:16 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[10738]: 759800123 DHCPDISCOVER(termini-overlay) 00:16:3e:f1:81:0e
+Oct 04 11:32:16 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[10738]: 759800123 DHCPACK(termini-overlay) 10.99.0.144 00:16:3e:f1:81:0e ovlverify-a
+Oct 04 11:32:16 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[10738]: 409331739 DHCPDISCOVER(termini-overlay) 00:16:3e:72:38:b1
+Oct 04 11:32:16 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[10738]: 409331739 DHCPACK(termini-overlay) 10.99.0.135 00:16:3e:72:38:b1 ovlverify-b
+Oct 04 11:32:16 termini-node-a.asia-south1-a.c.termini-510609.internal dnsmasq-dhcp[10738]: 759800123 DHCPACK(termini-overlay) 10.99.0.144 00:16:3e:f1:81:0e ovlverify-a
+
+## Host CPU virtualization support (why instances are containers, not VMs)
+cpu vmx/svm flags: 0
+ls: cannot access '/dev/kvm': No such file or directory
+modprobe: ERROR: could not insert 'kvm_intel': Operation not supported
