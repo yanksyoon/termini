@@ -163,7 +163,7 @@ class PlaybookChooseTest(unittest.TestCase):
         self.assertEqual(action.kind, "instance.restart")
 
     def test_unknown_type_returns_none(self):
-        from app.operator.types import HealthEvent
+        from app.operator.models import HealthEvent
         ev = HealthEvent(event_id=ulid.new_ulid(), node_id="n1", rule_id="x",
                          type="unknown", metric="m", value=0.0, threshold="t",
                          fired_at=NOW)

@@ -42,6 +42,27 @@ is hardcoded.
 | `TERMINI_GPU_VRAM_MIN_BYTES` | `12884901888` (12 GiB) | inference threshold |
 | `TERMINI_MIN_REDACTOR_VERSION` | `3` | redactor-config minimum |
 | `TERMINI_TELEMETRY_INTERVAL_MS` | `1000` | node cadence default |
+| `TERMINI_OPERATOR_ENABLED` | `1` | run the in-process operator loop thread |
+| `TERMINI_OPERATOR_POLL_INTERVAL_S` | `1.0` | detect/act poll interval |
+| `TERMINI_OPERATOR_DRY_RUN` | `0` | log intended LXD command, send nothing |
+| `TERMINI_OPERATOR_COOLDOWN_S` | `60` | suppress re-fire of the same rule on a node |
+| `TERMINI_OPERATOR_WINDOW` | `60` | telemetry samples inspected per node |
+| `TERMINI_PLAYBOOKS_DIR` | `playbooks/` | remediation playbook directory |
+| `TERMINI_OOM_RAM_PCT` | `95.0` | OOM rule: mem% threshold |
+| `TERMINI_OOM_CONSECUTIVE` | `2` | OOM rule: consecutive samples |
+| `TERMINI_DISK_FREE_PCT` | `5.0` | disk rule: free% floor |
+| `TERMINI_DISK_FREE_CONSECUTIVE` | `3` | disk rule: consecutive samples at floor |
+| `TERMINI_DISK_WRITE_LATENCY_MS` | `50.0` | disk rule: write-latency threshold |
+| `TERMINI_DISK_LATENCY_CONSECUTIVE` | `5` | disk rule: consecutive samples |
+| `TERMINI_DISK_FREE_SLOPE_BPS` | `-5000000.0` | disk rule: steep-negative free slope |
+| `TERMINI_LATENCY_MS` | `250.0` | latency rule: net latency threshold |
+| `TERMINI_LATENCY_CONSECUTIVE` | `3` | latency rule: consecutive samples |
+| `TERMINI_LXD_BASE_URL` | `http://127.0.0.1:8443` | LXD REST endpoint (executor) |
+| `TERMINI_LXD_INSTANCE_NAMES` | `{}` | JSON `{vm_id: lxd_name}` mapping |
+| `TERMINI_LXD_DEFAULT_INSTANCE_NAME` | `agent` | fallback instance name |
+| `TERMINI_LXD_CLIENT_CERT` / `TERMINI_LXD_CLIENT_KEY` | unset | mTLS cert/key for a real LXD |
+| `TERMINI_LXD_TIMEOUT_S` | `10.0` | per-request timeout |
+| `TERMINI_LXD_RETRY_MAX` / `TERMINI_LXD_RETRY_BACKOFF_S` | `3` / `0.5` | retry with exponential backoff |
 
 ## Endpoints (all under `/v1`)
 
@@ -54,6 +75,9 @@ is hardcoded.
 | POST | `/v1/nodes/{nid}/telemetry` | node token | `202 {accepted, rejected, backpressure}` |
 | GET | `/v1/nodes/{nid}/telemetry/recent` | node token | `200` recent samples |
 | GET | `/v1/telemetry/recent?node=&limit=` | project token | `200` recent samples (dashboard/operator) |
+| GET | `/v1/operator/events?node=&limit=` | project token | `200` health events (AI operator) |
+| GET | `/v1/operator/decisions?limit=` | project token | `200` remediation decision log |
+| GET | `/v1/operator/audits?node=&limit=` | project token | `200` remediation audit trail |
 
 Roles are `compute` / `inference` (the frozen contract's vocabulary; the task
 body's "agent-host / inference-host" maps to these). A node with ≥1 GPU whose
@@ -85,15 +109,70 @@ C1 transform check → redactor version → envelope/sample schema. Malformed
 batches return `422` and store nothing; unknown fields are stripped
 (deny-by-default). Error envelope follows `controller-api.md` §3.
 
+## AI-operator remediation loop
+
+Closes the control loop: **detect** a failure from telemetry → **choose** a fix
+from a declarative playbook → **execute** it against the node's LXD REST API →
+**audit** (event → action → result).
+
+Two run modes, sharing the same detector/chooser/executor (`app/operator/`):
+
+1. **In-process** (default) — a daemon thread started by `app.main` polls the
+   telemetry store every `TERMINI_OPERATOR_POLL_INTERVAL_S`, writes health
+   events, decisions, and audits to SQLite, and issues LXD REST calls to
+   `TERMINI_LXD_BASE_URL`. Queryable via the `/v1/operator/*` endpoints above.
+2. **Standalone** — `python3 -m app.operator.cli` (from this directory) polls
+   the controller's `/v1/telemetry/recent` over HTTP (the endpoint named in the
+   task), then executes against `--lxd-url`, writing an audit JSONL. This is
+   what the chaos harness drives.
+
+```bash
+# drive the production loop with the chaos harness (from repo root):
+make chaos SCENARIO=oom OPERATOR_CMD="python3 controller/app/operator/cli.py \
+  --controller-url {controller_url} --lxd-url {lxd_url} \
+  --node {node_id} --project-token {project_token} \
+  --thresholds '{thresholds_json}' --duration 40 --audit-out /tmp/op-audit.jsonl"
+```
+
+### Playbooks (declarative YAML, thresholds in config — not code)
+
+| File | Health type | Rule | Action (LXD REST) |
+|------|-------------|------|-------------------|
+| `playbooks/oom.yaml` | `oom` | `oom-guard-01` | `instance.restart` the heaviest workload (`PUT /1.0/instances/{name}/state`) |
+| `playbooks/disk-degrade.yaml` | `disk_degrade` | `disk-degrade-01` | `instance.stop` to drain the heaviest workload off the degraded node |
+| `playbooks/latency.yaml` | `latency` | `latency-01` | `instance.restart` the affected workload |
+
+Playbooks are parsed by a bundled stdlib-only YAML-subset parser
+(`app/operator/yaml.py`) — no PyYAML dependency. Every threshold is an env var
+(see table above); the frozen demo defaults match `chaos/chaos.json`.
+
+### Guarantees
+
+- **Audit** — every remediation writes a `remediation_audits` row (node, event,
+  action, result, LXD method/path/body); the decision log (`remediation_decisions`)
+  links each event to its chosen action.
+- **Idempotent** — one health event → at most one decision (schema-enforced);
+  a repeated (node, rule, action, target) remediation dedupes by
+  `idempotency_key`; LXD `delete` of an already-absent instance is a no-op.
+- **Dry-run** — `TERMINI_OPERATOR_DRY_RUN=1` (or `--dry-run`) logs the intended
+  method/path/body and sends nothing; the audit records `result: dry_run`.
+- **Retry with backoff** — transient 5xx / connection errors retry
+  (`TERMINI_LXD_RETRY_MAX`, exponential backoff); 4xx is terminal.
+
 ## Verify
 
 ```bash
-make verify        # boots the service + runs the full acceptance suite
+make verify          # core acceptance: register→role, telemetry, 422-on-malformed
+make verify-operator # operator loop vs the chaos harness (oom/disk/latency/healthy)
 ```
 
-`scripts/acceptance.py` exercises every acceptance criterion (register → role,
+`scripts/acceptance.py` exercises the core acceptance criteria (register → role,
 two-node telemetry at 1 s cadence, timestamp preservation, 422-on-malformed with
-no corruption, schema-doc↔code agreement).
+no corruption, schema-doc↔code agreement). `scripts/acceptance_operator.py`
+drives the production operator loop against the chaos harness and asserts the
+remediation acceptance criteria; dry-run and idempotency are additionally
+exercised by the unit suite (`tests/test_operator_executor.py`,
+`tests/test_operator_loop.py`).
 
 ## Not in scope (other W1 cards)
 

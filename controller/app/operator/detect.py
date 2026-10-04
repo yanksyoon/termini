@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 
 from .. import ulid
 from ..validate import parse_rfc3339_epoch
-from .types import HealthEvent
+from .models import HealthEvent
 
 
 @dataclass(frozen=True)

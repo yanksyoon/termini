@@ -27,7 +27,7 @@ import os
 import pathlib
 
 from . import yaml
-from .types import HealthEvent, RemediationAction
+from .models import HealthEvent, RemediationAction
 
 
 def load_playbooks(playbooks_dir: str) -> dict[str, dict]:

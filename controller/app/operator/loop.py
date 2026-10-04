@@ -22,7 +22,7 @@ import threading
 from .. import db, store, ulid
 from . import detect, executor, playbook
 from . import store as opstore
-from .types import ExecResult, RemediationAction
+from .models import ExecResult, RemediationAction
 
 log = logging.getLogger("termini.operator.loop")
 

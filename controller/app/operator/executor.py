@@ -25,7 +25,7 @@ import time
 import urllib.error
 import urllib.request
 
-from .types import ExecResult, RemediationAction
+from .models import ExecResult, RemediationAction
 
 log = logging.getLogger("termini.operator.executor")
 

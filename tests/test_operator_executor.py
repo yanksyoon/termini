@@ -10,7 +10,7 @@ sys.path.insert(0, str(REPO / "controller"))
 sys.path.insert(0, str(REPO / "tests"))
 
 from app.operator.executor import LxdExecutor  # noqa: E402
-from app.operator.types import RemediationAction  # noqa: E402
+from app.operator.models import RemediationAction  # noqa: E402
 from stub_lxd import StubLxd  # noqa: E402
 
 
