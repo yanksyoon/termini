@@ -475,7 +475,7 @@ def inference_snapshot(cfg: dict) -> dict | None:
 
 # --------------------------------------------------------------------------- http
 def http_json(method: str, url: str, body=None, token: str | None = None,
-              timeout: int = 15) -> tuple[int, object]:
+              timeout: float = 15) -> tuple[int, object]:
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Content-Type": "application/json", "X-Termini-Version": "1"}
     if token:
@@ -491,6 +491,85 @@ def http_json(method: str, url: str, body=None, token: str | None = None,
             return e.code, json.loads(raw)
         except json.JSONDecodeError:
             return e.code, raw.decode(errors="replace")
+
+
+# --------------------------------------------------------------------------- registration failure policy
+# Bounded, classified registration retry policy (node-bootstrap.md §9).
+#
+# The old loop collapsed every failure into one `except Exception` that backed
+# off forever, so a consumed 401 token, a bad DNS name or a refused connection
+# all sat in REGISTERING indefinitely (W7 findings F1/F2). `register()` now
+# raises a *classified* `RegistrationError`; the retry loop uses `kind` to decide
+# terminal vs. transient:
+#
+#   auth       401/403 — bad/consumed/expired token -> <=3 backoff retries then REGISTRATION_FAILED
+#   schema     400     — malformed body             -> <=3 backoff retries then REGISTRATION_FAILED
+#   unsupported 426    — image/controller skew      -> terminal immediately (operator alert)
+#   conflict   409     — machine_id already present -> reconnect path, else bounded->terminal
+#   malformed  2xx without node_id                  -> bounded -> terminal
+#   unreachable_dns / unreachable_refused / unreachable_timeout / unreachable
+#              controller not reachable -> fail fast: <=3 backoff retries then
+#              terminal REGISTRATION_FAILED (state DEGRADED *during* the retries,
+#              so the node is never silently stuck in the transient REGISTERING)
+#   rate_limited 429 / server 5xx -> backoff 1 s -> 60 s cap, indefinitely (§9 rows 1/3)
+DEFAULT_REGISTRATION_MAX_RETRIES = 3
+DEFAULT_REGISTER_TIMEOUT_S = 5.0
+TERMINAL_KINDS = frozenset({
+    "auth", "schema", "unsupported", "conflict", "malformed",
+    "unreachable", "unreachable_dns", "unreachable_refused", "unreachable_timeout",
+})
+
+# 0 = hold the terminal state forever (production); tests set a bound.
+TERMINAL_HOLD_S = float(os.environ.get("TERMINI_TERMINAL_HOLD_S", "0") or 0)
+
+
+class RegistrationError(Exception):
+    """Classified registration failure carrying what the retry policy needs."""
+
+    def __init__(self, kind: str, status: int | None, message: str):
+        super().__init__(message)
+        self.kind = kind
+        self.status = status
+        self.terminal = kind in TERMINAL_KINDS
+
+
+def classify_http_error(status: int, resp: object) -> "RegistrationError":
+    """Map a non-2xx registration response to a classified failure."""
+    code = ""
+    if isinstance(resp, dict) and isinstance(resp.get("error"), dict):
+        code = str(resp["error"].get("code") or "")
+    detail = f"register failed: HTTP {status}" + (f" {code}" if code else "") + f": {resp}"
+    if status in (401, 403):
+        return RegistrationError("auth", status, detail)
+    if status == 426 or code == "UNSUPPORTED_VERSION":
+        return RegistrationError("unsupported", status, detail)
+    if status == 400:
+        return RegistrationError("schema", status, detail)
+    if status == 409:
+        return RegistrationError("conflict", status, detail)
+    if status == 429 or code == "RATE_LIMITED":
+        return RegistrationError("rate_limited", status, detail)
+    return RegistrationError("server", status, detail)  # 5xx: transient, retry forever
+
+
+def classify_network_error(exc: BaseException) -> "RegistrationError":
+    """Map a socket/URL error to a classified failure.
+
+    DNS failure and connection-refused are separated from a generic timeout so
+    the operator sees *why* the node failed fast, not just "cannot connect".
+    """
+    reason = getattr(exc, "reason", None) or exc
+    if isinstance(reason, socket.gaierror):
+        kind, hint = "unreachable_dns", "DNS name could not be resolved"
+    elif isinstance(reason, ConnectionRefusedError):
+        kind, hint = "unreachable_refused", "connection refused"
+    elif isinstance(reason, ConnectionResetError):
+        kind, hint = "unreachable_refused", "connection reset"
+    elif isinstance(reason, (socket.timeout, TimeoutError)):
+        kind, hint = "unreachable_timeout", "timed out"
+    else:
+        kind, hint = "unreachable", "network error"
+    return RegistrationError(kind, None, f"register unreachable ({hint}): {reason}")
 
 
 # --------------------------------------------------------------------------- state
@@ -563,13 +642,21 @@ def host_ssh_keys(cfg: dict) -> list:
 def register(cfg: dict, node_name: str, token: str) -> dict:
     url = cfg["controller_url"].rstrip("/") + "/v1/nodes/register"
     body = registration_body(cfg, node_name)
-    status, resp = http_json("POST", url, body=body, token=token, timeout=15)
+    timeout = float(cfg.get("register_timeout_s", DEFAULT_REGISTER_TIMEOUT_S))
+    try:
+        status, resp = http_json("POST", url, body=body, token=token, timeout=timeout)
+    except urllib.error.HTTPError as e:  # pragma: no cover - http_json returns codes
+        raise RegistrationError("server", e.code, f"register failed: HTTP {e.code}: {e}") from e
+    except (urllib.error.URLError, ConnectionError, socket.timeout, TimeoutError) as e:
+        # DNS failure, connection refused/reset, connect timeout: classify so the
+        # retry loop can fail fast instead of retrying silently forever (F2).
+        raise classify_network_error(e) from e
     acked_mono_ms = register_ms()
     acked_boot_ms = boot_to_registered_ms()
     if status not in (200, 201):
-        raise RuntimeError(f"register failed: HTTP {status}: {resp}")
+        raise classify_http_error(status, resp)
     if not isinstance(resp, dict) or not resp.get("node_id"):
-        raise RuntimeError(f"register: malformed response: {resp}")
+        raise RegistrationError("malformed", status, f"register: malformed response: {resp}")
     identity = {
         "node_id": resp["node_id"],
         "node_token": resp["node_token"],
@@ -585,7 +672,7 @@ def register(cfg: dict, node_name: str, token: str) -> dict:
     set_state(state="ONLINE", node_id=resp["node_id"], role=resp.get("role"),
               registration_id=body["machine"]["hostname"], cluster_member=node_name,
               register_ms=acked_mono_ms, boot_to_registered_ms=acked_boot_ms,
-              last_error=None)
+              last_error=None, failure_kind=None, terminal=False, registration_attempts=0)
     log(f"REGISTERED node_id={resp['node_id']} role={resp.get('role')} "
         f"register_ms={acked_mono_ms} boot_to_registered_ms={acked_boot_ms}")
     return identity
@@ -668,6 +755,82 @@ def notify_ready(identity: dict) -> None:
               f"role={identity.get('role')}")
 
 
+# --------------------------------------------------------------------------- registration retry loop
+def terminal_hold() -> None:
+    """Park the process in its terminal state (no auto-retry).
+
+    `termini-bootstrap.service` is `Restart=always`; simply exiting would make
+    systemd respawn the daemon straight back into the retry loop, so a genuinely
+    terminal REGISTRATION_FAILED must hold the process. READY is never sent
+    (the unit never goes active), and `state.json` stays observable for the
+    operator. `TERMINI_TERMINAL_HOLD_S > 0` bounds the hold (tests); SIGTERM
+    still stops the unit normally.
+    """
+    if TERMINAL_HOLD_S > 0:
+        time.sleep(TERMINAL_HOLD_S)
+        return
+    while True:
+        time.sleep(3600)
+
+
+def _park_registration_failed(err: RegistrationError, attempts: int) -> None:
+    """Enter the terminal REGISTRATION_FAILED state and hold it (§9 row 2)."""
+    set_state(state="REGISTRATION_FAILED", last_error=str(err),
+              failure_kind=err.kind, registration_attempts=attempts, terminal=True)
+    log(f"REGISTRATION_FAILED (terminal, kind={err.kind}, attempts={attempts}): {err}")
+    log("no auto-retry: operator must re-provision (fresh token / fix config) "
+        "and restart termini-bootstrap")
+    sd_notify(f"STATUS=REGISTRATION_FAILED kind={err.kind}")  # never READY
+    terminal_hold()
+
+
+def register_with_retries(cfg: dict, node_name: str, token: str) -> dict | None:
+    """Register, applying the classified §9 retry policy.
+
+    Returns the persisted identity on a 2xx acknowledgement. On a terminal
+    failure it parks the daemon in REGISTRATION_FAILED (holding, no auto-retry)
+    and returns None. Transient controller errors (5xx / 429) back off 1 s → 60 s
+    indefinitely so the node keeps trying without ever lying about its state.
+    """
+    max_retries = int(cfg.get("registration_max_retries", DEFAULT_REGISTRATION_MAX_RETRIES))
+    base = max(0.1, float(cfg.get("registration_backoff_base_s", 1.0)))
+    cap = max(base, float(cfg.get("registration_backoff_cap_s", 60.0)))
+    delay = base
+    retries: dict[str, int] = {}
+    while True:
+        try:
+            identity = register(cfg, node_name, token)
+            notify_ready(identity)  # READY only after the 2xx acknowledgement
+            return identity
+        except RegistrationError as e:
+            n = retries.get(e.kind, 0) + 1
+            retries[e.kind] = n
+            if e.terminal and n > max_retries:
+                _park_registration_failed(e, n)
+                return None
+            # A controller we cannot reach is DEGRADED while we back off (§9 row
+            # 1); every other transient failure keeps the REGISTERING state.
+            during = "DEGRADED" if e.kind.startswith("unreachable") else "REGISTERING"
+            set_state(state=during, last_error=str(e), failure_kind=e.kind,
+                      registration_attempts=n)
+            budget = max_retries if e.terminal else "inf"
+            log(f"registration retry {n}/{budget} in {delay:.0f}s: {e}")
+            time.sleep(delay)
+            delay = min(cap, delay * 2)
+        except Exception as e:  # noqa: BLE001 - never retry an unknown failure silently forever
+            n = retries.get("unexpected", 0) + 1
+            retries["unexpected"] = n
+            if n > max_retries:
+                _park_registration_failed(
+                    RegistrationError("unexpected", None, f"unexpected error: {e!r}"), n)
+                return None
+            set_state(state="REGISTERING", last_error=f"unexpected: {e}",
+                      registration_attempts=n)
+            log(f"registration retry {n}/{max_retries} in {delay:.0f}s: unexpected error: {e}")
+            time.sleep(delay)
+            delay = min(cap, delay * 2)
+
+
 def run(cfg: dict) -> int:
     os.makedirs(SPOOL_DIR, exist_ok=True)
     node_name = cfg.get("node_name") or socket.gethostname()
@@ -678,7 +841,7 @@ def run(cfg: dict) -> int:
     if identity and identity.get("node_id") and identity.get("node_token"):
         log(f"reconnect: reusing persisted identity node_id={identity['node_id']}")
         set_state(state="ONLINE", node_id=identity["node_id"], role=identity.get("role"),
-                  cluster_member=node_name)
+                  cluster_member=node_name, last_error=None, failure_kind=None, terminal=False)
         notify_ready(identity)          # idempotent reboot path: already enrolled
     else:
         token = read_token(TOKEN_PATH)
@@ -687,21 +850,9 @@ def run(cfg: dict) -> int:
             log("no enrollment token yet; waiting (ACTIVATING)")
             return _wait_for_token_then_run(cfg)
         set_state(state="REGISTERING")
-        delay = 1.0
-        while True:
-            try:
-                identity = register(cfg, node_name, token)
-                notify_ready(identity)  # READY only after the 2xx acknowledgement
-                break
-            except urllib.error.HTTPError as e:  # pragma: no cover - defensive
-                set_state(state="REGISTRATION_FAILED", last_error=str(e))
-                log(f"registration terminal failure: {e}")
-                return 1
-            except Exception as e:
-                set_state(state="REGISTERING", last_error=str(e))
-                log(f"registration retry in {delay:.0f}s: {e}")
-                time.sleep(delay)
-                delay = min(60.0, delay * 2)
+        identity = register_with_retries(cfg, node_name, token)
+        if identity is None:
+            return 1  # terminal REGISTRATION_FAILED: parked, no auto-retry
 
     node_id = identity["node_id"]
     node_token = identity["node_token"]

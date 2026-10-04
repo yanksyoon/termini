@@ -1,0 +1,8 @@
+{
+  "state": "REGISTRATION_FAILED",
+  "updated_at": "2026-10-04T13:56:06Z",
+  "last_error": "register failed: HTTP 401 UNAUTHENTICATED: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M43K6ME2Z10HEJG1JDMX506V'}}",
+  "failure_kind": "auth",
+  "registration_attempts": 4,
+  "terminal": true
+}

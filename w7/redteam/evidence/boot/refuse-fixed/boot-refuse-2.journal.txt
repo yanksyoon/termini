@@ -1,0 +1,6 @@
+2026-10-04T13:55:03+00:00 rt-refuse-2 systemd[1]: Starting termini-bootstrap.service - Termini node bootstrap (register + telemetry)...
+2026-10-04T13:55:03+00:00 rt-refuse-2 termini-bootstrap[326]: 2026-10-04T13:55:03Z [termini-bootstrap] registration retry 1/3 in 1s: register unreachable (connection reset): Remote end closed connection without response
+2026-10-04T13:55:04+00:00 rt-refuse-2 termini-bootstrap[326]: 2026-10-04T13:55:04Z [termini-bootstrap] registration retry 2/3 in 2s: register unreachable (connection reset): Remote end closed connection without response
+2026-10-04T13:55:06+00:00 rt-refuse-2 termini-bootstrap[326]: 2026-10-04T13:55:06Z [termini-bootstrap] registration retry 3/3 in 4s: register unreachable (connection reset): Remote end closed connection without response
+2026-10-04T13:55:10+00:00 rt-refuse-2 termini-bootstrap[326]: 2026-10-04T13:55:10Z [termini-bootstrap] REGISTRATION_FAILED (terminal, kind=unreachable_refused, attempts=4): register unreachable (connection reset): Remote end closed connection without response
+2026-10-04T13:55:10+00:00 rt-refuse-2 termini-bootstrap[326]: 2026-10-04T13:55:10Z [termini-bootstrap] no auto-retry: operator must re-provision (fresh token / fix config) and restart termini-bootstrap

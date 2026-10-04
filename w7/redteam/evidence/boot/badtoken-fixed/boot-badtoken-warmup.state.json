@@ -1,0 +1,16 @@
+{
+  "state": "ONLINE",
+  "updated_at": "2026-10-04T13:55:46Z",
+  "node_id": "01M43K618NHK8XQFMQ9V1XQ37E",
+  "role": "compute",
+  "registration_id": "rt-badtoken-warmup",
+  "cluster_member": "rt-badtoken-warmup",
+  "register_ms": 101,
+  "boot_to_registered_ms": 3640,
+  "last_error": null,
+  "failure_kind": null,
+  "terminal": false,
+  "registration_attempts": 0,
+  "seq": 1,
+  "last_telemetry_at": "2026-10-04T13:55:46Z"
+}

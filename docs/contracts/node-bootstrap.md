@@ -69,7 +69,7 @@ The daemon publishes its state locally (`termini status`) and in telemetry.
 
 - **ONLINE** = registered, in the cluster (or intentionally standalone by controller instruction), telemetry flowing, host healthy.
 - **DEGRADED** = reachable and reporting, but one or more capabilities are unavailable (e.g. not joined, GPU down, disk degraded). **A degraded node must still report telemetry** — this is what lets the AI operator remediate it.
-- **REGISTRATION_FAILED** = a terminal enrollment problem requiring operator action (bad token). It is not retried indefinitely (see §9).
+- **REGISTRATION_FAILED** = a terminal enrollment problem requiring operator action — a bad/consumed/expired token (401/403), a malformed registration (400/422), an unsupported schema (426), or a controller that is unreachable after the bounded boot retries (row 1). It is **not** retried indefinitely (see §9). The daemon parks in this state (no auto-retry) and records `failure_kind` in `state.json`; `systemd` never sees `READY`.
 
 ---
 
@@ -413,7 +413,7 @@ Guiding rules: **registration and join failures must never leave a node unreacha
 
 | # | Failure | Detection | Node behaviour | Resulting state |
 |---|---------|-----------|----------------|-----------------|
-| 1 | Controller unreachable (boot or steady) | connect timeout / DNS | Retry with exponential backoff 1 s → 60 s cap, forever; local services (LXD) still start; **no data egress**. | `ACTIVATING` / `DEGRADED` |
+| 1 | Controller unreachable | connect timeout / DNS | **Boot — fail fast:** retry ≤ 3 (backoff 1 s → 4 s) then **stop auto-retry** and park terminal; the state is `DEGRADED` while backing off (never a silent `REGISTERING` hang) and `failure_kind` records `unreachable_dns` / `unreachable_refused` / `unreachable_timeout`. **Steady, after enrollment — retry forever** at 1 s → 60 s cap; local services (LXD) still start; **no data egress**. | boot: `REGISTRATION_FAILED`; steady: `DEGRADED` |
 | 2 | Enrollment token invalid/expired/consumed | HTTP 401/403 | Retry at most 3 times with backoff, then stop auto-retry; emit local alert + telemetry if any channel exists. Requires operator re-provision with a fresh token. | `REGISTRATION_FAILED` |
 | 3 | Controller 5xx during registration | HTTP 5xx | Backoff-retry indefinitely. | `REGISTERING` |
 | 4 | `machine_id` already registered (409) | HTTP 409 | If a valid local cert exists → reconnect (§10); else consume server-provided `node_id` and reconnect. | `ONLINE` |
@@ -426,6 +426,26 @@ Guiding rules: **registration and join failures must never leave a node unreacha
 | 11 | Disk degraded / read-only | SMART + mount probe | Report disk health; controller decides evacuation (Scenario B). | `ONLINE`/`DEGRADED` |
 | 12 | Daemon crash loop | systemd start-rate limit | Unit enters `failed`; last state persists in `/var/lib/termini/state.json` for the operator. | `failed` (systemd) |
 | 13 | Reboot after successful enrollment | boot | Idempotent reconnect using persisted identity (§10). | `ONLINE` |
+
+**Bounded retries, and what "terminal" means (implemented in
+`infra/bootstrap/node/termini-bootstrap.py`).** Rows 1 (boot), 2 and 5.4's
+`400 INVALID_ARGUMENT` / `426 UNSUPPORTED_VERSION` are **bounded**: after at most
+`registration_max_retries` (default 3) backoff retries the daemon stops
+auto-retrying and parks in `REGISTRATION_FAILED`. Because the unit is
+`Restart=always`, exiting would let systemd respawn the daemon straight back into
+the retry loop; a genuinely terminal failure therefore **holds the process** in
+the terminal state (READY is never sent, `state.json` stays observable, and a
+`systemctl restart` / `termini reset` is required to retry). Transient failures
+(5xx, 429, and a steady-state unreachable controller after enrollment) keep
+backing off 1 s → 60 s indefinitely. `failure_kind` in `state.json` names the
+class (`auth`, `schema`, `unsupported`, `conflict`, `malformed`, `unreachable_*`).
+
+**Amendment (2026-10-04, task `t_ca7fc132`).** Row 1 previously specified that a
+*boot-time* unreachable controller retried forever in `ACTIVATING`/`DEGRADED`,
+which left a mis-provisioned node (bad DNS, dead controller) silently stuck and
+invisible to the demo operator. The boot path now fails fast to
+`REGISTRATION_FAILED` as above; the steady-state path is unchanged. See
+`w7/redteam/cloud-init-boot-latency.md` §Resolution for the measured evidence.
 
 **Never** does a bootstrap failure cause the daemon to wipe LXD or reformat, and **never** does it silently stop reporting while the machine is alive.
 
@@ -500,6 +520,11 @@ telemetry_interval_ms: 1000                           # overridden by registrati
 enrollment_token_file: /var/lib/termini/enrollment.token
 identity_dir: /var/lib/termini/identity
 spool_dir: /var/lib/termini/telemetry
+# Registration retry policy (§9). Optional; defaults shown.
+register_timeout_s: 5                                 # per-attempt HTTP timeout (fail fast)
+registration_max_retries: 3                           # bounded retries before terminal REGISTRATION_FAILED
+registration_backoff_base_s: 1                        # first backoff
+registration_backoff_cap_s: 60                        # backoff ceiling (transient failures)
 ```
 
 Runtime state is kept at `/var/lib/termini/state.json` (state, node_id, last error, cluster reason, last controller contact).

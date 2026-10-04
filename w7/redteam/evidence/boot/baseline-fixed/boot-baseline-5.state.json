@@ -1,0 +1,16 @@
+{
+  "state": "ONLINE",
+  "updated_at": "2026-10-04T13:54:29Z",
+  "node_id": "01M43K3NSPK5AMMM2JH9DA6B66",
+  "role": "compute",
+  "registration_id": "rt-baseline-5",
+  "cluster_member": "rt-baseline-5",
+  "register_ms": 91,
+  "boot_to_registered_ms": 3140,
+  "last_error": null,
+  "failure_kind": null,
+  "terminal": false,
+  "registration_attempts": 0,
+  "seq": 1,
+  "last_telemetry_at": "2026-10-04T13:54:29Z"
+}
