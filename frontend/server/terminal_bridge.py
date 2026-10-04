@@ -6,8 +6,8 @@ the web-terminal UX can be built and tested before that backend lands. It is a
 faithful implementation of the frozen wire contract in
 ``docs/contracts/dashboard.md`` §3:
 
-  * ``GET /terminal/v1/{node_id}?token=<project_token>`` — WebSocket terminal
-    (base64 PTY relay, input/resize/ping framing, ready/output/exit/error).
+  * ``GET /terminal/v1/nodes/{node_id}?token=<project_token>`` — WebSocket
+    terminal (base64 PTY relay, input/resize/ping framing, ready/output/exit/error).
   * ``GET /v1/projects/{pid}/nodes`` — node list for the selector.
   * ``GET /v1/projects/{pid}/nodes/{nid}/ssh`` — SSH access-string payload.
 
@@ -463,8 +463,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
 
     # ----- WebSocket terminal -----
     def _handle_terminal(self, segs, parsed) -> None:
-        # /terminal/v1/{node_id}
-        node_id = segs[2] if len(segs) >= 3 else ""
+        # /terminal/v1/nodes/{node_id}
+        node_id = segs[3] if len(segs) >= 4 and segs[2] == "nodes" else ""
         upgrade = (self.headers.get("Upgrade") or "").lower()
         sec_key = self.headers.get("Sec-WebSocket-Key")
         if upgrade != "websocket" or not sec_key:

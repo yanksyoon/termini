@@ -12,12 +12,26 @@ const DEFAULT_HINT =
   'never transits the controller — point -i at the local key paired with the ' +
   'break-glass public key this project was provisioned with.';
 
+/**
+ * Headers for the controller REST calls. The controller gates the project
+ * endpoints on the project_token (contract §1.1), so without `Authorization`
+ * the node list / SSH fetch 401s against the real controller. The dev mock
+ * bridge ignores it, so it is added only when a token is known.
+ * Pure (no DOM) so it is directly unit-testable.
+ */
+export function requestHeaders(token) {
+  const h = { Accept: 'application/json' };
+  if (token) h.Authorization = `Bearer ${token}`;
+  return h;
+}
+
 export class SshPanel {
   /**
    * @param {HTMLElement} root
    * @param {object} opts
    * @param {(nodeId:string)=>string} opts.endpoint   URL for GET /nodes/{id}/ssh
    * @param {string} [opts.keyPath]                   operator's local private-key path
+   * @param {string} [opts.token]                     project_token for the Authorization header
    * @param {string} [opts.hint]
    * @param {Function} [opts.fetchImpl]               injectable fetch
    * @param {Function} [opts.clipboard]               injectable clipboard.writeText
@@ -26,6 +40,7 @@ export class SshPanel {
     this.root = root;
     this.endpoint = opts.endpoint;
     this.keyPath = opts.keyPath || '~/.ssh/termini_breakglass';
+    this.token = opts.token || '';
     this.hint = opts.hint || DEFAULT_HINT;
     this.fetchImpl = opts.fetchImpl || ((...a) => fetch(...a));
     this.clipboard =
@@ -78,12 +93,16 @@ export class SshPanel {
     this.copyBtn.disabled = disabled;
   }
 
+  _headers() {
+    return requestHeaders(this.token);
+  }
+
   /** Fetch and render the SSH command for a node. */
   async load(nodeId) {
     this.statusEl.textContent = 'Loading SSH access…';
     this.setDisabled(true);
     try {
-      const res = await this.fetchImpl(this.endpoint(nodeId), { headers: { Accept: 'application/json' } });
+      const res = await this.fetchImpl(this.endpoint(nodeId), { headers: this._headers() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
       return this.render(payload);

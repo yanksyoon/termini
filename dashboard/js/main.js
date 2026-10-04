@@ -29,6 +29,7 @@ const dom = {
   pillStreamText: $("#pill-stream-text"),
   clock: $("#clock"),
   settingsBtn: $("#btn-settings"),
+  terminalLink: $("#link-terminal"),
   overview: $("#overview"),
   overviewUpdated: $("#overview-updated"),
   refreshBtn: $("#btn-refresh"),
@@ -645,6 +646,15 @@ function init() {
   state.window = cfg.windows[cfg.defaultWindow] ? cfg.defaultWindow : Object.keys(cfg.windows)[0];
   buildWindowButtons();
   dom.allMetrics.checked = state.includeAll;
+
+  // One-click web terminal: revealed only when the composed console injected a
+  // terminal base (console/serve.py); a standalone dashboard hides it.
+  const termBase =
+    (typeof window !== "undefined" && window.TERMINI_CONFIG && window.TERMINI_CONFIG.terminalUrl) || "";
+  if (dom.terminalLink && termBase) {
+    dom.terminalLink.href = termBase;
+    dom.terminalLink.hidden = false;
+  }
 
   backend = makeBackend();
 

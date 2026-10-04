@@ -76,16 +76,16 @@ test('decodeFrame rejects malformed frames', () => {
 test('terminalUrl upgrades http->ws and https->wss with token', () => {
   assert.equal(
     terminalUrl('http://127.0.0.1:8091', 'node-a', 'tok en'),
-    'ws://127.0.0.1:8091/terminal/v1/node-a?token=tok+en',
+    'ws://127.0.0.1:8091/terminal/v1/nodes/node-a?token=tok+en',
   );
   assert.equal(
     terminalUrl('https://ctrl.example.com', '01ABC', 't1'),
-    'wss://ctrl.example.com/terminal/v1/01ABC?token=t1',
+    'wss://ctrl.example.com/terminal/v1/nodes/01ABC?token=t1',
   );
 });
 
 test('terminalUrl percent-encodes the node id and omits empty token', () => {
-  assert.equal(terminalUrl('http://h', 'a/b c', ''), 'ws://h/terminal/v1/a%2Fb%20c');
+  assert.equal(terminalUrl('http://h', 'a/b c', ''), 'ws://h/terminal/v1/nodes/a%2Fb%20c');
   assert.throws(() => terminalUrl('http://h', '', 'x'), /nodeId/);
 });
 
