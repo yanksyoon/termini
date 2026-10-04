@@ -27,6 +27,19 @@ DISK_DEGRADING_LATENCY_MS = 50
 
 GiB = 1024 ** 3
 
+# controller-api.md §5.1 — frozen per-node capacity-accounting parameters.
+CPU_OVERCOMMIT_RATIO = 2.0
+CPU_RESERVE_RATIO = 0.10
+RAM_RESERVE_GB = 2
+DISK_RESERVE_RATIO = 0.10
+
+# controller-api.md §5.2 step 6 — agent_vm type floors below which a capacity
+# clamp becomes a rejection (ram 1 GiB, vcpus 1, disk 4 GiB; FLOORS in
+# termini/intent/types.py).
+AGENT_VM_MIN_RAM_GB = 1
+AGENT_VM_MIN_VCPUS = 1
+AGENT_VM_MIN_DISK_GB = 4
+
 
 def _first(arr: Any) -> dict:
     return arr[0] if isinstance(arr, list) and arr and isinstance(arr[0], dict) else {}
@@ -166,13 +179,16 @@ def uptime_sec(sample: dict | None) -> int:
     return 0
 
 
-def capacity_of(hw: dict) -> dict:
-    """allocatable bookkeeping: registered − reserve − allocated (§1.1).
+def capacity_of(hw: dict, cpu_allocated: int = 0, ram_allocated_gb: int = 0,
+                disk_allocated_gb: int = 0) -> dict:
+    """Allocatable bookkeeping: registered − reserve − allocated (dashboard.md §1.1).
 
     ``hw`` is the parsed ``hardware_json`` registration dict (canonical shape:
     ``{cpu, memory, gpus, disks}``; legacy: ``{cpu, ram_gb, gpu, disk}``).
-    Allocation bookkeeping (VMs) is out of W1 scope, so ``*_allocated`` and
-    ``gpu_free`` reflect registered capacity only: nothing is allocated yet.
+    ``cpu_allocated`` (vCPUs), ``ram_allocated_gb`` and ``disk_allocated_gb``
+    are the amounts already committed by prior accepted plans
+    (controller-api.md §5.2 step 7). The returned ``*_free`` fields are the
+    true allocatable headroom the per-node capacity clamp (step 6) consumes.
     """
     hw = hw or {}
     cpu = hw.get("cpu") if isinstance(hw.get("cpu"), dict) else {}
@@ -198,11 +214,102 @@ def capacity_of(hw: dict) -> dict:
                 disk_total += int(b)
 
     ram_gb = int(ram_total) // GiB if isinstance(ram_total, (int, float)) and not isinstance(ram_total, bool) else 0
+    disk_gb = disk_total // GiB
+
+    cpu_allocated = max(0, int(cpu_allocated))
+    ram_allocated_gb = max(0, int(ram_allocated_gb))
+    disk_allocated_gb = max(0, int(disk_allocated_gb))
+
+    # §5.1 reserves (OS/LXD) folded into the §5.2 step 6 allocatable ceiling.
+    reserve_cores = int(cpu_cores * CPU_RESERVE_RATIO)
+    allocatable_cores = max(0, cpu_cores - reserve_cores)
+    overcommit_ceiling = int(allocatable_cores * CPU_OVERCOMMIT_RATIO)
+    cpu_free = max(0, overcommit_ceiling - cpu_allocated)
+
+    ram_free_gb = max(0, ram_gb - RAM_RESERVE_GB - ram_allocated_gb)
+
+    reserved_disk_gb = int(disk_gb * DISK_RESERVE_RATIO)
+    disk_free_gb = max(0, disk_gb - reserved_disk_gb - disk_allocated_gb)
+
     return {
         "cpu_cores": cpu_cores,
         "ram_gb": ram_gb,
-        "disk_gb": disk_total // GiB,
-        "gpu_free": len(gpus),  # none allocated in the demo
-        "cpu_allocated": 0,
-        "ram_allocated_gb": 0,
+        "disk_gb": disk_gb,
+        "gpu_free": len(gpus),  # none allocated in the demo (inference_vm is a reference)
+        "cpu_allocated": cpu_allocated,
+        "ram_allocated_gb": ram_allocated_gb,
+        "disk_allocated_gb": disk_allocated_gb,
+        "cpu_free": cpu_free,
+        "ram_free_gb": ram_free_gb,
+        "disk_free_gb": disk_free_gb,
     }
+
+
+def _cap_decision(index: int, field: str, requested: int, applied: int, reason: str) -> dict:
+    return {
+        "index": index,
+        "field": field,
+        "decision": "clamped",
+        "from": requested,
+        "to": applied,
+        "reason": reason,
+    }
+
+
+def clamp_to_node_capacity(
+    count: int, vcpus: int, ram_gb: int, disk_gb: int,
+    capacity: dict, index: int = 0,
+) -> tuple[dict, list[dict], str | None]:
+    """Apply controller-api.md §5.2 step 6 to one ``agent_vm`` class.
+
+    Clamps each per-VM field against its share of the node's allocatable
+    capacity (aggregate = count × per-VM), in the frozen order RAM → vCPU →
+    disk, rejecting with the matching ``exceeds_node_*_ceiling`` reason when
+    the clamped value drops below the type floor. ``capacity`` is the node's
+    :func:`capacity_of` result (must include ``ram_free_gb``, ``cpu_free``,
+    ``disk_free_gb``).
+
+    Returns ``(resolved, decisions, reject_reason)`` where ``resolved`` is the
+    final ``{count, vcpus, ram_gb, disk_gb}`` and ``reject_reason`` is ``None``
+    when the class fits.
+    """
+    resolved = {"count": count, "vcpus": vcpus, "ram_gb": ram_gb, "disk_gb": disk_gb}
+    decisions: list[dict] = []
+
+    free_ram = capacity.get("ram_free_gb", 0)
+    cpu_free = capacity.get("cpu_free", 0)
+    free_disk = capacity.get("disk_free_gb", 0)
+
+    # RAM → min(requested, free RAM per VM). Reject if < type min (1 GiB).
+    per_vm_ram = free_ram // count if count > 0 else 0
+    if ram_gb > per_vm_ram:
+        decisions.append(_cap_decision(index, "ram_gb", ram_gb, per_vm_ram, "exceeds_node_ram_ceiling"))
+        ram_gb = per_vm_ram
+    if ram_gb < AGENT_VM_MIN_RAM_GB:
+        resolved["ram_gb"] = ram_gb
+        return resolved, decisions, "exceeds_node_ram_ceiling"
+
+    # vCPU → min(requested, overcommit ceiling per VM). Reject if < 1.
+    per_vm_vcpus = cpu_free // count if count > 0 else 0
+    if vcpus > per_vm_vcpus:
+        decisions.append(_cap_decision(index, "vcpus", vcpus, per_vm_vcpus, "exceeds_node_cpu_ceiling"))
+        vcpus = per_vm_vcpus
+    if vcpus < AGENT_VM_MIN_VCPUS:
+        resolved["vcpus"] = vcpus
+        return resolved, decisions, "exceeds_node_cpu_ceiling"
+
+    # disk → min(requested, free disk per VM). Reject if < type min (4 GiB).
+    # Skipped when the node registered no disk (capacity unknown), so a
+    # disk-less registration cannot spuriously reject a disk request.
+    per_vm_disk = free_disk // count if count > 0 else 0
+    if capacity.get("disk_gb", 0) > 0 and disk_gb > per_vm_disk:
+        decisions.append(_cap_decision(index, "disk_gb", disk_gb, per_vm_disk, "exceeds_node_disk_ceiling"))
+        disk_gb = per_vm_disk
+    if capacity.get("disk_gb", 0) > 0 and disk_gb < AGENT_VM_MIN_DISK_GB:
+        resolved["disk_gb"] = disk_gb
+        return resolved, decisions, "exceeds_node_disk_ceiling"
+
+    resolved["vcpus"] = vcpus
+    resolved["ram_gb"] = ram_gb
+    resolved["disk_gb"] = disk_gb
+    return resolved, decisions, None

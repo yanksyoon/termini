@@ -471,3 +471,36 @@ def trim_logs(conn, project_id: str, ring_size: int) -> None:
         " ORDER BY log_id DESC LIMIT ?)",
         (project_id, project_id, ring_size),
     )
+
+
+# ---------------------------------------------------------------------------
+# VM allocation commit (controller-api.md §5.2 step 7)
+# ---------------------------------------------------------------------------
+
+def allocated_capacity(conn, node_id: str) -> dict:
+    """Committed `agent_vm` capacity for one node, summed across plans."""
+    row = conn.execute(
+        "SELECT COALESCE(SUM(cpu_allocated), 0) AS cpu,"
+        " COALESCE(SUM(ram_allocated_gb), 0) AS ram,"
+        " COALESCE(SUM(disk_allocated_gb), 0) AS disk"
+        " FROM vm_allocations WHERE node_id = ?",
+        (node_id,),
+    ).fetchone()
+    return {
+        "cpu_allocated": int(row["cpu"]),
+        "ram_allocated_gb": int(row["ram"]),
+        "disk_allocated_gb": int(row["disk"]),
+    }
+
+
+def commit_allocation(conn, project_id: str, plan_id: str, node_id: str,
+                      cpu_allocated: int, ram_allocated_gb: int,
+                      disk_allocated_gb: int, now: str) -> None:
+    """Persist one accepted/clamped `agent_vm` class's committed capacity."""
+    conn.execute(
+        "INSERT INTO vm_allocations (id, project_id, plan_id, node_id,"
+        " cpu_allocated, ram_allocated_gb, disk_allocated_gb, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (ulid.new_ulid(), project_id, plan_id, node_id,
+         cpu_allocated, ram_allocated_gb, disk_allocated_gb, now),
+    )
