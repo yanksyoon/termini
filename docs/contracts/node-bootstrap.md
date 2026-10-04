@@ -195,8 +195,7 @@ Step 1 uses the enrollment token because the node has no cert yet. TLS certifica
       { "device": "/dev/sda", "type": "ssd", "size_bytes": 214748364800, "health": "ok" }
     ],
     "nics": [
-      { "name": "ens4", "mac": "42:01:0a:0a:00:0c",
-        "addresses": ["10.10.0.12/24"], "role": "underlay" }
+      { "name": "ens4", "addresses": ["10.10.0.12/24"], "role": "underlay" }
     ],
     "gpus": [
       { "vendor": "nvidia", "model": "Tesla T4", "vram_bytes": 17179869184,
@@ -224,8 +223,8 @@ and project scoping):
 ```json
 {
   "schema_version": "1.0",
-  "node_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E",
-  "project_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D",
+  "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
+  "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
   "role": "compute",
   "node_token": "opaque-node-secret",
   "identity": {
@@ -239,7 +238,7 @@ and project scoping):
     "server_address": "10.10.0.11:8443",
     "join_token": "eyJzZX...ZSI6...joiner-token"
   },
-  "telemetry": { "interval_ms": 1000, "channel": "wss://controller.termini.example/node/v1/01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E/channel" },
+  "telemetry": { "interval_ms": 1000, "channel": "wss://controller.termini.example/node/v1/01M4349RPTT29RNTC6VBCXQ0RC/channel" },
   "config": { "heartbeat_interval_s": 5, "telemetry_interval_ms": 1000, "telemetry_batch_max": 200, "command_channel": "websocket" },
   "controller_time": "2026-10-04T07:59:00Z",
   "registration_ttl_s": 3600
@@ -349,7 +348,14 @@ After `lxd init --preseed` succeeds, the daemon verifies membership via `GET /1.
 
 ### 6.3 Controller's cluster view
 
-The controller reaches the cluster via the **seed** (`https://10.10.0.11:8443`) with an LXD trust client certificate, and uses the unified API for placement (`target=node-a|node-b|node-c`). Member health is folded into node telemetry.
+The controller does **not** drive LXD placement directly. It mints cluster join
+tokens at registration (seed API `POST /1.0/cluster/members` on
+`https://10.10.0.11:8443` with an LXD trust client cert) — cluster administration
+only. VM placement is a typed `vm.launch` command to the resolved node's daemon,
+which calls its **local** LXD API (`POST /1.0/instances?target=<member>`) —
+consistent with AR-2 (`agent-runtime.md` §4.1). The seed `8443` trust cert is
+therefore restricted to cluster-admin/join-token duties, never controller-driven
+placement. Member health is folded into node telemetry.
 
 ---
 
@@ -419,7 +425,7 @@ Guiding rules: **registration and join failures must never leave a node unreacha
 ## 11. Security and governance constraints (node side)
 
 - The bootstrap daemon is the **sole egress path** for platform data; it emits **hardware/OS telemetry only**.
-- Controller commands are a **fixed typed verb set** — the `commandAllowlist()` from `controller-api.md` §6: `vm.launch`, `vm.resize`, `vm.migrate`, `vm.stop`, `vm.start`, `vm.destroy`, `node.drain`, `node.reboot`, `ssh.inject_key`, `agent.dispatch_task`, `agent.cancel_task`. The daemon validates and executes known verbs only; it never `eval`s controller strings. Telemetry cadence is set via the registration response (not a command); health probes are folded into telemetry.
+- Controller commands are a **fixed typed verb set** — the `commandAllowlist()` from `controller-api.md` §6: `vm.launch`, `vm.resize`, `vm.migrate`, `vm.stop`, `vm.start`, `vm.destroy`, `node.drain`, `node.reboot`, `agent.dispatch_task`, `agent.cancel_task`. The daemon validates and executes known verbs only; it never `eval`s controller strings. Telemetry cadence is set via the registration response (not a command); health probes are folded into telemetry.
 - Enrollment tokens are single-use and short-TTL; the enrollment endpoint is the only unauthenticated (token-auth) controller call a node makes.
 - No private keys transit the controller (user keys stay in the browser; node keys stay on the node — only CSR/public keys move).
 - The break-glass SSH key is removed after registration (§7); standing SSH is CA-signed, short-lived, and scoped.
@@ -442,7 +448,7 @@ A fresh node is considered correctly bootstrapped when **all** of the following 
    curl -sS -H "Authorization: Bearer ***" \
      https://controller.termini.example/v1/projects/{project_id}/nodes | jq '.nodes[] | {node_id,role,status,last_seen_at}'
    curl -sS -H "Authorization: Bearer ***" \
-     https://controller.termini.example/v1/projects/{project_id}/nodes/01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E | jq .metrics_latest
+     https://controller.termini.example/v1/projects/{project_id}/nodes/01M4349RPTT29RNTC6VBCXQ0RC | jq .metrics_latest
    ```
 3. **Cross-node networking (from an agent VM on Node A) — the D2 acceptance:**
    ```bash

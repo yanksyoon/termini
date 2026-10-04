@@ -79,7 +79,7 @@ issued by the infra/bootstrap task, not this core.
 ## Telemetry schema
 
 The enforced schema is documented in
-[`docs/telemetry-schema.md`](../docs/telemetry-schema.md) and defined once in
+[`docs/contracts/node-telemetry.md`](../docs/contracts/node-telemetry.md) and defined once in
 `app/fields.py` (single source of truth). Ingest validates, in order: C2 scan →
 C1 transform check → redactor version → envelope/sample schema. Malformed
 batches return `422` and store nothing; unknown fields are stripped

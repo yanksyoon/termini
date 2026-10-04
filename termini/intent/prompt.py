@@ -25,7 +25,7 @@ ALLOCATION_JSON_SCHEMA = """
       "vcpus": <int, 1..128>,
       "ram_gb": <int, 1..512>,
       "disk_gb": <int, 4..4096>,
-      "passthrough_gpu": <bool, true only for inference_vm>,
+      "passthrough_gpu": <bool, always false — GPU passthrough is day-2 only>,
       "target_node": "auto"
     }
   ]
@@ -42,8 +42,9 @@ trailing text:
 
 Rules:
 - "agents", "workers", "agent hosts" -> type "agent_vm".
-- "LLM", "model", "inference", "GPU server", "fast LLM" -> type "inference_vm".
-- passthrough_gpu must be true for inference_vm and false for agent_vm.
+- "LLM", "model", "inference", "GPU server", "fast LLM" -> type "inference_vm" (a
+  reference to the always-on host inference service, not a VM to launch).
+- passthrough_gpu must always be false (GPU passthrough is day-2 only).
 - Always emit integer values; never emit floats, strings, or nulls for count/vcpus/ram_gb/disk_gb.
 - target_node is always "auto" (the controller places VMs by capacity).
 - If a request is ambiguous or asks for an unknown resource, output
@@ -63,7 +64,7 @@ FEW_SHOT: List[Dict[str, str]] = [
             '{"type": "agent_vm", "count": 3, "vcpus": 2, "ram_gb": 4, '
             '"disk_gb": 8, "passthrough_gpu": false, "target_node": "auto"}, '
             '{"type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16, '
-            '"disk_gb": 64, "passthrough_gpu": true, "target_node": "auto"}'
+            '"disk_gb": 64, "passthrough_gpu": false, "target_node": "auto"}'
             "]}"
         ),
     },
@@ -81,7 +82,7 @@ FEW_SHOT: List[Dict[str, str]] = [
         "assistant": (
             '{"allocations": ['
             '{"type": "inference_vm", "count": 1, "vcpus": 32, "ram_gb": 64, '
-            '"disk_gb": 128, "passthrough_gpu": true, "target_node": "auto"}'
+            '"disk_gb": 128, "passthrough_gpu": false, "target_node": "auto"}'
             "]}"
         ),
     },

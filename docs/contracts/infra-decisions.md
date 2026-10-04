@@ -44,7 +44,7 @@ These choices share one bias: **maximise demo reliability and minimise the numbe
 
 **Consequences.**
 - `docs/contracts/node-bootstrap.md` specifies the exact `lxd init --preseed` seed/join sequence, token issuance, and join-failure fallback.
-- The controller owns the cluster: it addresses the seed's LXD REST API at `10.10.0.11:8443` and distributes join tokens. See D2 for addressing and D7 for storage.
+- The controller mints cluster join tokens at registration via the seed's LXD REST API (`10.10.0.11:8443`) — **cluster administration only**. VM placement is a typed `vm.launch` command to the node daemon, which calls its **local** LXD API (AR-2); the controller never drives LXD placement directly. See D2 for addressing and D7 for storage.
 
 ---
 
@@ -78,7 +78,7 @@ These choices share one bias: **maximise demo reliability and minimise the numbe
 | Port | Proto | Where | Who may reach it |
 |------|-------|-------|------------------|
 | 443 | TCP | Controller public IP | Frontend/browser (public); nodes (outbound target) |
-| 8443 | TCP | Every node (`core.https_address`) | LXD cluster peers `10.10.0.0/24`; controller `10.10.0.10` |
+| 8443 | TCP | Every node (`core.https_address`) | LXD cluster peers `10.10.0.0/24`; controller `10.10.0.10` for join-token minting only (cluster admin, not placement) |
 | 8080 | TCP | Node C | Underlay `10.10.0.0/24` (i.e. nodes A/B and their guest NAT traffic). Not public. |
 | 22 | TCP | Every node | Local admin CIDR only; **CA-signed certs only, no passwords** (D4). No inbound SSH is required for platform operation (D6). |
 

@@ -4,8 +4,8 @@ enforced schema.
 This mirrors `docs/contracts/node-telemetry.md` §2–§4 exactly (field names,
 types, units, ranges, enums, and C-classes). The ingest validator (`validate.py`)
 and the governance gate (`governance.py`) both consume this table, and
-`docs/telemetry-schema.md` is written from it, so the enforced schema and the
-published schema cannot drift.
+`docs/contracts/node-telemetry.md` is written from it, so the enforced schema and
+the published schema cannot drift.
 
 Field kinds:
   int   — JSON integer (bool rejected)
@@ -147,5 +147,5 @@ REDACTION_FIELDS: dict[str, dict] = {
     "result": {"kind": "str", "unit": None, "cclass": "C0", "enum": ["ok"]},
 }
 
-ENVELOPE_REQUIRED = {"_redaction", "call_id", "node_id", "schema_version", "samples"}
-ENVELOPE_OPTIONAL = {"governance_chain_tip"}
+ENVELOPE_REQUIRED = {"_redaction", "call_id", "node_id", "schema_version", "governance_chain_tip", "samples"}
+ENVELOPE_OPTIONAL = set()

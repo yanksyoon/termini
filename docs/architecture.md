@@ -198,7 +198,7 @@ rationale. The child docs are updated in the same change set so no contradiction
 
 ### R1 — Node ID format
 
-**Answer:** `node_id` is a 26-char **ULID**, no prefix (e.g. `01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E`).
+**Answer:** `node_id` is a 26-char **ULID**, no prefix (e.g. `01M4349RPTT29RNTC6VBCXQ0RC`).
 `node-bootstrap.md` used a `node_`-prefixed 14-char form (`node_01HZX8Y2K4Q7`); that is corrected.
 **Rationale:** `controller-api.md` §1.3 and `governance.md` §4 already freeze ULIDs for every
 identifier, and the allocation schema's `$defs.ulid` enforces the 26-char pattern.
@@ -236,13 +236,15 @@ upgrade, and `/node/v1` joins `/stream/v1` and `/terminal/v1` as a WebSocket roo
 **Answer:** the canonical command types (the `commandAllowlist()`) are:
 
 `vm.launch · vm.resize · vm.migrate · vm.stop · vm.start · vm.destroy · node.drain ·
-node.reboot · ssh.inject_key · agent.dispatch_task · agent.cancel_task`
+node.reboot · agent.dispatch_task · agent.cancel_task`
 
 `node-bootstrap.md` §11's illustrative verbs (`resize_instance`, `evacuate_instance`,
 `set_telemetry_interval`, `issue_cert`, `run_healthcheck`) map to `vm.resize`, `node.drain`,
-registration-response config (not a command), `ssh.inject_key`, and telemetry health (not a
-command), respectively. **Rationale:** `vm.launch`/`agent.*` are required by
-`agent-runtime.md` §17; `vm.*`/`node.*`/`ssh.*`/`agent.*` namespaces are unambiguous.
+registration-response config (not a command), SSH certificate issuance (controller-side
+`POST /v1/projects/{project_id}/ssh-key`, §4.3 — not a node command), and telemetry health
+(not a command), respectively. The retired `ssh.inject_key` verb is removed from the
+allowlist. **Rationale:** `vm.launch`/`agent.*` are required by
+`agent-runtime.md` §17; `vm.*`/`node.*`/`agent.*` namespaces are unambiguous.
 
 ### R6 — Error codes
 
@@ -315,6 +317,96 @@ detail that does not change any W1 wire contract, and the delivery inputs are al
 W1 consumer blocks on this; recording it here closes the loop without expanding the register
 schema now.
 
+### R14 — Terminal target (W1-review A2)
+
+**Answer:** the dashboard terminal is **node-level** (`/terminal/v1/nodes/{node_id}`, host
+shell, controller-brokered over the outbound mTLS channel, D6), and a **VM-level** agent shell
+lives at `/terminal/v1/vms/{vm_id}` (`lxc exec`). `controller-api.md` §7.3 and
+`dashboard.md` §3.1 now agree. **Rationale:** the operator's primary terminal target is the
+node host (break-glass/debug); the VM shell is a secondary surface for agent inspection.
+
+### R15 — SSH user access (W1-review D1/A1)
+
+**Answer:** the **D4 CA model** is authoritative everywhere. The controller holds an SSH CA; the
+operator's browser generates a keypair locally (private key never transits the controller) and
+the controller signs a short-lived (8 h, principal-bound) certificate via
+`POST /v1/projects/{project_id}/ssh-key`. The infra-injected break-glass key is a one-time
+recovery path **removed after registration** (`node-bootstrap.md` §7). The `ssh.inject_key`
+command and the shared project keypair are **removed everywhere**. **Rationale:** one
+revocable, scoped, time-bounded model; no fleet-wide secret.
+
+### R16 — `inference_vm` is a reference, not a launchable VM (W1-review D2)
+
+**Answer:** `inference_vm` is a **reference to the always-on, host-exposed llama.cpp service on
+Node C** (D5), recorded and surfaced in the plan but NOT launched in the demo (zero VMs, zero GPU
+allocation). `passthrough_gpu` is day-2 only: any `true` value is a structural rejection
+(`gpu_passthrough_not_in_demo`). The `1 GPU-bound VM max` bookkeeping and the
+`inference_vm`-requires-passthrough rule are removed from `controller-api.md` §5 and the schema.
+**Rationale:** the intent extractor must never emit a spec the demo guardrail cannot satisfy.
+
+### R17 — Registration C1 bootstrap exception (W1-review D3)
+
+**Answer:** the registration body carries `machine.hostname`, `machine.underlay_ip`, and
+`machine.nics[].addresses` in the clear as a **bounded C1 bootstrap exception** (audited) —
+the node's own addresses, required for LXD cluster join/routing. Raw MAC is removed from the
+body (`nics[].mac` deleted); MAC never egresses except as the hashed C1 `mac_address`
+telemetry field. **Rationale:** the node's underlay IP cannot be derived from the TLS
+connection under NAT and is needed for cluster addressing; MAC is not needed at all.
+
+### R18 — Example identifiers are 26-char ULIDs (W1-review D4)
+
+**Answer:** every example identifier across the contract docs is a **26-char ULID**; the
+30-char example strings (which failed schema self-validation) are regenerated. A CI check
+(`scripts/check-doc-ulids.py`) rejects any 26+-char Crockford string in the spec docs.
+**Rationale:** the schema pattern and `controller/app/ulid.py` already enforce 26 chars; only
+the examples were wrong.
+
+### R19 — Telemetry: single source of truth (W1-review N1/A3)
+
+**Answer:** `node-telemetry.md` is the single source of truth; `docs/telemetry-schema.md` is
+deleted and its enforcement-order content folded into `node-telemetry.md` §7. Three drifts are
+reconciled: `governance_chain_tip` is **required**; `hostname` uses a project_id-derived salt;
+controller validation is **fail-closed whole-batch** (any governance/schema violation rejects
+the batch; per-sample `seq` dedup is reported in `{accepted, rejected}`).
+`controller/app/fields.py` and `controller/scripts/acceptance.py` are updated to match.
+**Rationale:** fail-closed whole-batch is the safer, simpler semantic at 1 s cadence.
+
+### R20 — `labels` bounding (W1-review N4)
+
+**Answer:** `labels` is a bounded C1 display-metadata map (≤16 keys, `^[a-z0-9][a-z0-9_-]{0,63}$`,
+values ≤128 chars) and is excluded from `guardrail_audit.raw_spec` persistence (a SHA-256
+summary is stored instead). **Rationale:** closes the free-text C2 vector into controller
+storage (`governance.md` §10 rule 7).
+
+### R21 — Project create/list endpoints (W1-review N5/A4)
+
+**Answer:** `POST /v1/projects` (create → `project_id` + `project_token` + `bootstrap_token`)
+and `GET /v1/projects` (list) are added to `controller-api.md` §4.2. **Rationale:** the
+frontend cannot bootstrap a project or obtain a token without them.
+
+### R22 — Nested→flat metric mapping (W1-review A6)
+
+**Answer:** wire telemetry is **nested** (`disk[]`, `net[]`, `gpu[]`, `inference{}`); the 19
+flat chart names are controller-derived with a frozen mapping (first element for the demo's
+single disk/NIC/GPU, direct for flat host and `inference{}` fields), documented in
+`dashboard.md` §1.4 and mirrored by `controller/app/store.py METRICS`. **Rationale:** one
+unambiguous mapping for frontend/controller devs.
+
+### R23 — Controller launch path (W1-review N2)
+
+**Answer:** the controller does **not** drive LXD placement. It mints join tokens at
+registration (seed `8443`, cluster admin only); VM placement is a typed `vm.launch` command to
+the node daemon, which calls its **local** LXD API (AR-2). **Rationale:** matches D6's
+outbound-only topology and keeps exactly one control path per node.
+
+### R24 — OOM remediation determinism (W1-review N3)
+
+**Answer:** `oom-guard-01` has a **local fast-path** (threshold→`vm.resize` without an external
+model call) so remediation is not gated on model latency, plus a **synthetic persistent trigger
+injection** so the demo fires even when `stress-ng --vm-bytes 85%` never reaches 95%×2. The
+kernel-OOM race is stated honestly as best-effort. **Rationale:** the external model is advisory;
+the demo must deterministically demonstrate a real remediation.
+
 ---
 
 ## 9. What "done" means (acceptance mapping)
@@ -322,7 +414,12 @@ schema now.
 - `docs/architecture.md` is the single entry point, linking every contract in §1.
 - Every workstream can build against the contracts without asking: the component diagram,
   topology, sequence flows, trust boundaries, failure modes, and invariants (§2–§7) are complete.
-- Every open spec question has a final answer with rationale (§8, R1–R13).
+- Every open spec question has a final answer with rationale (§8, R1–R24).
 - No contradictions remain: `controller-api.md` ↔ `node-bootstrap.md` route naming and wire
   formats agree (R1–R8); the C0 extension groups and G-AR invariants are registered (R9–R10);
-  BQ-1 is pinned (R11); D5/D7 wording reconciled (R12); no interface is referenced but undefined.
+  BQ-1 is pinned (R11); D5/D7 wording reconciled (R12); no interface is referenced but
+  undefined. The W1 adversarial-review defects are remediated (R14–R24): SSH access is the
+  single D4 CA model, `inference_vm` is a reference to the host service (no passthrough), the
+  registration C1 bootstrap exception is bounded (no raw MAC), all example IDs are 26-char
+  ULIDs, `node-telemetry.md` is the sole telemetry schema, and the terminal/launch/metric
+  surfaces have one authoritative answer each.

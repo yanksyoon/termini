@@ -16,6 +16,11 @@ names and marks every field with its C-class.
 Field names are canonical (governance.md §4): implementations MUST use these
 exact keys. Units are bytes (never GiB) and percent, per governance.md.
 
+**This document is the single source of truth for the telemetry contract.** The
+controller's enforced schema (`controller/app/fields.py`) mirrors it, and the
+acceptance check (`controller/scripts/acceptance.py`) verifies the two agree on
+every field name. There is no second telemetry schema document.
+
 ---
 
 ## 1. Transport and cadence
@@ -41,9 +46,12 @@ exact keys. Units are bytes (never GiB) and percent, per governance.md.
 | `drop_metrics`| Skip non-essential metrics (charts only) for 5 s; keep heartbeat |
 | `pause_5s`    | Halt telemetry for 5 s, then resume; heartbeat continues |
 
-`rejected` counts samples that failed validation (unknown field, non-hardware
-content, C2 signature). A rejected sample is logged on the node and dropped; it
-never egresses (fail-closed per governance.md §6).
+`rejected` counts samples dropped as out-of-order/duplicate `seq` within an
+otherwise-valid batch — not validation rejections. Validation is **fail-closed,
+whole-batch**: a governance or schema violation in ANY sample rejects the entire
+batch (see §7), so a rejected sample never egresses (fail-closed per governance.md
+§6). A sample that fails the node-side redactor is dropped on the node and never
+egresses.
 
 ---
 
@@ -54,10 +62,10 @@ Every batch is a single JSON object:
 ```json
 {
   "_redaction": { "version": "redactor-config v3", "config_hash": "3f2a…", "result": "ok" },
-  "call_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C5J",
-  "node_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E",
+  "call_id": "01M4349RPY26W8Q453PZYK05CB",
+  "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
   "schema_version": 1,
-  "governance_chain_tip": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C6K",
+  "governance_chain_tip": "01M4349RPZ4DMD3MT18EBZRQB4",
   "samples": [ { "...": "one Sample object per § 3" } ]
 }
 ```
@@ -98,7 +106,7 @@ field. Units are explicit and fixed.
   "hostname": "5f2a9c1e7b4d4a1f",
   "ip_local": "10.0.0.0/24",
   "mac_address": "9c1e7b4d4a1f5f2a",
-  "project_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D",
+  "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
   "disk": [
     { "path": "/dev/sda", "total_bytes": 274877906944, "free_bytes": 214748364800,
       "write_latency_ms": 3.0, "mount_ro": false }
@@ -111,7 +119,7 @@ field. Units are explicit and fixed.
       "vram_used_bytes": 12884901888, "temp_celsius": 62.0 }
   ],
   "lxd_instances": [
-    { "vm_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C4H", "state": "running",
+    { "vm_id": "01M4349RPXWDC52ZDAVMPCMJSH", "state": "running",
       "cpu_util_pct": 12.0, "ram_used_bytes": 3328599654,
       "ram_limit_bytes": 4294967296, "disk_used_bytes": 2362232012 }
   ],
@@ -156,8 +164,13 @@ causes the sample to be rejected.
 | `cpu_temp_celsius` | number | °C | ≥ 0 | CPU temp (absent if no sensor) |
 | `os_name` | string enum | — | `Ubuntu` | OS name |
 | `os_version` | string enum | — | `24.04` | OS version |
-| `kernel_version` | string | — | sanitized | Kernel version string |
+| `kernel_version` | string | — | `uname -r` release only | Kernel release string, image-pinned |
 | `lxd_cluster_role` | string enum | — | `member` | LXD cluster role |
+
+`kernel_version` is the `uname -r` release string only (e.g. `6.8.0-142-generic`),
+image-pinned and identical across every node on the same bake. The full
+`/proc/version` string (compiler, build host, build timestamp) is a host
+fingerprint and is NOT sent.
 
 ### 4.2 Identifiers — C1 (governance.md §4.2, transformed)
 
@@ -227,8 +240,12 @@ present the array is empty (governance's `gpu_present` is derivable: `gpu[].leng
 
 ### 4.7 Inference (llama.cpp) — C0 (extension)
 
-Present only on the node hosting the inference VM. `model` is the served model:
-`deepseek-flash` or `deepseek-v4-pro` (fixed decision — no other model wired).
+Present only on the node hosting the inference **service** (Node C, host-exposed
+per D5). `model` is the currently-served alias: `deepseek-flash` or
+`deepseek-v4-pro` (fixed decision — no other model wired). Under `dual` residency
+both aliases are served simultaneously (`agent-runtime.md` §11.2); `model` then
+reports the alias with in-flight activity, and full residency state is available
+via the router's `/v1/models` endpoint rather than this single field.
 
 | Field | Type | Unit | Range | Description |
 |-------|------|------|-------|-------------|
@@ -271,7 +288,7 @@ trigger with the command so every autonomous action is traceable:
 {
   "trigger": {
     "sample_seq": 1050,
-    "node_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E",
+    "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
     "metric": "ram_used_bytes",
     "value": 32641751449,
     "threshold": ">= 95% of ram_total_bytes",
@@ -279,7 +296,7 @@ trigger with the command so every autonomous action is traceable:
     "fired_at": "2026-10-04T07:49:05Z"
   },
   "action": "vm.resize",
-  "command_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C5J"
+  "command_id": "01M4349RPY26W8Q453PZYK05CB"
 }
 ```
 
@@ -314,20 +331,27 @@ discrepancies with `422 GOVERNANCE_REJECT`.
 
 ---
 
-## 7. Validation rules at ingest
+## 7. Validation rules at ingest (fail-closed, whole-batch)
 
-The controller applies, in order, to each sample:
-1. Envelope/type check (schema) → reject sample if malformed.
-2. `node_id` matches the path/token → reject otherwise (`403`, batch-level).
-3. `seq` strictly greater than the last seen → drop duplicate/out-of-order.
-4. Unknown top-level or nested field → strip; if a required invariant broke,
-   count the sample `rejected`; otherwise accept with the field dropped
-   (deny-by-default, governance.md §4.3).
-5. Enum/range violation in a present field → reject the sample.
-6. C1 field arriving untransformed (raw hostname/IP/MAC) → reject the sample
-   (`422 GOVERNANCE_REJECT`).
-7. C2 signature detected → fail-closed, reject the whole batch, alert operator
-   (governance.md §6).
+The controller applies these, in order, to the batch (governance.md §9 hooks):
+
+1. **C2 scan** (field-name denylist + PII signatures: email, phone, raw IPv4/IPv6,
+   raw MAC, private key, cloud credential, card number, UUID, base64 blob) → any
+   hit rejects the **whole batch** with `422 GOVERNANCE_REJECT`.
+2. **C1 transform check** (untransformed `hostname`/`ip_local`/`mac_address`, or
+   `ip_public`) → `422 GOVERNANCE_REJECT`.
+3. **`assertRedactorVersion(min)`** — `_redaction.version` below the controller
+   minimum → `422 GOVERNANCE_REJECT`.
+4. **Envelope/sample schema** — missing required fields, type/range/enum
+   violations, or non-monotonic `seq` → reject the **whole batch** with
+   `422 INVALID_ARGUMENT` and store nothing. Unknown fields are stripped
+   (deny-by-default), never persisted.
+5. **`node_id`** must match the path/token → `403` otherwise (batch-level).
+
+Because the demo runs at 1 s cadence with bounded batches, whole-batch fail-closed
+is the safer choice: no malformed data is ever persisted, and the next valid batch
+arrives within one interval. Per-sample `seq` dedup (out-of-order/duplicate) is
+applied within an accepted batch and reported as `rejected` in the `202` response.
 
 The node-side daemon performs the same checks before sending (fail-closed: a
 metric it cannot classify as C0/C1 is dropped locally, never sent).

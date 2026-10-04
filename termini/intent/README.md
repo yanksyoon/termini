@@ -34,7 +34,7 @@ python -m termini.intent "deploy 3 agents + 1 fast LLM"
 # validator-only, constrained host (deterministic — no model call)
 python -m termini.intent --raw \
   '[{"type":"agent_vm","count":3,"vcpus":1000,"ram_gb":512,"disk_gb":8},
-    {"type":"inference_vm","count":1,"vcpus":128,"ram_gb":512,"disk_gb":64,"passthrough_gpu":true}]' \
+    {"type":"inference_vm","count":1,"vcpus":128,"ram_gb":512,"disk_gb":64,"passthrough_gpu":false}]' \
   --host-caps '{"agent_vm":{"vcpus":2,"ram_gb":4,"disk_gb":16},
                 "inference_vm":{"vcpus":4,"ram_gb":8,"disk_gb":32}}'
 ```

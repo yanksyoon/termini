@@ -9,7 +9,7 @@ acceptance criterion from the task card:
   2. telemetry at 1s cadence for >=2 nodes is accepted and queryable, with
      timestamps preserved
   3. malformed telemetry is rejected 422 and does not corrupt stored data
-  4. docs/telemetry-schema.md exists and matches the enforced schema
+  4. docs/contracts/node-telemetry.md exists and matches the enforced schema
 
 Usage: python3 scripts/acceptance.py   (run from anywhere)
 """
@@ -27,7 +27,7 @@ import urllib.request
 
 CONTROLLER_DIR = pathlib.Path(__file__).resolve().parent.parent
 REPO_ROOT = CONTROLLER_DIR.parent
-SCHEMA_DOC = REPO_ROOT / "docs" / "telemetry-schema.md"
+SCHEMA_DOC = REPO_ROOT / "docs" / "contracts" / "node-telemetry.md"
 sys.path.insert(0, str(CONTROLLER_DIR))
 
 from app import fields as F  # noqa: E402
@@ -278,7 +278,7 @@ def main() -> int:
               st == 422 and isinstance(r, dict) and r.get("error", {}).get("code") == "GOVERNANCE_REJECT", str(r))
 
         # ------------------------------------------------------- 4. schema doc matches
-        check("docs/telemetry-schema.md exists", SCHEMA_DOC.exists(), str(SCHEMA_DOC))
+        check("docs/contracts/node-telemetry.md exists", SCHEMA_DOC.exists(), str(SCHEMA_DOC))
         doc_text = SCHEMA_DOC.read_text() if SCHEMA_DOC.exists() else ""
         missing = [k for k in F.SAMPLE_FIELDS if k not in doc_text]
         check("schema doc covers all sample fields", not missing, f"missing from doc: {missing}")
