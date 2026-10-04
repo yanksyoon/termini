@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "provision.sh",
+  "generated_at": "2026-10-04T09:00:00Z",
+  "project": "termini-demo",
+  "region": "us-central1",
+  "zone": "us-central1-a",
+  "network": {
+    "vpc": "termini-vpc",
+    "subnetwork": "termini-underlay",
+    "cidr": "10.10.0.0/24",
+    "gateway": "10.10.0.1"
+  },
+  "ssh": {
+    "user": "ubuntu",
+    "port": 22
+  },
+  "nodes": [
+    {
+      "name": "node-a",
+      "hostname": "termini-node-a",
+      "role": "compute",
+      "machine_type": "n2-standard-4",
+      "private_ip": "10.10.0.11",
+      "public_ip": "34.136.10.11",
+      "zone": "us-central1-a",
+      "accelerator": null,
+      "tags": ["termini-node", "termini-node-a"],
+      "labels": { "managed-by": "terraform", "node": "node-a", "role": "compute" }
+    },
+    {
+      "name": "node-b",
+      "hostname": "termini-node-b",
+      "role": "compute",
+      "machine_type": "n2-standard-4",
+      "private_ip": "10.10.0.12",
+      "public_ip": "34.136.10.12",
+      "zone": "us-central1-a",
+      "accelerator": null,
+      "tags": ["termini-node", "termini-node-b"],
+      "labels": { "managed-by": "terraform", "node": "node-b", "role": "compute" }
+    },
+    {
+      "name": "node-c",
+      "hostname": "termini-node-c",
+      "role": "inference",
+      "machine_type": "g2-standard-4",
+      "private_ip": "10.10.0.13",
+      "public_ip": "34.136.10.13",
+      "zone": "us-central1-a",
+      "accelerator": { "type": "nvidia-l4", "count": 1 },
+      "tags": ["termini-node", "termini-node-c"],
+      "labels": { "managed-by": "terraform", "node": "node-c", "role": "inference" }
+    }
+  ]
+}
