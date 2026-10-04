@@ -1,0 +1,79 @@
+### restart acceptance 2026-10-04T11:12:53Z
+## unregistered snapshot before restart:
+demo-node-a 2026-10-04T11:04:00.889329189Z
+demo-node-b 2026-10-04T11:04:35.625489668Z
+demo-node-c 2026-10-04T11:05:08.062226042Z
+
+[warm] stopping node demo-node-a
+[warm] stopping node demo-node-b
+[warm] stopping node demo-node-c
+[warm][warn] node demo-node-a did not stop in time; forcing
+[warm] controller stopped
+[warm] demo environment stopped
+[warm] model present: /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf (4920736608 bytes)
+[warm] starting controller on :8085 (db=/var/lib/termini/demo/controller.db)
+[warm] controller up
+[warm] scratch volume demo-scratch-a present
+[warm] scratch volume demo-scratch-b present
+[warm] scratch volume demo-scratch-c present
+[warm] node demo-node-a exists
+[warm] restore point 'unregistered' already recorded for demo-node-a
+[warm] starting node demo-node-a
+[warm] node demo-node-a registered in 2s
+[warm] node demo-node-b exists
+[warm] restore point 'unregistered' already recorded for demo-node-b
+[warm] starting node demo-node-b
+[warm] node demo-node-b registered in 15s
+[warm] node demo-node-c exists
+[warm] restore point 'unregistered' already recorded for demo-node-c
+[warm] starting node demo-node-c
+[warm] node demo-node-c registered in 16s
+[warm] warming slow paths
+[warm] model resident on demo-node-c (3134586880 bytes RSS)
+[warm] warm restore point 'warm' already recorded for demo-node-a
+[warm] warm restore point 'warm' already recorded for demo-node-b
+[warm] warm restore point 'warm' already recorded for demo-node-c
+[warm] restart: full stop->warm completed in 72.0s
+RESTART_EXIT=0
+
+## unregistered snapshot after restart (must be unchanged):
+demo-node-a 2026-10-04T11:04:00.889329189Z
+demo-node-b 2026-10-04T11:04:35.625489668Z
+demo-node-c 2026-10-04T11:05:08.062226042Z
+
+## warm_check after restart:
+PASS  image_alias_pinned       alias 'agentic-os/w3' resolves locally
+PASS  image_immutable_tag      immutable tag 'agentic-os-w3-2026.10.0+9704aa0825c8' resolves
+PASS  image_fingerprint        alias points at baked fingerprint 500cbf91d336
+PASS  controller_reachable     http://127.0.0.1:8085 answering
+PASS  controller_project       project 01J0DEM0WARM000000000000AB
+PASS  demo-node-a.running      container RUNNING
+PASS  demo-node-a.agent_online termini-bootstrap state=ONLINE
+PASS  demo-node-a.no_error     no bootstrap error
+PASS  demo-node-a.registered   controller node_id=01M439BZK778 role=compute:2s
+PASS  demo-node-a.baked_offline bake sentinel present (no boot-time fetch)
+PASS  demo-node-a.scratch      volume 'demo-scratch-a' attached at /mnt/termini-scratch and writable
+PASS  demo-node-a.telemetry    11 samples in the last 15s
+PASS  demo-node-b.running      container RUNNING
+PASS  demo-node-b.agent_online termini-bootstrap state=ONLINE
+PASS  demo-node-b.no_error     no bootstrap error
+PASS  demo-node-b.registered   controller node_id=01M439D1EW2C role=compute:8s
+PASS  demo-node-b.baked_offline bake sentinel present (no boot-time fetch)
+PASS  demo-node-b.scratch      volume 'demo-scratch-b' attached at /mnt/termini-scratch and writable
+PASS  demo-node-b.telemetry    12 samples in the last 15s
+PASS  demo-node-c.running      container RUNNING
+PASS  demo-node-c.agent_online termini-bootstrap state=ONLINE
+PASS  demo-node-c.no_error     no bootstrap error
+PASS  demo-node-c.registered   controller node_id=01M439DWP9ET role=inference:14s
+PASS  demo-node-c.baked_offline bake sentinel present (no boot-time fetch)
+PASS  demo-node-c.scratch      volume 'demo-scratch-c' attached at /mnt/termini-scratch and writable
+PASS  demo-node-c.telemetry    12 samples in the last 15s
+PASS  demo-node-c.inference_health GET http://10.14.100.11:8080/health OK
+PASS  demo-node-c.inference_models /v1/models answered
+PASS  demo-node-c.model_file   pinned GGUF present (4920736608 bytes)
+PASS  demo-node-c.model_sha_sidecar sha256 sidecar present
+PASS  demo-node-c.model_fs_local model root fs_type=ext2/ext3
+PASS  demo-node-c.model_resident llama-server RSS=5566881792 bytes (>= 3000000000)
+
+WARM: all checks green (32 checks)
+WARMCHECK_EXIT=0

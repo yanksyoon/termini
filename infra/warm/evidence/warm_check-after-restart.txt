@@ -1,0 +1,34 @@
+PASS  image_alias_pinned       alias 'agentic-os/w3' resolves locally
+PASS  image_immutable_tag      immutable tag 'agentic-os-w3-2026.10.0+9704aa0825c8' resolves
+PASS  image_fingerprint        alias points at baked fingerprint 500cbf91d336
+PASS  controller_reachable     http://127.0.0.1:8085 answering
+PASS  controller_project       project 01J0DEM0WARM000000000000AB
+PASS  demo-node-a.running      container RUNNING
+PASS  demo-node-a.agent_online termini-bootstrap state=ONLINE
+PASS  demo-node-a.no_error     no bootstrap error
+PASS  demo-node-a.registered   controller node_id=01M436FWX4H4 role=compute:2s
+PASS  demo-node-a.baked_offline bake sentinel present (no boot-time fetch)
+PASS  demo-node-a.scratch      volume 'demo-scratch-a' attached at /mnt/termini-scratch and writable
+PASS  demo-node-a.telemetry    12 samples in the last 15s
+PASS  demo-node-b.running      container RUNNING
+PASS  demo-node-b.agent_online termini-bootstrap state=ONLINE
+PASS  demo-node-b.no_error     no bootstrap error
+PASS  demo-node-b.registered   controller node_id=01M436H26V2E role=compute:6s
+PASS  demo-node-b.baked_offline bake sentinel present (no boot-time fetch)
+PASS  demo-node-b.scratch      volume 'demo-scratch-b' attached at /mnt/termini-scratch and writable
+PASS  demo-node-b.telemetry    12 samples in the last 15s
+PASS  demo-node-c.running      container RUNNING
+PASS  demo-node-c.agent_online termini-bootstrap state=ONLINE
+PASS  demo-node-c.no_error     no bootstrap error
+PASS  demo-node-c.registered   controller node_id=01M436J6QPG2 role=inference:8s
+PASS  demo-node-c.baked_offline bake sentinel present (no boot-time fetch)
+PASS  demo-node-c.scratch      volume 'demo-scratch-c' attached at /mnt/termini-scratch and writable
+PASS  demo-node-c.telemetry    11 samples in the last 15s
+PASS  demo-node-c.inference_health GET http://10.14.100.249:8080/health OK
+PASS  demo-node-c.inference_models /v1/models answered
+PASS  demo-node-c.model_file   pinned GGUF present (4920736608 bytes)
+PASS  demo-node-c.model_sha_sidecar sha256 sidecar present
+PASS  demo-node-c.model_fs_local model root fs_type=ext2/ext3
+PASS  demo-node-c.model_resident llama-server RSS=5568172032 bytes (>= 3000000000)
+
+WARM: all checks green (32 checks)
