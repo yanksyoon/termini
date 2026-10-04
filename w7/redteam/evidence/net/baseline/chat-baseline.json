@@ -1,0 +1,415 @@
+{
+  "role": "chat",
+  "host": "10.14.100.50",
+  "n": 20,
+  "ok": 20,
+  "failed": 0,
+  "retried_calls": 0,
+  "latency_s": {
+    "min": 3.345,
+    "max": 8.927,
+    "mean": 5.505
+  },
+  "calls": [
+    {
+      "i": 0,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 3.345,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 3.345,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 1,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 4.833,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.833,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 2,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 4.111,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.111,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 3,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 4.077,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.077,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 4,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 4.066,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.066,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 5,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 4.321,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.321,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 6,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 5.584,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 5.584,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 7,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 4.706,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.706,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 8,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 4.837,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.837,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 9,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 6.737,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 6.737,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 10,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 4.893,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.893,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 11,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 4.66,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.66,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 12,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 7.086,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 7.086,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 13,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 5.516,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 5.516,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 14,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 4.521,
+        "tokens": 1,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.521,
+          "tokens": 1,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 15,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 6.217,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 6.217,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 16,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 7.696,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 7.696,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 17,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 8.312,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 8.312,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 18,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 8.927,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 8.927,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 19,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 5.654,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 5.654,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    }
+  ]
+}

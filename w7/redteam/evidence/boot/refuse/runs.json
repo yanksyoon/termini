@@ -1,0 +1,28 @@
+[
+  {
+    "tag": "refuse-1",
+    "status": "timeout",
+    "copy_s": 15.2,
+    "start_to_online_s": null,
+    "total_s": 35.57,
+    "last_state": null,
+    "node_id": null,
+    "first_error": null,
+    "budget_s": 20.0,
+    "scenario": "refuse",
+    "controller_url": "http://10.14.100.1:8199"
+  },
+  {
+    "tag": "refuse-2",
+    "status": "timeout",
+    "copy_s": 17.79,
+    "start_to_online_s": null,
+    "total_s": 38.78,
+    "last_state": "REGISTERING",
+    "node_id": null,
+    "first_error": "Remote end closed connection without response",
+    "budget_s": 20.0,
+    "scenario": "refuse",
+    "controller_url": "http://10.14.100.1:8199"
+  }
+]

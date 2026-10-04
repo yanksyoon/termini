@@ -1,0 +1,349 @@
+{
+  "netem": "loss 30%",
+  "ping_a_to_c": {
+    "raw_tail": ".\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b..\b \b..\b \b..\b \b.\b \b..\b \b..\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b.\b \b...\b \b..\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b......\b \b.\b \b..\b \b..\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.....\b \b.\b \b..\b \b.\b \b.\b \b...\b \b.\b \b.\b \b....\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b....\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b..\b \b.\b \b....\b \b..\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b...\b \b...\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b....\b \b.\b \b.\b \b...\b \b.\b \b.\b \b..........\b \b..\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b....\b \b.\b \b.\b \b....\b \b....\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b....\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b..\b \b.\b \b...\b \b..\b \b.\b \b..\b \b..\b \b.\b \b....\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b..\b \b...\b \b.\b \b..\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b..\b \b..\b \b.....\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b....\b \b.....\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b....\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b....\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.....\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b..\b \b.\b \b...\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b..\b \b..\b \b.\b \b.\b \b....\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.....\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b...\b \b..\b \b.\b \b...\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b...\b \b.\b \b.\b \b....\b \b...\b \b.\b \b...\b \b.\b \b.\b \b.\b \b....\b \b..\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b.\b \b.\b \b.\b \b....\b \b.\b \b.\b \b..\b \b....\b \b.\b \b..\b \b..\b \b.\b \b..\b \b..\b \b..\b \b.\b \b..\b \b..\b \b.\b \b...\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b.\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b..\b \b.\b \b.\b \b...\b \b...\b \b.\b \b..\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b....\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.....\b \b.\b \b..\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b....\b \b.\b \b.\b \b...\b \b.\b \b....\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b......\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b..\b \b..\b \b...\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b....\b \b...\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b....\b \b...\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b...\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b....\b \b.\b \b...\b \b.\b \b.\b \b..\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b....\b \b.\b \b.\b \b....\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b......\b \b...\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b...\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b...\b \b...\b \b.\b \b.\b \b.\b \b..\b \b...\b \b..\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b....\b \b.\b \b..\b \b...\b \b.\b \b.\b \b.\b \b...\b \b..\b \b....\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b.......\b \b..\b \b.\b \b.\b \b.....\b \b.\b \b.\b \b.\b \b..\b \b..\b \b..\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b....\b \b.\b \b.\b \b.\b \b.\b \b....\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b...\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b....\b \b.\b \b...\b \b.\b \b.\b \b....\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b..\b \b.\b \b..\b \b....\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.....\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b...\b \b.\b \b.\b \b..\b \b...\b \b.\b \b...\b \b.\b \b..\b \b.\b \b.\b \b...\b \b.\b \b.\b \b..\b \b.\b \b.\b \b...\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b...\b \b..\b \b..\b \b.\b \b..\b \b...\b \b..\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b..\b \b..\b \b.\b \b..\b \b..\b \b.\b \b.\b \b..\b \b...\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b..\b \b..\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b..\b \b...\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b.\b \b..\b \b...\b \b.\b \b.\b \b.\b \b...\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b....\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b....\b \b.\b \b.\b \b..\b \b.\b \b...\b \b.\b \b.\b \b.\b \b..\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b..\b \b..\b \b....\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b...\b \b..\b \b.\b \b..\b \b..\b \b.\b \b...\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.....\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b...\b \b.\b \b.\b \b....\b \b.\b \b.\b \b..\b \b.\b \b.\b \b....\b \b..\b \b.\b \b.\b \b.....\b \b..\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b..\b \b.\b \b.\b \b.\b \b..\b \b...\b \b.\b \b.\b \b.\b \b.\b \b....\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b.\b \b.\b \b........\b \b.\b \b.\b \b.....\b \b.\b \b..\b \b.\b \b..\b \b.\b \b....\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b....\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b..\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b...\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b......\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.....\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b..\b \b..\b \b.\b \b.\b \b...\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b...\b \b..\b \b....\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b..\b \b..\b \b..\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b...\b \b..\b \b.\b \b.\b \b....\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b...\b \b.\b \b.\b \b..\b \b.\b \b.\b \b.\b \b..\b \b.\b \b.......\b \b..\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.\b \b...\b \b.\b \b...\b \b.\b \b.\b \b..\b \b.\b \b..\b \b..\b \b...\b \b.\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b...\b \b..\b \b.\b \b.\b \b..\b \b..\b \b.\b \b.....\b \b.\b \b.\b \b.\b \b..\b \b..\b \b....\b \b..\b \b.\b \b.\b \b.\b \b...\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b..\b \b.\b \b\n--- 10.14.100.50 ping statistics ---\n3000 packets transmitted, 2064 received, 31.2% packet loss, time 11929ms\nrtt min/avg/max/mdev = 0.006/0.080/1.618/0.080 ms, ipg/ewma 3.977/0.149 ms",
+    "summary": "3000 packets transmitted, 2064 received, 31.2% packet loss, time 11929ms",
+    "loss_pct": 31.2,
+    "rtt_min_ms": 0.006,
+    "rtt_avg_ms": 0.08,
+    "rtt_max_ms": 1.618,
+    "rtt_mdev_ms": 0.08
+  },
+  "tcp_a_to_c": {
+    "error": "no client json: Expecting value: line 1 column 1 (char 0)",
+    "stdout": "",
+    "stderr": "client exec timed out after 70s: Command '['lxc', 'exec', 'rt-net-a', '--', 'python3', '/root/traffic_probe.py', 'client', '--host', '10.14.100.50', '--port', '9099', '--mb', '64', '--timeout', '20', '--out', '/root/cli-loss.json']' timed out after 70 seconds",
+    "stalled": true,
+    "client_exec_error": "client exec timed out after 70s: Command '['lxc', 'exec', 'rt-net-a', '--', 'python3', '/root/traffic_probe.py', 'client', '--host', '10.14.100.50', '--port', '9099', '--mb', '64', '--timeout', '20', '--out', '/root/cli-loss.json']' timed out after 70 seconds",
+    "server": {
+      "role": "server",
+      "port": 9099,
+      "connections": 1,
+      "bytes": 2003672
+    }
+  },
+  "chat_under_loss": {
+    "role": "chat",
+    "host": "10.14.100.50",
+    "n": 15,
+    "ok": 15,
+    "failed": 0,
+    "retried_calls": 0,
+    "latency_s": {
+      "min": 4.522,
+      "max": 13.065,
+      "mean": 8.515
+    },
+    "calls": [
+      {
+        "i": 0,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 13.065,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 13.065,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 1,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 10.16,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 10.16,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 2,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 9.053,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 9.053,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 3,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 7.364,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 7.364,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 4,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 9.148,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 9.148,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 5,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 8.222,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 8.222,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 6,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 6.099,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 6.099,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 7,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 8.189,
+          "tokens": 1,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 8.189,
+            "tokens": 1,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 8,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 9.461,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 9.461,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 9,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.522,
+          "tokens": 1,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.522,
+            "tokens": 1,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 10,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 6.755,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 6.755,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 11,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 6.312,
+          "tokens": 1,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 6.312,
+            "tokens": 1,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 12,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 10.814,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 10.814,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 13,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 9.131,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 9.131,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 14,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 9.437,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 9.437,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      }
+    ]
+  },
+  "telemetry_net_latency_ms_a": [
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.3
+  ],
+  "elapsed_s": 257.3
+}

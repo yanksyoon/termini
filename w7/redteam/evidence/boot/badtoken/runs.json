@@ -1,0 +1,15 @@
+[
+  {
+    "tag": "badtoken-1",
+    "status": "timeout",
+    "copy_s": 15.05,
+    "start_to_online_s": null,
+    "total_s": 35.08,
+    "last_state": "REGISTERING",
+    "node_id": null,
+    "first_error": "register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M43A3W2Y90XBGW0JE1H4CE68'}}",
+    "budget_s": 20.0,
+    "scenario": "badtoken",
+    "controller_url": "http://10.14.100.1:8098"
+  }
+]

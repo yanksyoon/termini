@@ -1,0 +1,10 @@
+2026-10-04T11:17:17+00:00 rt-badtoken-1 systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:17:18+00:00 rt-badtoken-1 termini-bootstrap[324]: 2026-10-04T11:17:18Z [termini-bootstrap] registration retry in 1s: register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M43A3W2Y90XBGW0JE1H4CE68'}}
+2026-10-04T11:17:19+00:00 rt-badtoken-1 termini-bootstrap[324]: 2026-10-04T11:17:19Z [termini-bootstrap] registration retry in 2s: register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M43A3X2EGCQYF04H3875YNNG'}}
+2026-10-04T11:17:19+00:00 rt-badtoken-1 systemd[1]: Stopping termini-bootstrap.service - Termini node bootstrap (registration + telemetry)...
+2026-10-04T11:17:19+00:00 rt-badtoken-1 systemd[1]: termini-bootstrap.service: Deactivated successfully.
+2026-10-04T11:17:19+00:00 rt-badtoken-1 systemd[1]: Stopped termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:17:19+00:00 rt-badtoken-1 systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:17:19+00:00 rt-badtoken-1 termini-bootstrap[474]: 2026-10-04T11:17:19Z [termini-bootstrap] registration retry in 1s: register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M43A3XDWGSBP5NBZC83VF0SE'}}
+2026-10-04T11:17:20+00:00 rt-badtoken-1 termini-bootstrap[474]: 2026-10-04T11:17:20Z [termini-bootstrap] registration retry in 2s: register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M43A3YDCBHGQ213Q7XV4MDZK'}}
+2026-10-04T11:17:22+00:00 rt-badtoken-1 termini-bootstrap[474]: 2026-10-04T11:17:22Z [termini-bootstrap] registration retry in 4s: register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M43A40C3800JPCZZ076AAHS8'}}

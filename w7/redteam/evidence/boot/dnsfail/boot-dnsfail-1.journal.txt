@@ -1,0 +1,10 @@
+2026-10-04T11:15:49+00:00 rt-dnsfail-1 systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:15:50+00:00 rt-dnsfail-1 termini-bootstrap[327]: 2026-10-04T11:15:50Z [termini-bootstrap] registration retry in 1s: <urlopen error [Errno -2] Name or service not known>
+2026-10-04T11:15:51+00:00 rt-dnsfail-1 termini-bootstrap[327]: 2026-10-04T11:15:51Z [termini-bootstrap] registration retry in 2s: <urlopen error [Errno -2] Name or service not known>
+2026-10-04T11:15:52+00:00 rt-dnsfail-1 systemd[1]: Stopping termini-bootstrap.service - Termini node bootstrap (registration + telemetry)...
+2026-10-04T11:15:52+00:00 rt-dnsfail-1 systemd[1]: termini-bootstrap.service: Deactivated successfully.
+2026-10-04T11:15:52+00:00 rt-dnsfail-1 systemd[1]: Stopped termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:15:52+00:00 rt-dnsfail-1 systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:15:52+00:00 rt-dnsfail-1 termini-bootstrap[474]: 2026-10-04T11:15:52Z [termini-bootstrap] registration retry in 1s: <urlopen error [Errno -2] Name or service not known>
+2026-10-04T11:15:53+00:00 rt-dnsfail-1 termini-bootstrap[474]: 2026-10-04T11:15:53Z [termini-bootstrap] registration retry in 2s: <urlopen error [Errno -2] Name or service not known>
+2026-10-04T11:15:55+00:00 rt-dnsfail-1 termini-bootstrap[474]: 2026-10-04T11:15:55Z [termini-bootstrap] registration retry in 4s: <urlopen error [Errno -2] Name or service not known>

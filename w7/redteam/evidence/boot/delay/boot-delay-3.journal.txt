@@ -1,0 +1,8 @@
+2026-10-04T11:12:46+00:00 rt-delay-3 systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:12:49+00:00 rt-delay-3 systemd[1]: Stopping termini-bootstrap.service - Termini node bootstrap (registration + telemetry)...
+2026-10-04T11:12:49+00:00 rt-delay-3 systemd[1]: termini-bootstrap.service: Deactivated successfully.
+2026-10-04T11:12:49+00:00 rt-delay-3 systemd[1]: Stopped termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:12:49+00:00 rt-delay-3 systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:12:57+00:00 rt-delay-3 termini-bootstrap[474]: 2026-10-04T11:12:57Z [termini-bootstrap] registration retry in 1s: register failed: HTTP 502:
+2026-10-04T11:13:06+00:00 rt-delay-3 termini-bootstrap[474]: 2026-10-04T11:13:06Z [termini-bootstrap] registration retry in 2s: register failed: HTTP 502:
+2026-10-04T11:13:16+00:00 rt-delay-3 termini-bootstrap[474]: 2026-10-04T11:13:16Z [termini-bootstrap] registration retry in 4s: register failed: HTTP 502:
