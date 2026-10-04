@@ -21,8 +21,11 @@ exact keys. Units are bytes (never GiB) and percent, per governance.md.
 ## 1. Transport and cadence
 
 - Endpoint: `POST /v1/nodes/{node_id}/telemetry`, auth `node_token`.
-- Cadence: one batch every `telemetry_interval_s` (default 2 s; 1–2 s during the
-  demo per project.md advisory #4).
+- Transport: primary = the mTLS control channel `/node/v1/{node_id}/channel`
+  (D6); this REST endpoint is the HTTP fallback when the WebSocket upgrade is
+  blocked (`controller-api.md` §4.1).
+- Cadence: one batch every `telemetry_interval_ms` (default **15,000 ms**; **1,000 ms**
+  during the demo per `project.md` advisory #4 and D8).
 - One batch may carry up to `telemetry_batch_max` (200) samples.
 - The daemon sends a batch whenever (a) the interval elapses or (b) a
   metric-threshold trigger fires early (see § 5 Trigger).
@@ -251,11 +254,10 @@ Allowlist: `termini-bootstrap`, `lxd`, `sshd`, `llama-cpp`.
 ### 4.9 Extension registration note
 
 §4.6–§4.8 are C0 hardware/OS metrics required by the AI operator (per-VM resize,
-llama.cpp health) and the charts. They are NOT yet listed in governance.md §4.1's
-allowlist; per governance.md §10.1 they require registration + review before
-they are allowed to egress. Until the integration pass (t_5fb81d14) adds them to
-governance.md §4.1, the node redactor MUST be configured with these exact keys as
-C0 allowlist entries. No field in this document is C2 or carries customer data.
+llama.cpp health) and the charts. They are **now registered** in
+`governance.md` §4.1.1 as C0 allowlist groups (deny-by-default review complete,
+integration pass t_5fb81d14). The node redactor treats these exact keys as C0
+allowlist entries. No field in this document is C2 or carries customer data.
 
 ---
 

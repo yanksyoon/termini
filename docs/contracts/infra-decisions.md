@@ -164,6 +164,12 @@ Images are tagged `termini-node-<YYYY.MM.DD>-<gitsha>` and `agent-vm-<version>`;
 `http://10.10.0.13:8080` — endpoints `/v1/models`, `/v1/chat/completions` (streaming supported), `/health`.
 The GPU is consumed by the host process; the model IDs and request/response shape are owned by `docs/contracts/agent-runtime.md`. **GPU passthrough (VFIO) is documented as the day-2 path, not built.**
 
+**Realization note (reconciled with `agent-runtime.md` §8).** The `:8080` listener is
+implemented as an **OpenAI-compatible router** (`termini-infer-router`) fronting one
+or more loopback-bound `llama.cpp` workers (one per model alias). A single-model
+deployment collapses the router to a transparent passthrough. The endpoint, port,
+and firewall scope are unchanged.
+
 **Rationale.**
 - `project.md` adversarial note 3 explicitly recommends "expose `llama.cpp` directly on Node C's host IP ... without relying on complex OVN/Fan virtual bridges during a live presentation." Host exposure removes both the overlay AND the passthrough variables at once.
 - VFIO passthrough of a single GPU into an LXD VM requires IOMMU/VT-d, binding the device to `vfio-pci` at boot, the host GPU driver not claiming it, and LXD `gpu`/`raw.qemu` configuration. On a **GCP T4/L4 instance** this is at best fragile and at worst not permitted (the GPU is attached in a way that does not present a clean, bound-able PCI function for guest assignment). It is not a 5-day-build item.
@@ -208,7 +214,15 @@ The GPU is consumed by the host process; the model IDs and request/response shap
 - ZFS gives cheap snapshots (handy for the "resize / roll back a bad remediation" stories) and is first-class in LXD.
 - A shared pool (Ceph/MicroCeph) is the thing that would let us do **live** migration, but it is a heavy, multi-node distributed system that is out of scope for 5 days and adds its own failure modes.
 
-**Consequence / honest limitation.** With per-member local storage, **live migration of a running VM** is not available; in-cluster movement is **stop → transfer → start (evacuation)**, and the fleet-remediation primitives that work identically on one node are **hotplug CPU/RAM resize** (Scenario A's first option) and **evacuation** (Scenario B). `project.md` Scenario A offers resize *or* live-migrate; the demo uses **resize** as the primary remediation and **evacuation** for the disk-failure scenario. Day-2 adds MicroCeph for true live migration.
+**Consequence / honest limitation.** With per-member local storage, in-cluster movement
+of a running VM is **stop → transfer → start (evacuation)** in the demo. (Upstream LXD
+does support *stateful* live migration on a local pool — `migration.stateful=true` +
+`size.state ≥ limits.memory` — but it copies the root disk and is not on the demo
+critical path.) The fleet-remediation primitives that work identically on one node are
+**hotplug CPU/RAM resize** (Scenario A's first option) and **evacuation** (Scenario B).
+`project.md` Scenario A offers resize *or* live-migrate; the demo uses **resize** as the
+primary remediation and **evacuation** for the disk-failure scenario. Day-2 adds
+MicroCeph for cheap true live migration.
 
 **Rejected alternatives.** MicroCeph/Ceph (heavy, multi-node quorum), a shared NFS pool (single point of failure, not cluster-native), `btrfs` (weaker tooling for loop devices), `dir` (no snapshots).
 

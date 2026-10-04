@@ -100,6 +100,19 @@ The node bootstrap daemon may send ONLY the following fields to the controller. 
 | `kernel_version` | string | Enum-ish; sanitized |
 | `lxd_cluster_role` | string | Enum ("member") |
 
+#### 4.1.1 C0 extension groups (registered)
+
+The following structured C0 groups are registered in the egress allowlist
+(same deny-by-default review as the flat fields above). They carry no customer
+content and are required by the AI operator and charts. Canonical definitions:
+
+| Group | Where defined | Notes |
+|-------|---------------|-------|
+| `lxd_instances[]` | `node-telemetry.md` §4.6 | Per-VM C0 metrics, keyed by controller-issued `vm_id` (never the LXD instance name). |
+| `inference{}` | `node-telemetry.md` §4.7 | llama.cpp router health/throughput (present on the inference node only). |
+| `services[]` | `node-telemetry.md` §4.8 | systemd unit state, fixed name allowlist. |
+| `agents[]` | `agent-runtime.md` §13.2 | Per-agent-VM C0 status counters (state, queue depth, task counters). |
+
 ### 4.2 C1 fields — allow only after transformation
 
 | Field | Type | Transformation |
@@ -202,7 +215,8 @@ Explicitly prohibited as external-model input:
 
 ### 7.1 Model routing (records the fixed decision)
 
-- On-prem inference (llama.cpp, node C): **DeepSeek flash** and **deepseek-v4-pro** — these are the only models wired to on-prem inference. They handle customer payloads, agent workloads, and on-prem intent extraction. Nothing these models touch leaves the premises.
+- On-prem inference (llama.cpp, node C): **deepseek-flash** and **deepseek-v4-pro** — these are the only model aliases wired to on-prem inference. They handle customer payloads, agent workloads, and on-prem intent extraction. Nothing these models touch leaves the premises.
+- The aliases are **distills**, not the DeepSeek-V4 MoE family (pinned by BQ-1, `docs/architecture.md` §8 R11): `deepseek-flash` = DeepSeek-R1-Distill-Llama-8B Q4_K_M (~6 GiB), `deepseek-v4-pro` = DeepSeek-R1-Distill-Qwen-14B Q4_K_M (~18 GiB). Target GPU NVIDIA L4 24 GiB; T4 16 GiB → `deepseek-v4-pro` unavailable (flash-only).
 - External model (GCP): used only for the AI operator loop over C0 telemetry. Its prompt template is static and versioned; see 7.2.
 
 If a future change needs a second external model, it must be added here with a rationale; no implicit external call is allowed.
@@ -313,3 +327,4 @@ The controller MUST implement these as code, not policy prose:
 - `node-bootstrap.md` (t_134e2f24) MUST place the redactor in the daemon's egress path and provide the redactor config as a versioned artifact.
 - `agent-runtime.md` (t_1addb6fd) MUST route agent logs/payloads to on-prem inference only and must not expose an egress path for C2.
 - `vm-allocation.schema.json` (t_260694d8) is the clamp validator referenced by §7.3; model output is advisory against it.
+- **Ratified invariants (G-AR-1 / G-AR-2)** — from `agent-runtime.md` §7.1: the node→controller direction **never carries C2** (only C0/C1 egress, enforced by §4/§6); the controller carries task content (C2) **only transiently** on the inbound path — it never persists, logs, or model-processes task content (external model calls are C0-only per §7). These are normative for the controller, node daemon, and agent runtime.

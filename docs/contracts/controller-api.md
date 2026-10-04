@@ -33,10 +33,15 @@ referenced inline below where they attach to endpoints.
 | REST      | `https://<controller-host>/v1`                 |
 | Events    | `wss://<controller-host>/stream/v1`            |
 | Terminal  | `wss://<controller-host>/terminal/v1`          |
+| Node ctrl | `wss://<controller-host>/node/v1/{node_id}/channel` |
 
 `<controller-host>` is the GCP VM address, injected via the env var
-`TERMINI_CONTROLLER_URL`. No path under `/v1` may be shared with `/stream` or
-`/terminal` — WebSockets never live under `/v1`.
+`TERMINI_CONTROLLER_URL`. No path under `/v1` may be shared with `/stream`,
+`/terminal`, or `/node` — WebSockets never live under `/v1`. The node control
+channel (`/node/v1/{node_id}/channel`) is the primary steady-state channel for
+heartbeat, telemetry, command delivery, and command acks (D6); the REST
+endpoints in §4.1 are the HTTP fallback for environments that block the
+WebSocket upgrade.
 
 ### 1.2 Versioning
 
@@ -157,54 +162,103 @@ exclusively by the governance gates.
 
 ### 4.1 Node-facing (node → controller)
 
+Node→controller steady-state traffic (heartbeat, telemetry, command acks) rides the
+mTLS WebSocket control channel at `/node/v1/{node_id}/channel` (D6). The REST
+endpoints below are the authoritative wire formats and the **HTTP fallback** used
+when the WebSocket upgrade is blocked; `register` and `reconnect` are always REST.
+
 #### POST /v1/nodes/register
 
-One-time bootstrap registration. Requires `X-Bootstrap-Token` header.
+One-time bootstrap registration. Requires `Authorization: Bearer <bootstrap_token>`
+(the single-use, short-TTL enrollment token; custody in `node-bootstrap.md` §3).
+The canonical request/response schema is `node-bootstrap.md` §5; this section
+states the endpoint, auth, and role assignment, and the two documents agree on
+every field.
 
-Request:
+Request (canonical `NodeRegistration`, full field tables in `node-bootstrap.md` §5.2):
+
 ```json
 {
-  "registration_id": "termini-node-a",
-  "hardware": {
-    "cpu": {"model": "AMD EPYC 7B13", "logical_cores": 16, "physical_cores": 8},
-    "ram_gb": 32,
-    "disk": [{"path": "/dev/sda", "size_gb": 256, "type": "ssd"}],
-    "gpu": [{"model": "NVIDIA L4", "vram_gb": 24, "count": 1}]
+  "schema_version": "1.0",
+  "machine": {
+    "machine_id": "9f2c1e...e7",
+    "dmi_product_uuid": "4c4c4544-...",
+    "hostname": "node-b",
+    "image_version": "2026.10.01-abc1234",
+    "os": {"name": "ubuntu", "version": "24.04.1"},
+    "lxd": {"version": "5.21.3", "snap_revision": "31234"},
+    "cpu": {"model": "Intel Xeon ...", "sockets": 1, "cores": 8, "threads": 16},
+    "memory": {"total_bytes": 68719476736},
+    "disks": [{"device": "/dev/sda", "type": "ssd", "size_bytes": 214748364800, "health": "ok"}],
+    "nics": [{"name": "ens4", "mac": "42:01:0a:0a:00:0c", "addresses": ["10.10.0.12/24"], "role": "underlay"}],
+    "gpus": [{"vendor": "nvidia", "model": "Tesla T4", "vram_bytes": 17179869184, "pci_id": "0000:00:04.0", "driver": "535.183", "health": "ok"}],
+    "underlay_ip": "10.10.0.12",
+    "role_hint": "auto"
   },
-  "os": {"distro": "ubuntu", "version": "24.04"},
-  "lxd": {"version": "5.21", "clustered": true},
-  "installer_version": "2026.10.0"
+  "node_pubkey_csr_pem": "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----\n",
+  "host_ssh_keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... root@node-b"],
+  "agent": {"version": "0.1.0", "boot_id": "8f0e..."}
 }
 ```
 
-`registration_id` is a stable bootstrap label (1..64 chars, unique per project)
-and maps to governance.md's C1 `hostname` field — in telemetry it is always sent
-hashed (§`node-telemetry.md` §4.2). During this one-time registration it is sent
-in the clear over the bootstrap-token channel (a bounded C1 bootstrap exception,
-recorded in the audit log). Raw IP and MAC are NOT sent in the body: the
-controller records the TLS connection's source IP as the node's routable address,
-and the MAC never egresses (governance.md §4.2/§4.3).
+`machine.hostname` maps to governance.md's C1 `hostname` field — in telemetry it
+is always sent hashed (`node-telemetry.md` §4.2). During this one-time
+registration it is sent in the clear over the bootstrap-token channel (a bounded
+C1 bootstrap exception, recorded in the audit log). Raw IP and MAC are NOT sent
+in the body: the controller records the TLS connection's source IP as the node's
+routable address, and the MAC never egresses (governance.md §4.2/§4.3).
 
-Response `201 Created`:
+Response `201 Created` (canonical `NodeRegistrationResponse`; joins
+`node-bootstrap.md` §5.3 with the controller-owned token/scope fields):
+
 ```json
 {
+  "schema_version": "1.0",
   "node_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E",
   "project_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D",
   "role": "compute",
   "node_token": "opaque-node-secret",
+  "identity": {
+    "client_cert_pem": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n",
+    "ca_chain_pem": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+  },
+  "cluster": {
+    "name": "termini",
+    "role": "joiner",
+    "member_name": "node-b",
+    "server_address": "10.10.0.11:8443",
+    "join_token": "eyJzZX...ZSI6...joiner-token"
+  },
+  "telemetry": {"interval_ms": 1000, "channel": "wss://controller.termini.example/node/v1/01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E/channel"},
   "config": {
     "heartbeat_interval_s": 5,
-    "telemetry_interval_s": 2,
+    "telemetry_interval_ms": 1000,
     "telemetry_batch_max": 200,
     "command_channel": "websocket"
-  }
+  },
+  "controller_time": "2026-10-04T07:59:00Z",
+  "registration_ttl_s": 3600
 }
 ```
 
-Role assignment: a node reporting ≥ 1 GPU with `vram_gb >= 12` is assigned
-`inference`; otherwise `compute`. The controller caps `inference` role to the
-single node C in the demo (first GPU node wins; later GPU nodes are `compute`
-unless project config raises the limit).
+Seed node response: `cluster.role = "seed"`, `join_token = null`.
+`identity` carries the controller-signed client cert + CA chain for the mTLS
+control channel (D4/D6); `node_token` authenticates the REST fallback endpoints
+in §4.1.
+
+Role assignment: a node reporting ≥ 1 GPU with `vram_bytes >= 12884901888`
+(12 GiB) is assigned `inference`; otherwise `compute`. The controller caps
+`inference` role to the single node C in the demo (first GPU node wins; later GPU
+nodes are `compute` unless project config raises the limit).
+
+#### POST /v1/nodes/{node_id}/reconnect
+
+Idempotent re-enrollment after reboot or client-cert reissue (`node-bootstrap.md`
+§10). `node_token` + mTLS auth. Request: `{}` (identity carried by the TLS client
+cert). Response `200 OK` mirrors the `register` response (minus the one-time
+`cluster.join_token`, which is re-issued only if cluster membership is missing).
+A `409 CONFLICT` with a valid cert means "reconnect accepted"; without a valid
+cert the node must fall back to `POST /v1/nodes/register` with a fresh token.
 
 #### POST /v1/nodes/{node_id}/heartbeat
 
@@ -388,7 +442,7 @@ the injection command within one heartbeat interval. Rotation details/custody on
 the node side are in `node-bootstrap.md`.
 
 The frontend renders the SSH access string from this data as
-`ssh root@<node_ip>` where `<node_ip>` is from `GET /v1/nodes/{id}`.
+`ssh root@<node_ip>` where `<node_ip>` is from `GET /v1/projects/{id}/nodes/{node_id}`.
 
 ### 4.4 Governance audit (verifier-facing)
 
@@ -512,7 +566,7 @@ push by default, HTTP long-poll fallback. Command envelope:
 ```json
 {
   "command_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C5J",
-  "type": "vm.resize | vm.migrate | vm.stop | vm.start | vm.destroy | node.drain | node.reboot | ssh.inject_key",
+  "type": "vm.launch | vm.resize | vm.migrate | vm.stop | vm.start | vm.destroy | node.drain | node.reboot | ssh.inject_key | agent.dispatch_task | agent.cancel_task",
   "payload": { "...": "type-specific, see below" },
   "issued_by": "ai_operator | user | system",
   "issued_at": "2026-10-04T07:49:00Z",
@@ -521,12 +575,14 @@ push by default, HTTP long-poll fallback. Command envelope:
 ```
 
 Type-specific payloads:
+- `vm.launch`: `{"vm_id":"...","project_id":"...","class":"agent_vm","image":"agent-vm/<version>","member":"node-a","limits":{"vcpus":2,"ram_gb":4,"disk_gb":8},"network":{"name":"lxdbr0"},"profile":"termini-agent","cloud_init":{...},"idempotency_key":"..."}` (full contract in `agent-runtime.md` §4).
 - `vm.resize`: `{"vm_id": "...", "vcpus": 4, "ram_gb": 8}` (post-guardrail values).
 - `vm.migrate`: `{"vm_id": "...", "source_node": "...", "target_node": "...", "live": true}`.
 - `vm.stop`/`vm.start`/`vm.destroy`: `{"vm_id": "..."}`.
 - `node.drain`: `{"reason": "disk_degradation", "evacuate_to": "node-b-id"}`.
 - `node.reboot`: `{"delay_s": 0}`.
 - `ssh.inject_key`: `{"public_key": "ssh-ed25519 ...", "target": "root"}`.
+- `agent.dispatch_task` / `agent.cancel_task`: `{"task_id":"...","project_id":"...","vm_id":"...","kind":"agent.run","ttl_s":900,"payload":{...}}` / `{"task_id":"..."}` (task envelope in `agent-runtime.md` §7.2).
 
 This set is the `commandAllowlist()` from `governance.md` §9 — the AI operator may
 select among these types only; free-form shell is never executed.
@@ -569,6 +625,9 @@ Event catalog (`data` shape):
 | `remediation.queued`   | command envelope |
 | `remediation.completed`| `{command_id, vm_id?, status, result}` |
 | `intent.validated`     | `AllocationPlan` (summary) |
+| `task.queued`          | `{task_id, vm_id, project_id}` |
+| `task.state_changed`   | `{task_id, vm_id, state}` |
+| `task.completed`       | `{task_id, vm_id, duration_ms, model}` |
 | `log.line`             | `{node_id?, vm_id?, level, text}` (AI operator log) |
 
 ### 7.2 AI operator logs — `GET /v1/projects/{project_id}/logs`
@@ -616,7 +675,7 @@ shells (those are `ssh root@<node-ip>` UX, not the web terminal).
 | Channel                | Cadence (default)       | Notes |
 |------------------------|-------------------------|-------|
 | Node heartbeat         | every 5 s               | 15 s → `degraded`, 45 s → `offline` |
-| Node telemetry         | every 2 s (1–2 s demo)  | see `node-telemetry.md` |
+| Node telemetry         | default 15 s; 1 s demo   | see `node-telemetry.md` |
 | Command long-poll      | every 2 s, 25 s block   | WS push preferred |
 | WS telemetry snapshots | ≤ 1/s per node          | throttled from raw cadence |
 | AI operator log        | push on append          | ring buffer 10k lines |
