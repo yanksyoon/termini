@@ -8,6 +8,8 @@
 #   * the bake recorded its pins (llama.cpp commit, staged models)
 # It writes a machine-readable boot log to --log-out and exits non-zero on any
 # failed check, so systemd can gate termini-bootstrap on it (Requisite/After).
+# NB: termini-bootstrap.service is planned but not shipped yet
+# (docs/contracts/node-bootstrap.md); the Requisite gate is forward-looking.
 #
 # Testable off-image: pass --root <dir> to evaluate a staged layout (rehearsal).
 set -euo pipefail

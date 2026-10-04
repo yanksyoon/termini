@@ -88,7 +88,11 @@ write_files:
       bootstrap_seed_ip: ${seed}
       telemetry_interval_ms: 1000
 runcmd:
-  - [ systemctl, enable, --now, termini-bootstrap.service ]
+  # The on-node termini-bootstrap daemon is specified (docs/contracts/node-bootstrap.md)
+  # but NOT shipped in this build: the node image installs no such unit. Start it only
+  # if present so provisioning never fails on a missing unit. Demo telemetry is produced
+  # by the chaos simulator (chaos/node_sim.py); C2 is enforced controller-side.
+  - [ sh, -c, "systemctl enable --now termini-bootstrap.service 2>/dev/null || echo 'termini-bootstrap not installed (on-node daemon not shipped yet)'" ]
 EOF
 }
 

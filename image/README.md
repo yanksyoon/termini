@@ -117,7 +117,11 @@ image/pipeline/publish-image.sh <artifact.qcow2> <image-manifest.json>
 
 `pipeline/first-boot-preflight.sh` runs before `termini-bootstrap.service`
 (`systemd/termini-firstboot-preflight.service`, ordered `Before=`;
-`termini-bootstrap.service` adds `Requisite=termini-firstboot-preflight.service`). It:
+`termini-bootstrap.service` adds `Requisite=termini-firstboot-preflight.service`).
+**`termini-bootstrap.service` is not shipped yet** — it is the planned on-node
+daemon (`docs/contracts/node-bootstrap.md`), which this image pipeline does not
+build; the ordering above is forward-looking and is a no-op until that unit
+exists. The preflight still runs and writes its boot log. It:
 
 1. asserts the `llama-server` binary exists, is executable, and records its size + `sha256`;
 2. asserts every pinned GGUF is present at its exact expected size, with a

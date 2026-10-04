@@ -1,10 +1,27 @@
 #!/usr/bin/env python3
 """Simulated Termini node — registers with the controller and posts telemetry.
 
-This impersonates the on-node bootstrap/telemetry daemon over the frozen wire
-contract (docs/contracts/node-telemetry.md, docs/telemetry-schema.md). It exists
-so the control plane can be driven through a *reproducible* failure series
-instead of waiting for a real fault.
+This is a **test simulator, not the shipped node agent**. It stands in for the
+on-node `termini-bootstrap` daemon described in
+`docs/contracts/node-bootstrap.md`, which is *specified but not implemented* in
+this repo: there is no `termini-bootstrap` binary, systemd unit, or on-node
+redactor in the tree, and not one field it emits below is real.
+
+What that means for anything it emits:
+
+* The `_redaction` envelope and the `services[]` entry named
+  `termini-bootstrap` are **fabricated** here. They are required by the frozen
+  telemetry contract (`docs/telemetry-schema.md`, `controller/app/fields.py`),
+  which *names* the planned daemon/redactor — the simulator does not run one.
+* Content-based (C2) governance is enforced **controller-side**, not on the
+  node: a non-conforming batch is rejected whole with `422 GOVERNANCE_REJECT`
+  (`controller/app/governance.py scan_c2` -> `controller/app/server.py
+  _ingest_telemetry`). There is no node-side "drop the field before the socket
+  opens" step in this build.
+
+It posts over the frozen wire contract (docs/contracts/node-telemetry.md,
+docs/telemetry-schema.md) so the control plane can be driven through a
+*reproducible* failure series instead of waiting for a real fault.
 
 Modes (`--mode`), all cadence- and threshold-driven from chaos/chaos.json:
 
@@ -165,6 +182,10 @@ def generate_sample(
             }
         ],
         "services": [
+            # `termini-bootstrap` is the enum value the frozen telemetry contract
+            # reserves for the (planned, unshipped) on-node daemon
+            # (controller/app/fields.py SERVICE_FIELDS). The simulator reports it
+            # as running to satisfy that contract; no such service exists here.
             {"name": "termini-bootstrap", "status": "running"},
             {"name": "lxd", "status": "running"},
             {"name": "sshd", "status": "running"},
@@ -193,6 +214,10 @@ def generate_sample(
 
 
 def build_batch(node_id: str, sample: dict) -> dict:
+    # `_redaction` is synthetic: the frozen envelope requires the field
+    # (controller/app/fields.py ENVELOPE_REQUIRED), so the simulator asserts a
+    # redactor result it cannot actually produce. No on-node redactor is shipped;
+    # real C2 enforcement is the controller-side scan_c2 gate (422).
     return {
         "_redaction": {"version": "redactor-config v3", "config_hash": "3f2a1b", "result": "ok"},
         "call_id": common.new_ulid(),
