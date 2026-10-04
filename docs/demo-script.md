@@ -49,7 +49,7 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
 | 0 | Handoff from the deck — set expectations | 0:35 | 0:35 |
 | 1 | Proof 1: bare metal → AI-ready fleet (< 5 s register) | 0:40 | 1:15 |
 | 2 | Proof 2: NL intent + guardrail clamp + validated plan | 1:05 | 2:20 |
-| 3 | Cross-node inference, no overlay tunnel | 0:40 | 3:00 |
+| 3 | Cross-node inference, no tunnel on this leg | 0:40 | 3:00 |
 | 4 | Proof 3: governed self-healing (OOM) + C2 gate | 1:15 | 4:15 |
 | 5 | Operator audit + SSH + tagline wrap | 0:35 | 4:50 |
 
@@ -128,23 +128,23 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
 
 ---
 
-### Beat 3 — Cross-node inference, no overlay tunnel  `[planned 0:40]`
+### Beat 3 — Cross-node inference, no tunnel on this leg  `[planned 0:40]`
 
 **On screen:** web terminal inside an agent VM on Node A.
 
-- `[TALK]` "One thing the spec forced us to prove: cross-node traffic with no
-  overlay. I'll open a shell inside an agent VM on Node A and reach the
+- `[TALK]` "One thing the spec forced us to prove: no tunnel on the inference leg. I'll
+  open a shell inside an agent VM on Node A and reach the
   inference box on Node C directly."
 - `[CLICK]` open web terminal → agent VM on Node A.
 - `[CLICK]` type: `curl http://10.10.0.13:8080/v1/models`
 - `[TALK]` "The model list, served over plain HTTP on the underlay IP — no
-  tunnel, no VXLAN, no MTU black holes. And a streamed completion, tokens
+  tunnel on this leg, no MTU black holes. And a streamed completion, tokens
   flowing Node A to Node C."
 - `[CLICK]` run a streamed chat completion; show tokens streaming.
 - `[TALK]` "One static route. It works, or it doesn't — there's nothing to
   misconfigure."
 - `[FALLBACK]` (stream stalls) "If the stream stalls, that's the point of the
-  direct route — there's no tunnel to misconfigure. I'll re-run the route check:
+  direct route — no tunnel to misconfigure on this leg. I'll re-run the route check:
   three lines, it ends in PASS." → pivot to Beat 4.
 
 ---
@@ -215,9 +215,9 @@ the source docs) follow.
 | C3 | **Dashboard latency** | "The dashboard is lagging the live cluster — a UI refresh, not a control-plane problem. The nodes and controller keep working; the charts will catch up. Meanwhile, the terminal is the real-time view." → back to Beat 3. |
 | C4 | **VM slow to boot** | "A VM is taking its time to become task-ready. We target under ten seconds; if it drifts, the pre-warmed image is still there — nothing is downloading. I'll show the agent registering while we wait." → back to Beat 2. |
 | C5 | OOM-killer beats the poll (kernel kills `stress-ng` before 95% × 2) | "That's the honest race we documented: the kernel OOM-killer sometimes wins. We re-drive the deterministic chaos ramp instead, so the detect → decide → execute → audit loop still runs end to end." → back to Beat 4. |
-| C6 | Inference `503` / model unavailable | "The inference box is returning a busy signal — that's the degrade path, never a wrong-but-plausible answer. The router holds the slot; if it can't, the flash alias on the same GPU takes over." → back to Beat 3. |
+| C6 | Inference `503` / model unavailable | "The inference box is returning a busy signal — that's the degrade path, never a wrong-but-plausible answer. The router holds the slot; if it can't, the flash alias on the same node takes over." → back to Beat 3. |
 | C7 | Governance-gate anomaly (unclassifiable field) | "If the governance gate sees anything it can't classify, it fails closed — the batch is rejected. You just saw the healthy case; the anomaly case is simply: no egress, plus a rejection record." → back to Beat 5. |
-| C8 | Cross-node stream stalls | "If the stream stalls, that's the point of the direct route — no tunnel to misconfigure. Re-running the route check: three lines, it ends in PASS." → back to Beat 4. |
+| C8 | Cross-node stream stalls | "If the stream stalls, that's the point of the direct route — no tunnel to misconfigure on this leg. Re-running the route check: three lines, it ends in PASS." → back to Beat 4. |
 
 ---
 

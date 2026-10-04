@@ -66,29 +66,34 @@ traceable end-to-end in the audit log.
 **Answer (plain language).** We use **LXD** (from the snap, pinned to the `5.21/stable`
 LTS channel) as one 3-member cluster spanning Nodes A, B, and C. OpenStack is rejected —
 it needs hours-to-days of setup and a stack of control-plane daemons for problems this
-demo does not have. Networking is the key honest choice: we do **not** stretch a virtual
-overlay across the nodes. Each node keeps a local NAT bridge (`lxdbr0`) on its own subnet,
-and cross-node traffic travels the physical underlay network by real IP address. The GPU
-inference service on Node C is simply reachable at `http://10.10.0.13:8080`.
+demo does not have. Networking is the key honest choice, and it splits cleanly by traffic
+class: the **latency-critical inference leg stays on the underlay** — no overlay, no tunnel
+— while **agent-workload (guest-to-guest) addressing rides a single VXLAN overlay** (VNI
+100, UDP 4789, subnet `10.99.0.0/24`). Each node keeps a local NAT bridge (`lxdbr0`) for its
+own egress, and cross-node service traffic travels the physical underlay network by real IP
+address. The on-prem inference service (`llama.cpp`) on Node C is simply reachable at
+`http://10.10.0.13:8080`.
 
 **Technical justification (verifiable).** The frozen decisions are `infra-decisions.md`
-D1 (LXD, not MicroCloud/OpenStack), D2 (underlay routing, no OVN/Fan/VXLAN), and D5
+D1 (LXD, not MicroCloud/OpenStack), D2 (underlay routing for the inference path; VXLAN `vxlan-bridge` for guest addressing), and D5
 (host-exposed `llama.cpp` on the underlay IP). Every cross-node service is addressed by
 underlay IP:port, and one firewall rule on Node C — `allow tcp/8080 from 10.10.0.0/24` —
 authorizes all agent VMs, because each VM's traffic SNATs through its own node's underlay
 IP.
 
-**The contested area — cross-node latency.** The adversarial risk called out in
+**The contested area — cross-node latency on the inference leg.** The adversarial risk called out in
 `project.md` is that overlay tunnels (OVN/Fan/VXLAN) silently drop packets on MTU
 mismatch and add routing latency to every multi-turn agent ↔ LLM call. The concrete
-resolution is to remove the tunnel: a single static underlay route either works or it
-does not, there is no encapsulation to misconfigure, and the guest MTU is clamped to the
-underlay MTU (`1460` on GCP) to avoid PMTU black holes (`infra-decisions.md` D2). Host
-exposure of `llama.cpp` also removes one virtualization hop from the streaming path.
+resolution for the **inference leg** is to keep it off the overlay: a single static
+underlay route either works or it does not, there is no encapsulation to misconfigure, and
+the guest MTU is clamped to the underlay MTU (`1460` on GCP) to avoid PMTU black holes
+(`infra-decisions.md` D2). Host exposure of `llama.cpp` also removes one virtualization
+hop from the streaming path. Guest-to-guest agent traffic, which is not latency-critical,
+does ride the VXLAN overlay — scoped to that addressing, not to the inference path.
 
 **How the demo proves this.** From an agent VM on Node A, `curl
 http://10.10.0.13:8080/v1/models` returns the model list over standard HTTP, and a
-streamed chat completion flows Node-A → Node-C with no tunnel in the path — a judge can
+streamed chat completion flows Node-A → Node-C with no tunnel in the inference path — a judge can
 watch the route (`traceroute`) and the streamed tokens at once.
 
 ---
