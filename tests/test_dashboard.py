@@ -36,12 +36,46 @@ PORT = int(os.environ.get("TERMINI_DASH_TEST_PORT", "18081"))
 # --------------------------------------------------------------------------- WS/SSE clients
 
 class WsClient:
-    """Tiny stdlib WebSocket client for the test."""
+    """Tiny stdlib WebSocket client for the test.
+
+    The controller runs in a subprocess alongside this test. Under a loaded CI
+    runner its accept/response path can stall for a few seconds on one
+    connection (observed on `test_terminal_ws_not_found_node`: the handshake
+    read hit the socket timeout, then the very next request was served
+    instantly). A transient stall must not red the suite, so the opening
+    handshake is retried a bounded number of times on transient socket errors:
+
+      * `TimeoutError` / `OSError` (stalled or reset connection) -> retry;
+      * a non-101 status (real protocol failure) -> raise immediately;
+      * retries exhausted -> re-raise the last transient error (test fails).
+
+    Assertions are unchanged: every test still runs against a real, accepted
+    101 handshake.
+    """
+
+    HANDSHAKE_ATTEMPTS = 3
+    HANDSHAKE_TIMEOUT = 10.0
 
     def __init__(self, port: int, path: str) -> None:
-        self.sock = socket.create_connection(("127.0.0.1", port), timeout=10)
         self.close_code = None
         self.close_reason = ""
+        last_exc: Exception | None = None
+        for attempt in range(self.HANDSHAKE_ATTEMPTS):
+            try:
+                self._connect_and_handshake(port, path)
+                return
+            except (TimeoutError, ConnectionError, OSError) as exc:
+                # transient: stalled/reset connection. Non-101 (AssertionError)
+                # is a real protocol failure and is not caught here.
+                last_exc = exc
+                self._close_sock()
+                if attempt + 1 < self.HANDSHAKE_ATTEMPTS:
+                    time.sleep(0.25 * (attempt + 1))
+        assert last_exc is not None
+        raise last_exc
+
+    def _connect_and_handshake(self, port: int, path: str) -> None:
+        self.sock = socket.create_connection(("127.0.0.1", port), timeout=self.HANDSHAKE_TIMEOUT)
         key = base64.b64encode(os.urandom(16)).decode()
         req = (
             f"GET {path} HTTP/1.1\r\n"
@@ -56,6 +90,12 @@ class WsClient:
         status = resp.split(b"\r\n", 1)[0].decode()
         if "101" not in status:
             raise AssertionError(f"WS handshake failed: {status}")
+
+    def _close_sock(self) -> None:
+        try:
+            self.sock.close()
+        except (OSError, AttributeError):
+            pass
 
     def _read_until(self, delim: bytes) -> bytes:
         buf = b""
@@ -447,6 +487,11 @@ class DashboardIntegrationTest(unittest.TestCase):
             "TERMINI_MIN_REDACTOR_VERSION": "3",
             "TERMINI_INVENTORY_PATH": cls.inventory_path,
             "TERMINI_TERMINAL_BACKEND": "local",
+            # Keep the integration server hermetic: the background operator loop
+            # polls the telemetry store every second (and can shell out to LXD on
+            # a breach). Nothing in these dashboard-surface tests depends on it,
+            # and its 1 Hz DB churn/CI load is a source of nondeterminism.
+            "TERMINI_OPERATOR_ENABLED": "0",
             "TERMINI_SSH_CA_PUBLIC_KEY": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJR2bq8RS3wcFV05oL8+m9nzkBr6kXzZVC13MkUiUE34 termini-operator-cert",
             "PYTHONUNBUFFERED": "1",
         })
