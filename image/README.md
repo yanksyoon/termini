@@ -116,12 +116,22 @@ image/pipeline/publish-image.sh <artifact.qcow2> <image-manifest.json>
 ## 4. First boot: proving no network download happens
 
 `pipeline/first-boot-preflight.sh` runs before `termini-bootstrap.service`
-(`systemd/termini-firstboot-preflight.service`, ordered `Before=`;
-`termini-bootstrap.service` adds `Requisite=termini-firstboot-preflight.service`).
-**`termini-bootstrap.service` is not shipped yet** — it is the planned on-node
-daemon (`docs/contracts/node-bootstrap.md`), which this image pipeline does not
-build; the ordering above is forward-looking and is a no-op until that unit
-exists. The preflight still runs and writes its boot log. It:
+(`systemd/termini-firstboot-preflight.service`, ordered `Before=`; the canonical
+`termini-bootstrap.service` carries the matching `After=termini-firstboot-preflight.service`).
+The bootstrap daemon + unit are baked by
+`pipeline/provision/60-node-bootstrap.sh`, which installs the canonical files
+`infra/bootstrap/node/termini-bootstrap.{py,service}` to
+`/usr/local/bin/termini-bootstrap` (0755) and
+`/etc/systemd/system/termini-bootstrap.service`, enabled — the same artefacts the
+node-side bootstrap flow (`infra/bootstrap`) and the warm layer
+(`infra/warm/node` symlinks) use, so there is one implementation and no drift.
+
+The two units are **ordered**, not hard `Requisite=`-gated: the demo alias mounts
+the pinned GGUF weights at launch (`/var/lib/termini/models`) instead of baking
+them, so gating the daemon on their baked presence would refuse to start on a
+valid node. A node still fails loudly — the preflight writes a machine-readable
+verdict to `/var/log/termini/first-boot.json`. The preflight runs and writes its
+boot log. It:
 
 1. asserts the `llama-server` binary exists, is executable, and records its size + `sha256`;
 2. asserts every pinned GGUF is present at its exact expected size, with a
@@ -130,9 +140,9 @@ exists. The preflight still runs and writes its boot log. It:
 4. asserts the bake sentinel `/var/lib/termini/.baked-offline` exists;
 5. writes `/var/log/termini/first-boot.json` and exits non-zero on any failure.
 
-Because the unit is `Requisite=` for the bootstrap daemon, a node with a missing
-or mismatched baked artifact **fails loudly instead of downloading** — the
-`<5 s to registration` guarantee in `node-bootstrap.md` cannot be met by cheating.
+The preflight's non-zero exit is the grep-able signal that a node booted with
+missing/mismatched baked artifacts; the `<5 s to registration` guarantee in
+`node-bootstrap.md` is met from local disk, never by downloading.
 
 `t_066b6e3d` (cloud-init) references the alias with the same string:
 `image: agentic-os/w3` (variant `gpu` for Node C, `compute` for A/B).
@@ -158,7 +168,10 @@ It runs three stages:
      `network_downloads_at_boot: 0`, both aliases resolved from local disk;
    - deleting one model file makes the preflight **fail** with
      `model_files_present`/`model_sizes_match`/`model_sha256_sidecars` false;
-   - the emitted `image-manifest.json` validates against the schema.
+   - the emitted `image-manifest.json` validates against the schema;
+   - `provision/60-node-bootstrap.sh` installs the canonical
+     `infra/bootstrap/node/termini-bootstrap.{py,service}` verbatim (daemon 0755)
+     into a DESTDIR root.
 3. **GPU verifier rehearsal** (`tools/rehearse_gpu.py`) — drives `tools/gpu_check.py`
    against stub fixtures (fake `nvidia-smi`, fake `/dev` nodes, a stub `libcudart`
    built with `cc`) and asserts each verdict / failure reason.
@@ -237,7 +250,7 @@ image/
     first-boot-preflight.sh         no-network boot assertion + boot log
     verify-pipeline.sh              clean-checkout verifier
     verify-gpu.sh                   Node C GPU acceptance (live, or --rehearse)
-    provision/00..50*.sh            bake steps (base, LXD, NVIDIA driver, CUDA, llama.cpp, models, agent deps)
+    provision/00..60*.sh            bake steps (base, LXD, NVIDIA driver, CUDA, llama.cpp, models, agent deps, node bootstrap daemon+unit)
     packer/termini-node.pkr.hcl     VM/QCow2 recipe
     distrobuilder/termini-node.yaml container recipe
     systemd/termini-firstboot-preflight.service

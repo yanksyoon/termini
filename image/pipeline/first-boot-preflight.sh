@@ -7,9 +7,10 @@
 #   * every pinned GGUF is present at its expected size (local disk, not a network fs)
 #   * the bake recorded its pins (llama.cpp commit, staged models)
 # It writes a machine-readable boot log to --log-out and exits non-zero on any
-# failed check, so systemd can gate termini-bootstrap on it (Requisite/After).
-# NB: termini-bootstrap.service is planned but not shipped yet
-# (docs/contracts/node-bootstrap.md); the Requisite gate is forward-looking.
+# failed check, so systemd can order termini-bootstrap.service after it
+# (Before=/After=; see image/README.md §4 — the daemon is deliberately not hard
+# Requisite-gated because demo aliases mount weights instead of baking them).
+# NB: the bootstrap daemon is installed by image/pipeline/provision/60-node-bootstrap.sh.
 #
 # Testable off-image: pass --root <dir> to evaluate a staged layout (rehearsal).
 set -euo pipefail

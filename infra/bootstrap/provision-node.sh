@@ -43,15 +43,16 @@ else
   lxc init "$TERMINI_IMAGE_ALIAS" "$NAME" </dev/null >/dev/null
 fi
 
-# Refresh the canonical bootstrap runtime (daemon + systemd unit) into the fresh
-# node before first boot. The image pipeline bakes these into the alias
-# (image/pipeline); this repo-side push keeps a node booted from a pre-existing
-# image on the canonical runtime. It is a local file copy — no network fetch —
-# and is idempotent. Set REFRESH_RUNTIME=0 to verify a pure baked image instead.
-if [ "${REFRESH_RUNTIME:-1}" = "1" ]; then
+# The canonical bootstrap runtime (daemon + systemd unit) is baked into the image
+# alias by image/pipeline/provision/60-node-bootstrap.sh, so a node created from
+# the alias needs no provision-time push. REFRESH_RUNTIME=1 is a legacy escape
+# hatch (kept for debugging an older alias): it copies the repo's canonical files
+# into the fresh node before first boot. It is a local file copy — no network — and
+# is idempotent. Default 0: the baked alias is the source of truth.
+if [ "${REFRESH_RUNTIME:-0}" = "1" ]; then
   lxc file push "$HERE/node/termini-bootstrap.py" "$NAME/usr/local/bin/termini-bootstrap" >/dev/null
   lxc file push "$HERE/node/termini-bootstrap.service" "$NAME/etc/systemd/system/termini-bootstrap.service" >/dev/null
-  echo "[provision] $NAME: canonical termini-bootstrap runtime pushed" >&2
+  echo "[provision] $NAME: canonical termini-bootstrap runtime pushed (REFRESH_RUNTIME=1)" >&2
 fi
 
 UD="$(controller_url="$CONTROLLER_URL" node_name="$NAME" enrollment_token="$TOKEN" \

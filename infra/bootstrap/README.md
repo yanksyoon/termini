@@ -126,15 +126,14 @@ PORT=18099 NODE=bsp-verify infra/bootstrap/verify-bootstrap.sh | tee evidence/bo
 
 ## 6. Honest scope and deviations
 
-* **Node runtime is refreshed from the repo at provision time.** The local image
-  alias was baked by a *previous* card and predates this daemon/unit. `bake-image.sh`
-  bakes the canonical files (via the `infra/warm/node` symlinks), but this build
-  host has no DNS inside the LXD build container, so a full re-bake is not possible
-  here. `provision-node.sh` therefore pushes the canonical daemon + unit into the
-  fresh node before first boot (`REFRESH_RUNTIME=1`, default; a local file copy, no
-  network). Wiring the image pipeline (`image/pipeline/packer`, which already
-  `systemctl enable`s `termini-bootstrap.service` but ships no binary) to bake these
-  files is a **follow-up card** — see §7.
+* **Node runtime is baked into the image alias.** The canonical daemon + unit are
+  installed by `image/pipeline/provision/60-node-bootstrap.sh` (0755 daemon,
+  enabled unit), so `agentic-os/w3` contains them directly; a node created from
+  the alias needs no provision-time push. `provision-node.sh` defaults
+  `REFRESH_RUNTIME=0`; setting it to `1` is a legacy escape hatch that copies the
+  repo's canonical files into the fresh node (a local file copy, no network). The
+  node-side and image pipelines share one implementation (`infra/warm/node/*` are
+  symlinks to `infra/bootstrap/node/*`).
 * **Instances are LXD containers, not VMs.** This GCP footprint has no `/dev/kvm`
   (inherited from `t_58a1fed1`); the bootstrap flow is instance-type agnostic. On a
   real VM the OS boot is slower and `boot_to_registered_ms` grows by the VM's boot
@@ -150,9 +149,9 @@ PORT=18099 NODE=bsp-verify infra/bootstrap/verify-bootstrap.sh | tee evidence/bo
 
 ## 7. Follow-ups (not done here)
 
-1. **Bake the daemon + unit into the image alias** — add `node/termini-bootstrap.py`
-   and `node/termini-bootstrap.service` to `image/pipeline/provision/` (or the packer
-   provisioner) so the alias ships them, and drop `REFRESH_RUNTIME` from the harness.
+1. ~~**Bake the daemon + unit into the image alias.**~~ **Done (t_d8203794):**
+   `image/pipeline/provision/60-node-bootstrap.sh` installs the canonical daemon +
+   unit into the alias; `provision-node.sh` defaults `REFRESH_RUNTIME=0`.
 2. **Unify the GCP cloud-init** — `infra/gcp/cloud-init/node.yaml.tftpl` should render
    from `cloud-init/node-bootstrap.yaml.tftpl` so the GCP path gets the same SSH key
    injection + sshd hardening instead of a placeholder CA line.

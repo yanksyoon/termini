@@ -70,8 +70,13 @@ infra/warm/demo-env.sh fresh             # snapshot-restore a fresh node, timed
 
 `bake-image.sh` builds `llama.cpp` at the pinned commit
 (`image/models.lock.json::llamacpp.commit`) unless `TERMINI_LLAMA_BIN_SRC`
-points at a prebuilt pair — that is the CI fast path. The one-time model fetch
-and bake may use the network; **everything after that is offline**.
+points at a prebuilt pair — that is the CI fast path. It installs the canonical
+node bootstrap daemon + unit by running the image pipeline's provision step
+(`image/pipeline/provision/60-node-bootstrap.sh`), so the alias and the image
+recipe share one implementation. The one-time model fetch and bake may use the
+network; **everything after that is offline**. On a build host whose containers
+have no working DNS, set `TERMINI_BAKE_BASE=<image>` to a base whose runtime
+packages are already present — the package step then installs nothing.
 
 Restore points: `demo-env.sh up` records `unregistered` on each node **before it
 first boots** (the pre-enrollment point `fresh` restores from) and `warm` after

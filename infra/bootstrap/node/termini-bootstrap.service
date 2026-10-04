@@ -6,6 +6,17 @@ Documentation=file:/opt/termini/README.md
 # cloud-init has written the per-node config (docs/contracts/node-bootstrap.md §3.2).
 Wants=network-online.target
 After=network-online.target
+# First-boot offline preflight ordering. The image pipeline installs
+# termini-firstboot-preflight.service (image/pipeline) and orders it Before= this
+# unit (see that unit's [Unit] section); this After= keeps the relationship
+# explicit on the node even when the preflight unit is absent (then a no-op).
+#
+# The preflight is deliberately NOT a hard Requisite gate here: the demo alias
+# mounts the pinned GGUF weights at launch (/var/lib/termini/models) instead of
+# baking them, so gating activation on their baked presence would refuse to start
+# the daemon on a valid node. A node still fails loudly — the preflight writes its
+# verdict to /var/log/termini/first-boot.json.
+After=termini-firstboot-preflight.service
 ConditionPathExists=/etc/termini/config.yaml
 
 [Service]

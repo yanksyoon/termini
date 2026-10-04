@@ -51,6 +51,15 @@ files:
     source: ../first-boot-preflight.sh
   - path: /etc/systemd/system/termini-firstboot-preflight.service
     source: ../systemd/termini-firstboot-preflight.service
+  # Canonical node bootstrap runtime + the provision step that installs it (the
+  # same step Packer runs). The files live in infra/bootstrap so image and node
+  # bootstrap share one source of truth.
+  - path: /tmp/termini-bootstrap.py
+    source: ../../../infra/bootstrap/node/termini-bootstrap.py
+  - path: /tmp/termini-bootstrap.service
+    source: ../../../infra/bootstrap/node/termini-bootstrap.service
+  - path: /tmp/60-node-bootstrap.sh
+    source: ../provision/60-node-bootstrap.sh
 
 run:
   # The provisioners are the *safe* subset for a container: no CUDA driver and no
@@ -73,6 +82,10 @@ run:
 
   - command: |
       set -euo pipefail
+      # Canonical node bootstrap runtime (single source of truth with Packer).
+      TERMINI_BOOTSTRAP_PY=/tmp/termini-bootstrap.py \
+        TERMINI_BOOTSTRAP_UNIT=/tmp/termini-bootstrap.service \
+        bash /tmp/60-node-bootstrap.sh
       echo "termini-node-container" | tee /etc/termini/image-version >/dev/null
       echo "baked container variant" | tee /var/lib/termini/.baked-offline >/dev/null
-      systemctl enable termini-firstboot-preflight.service || true
+      systemctl enable termini-firstboot-preflight.service termini-bootstrap.service || true
