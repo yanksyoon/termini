@@ -264,6 +264,12 @@ def latest_sample(conn, node_id: str) -> dict | None:
     return json.loads(row["payload_json"]) if row else None
 
 
+def _epoch_to_rfc3339(ts: float) -> str:
+    """Format an epoch-second bucket start as RFC3339 with millis (dashboard.md §1.4)."""
+    dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
 def metric_series(
     conn, node_id: str, start: float | None, end: float | None,
     metric_names: list[str], resolution: str,
@@ -303,11 +309,15 @@ def metric_series(
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 slot["vals"][name].append(v)
 
-    for (t_label, _), slot in sorted(acc.items(), key=lambda kv: kv[0][1]):
+    for (t_label, t_epoch), slot in sorted(acc.items(), key=lambda kv: kv[0][1]):
+        # Contract §1.4: point timestamps are RFC3339. Raw points carry the sample
+        # ts verbatim; downsampled buckets are formatted from their epoch second so
+        # the dashboard's Date.parse() keeps every point (was epoch seconds).
+        ts_iso = t_label if bucket <= 0 else _epoch_to_rfc3339(t_epoch)
         for name in metric_names:
             vals = slot["vals"][name]
             if vals:
-                series[name]["points"].append({"t": t_label, "v": round(sum(vals) / len(vals), 4)})
+                series[name]["points"].append({"t": ts_iso, "v": round(sum(vals) / len(vals), 4)})
 
     return {"node_id": node_id, "resolution": resolution,
             "series": [series[n] for n in metric_names if n in series]}

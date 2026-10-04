@@ -5,7 +5,7 @@
 
 import { TerminalSession, SessionState } from './terminal-client.js';
 import { terminalUrl } from './framing.js';
-import { SshPanel } from './ssh-panel.js';
+import { SshPanel, requestHeaders } from './ssh-panel.js';
 
 const params = new URLSearchParams(location.search);
 // Console-injected defaults (see console/serve.py): let one origin host the
@@ -48,6 +48,7 @@ fitAddon.fit();
 const sshPanel = new SshPanel($('ssh-panel-root'), {
   endpoint: sshUrl,
   keyPath,
+  token,
 });
 
 // --- session -------------------------------------------------------------
@@ -148,7 +149,9 @@ function connect(nodeId) {
 async function loadNodes() {
   setState(SessionState.IDLE);
   try {
-    const res = await fetch(nodesUrl, { headers: { Accept: 'application/json' } });
+    // The controller gates this on the project_token (contract §1.1); the dev
+    // mock bridge ignores the header, so it is sent whenever a token is known.
+    const res = await fetch(nodesUrl, { headers: requestHeaders(token) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const nodes = Array.isArray(data.nodes) ? data.nodes : [];
