@@ -1,0 +1,67 @@
+
+=== shared-template unification ===
+PASS  cloud-init/node.yaml.tftpl -> infra/bootstrap/cloud-init/node-bootstrap.yaml.tftpl
+PASS  main.tf renders cloud-init/node.yaml.tftpl via templatefile()
+PASS  node-a user-data valid (no placeholder/marker, team key + CA injected)
+PASS  node-b user-data valid (no placeholder/marker, team key + CA injected)
+PASS  node-c user-data (llama) valid (no placeholder/marker, team key + CA injected)
+PASS  terraform templatefile() and envsubst render byte-identical user-data
+
+=== stage the controller + canonical bootstrap daemon on ubuntu@34.47.246.70 ===
+..    snapshot sshd/authorized_keys so cleanup can restore them exactly
+snapshot-ok
+
+=== render the live user-data (real team key, real controller CA, per-node token) ===
+PASS  live node-b user-data valid (no placeholder/marker, team key + CA injected)
+
+=== start the controller on the node (loopback :18099, fresh DB) ===
+PASS  controller up on 127.0.0.1:18099
+
+=== stage the canonical daemon + unit (stock-Ubuntu image; pre-baked image pending D3) ===
+
+=== apply the RENDERED user-data with the node's own cloud-init ===
+..    cloud-init single -n write_files ok
+..    cloud-init single -n ssh ok
+..    cloud-init single -n runcmd ok
+..    cloud-init single -n scripts-user ok
+
+=== daemon reaches ONLINE against the controller ===
+PASS  termini-bootstrap ONLINE
+        "node_id": "01M43FA1P6WS1Y20J5NMCS2A2X",
+        "role": "compute",
+        "register_ms": 35,
+      Type=notify
+      SubState=running
+
+=== cloud-init wrote the per-node inputs ===
+      controller_url: http://127.0.0.1:18099
+      node_name: node-b
+      role_hint: compute
+      underlay_ip: 10.10.0.12/24
+      underlay_gw: 10.10.0.1
+      bootstrap_seed_ip: 10.10.0.11
+      telemetry_interval_ms: 1000
+600 root:root /var/lib/termini/enrollment.token
+PASS  enrollment token written (0600 root:root)
+
+=== sshd hardened per node-bootstrap.md §7 ===
+      permitrootlogin without-password
+      passwordauthentication no
+      kbdinteractiveauthentication no
+      trustedusercakeys /etc/ssh/termini_ca.pub
+PASS  PasswordAuthentication no
+PASS  PermitRootLogin prohibit-password
+PASS  TrustedUserCAKeys = injected controller CA
+
+=== passwordless SSH with the injected team key (from this host) ===
+PASS  ssh root@34.47.246.70 with the injected key: Warning: Permanently added '34.47.246.70' (ED25519) to the list of known hosts. root termini-node-b.asia-south1-a.c.termini-510609.internal 
+PASS  password auth refused
+
+=== registration visible through the controller API ===
+PASS  controller recorded the node: "status": "online"
+
+=== key installer is idempotent ===
+PASS  team key appears exactly once in root authorized_keys
+
+RESULT: PASS — shared template renders clean; live GCP node accepts the injected team key and registered.
+..    cleanup on ubuntu@34.47.246.70 (restore node to its pre-test state)

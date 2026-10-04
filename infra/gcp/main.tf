@@ -47,6 +47,20 @@ locals {
     ),
     "__PORT__", tostring(var.inference_port)
   )
+
+  # Node C's optional llama.cpp serve block, expressed as the two cloud-config
+  # fragments the shared bootstrap template appends (see
+  # infra/bootstrap/cloud-init/node-bootstrap.yaml.tftpl). Keeping it here — and
+  # NOT hardcoded in the template — means the bootstrap flow stays role-agnostic
+  # and the inference block is pure per-node configuration (task t_5e9c9d96).
+  llama_write_file = join("\n", [
+    "  - path: /usr/local/sbin/termini-llama-serve.sh",
+    "    permissions: '0755'",
+    "    owner: root:root",
+    "    content: |",
+    "      ${replace(local.llama_serve_script, "\n", "\n      ")}",
+  ])
+  llama_runcmd = "  - [ /usr/local/sbin/termini-llama-serve.sh ]"
 }
 
 # --- Network -----------------------------------------------------------------
@@ -212,22 +226,34 @@ resource "google_compute_instance" "node" {
 
   metadata = merge(
     {
-      # Activation-only cloud-init (D3): writes /etc/termini/config.yaml and starts
-      # the pre-installed bootstrap daemon. No package installs, no model downloads.
+      # Node cloud-init — rendered from the SHARED bootstrap template
+      # (infra/bootstrap/cloud-init/node-bootstrap.yaml.tftpl; the local
+      # cloud-init/node.yaml.tftpl is a symlink to it). One template therefore
+      # drives both the LXD bootstrap path and this GCP footprint: the same team
+      # SSH key injection, sshd hardening (TrustedUserCAKeys = the real
+      # controller CA), config + enrollment token, and termini-bootstrap.service
+      # start (task t_5e9c9d96). No package installs, no model downloads.
       user-data = templatefile("${path.module}/cloud-init/node.yaml.tftpl", {
         node_name             = each.key
         role_hint             = each.value.role
         underlay_ip           = "${local.node_ip[each.key]}/${split("/", var.network_cidr)[1]}"
         underlay_gw           = local.gateway_ip
         seed_ip               = local.seed_ip
-        guest_cidr            = each.value.guest_cidr
         controller_url        = var.controller_url
         controller_ca_pubkey  = var.controller_ssh_ca_pubkey
         telemetry_interval_ms = var.telemetry_interval_ms
-        # Node C only: run the CPU llama.cpp server (frozen contract: :8080, underlay-only).
-        serve_inference    = each.value.inference && var.serve_inference
-        inference_port     = var.inference_port
-        llama_serve_script = local.llama_serve_script
+        # Per-node single-use enrollment token (node-bootstrap.md §3.2/§5).
+        enrollment_token = lookup(var.enrollment_tokens, each.key, "")
+        # Team SSH public key installed into authorized_keys (bootstrap §7).
+        team_ssh_pubkey = var.team_ssh_pubkey
+        # Informational bootstrap-origin record (the pre-baked Termini Node OS is
+        # pending, D3, so this names the GCP boot image being used meanwhile).
+        image_alias   = "${var.image_project}/${var.image_family}"
+        image_version = var.image_family
+        # Node C only: host-exposed CPU llama.cpp (:8080, underlay-only) injected
+        # as extra cloud-config fragments; the bootstrap template hardcodes none.
+        extra_write_files = (each.value.inference && var.serve_inference) ? local.llama_write_file : ""
+        extra_runcmd      = (each.value.inference && var.serve_inference) ? local.llama_runcmd : ""
       })
       enable-oslogin = "FALSE"
     },

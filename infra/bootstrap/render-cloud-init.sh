@@ -9,6 +9,9 @@
 #   optional: role_hint (auto) underlay_ip underlay_gw seed_ip
 #             telemetry_interval_ms (1000) controller_ca_pubkey image_alias
 #             (agentic-os/w3) image_version (2026.10.0)
+#             extra_write_files, extra_runcmd (already-indented YAML fragments
+#             appended to the write_files / runcmd lists; empty by default —
+#             infra/gcp passes them for Node C's llama.cpp serve block)
 set -euo pipefail
 
 TPL="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cloud-init/node-bootstrap.yaml.tftpl}"
@@ -25,12 +28,14 @@ TPL="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cloud-init/node-bootstra
 : "${controller_ca_pubkey:=# Termini controller SSH CA not configured for this node}"
 : "${image_alias:=agentic-os/w3}"
 : "${image_version:=2026.10.0}"
+: "${extra_write_files:=}"
+: "${extra_runcmd:=}"
 export controller_url node_name enrollment_token team_ssh_pubkey role_hint \
        underlay_ip underlay_gw seed_ip telemetry_interval_ms controller_ca_pubkey \
-       image_alias image_version
+       image_alias image_version extra_write_files extra_runcmd
 
 VARS='$controller_url $node_name $enrollment_token $team_ssh_pubkey $role_hint \
 $underlay_ip $underlay_gw $seed_ip $telemetry_interval_ms $controller_ca_pubkey \
-$image_alias $image_version'
+$image_alias $image_version $extra_write_files $extra_runcmd'
 
 envsubst "$VARS" < "$TPL"

@@ -61,7 +61,7 @@ Key properties:
 |---|---|
 | `node/termini-bootstrap.py` | **Canonical bootstrap daemon.** Reads config + token, gathers facts, registers, then streams telemetry. Emits the objective timing line (see §4). |
 | `node/termini-bootstrap.service` | systemd unit (`Type=notify`, `Restart=always`, activation-only via `ConditionPathExists=/etc/termini/config.yaml`). |
-| `cloud-init/node-bootstrap.yaml.tftpl` | cloud-init user-data: injects the team SSH key, writes config + token + CA + sshd policy, starts the unit. |
+| `cloud-init/node-bootstrap.yaml.tftpl` | cloud-init user-data: injects the team SSH key, writes config + token + CA + sshd policy, starts the unit. **Shared** — `infra/gcp` renders this same file (its `cloud-init/node.yaml.tftpl` is a symlink here), so LXD and GCP boot identical cloud-init (t_5e9c9d96). |
 | `render-cloud-init.sh` | Renders the template with `envsubst` (documented variable list only). |
 | `provision-node.sh` | Creates/configures a node from the image alias with the rendered user-data (idempotent). |
 | `verify-bootstrap.sh` | Acceptance harness — provisions a fresh node, times boot→registered, tests passwordless SSH with the injected key, and checks idempotency. |
@@ -153,6 +153,9 @@ PORT=18099 NODE=bsp-verify infra/bootstrap/verify-bootstrap.sh | tee evidence/bo
 1. **Bake the daemon + unit into the image alias** — add `node/termini-bootstrap.py`
    and `node/termini-bootstrap.service` to `image/pipeline/provision/` (or the packer
    provisioner) so the alias ships them, and drop `REFRESH_RUNTIME` from the harness.
-2. **Unify the GCP cloud-init** — `infra/gcp/cloud-init/node.yaml.tftpl` should render
-   from `cloud-init/node-bootstrap.yaml.tftpl` so the GCP path gets the same SSH key
-   injection + sshd hardening instead of a placeholder CA line.
+2. ~~**Unify the GCP cloud-init**~~ — **done (task `t_5e9c9d96`)**: `infra/gcp/cloud-init/node.yaml.tftpl`
+   is now a symlink to this template and both `main.tf` (Terraform `templatefile()`)
+   and `provision.sh` (via `infra/gcp/render-cloud-init.sh`) render it, so the GCP
+   footprint gets the same SSH key injection + sshd hardening instead of a placeholder
+   CA line. Node C's llama.cpp block is passed as the optional `extra_write_files` /
+   `extra_runcmd` fragments rather than hardcoded here.

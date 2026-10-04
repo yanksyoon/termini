@@ -58,12 +58,44 @@ Every resource carries `labels = {project, managed-by, workstream, task}` and
 network tags `termini-node` (+ per-node `termini-node-a|b|c`) so the footprint
 tears down cleanly (`deletion_protection = false`).
 
+## Node cloud-init (shared bootstrap template)
+
+Every node's `user-data` is rendered at plan/apply time from the **shared bootstrap
+template** `infra/bootstrap/cloud-init/node-bootstrap.yaml.tftpl` via Terraform
+`templatefile()` (task `t_5e9c9d96`). `infra/gcp/cloud-init/node.yaml.tftpl` is a
+**symlink** to that file, so the GCP footprint and the LXD bootstrap flow
+(`infra/bootstrap`) boot from byte-identical cloud-init — there is no second copy
+to drift, and no placeholder CA line.
+
+Per node it:
+
+* installs the **team SSH public key** (`team_ssh_pubkey`, REQUIRED) into the
+  default user's and root's `authorized_keys` (idempotent);
+* writes the **controller SSH CA public key** (`controller_ssh_ca_pubkey`) as
+  `/etc/ssh/termini_ca.pub` + `TrustedUserCAKeys`, and hardens sshd
+  (`PasswordAuthentication no`, `PermitRootLogin prohibit-password`);
+* writes `/etc/termini/config.yaml` + the per-node `enrollment_tokens[<node>]`,
+  then starts `termini-bootstrap.service`, which registers with the controller
+  (`node-bootstrap.md` §3.2/§5/§7).
+
+The gcloud fallback (`provision.sh`) renders the **same template** through
+`infra/gcp/render-cloud-init.sh` (envsubst), so both IaC paths emit the same
+user-data. Roles that need more than the base flow pass **extra cloud-config
+fragments** (the `extra_write_files` / `extra_runcmd` template variables); the
+template itself hardcodes no role-specific block — Node C uses this for its
+llama.cpp server below.
+
+`verify-cloud-init.sh` checks the rendering offline and, with `--host USER@IP`,
+proves a real GCP node accepts the injected team key and registers; evidence is in
+`evidence/cloud-init-verify.txt`.
+
 ## Node C CPU llama.cpp serving
 
 Nodes A/B are strictly activation-only (D3 cloud-init: config file + bootstrap
 service, no installs, no downloads). Node C is the one exception: when
-`serve_inference = true` (default) its cloud-init also runs
-`cloud-init/llama-serve.sh`, which on first boot:
+`serve_inference = true` (default), `main.tf` injects `cloud-init/llama-serve.sh`
+into its user-data as the `extra_write_files`/`extra_runcmd` fragments (the shared
+template appends them; it hardcodes no inference block). That script on first boot:
 
 1. installs `build-essential cmake git curl`,
 2. clones and builds **CPU-only, static** `llama-server` at the pinned commit
@@ -151,6 +183,8 @@ PROJECT=my-project ./provision.sh               # creates exactly 3 VMs + invent
 ```bash
 cd infra/gcp
 ./verify.sh                                     # inventory + SSH + no-accelerator + A->C inference
+./verify-cloud-init.sh                          # shared cloud-init renders clean (offline)
+./verify-cloud-init.sh --host ubuntu@<node-ip>  # + live: injected team key SSH + registration
 ```
 
 `verify.sh` checks: inventory valid & 3 nodes; **no node declares an

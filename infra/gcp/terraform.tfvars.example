@@ -37,5 +37,22 @@ inference_model_alias = "deepseek-flash"
 ssh_source_ranges = ["0.0.0.0/0"]
 ssh_user          = "ubuntu"
 
+# --- Node bootstrap inputs (shared cloud-init, node-bootstrap.md §3.2/§7) -----
+# REQUIRED. Every node's cloud-init is rendered from
+# infra/bootstrap/cloud-init/node-bootstrap.yaml.tftpl and installs this key into
+# root's and the default user's authorized_keys (D4). Supply the team/fleet key.
+team_ssh_pubkey = "ssh-ed25519 AAAA...replace-with-your-team-public-key"
+
+# Per-node single-use enrollment tokens; the bootstrap daemon presents its own to
+# POST /v1/nodes/register. A node with no entry stays ACTIVATING.
+enrollment_tokens = {
+  node-a = "replace-with-node-a-enrollment-token"
+  node-b = "replace-with-node-b-enrollment-token"
+  node-c = "replace-with-node-c-enrollment-token"
+}
+
+# Controller SSH CA public key -> /etc/ssh/termini_ca.pub + TrustedUserCAKeys (D4).
+controller_ssh_ca_pubkey = "ssh-ed25519 AAAA...replace-with-controller-ca-public-key"
+
 # Where downstream tasks read the node inventory from.
 inventory_path = "/home/ubuntu/.termini/inventory.json"

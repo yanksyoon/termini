@@ -1,6 +1,13 @@
 #cloud-config
 # Termini node bootstrap — cloud-init user-data (task t_066b6e3d, W3).
 #
+# SINGLE SOURCE OF TRUTH for node user-data. Two renderers consume it, so any
+# node — LXD (infra/bootstrap) or GCP (infra/gcp) — boots from identical
+# cloud-init:
+#   * infra/bootstrap/render-cloud-init.sh — envsubst, documented variable list;
+#   * infra/gcp/main.tf — Terraform templatefile() at plan/apply time
+#     (infra/gcp/cloud-init/node.yaml.tftpl is a symlink to this file).
+#
 # Runs on a node created from the pre-baked image alias `${image_alias}`
 # (version ${image_version}). It performs NO apt/network fetch: every runtime is
 # already baked. It does exactly three things and nothing else:
@@ -15,6 +22,12 @@
 #
 # The rendered user-data is the ONLY per-node input boot needs
 # (docs/contracts/node-bootstrap.md §3.2).
+#
+# Optional role-specific additions are injected as whole, already-indented YAML
+# fragments by the caller — the extra_write_files variable (write_files list
+# items) and extra_runcmd (runcmd list items). Both default to empty, so the base
+# flow is unchanged. Node C uses them for its host-exposed llama.cpp server; the
+# template itself hardcodes no inference block (task t_5e9c9d96).
 
 hostname: ${node_name}
 fqdn: ${node_name}
@@ -95,6 +108,7 @@ write_files:
         chmod 0600 "$home/.ssh/authorized_keys"
         chown "$user:$user" "$home/.ssh/authorized_keys"
       done
+${extra_write_files}
 
 runcmd:
   # 1. install the injected team key (idempotent) and reload the hardened sshd
@@ -103,3 +117,4 @@ runcmd:
   # 2. start the pre-installed bootstrap daemon; it reports READY only after the
   #    controller acknowledges registration (systemd Type=notify).
   - [ systemctl, enable, --now, termini-bootstrap.service ]
+${extra_runcmd}

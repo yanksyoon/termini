@@ -158,6 +158,17 @@ variable "ssh_public_key" {
   default     = ""
 }
 
+variable "team_ssh_pubkey" {
+  description = <<-EOT
+    Team SSH public key injected into every node's authorized_keys by cloud-init
+    (node-bootstrap.md §7 / infra-decisions.md D4). REQUIRED: the GCP cloud-init
+    is rendered from the shared bootstrap template, which installs this key for
+    root and the default user and hardens sshd. Supply the fleet/team public key
+    (a single line, e.g. "ssh-ed25519 AAAA... team").
+  EOT
+  type        = string
+}
+
 variable "ssh_source_ranges" {
   description = "CIDRs allowed to reach TCP/22 on the nodes. DEMO DEFAULT IS OPEN — tighten to your admin CIDR or Google IAP (35.235.240.0/20) before any real use."
   type        = list(string)
@@ -176,6 +187,19 @@ variable "controller_ssh_ca_pubkey" {
   description = "Controller SSH CA public key injected into TrustedUserCAKeys on every node (D4). Empty = skip."
   type        = string
   default     = ""
+}
+
+variable "enrollment_tokens" {
+  description = <<-EOT
+    Per-node single-use enrollment tokens, keyed by node name (node-a/node-b/
+    node-c), written to /var/lib/termini/enrollment.token so the bootstrap daemon
+    can POST /v1/nodes/register (node-bootstrap.md §3.2/§5). Tokens are single-use
+    and short-TTL, so each node needs its own; a node with no entry renders an
+    empty token file and stays ACTIVATING until one is supplied.
+  EOT
+  type        = map(string)
+  default     = {}
+  sensitive   = true
 }
 
 variable "telemetry_interval_ms" {

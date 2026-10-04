@@ -16,8 +16,14 @@
 # `gcloud auth login`) with compute permission on $PROJECT.
 #
 # Usage:
-#   PROJECT=my-project ./provision.sh
+#   PROJECT=my-project TEAM_SSH_PUBKEY="ssh-ed25519 AAAA... team" ./provision.sh
 #   ./provision.sh --project my-project --zone us-central1-a
+#
+# cloud-init is rendered from the SHARED bootstrap template
+# (cloud-init/node.yaml.tftpl -> infra/bootstrap/cloud-init/node-bootstrap.yaml.tftpl)
+# so this fallback and the Terraform path emit identical user-data (task
+# t_5e9c9d96). Required env: TEAM_SSH_PUBKEY. Optional: ENROLLMENT_TOKEN,
+# CONTROLLER_CA_PUBKEY, CONTROLLER_URL.
 set -euo pipefail
 
 PROJECT="${PROJECT:-}"
@@ -44,8 +50,19 @@ SSH_SOURCE_RANGES="${SSH_SOURCE_RANGES:-0.0.0.0/0}"
 SSH_USER="${SSH_USER:-ubuntu}"
 INVENTORY_PATH="${INVENTORY_PATH:-$HOME/.termini/inventory.json}"
 
+# --- cloud-init inputs (rendered from the shared bootstrap template) ----------
+# These feed infra/gcp/render-cloud-init.sh, which renders
+# infra/bootstrap/cloud-init/node-bootstrap.yaml.tftpl (cloud-init/node.yaml.tftpl
+# is a symlink to it) — the same template Terraform renders in main.tf, so the
+# fallback and Terraform paths cannot drift (task t_5e9c9d96).
+TEAM_SSH_PUBKEY="${TEAM_SSH_PUBKEY:-}"
+ENROLLMENT_TOKEN="${ENROLLMENT_TOKEN:-}"
+CONTROLLER_CA_PUBKEY="${CONTROLLER_CA_PUBKEY:-}"
+CONTROLLER_URL="${CONTROLLER_URL:-https://controller.termini.internal}"
+TELEMETRY_INTERVAL_MS="${TELEMETRY_INTERVAL_MS:-1000}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LLAMA_SERVE_SCRIPT="$SCRIPT_DIR/cloud-init/llama-serve.sh"
+RENDER_CLOUD_INIT="$SCRIPT_DIR/render-cloud-init.sh"
 
 # GPU only when the accelerator count is non-zero (single switch, mirrors the
 # Terraform gpu_accelerator_count variable).
@@ -70,6 +87,8 @@ done
 [[ -n "$PROJECT" ]] || die "set PROJECT or pass --project"
 command -v gcloud >/dev/null || die "gcloud not found on PATH"
 command -v jq >/dev/null || die "jq not found on PATH"
+[[ -n "$TEAM_SSH_PUBKEY" ]] || die "set TEAM_SSH_PUBKEY (team SSH public key cloud-init injects)"
+[ -x "$RENDER_CLOUD_INIT" ] || die "cloud-init renderer missing: $RENDER_CLOUD_INIT"
 
 # Only /24 underlays are supported so the .11/.12/.13 host offsets are exact.
 if [[ ! "$NETWORK_CIDR" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\.0/24$ ]]; then
@@ -91,51 +110,26 @@ trap 'rm -rf "$WORKDIR"' EXIT
 
 userdata() { # $1=node $2=role $3=underlay_ip $4=seed_ip
   local node="$1" role="$2" ip="$3" seed="$4"
-  local serve=false
-  [[ "$node" == "node-c" && "$SERVE_INFERENCE" == "1" ]] && serve=true
+  local serve=0
+  [[ "$node" == "node-c" && "$SERVE_INFERENCE" == "1" ]] && serve=1
 
-  cat <<EOF
-#cloud-config
-write_files:
-  - path: /etc/termini/config.yaml
-    permissions: '0600'
-    owner: root:root
-    content: |
-      controller_url: https://controller.termini.internal
-      node_name: ${node}
-      role_hint: ${role}
-      underlay_ip: ${ip}
-      underlay_gw: ${GW_IP}
-      bootstrap_seed_ip: ${seed}
-      telemetry_interval_ms: 1000
-EOF
-
-  if [[ "$serve" == "true" ]]; then
-    [[ -f "$LLAMA_SERVE_SCRIPT" ]] || die "missing $LLAMA_SERVE_SCRIPT"
-    local script
-    script="$(cat "$LLAMA_SERVE_SCRIPT")"
-    script="${script//__LLAMACPP_COMMIT__/$LLAMACPP_COMMIT}"
-    script="${script//__MODEL_URL__/$INFERENCE_MODEL_URL}"
-    script="${script//__MODEL_FILE__/$INFERENCE_MODEL_FILE}"
-    script="${script//__MODEL_SHA256__/$INFERENCE_MODEL_SHA256}"
-    script="${script//__MODEL_ALIAS__/$INFERENCE_MODEL_ALIAS}"
-    script="${script//__PORT__/$INFERENCE_PORT}"
-    printf '  - path: /usr/local/sbin/termini-llama-serve.sh\n'
-    printf '    permissions: %s\n' "'0755'"
-    printf '    owner: root:root\n'
-    printf '    content: |\n'
-    while IFS= read -r line; do printf '      %s\n' "$line"; done <<< "$script"
-  fi
-
-  local bootstrap_start="systemctl enable --now termini-bootstrap.service 2>/dev/null || echo 'termini-bootstrap not installed (on-node daemon not shipped yet)'"
-  printf 'runcmd:\n'
-  printf '  # The on-node termini-bootstrap daemon is specified (docs/contracts/node-bootstrap.md)\n'
-  printf '  # but NOT shipped in this build: start it only if present so provisioning never\n'
-  printf '  # fails on a missing unit. Demo telemetry is chaos/node_sim.py; C2 is controller-side.\n'
-  printf '  - [ sh, -c, "%s" ]\n' "$bootstrap_start"
-  if [[ "$serve" == "true" ]]; then
-    printf '  - [ /usr/local/sbin/termini-llama-serve.sh ]\n'
-  fi
+  # Render the SHARED bootstrap template (node.yaml.tftpl -> the bootstrap
+  # template). Node C additionally gets the llama.cpp serve block when
+  # SERVE_INFERENCE=1. Identical to what main.tf renders via templatefile().
+  node_name="$node" role_hint="$role" underlay_ip="$ip/24" underlay_gw="$GW_IP" \
+    seed_ip="$seed" controller_url="$CONTROLLER_URL" \
+    enrollment_token="$ENROLLMENT_TOKEN" team_ssh_pubkey="$TEAM_SSH_PUBKEY" \
+    controller_ca_pubkey="$CONTROLLER_CA_PUBKEY" \
+    telemetry_interval_ms="$TELEMETRY_INTERVAL_MS" \
+    image_project="$IMAGE_PROJECT" image_family="$IMAGE_FAMILY" \
+    SERVE_INFERENCE="$serve" \
+    LLAMACPP_COMMIT="$LLAMACPP_COMMIT" \
+    INFERENCE_MODEL_URL="$INFERENCE_MODEL_URL" \
+    INFERENCE_MODEL_FILE="$INFERENCE_MODEL_FILE" \
+    INFERENCE_MODEL_SHA256="$INFERENCE_MODEL_SHA256" \
+    INFERENCE_MODEL_ALIAS="$INFERENCE_MODEL_ALIAS" \
+    INFERENCE_PORT="$INFERENCE_PORT" \
+    bash "$RENDER_CLOUD_INIT"
 }
 
 log "project=$PROJECT region=$REGION zone=$ZONE prefix=$PREFIX cidr=$NETWORK_CIDR accel=$use_accel"

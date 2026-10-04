@@ -18,8 +18,9 @@
 # receive non-empty `content` and incremental SSE deltas instead of an empty
 # `content` with a separate `reasoning_content`.
 #
-# The __PLACEHOLDER__ tokens are substituted by Terraform (main.tf) at apply time
-# so this file stays a plain, lintable shell script.
+# The marker tokens above are substituted at render time (Terraform main.tf or
+# infra/gcp/render-cloud-init.sh), so this file stays a plain, lintable shell
+# script and the rendered user-data carries no unresolved markers.
 set -euo pipefail
 
 LLAMACPP_COMMIT="__LLAMACPP_COMMIT__"
