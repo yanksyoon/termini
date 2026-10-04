@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://termini.internal/contracts/vm-allocation.schema.json",
+  "title": "Termini VM Allocation Request and Plan",
+  "description": "Structural contract for VM allocation in Termini. `AllocationRequest` is what the frontend or AI operator submits (the output of natural-language intent extraction). `AllocationPlan` is the controller's authoritative output AFTER the deterministic guardrail/clamp validator has run. The validator's clamp-vs-reject policy, per-node ceilings, and validation order are specified in controller-api.md (section 'Guardrail & Clamp Validator'); this schema encodes the structural and absolute-bounds constraints only. Field names are snake_case. All counts, cores, and sizes are integers; no fractional vCPU or RAM is allowed. Identifiers are ULIDs (26-char Crockford base32), matching governance.md.",
+  "$defs": {
+    "ulid": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "minLength": 26,
+      "maxLength": 26,
+      "description": "ULID: 26 characters of Crockford base32 (uppercase, alphabet 0-9A-HJKMNP-TV-Z, no I/L/O/U), e.g. \"01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D\"."
+    },
+    "vm_type": {
+      "type": "string",
+      "enum": ["agent_vm", "inference_vm"],
+      "description": "agent_vm = small isolated task-oriented agent (deployable on any compute node A/B, optionally C). inference_vm = LLM serving VM; requires GPU passthrough and must target a GPU node (node C in the demo)."
+    },
+    "allocation_spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "count"],
+      "description": "One requested VM class. Count fans out to N identical VMs. vcpus/ram_gb/disk_gb are ABSOLUTE bounds here; the per-node capacity ceiling is applied by the guardrail (controller-api.md).",
+      "properties": {
+        "type": { "$ref": "#/$defs/vm_type" },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "description": "Number of identical VMs of this class. Hard cap 64 per class per request."
+        },
+        "vcpus": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128,
+          "description": "Requested virtual CPUs per VM. Absolute cap 128; per-type preferred ranges and per-node ceilings are enforced by the guardrail."
+        },
+        "ram_gb": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512,
+          "description": "Requested RAM in whole GiB per VM. Absolute cap 512; per-node ceilings enforced by the guardrail."
+        },
+        "disk_gb": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 4096,
+          "description": "Requested root disk in whole GiB per VM. Absolute floor 4 GiB."
+        },
+        "target_node": {
+          "oneOf": [
+            { "const": "auto" },
+            { "$ref": "#/$defs/ulid" }
+          ],
+          "default": "auto",
+          "description": "\"auto\" lets the controller place the VM by capacity; otherwise an explicit node_id (ULID)."
+        },
+        "passthrough_gpu": {
+          "type": "boolean",
+          "default": false,
+          "description": "Only meaningful for inference_vm. For inference_vm the guardrail REQUIRES true (fixed decision: node C is a real GPU host). For agent_vm it must be false; a true value on agent_vm is a structural rejection."
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Optional free-form string labels for display only; not used in placement or guardrail decisions."
+        }
+      },
+      "examples": [
+        { "type": "agent_vm", "count": 3, "vcpus": 2, "ram_gb": 4, "disk_gb": 8, "target_node": "auto" },
+        { "type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16, "disk_gb": 64, "passthrough_gpu": true, "target_node": "auto" }
+      ]
+    },
+    "allocation_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_id", "allocations"],
+      "description": "Top-level allocation request submitted to POST /v1/projects/{project_id}/intents (structured path) or produced by the intent extractor.",
+      "properties": {
+        "project_id": { "$ref": "#/$defs/ulid" },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "description": "Optional client-supplied key for retry safety; the same key returns the same plan (controller-api.md idempotency)."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["natural_language", "structured", "ai_operator"],
+          "description": "Who produced the spec. Required for audit. ai_operator = the controller's remediation loop proposed a resize/migration."
+        },
+        "allocations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/allocation_spec" }
+        }
+      }
+    },
+    "clamped_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "decision", "from", "to", "reason"],
+      "properties": {
+        "field": { "type": "string", "description": "The field name that was altered, e.g. \"ram_gb\"." },
+        "decision": { "type": "string", "enum": ["clamped", "defaulted", "rejected"] },
+        "from": { "description": "Original submitted value (number, boolean, or null when the field was absent)." },
+        "to": { "description": "Resolved value (number, boolean, or null when rejected)." },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "below_minimum",
+            "above_absolute_maximum",
+            "exceeds_node_cpu_ceiling",
+            "exceeds_node_ram_ceiling",
+            "exceeds_node_disk_ceiling",
+            "gpu_unavailable",
+            "gpu_required_for_inference",
+            "gpu_not_allowed_for_agent",
+            "invalid_target_node_type",
+            "unknown_field"
+          ]
+        }
+      }
+    },
+    "resolved_allocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "status", "requested", "resolved", "guardrail", "node_id", "vm_ids"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0, "description": "0-based index into the request's allocations array." },
+        "status": { "type": "string", "enum": ["accepted", "clamped", "rejected"] },
+        "requested": { "$ref": "#/$defs/allocation_spec" },
+        "resolved": { "$ref": "#/$defs/allocation_spec", "description": "Final spec after clamp/defaulting. Present when status is accepted or clamped; null when rejected." },
+        "guardrail": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["clamped_fields", "reject_reasons"],
+          "properties": {
+            "clamped_fields": { "type": "array", "items": { "$ref": "#/$defs/clamped_field" } },
+            "reject_reasons": { "type": "array", "items": { "type": "string" }, "description": "Machine-readable reason codes when status is rejected." }
+          }
+        },
+        "node_id": { "description": "Assigned node id; null when rejected or when placement is deferred.", "oneOf": [ { "$ref": "#/$defs/ulid" }, { "type": "null" } ] },
+        "vm_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ulid" },
+          "description": "IDs of the VMs created for this class (empty until the plan is executed)."
+        }
+      }
+    },
+    "allocation_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan_id", "request_id", "project_id", "outcome", "created_at", "allocations", "audit"],
+      "description": "The controller's authoritative allocation result. outcome is accepted only if every class resolved to accepted or clamped; any rejected class forces outcome=rejected and the controller creates NOTHING (all-or-nothing).",
+      "properties": {
+        "plan_id": { "$ref": "#/$defs/ulid" },
+        "request_id": { "$ref": "#/$defs/ulid" },
+        "project_id": { "$ref": "#/$defs/ulid" },
+        "outcome": { "type": "string", "enum": ["accepted", "rejected"] },
+        "created_at": { "type": "string", "format": "date-time", "description": "RFC 3339 UTC timestamp." },
+        "allocations": { "type": "array", "items": { "$ref": "#/$defs/resolved_allocation" } },
+        "audit": { "$ref": "#/$defs/guardrail_audit" }
+      }
+    },
+    "guardrail_audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["audit_id", "request_id", "project_id", "timestamp", "actor", "raw_spec", "resolved_spec", "outcome", "node_snapshot"],
+      "description": "Immutable audit record written for every allocation decision (see controller-api.md audit fields). Persisted server-side; referenced by plan.audit.",
+      "properties": {
+        "audit_id": { "$ref": "#/$defs/ulid" },
+        "request_id": { "$ref": "#/$defs/ulid" },
+        "project_id": { "$ref": "#/$defs/ulid" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "actor": { "type": "string", "enum": ["user", "ai_operator", "system"] },
+        "raw_spec": { "$ref": "#/$defs/allocation_request", "description": "As submitted, before any clamping." },
+        "resolved_spec": { "$ref": "#/$defs/allocation_request", "description": "As executed, after clamping." },
+        "outcome": { "type": "string", "enum": ["accepted", "rejected"] },
+        "node_snapshot": {
+          "type": "array",
+          "description": "Registered capacity of every node in the project at decision time.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["node_id", "role", "cpu_cores", "ram_gb", "disk_gb", "gpu_count", "gpu_model"],
+            "properties": {
+              "node_id": { "$ref": "#/$defs/ulid" },
+              "role": { "type": "string", "enum": ["compute", "inference"] },
+              "cpu_cores": { "type": "integer", "minimum": 1 },
+              "ram_gb": { "type": "integer", "minimum": 1 },
+              "disk_gb": { "type": "integer", "minimum": 1 },
+              "gpu_count": { "type": "integer", "minimum": 0 },
+              "gpu_model": { "type": ["string", "null"], "description": "e.g. \"NVIDIA L4\"; null when no GPU." }
+            }
+          }
+        }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/allocation_request" },
+    { "$ref": "#/$defs/allocation_plan" }
+  ],
+  "examples": [
+    {
+      "project_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D",
+      "source": "natural_language",
+      "allocations": [
+        { "type": "agent_vm", "count": 3, "vcpus": 2, "ram_gb": 4, "target_node": "auto" },
+        { "type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16, "passthrough_gpu": true }
+      ]
+    }
+  ]
+}
