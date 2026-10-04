@@ -40,6 +40,7 @@ from urllib.parse import parse_qs, urlsplit
 from . import db, errors, governance, health, inventory, registration, role, store, validate, ws as wsmod
 from . import commands as cmd_mod
 from . import ulid
+from . import sshca as sshca_mod
 from .operator import store as opstore
 
 log = logging.getLogger("termini.controller")
@@ -52,7 +53,7 @@ class ControllerServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, addr, cfg, project, broker, operator_logs, inventory, terminal_manager,
-                 public_key_line: str | None):
+                 ca: sshca_mod.SSHCA):
         super().__init__(addr, ControllerHandler)
         self.cfg = cfg
         self.project = project
@@ -61,7 +62,7 @@ class ControllerServer(ThreadingHTTPServer):
         self.operator_logs = operator_logs
         self.inventory = inventory
         self.terminal_manager = terminal_manager
-        self.public_key_line = public_key_line
+        self.ca = ca
         self.plans: dict[str, dict] = {}        # plan_id -> accepted plan (in-memory, demo)
         self._last_telemetry_at: dict[str, float] = {}
         self._last_status: dict[str, str] = {}
@@ -187,6 +188,12 @@ class ControllerHandler(BaseHTTPRequestHandler):
         if (method == "GET" and len(segs) == 6 and segs[:2] == ["v1", "projects"]
                 and segs[3] == "nodes" and segs[5] == "ssh"):
             return self._get_ssh(conn, segs[2], segs[4])
+        if (method == "POST" and len(segs) == 4 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "ssh-key"):
+            return self._ssh_key_sign(conn, segs[2])
+        if (method == "POST" and len(segs) == 5 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "ssh-key" and segs[4] == "revoke"):
+            return self._ssh_key_revoke(conn, segs[2])
         if (method == "POST" and len(segs) == 7 and segs[:2] == ["v1", "projects"]
                 and segs[3] == "nodes" and segs[5] == "actions"):
             return self._node_action(conn, segs[2], segs[4], segs[6])
@@ -388,10 +395,64 @@ class ControllerHandler(BaseHTTPRequestHandler):
         node = self._node_in_project(conn, project_id, node_id)
         return 200, inventory.ssh_command_for(
             node, self.server.inventory,
-            public_key_line=self.server.public_key_line,
+            ca_public_key_line=self.server.ca.public_key_line,
             key_comment=self.server.cfg.ssh_key_comment,
             client_key_path=self.server.cfg.ssh_client_key_path,
         )
+
+    def _ssh_key_sign(self, conn, project_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/ssh-key — sign a user public key into a
+        short-lived, principal-bound certificate (D4, controller-api.md §4.3).
+        The user's private key is never received or generated here."""
+        self._require_project(conn, project_id)
+        if not self.server.ca.available:
+            raise errors.err(503, "INTERNAL", "SSH CA is not configured")
+        body = self._read_body()
+        principal = body.get("principal") or self.server.cfg.ssh_cert_principal
+        try:
+            cert = self.server.ca.sign(
+                body.get("public_key"),
+                principal=principal,
+                validity_s=body.get("validity_s"),
+                identity=body.get("identity") or principal,
+            )
+        except sshca_mod.SSHCAError as exc:
+            raise errors.invalid_argument(str(exc))
+        store.insert_ssh_certificate(conn, {
+            "cert_id": cert["cert_id"],
+            "project_id": project_id,
+            "principal": cert["principal"],
+            "key_id": cert["key_id"],
+            "key_algorithm": cert["key_algorithm"],
+            "key_fingerprint": cert["key_fingerprint"],
+            "valid_from": cert["valid_from"],
+            "valid_until": cert["valid_until"],
+            "issued_at": store.now_iso(),
+        })
+        return 200, {
+            "cert_id": cert["cert_id"],
+            "certificate": cert["certificate"],
+            "ca_fingerprint": cert["ca_fingerprint"],
+            "principal": cert["principal"],
+            "valid_from": cert["valid_from"],
+            "valid_until": cert["valid_until"],
+            "algorithm": cert["key_algorithm"],
+            "key_fingerprint": cert["key_fingerprint"],
+        }
+
+    def _ssh_key_revoke(self, conn, project_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/ssh-key/revoke — revoke an issued cert by the
+        public key fingerprint (which ssh-keygen reports for both key and cert)."""
+        self._require_project(conn, project_id)
+        body = self._read_body()
+        fingerprint = body.get("fingerprint")
+        if not isinstance(fingerprint, str) or not fingerprint.strip():
+            raise errors.invalid_argument("fingerprint is required")
+        status = store.revoke_ssh_certificate(conn, fingerprint.strip(), store.now_iso())
+        if status is None:
+            raise errors.not_found(f"no certificate issued for fingerprint {fingerprint}")
+        return 200, {"fingerprint": fingerprint.strip(),
+                     "revoked": status == "revoked", "status": status}
 
     def _node_action(self, conn, project_id: str, node_id: str, action: str) -> tuple[int, dict]:
         self._require_project(conn, project_id)
@@ -549,12 +610,14 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 outcome = "rejected"
                 continue
             clamped = [d.to_dict() for d in result.decisions if d.index == i]
+            realized_as = "host_service" if spec.type == "inference_vm" else "vm"
             allocations.append({
                 "index": i,
                 "status": "accepted",
                 "resolved": spec.to_dict(),
                 "guardrail": {"clamped_fields": clamped, "reject_reasons": []},
                 "node_id": resolved_node["id"] if resolved_node else None,
+                "realized_as": realized_as,
                 "vm_ids": [],
             })
 
@@ -580,7 +643,15 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 if n["id"] == target:
                     return n
             return None
-        # auto: node with the most free allocatable RAM (tie-break: lowest node_id)
+        if spec.type == "inference_vm":
+            # Reference-class resolution (controller-api.md §5.2 step 3): `auto`
+            # resolves to the (single) inference node hosting the always-on
+            # service; no inference node registered -> None -> REJECT upstream.
+            for n in nodes:
+                if n["role"] == "inference":
+                    return n
+            return None
+        # auto (agent_vm): node with the most free allocatable RAM (tie-break: lowest node_id)
         best = None
         best_ram = -1
         for n in nodes:
@@ -847,15 +918,24 @@ class ControllerHandler(BaseHTTPRequestHandler):
 
         try:
             from . import terminal as terminal_mod
-            key_path = self.server.cfg.ssh_key_path
             user = self.server.inventory.ssh_user
             port = self.server.inventory.ssh_port
             backend = self.server.cfg.terminal_backend
+            identity_key_path = None
+            cert_path = None
+            if backend == "ssh":
+                if not self.server.ca.available:
+                    raise sshca_mod.SSHCAError("SSH CA is not configured")
+                identity_key_path, cert_path, _meta = self.server.ca.issue_operator_certificate(
+                    self.server.cfg.ssh_operator_key_path,
+                    principal=self.server.cfg.ssh_cert_principal,
+                    validity_s=self.server.cfg.ssh_cert_default_validity_s,
+                )
             master_fd, proc, shell = terminal_mod.spawn_shell(
-                backend, key_path=key_path, user=user, host=public_ip,
-                port=port, cols=120, rows=40,
+                backend, identity_key_path=identity_key_path, cert_path=cert_path,
+                user=user, host=public_ip, port=port, cols=120, rows=40,
             )
-        except (OSError, FileNotFoundError) as exc:
+        except (OSError, FileNotFoundError, sshca_mod.SSHCAError) as exc:
             try:
                 ws.send_text(json.dumps(
                     {"type": "error", "code": "INTERNAL", "message": f"failed to open shell: {exc}"}))
@@ -1014,13 +1094,13 @@ def _add_repo_root() -> None:
 
 
 def _role_check(spec, resolved_node) -> tuple[bool, str | None]:
-    """Frozen role guardrails (controller-api.md §5.2 steps 3/5)."""
+    """Frozen role guardrails (controller-api.md §5.2 steps 3/5, architecture.md R16)."""
     if spec.type == "inference_vm":
-        if not spec.passthrough_gpu:
-            return False, "gpu_required_for_inference"
-        if resolved_node is None:
-            return False, "invalid_target_node_type"
-        if resolved_node.get("role") != "inference":
+        # R16: inference_vm is a REFERENCE to the always-on Node C host inference
+        # service, not a launchable VM. No GPU passthrough requirement (it is a
+        # structural rejection upstream, not here). It must resolve to the
+        # inference node; zero VMs are materialized for it.
+        if resolved_node is None or resolved_node.get("role") != "inference":
             return False, "invalid_target_node_type"
         return True, None
     # agent_vm

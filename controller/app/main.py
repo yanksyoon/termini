@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-from . import config, db, events, inventory, logs, server, store, terminal
+from . import config, db, events, inventory, logs, server, sshca, store, terminal
 from .operator import Thresholds, OperatorLoop
 from .operator import playbook as op_playbook
 
@@ -33,14 +33,6 @@ def _approval_sweeper(srv: server.ControllerServer, interval_s: int = 15) -> Non
                     log.info("auto-denied %d expired remediation command(s)", n)
         except Exception:  # noqa: BLE001 — sweeper must never die
             log.exception("approval sweeper error")
-
-
-def _resolve_public_key(cfg: config.Config) -> str | None:
-    if cfg.ssh_public_key:
-        return cfg.ssh_public_key
-    if cfg.ssh_key_path:
-        return inventory.public_key_from_private(cfg.ssh_key_path)
-    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -70,11 +62,17 @@ def main(argv: list[str] | None = None) -> int:
     broker = events.EventBroker()
     operator_logs = logs.OperatorLogs(broker, ring_size=cfg.log_ring_size)
     terminal_manager = terminal.TerminalManager()
-    public_key_line = _resolve_public_key(cfg)
+    ca = sshca.SSHCA(
+        cfg.ssh_ca_key_path,
+        cfg.ssh_ca_public_key,
+        default_validity_s=cfg.ssh_cert_default_validity_s,
+        max_validity_s=cfg.ssh_cert_max_validity_s,
+        principal=cfg.ssh_cert_principal,
+    )
 
     srv = server.ControllerServer(
         (cfg.host, cfg.port), cfg, project, broker, operator_logs, inv,
-        terminal_manager, public_key_line,
+        terminal_manager, ca,
     )
 
     if inv.loaded:
@@ -82,6 +80,10 @@ def main(argv: list[str] | None = None) -> int:
                  len(inv._nodes), inv.ssh_user, inv.ssh_port)
     else:
         log.info("no inventory loaded (SSH string/terminal bridge will have no public_ip)")
+    if ca.available:
+        log.info("SSH CA ready (fingerprint=%s)", ca.fingerprint or "unknown")
+    else:
+        log.info("SSH CA not configured (POST /ssh-key and the SSH terminal backend disabled)")
 
     threading.Thread(target=_approval_sweeper, args=(srv,), daemon=True).start()
 

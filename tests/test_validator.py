@@ -230,6 +230,19 @@ class RejectionTest(unittest.TestCase):
         self.assertTrue(result.safe)
         self.assertFalse(result.allocations[0].passthrough_gpu)
 
+    def test_inference_vm_passthrough_false_accepted(self):
+        # R16: inference_vm is a reference to the host service (no GPU passthrough
+        # needed); `passthrough_gpu: false` must pass the validator so the
+        # canonical "3 agents + fast LLM" prompt is never rejected here.
+        result = clamp_validate(
+            [{"type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16, "disk_gb": 64,
+              "passthrough_gpu": False}],
+            HOST_CAPS,
+        )
+        self.assertTrue(result.safe, result.to_dict())
+        self.assertEqual(result.allocations[0].type, "inference_vm")
+        self.assertFalse(result.allocations[0].passthrough_gpu)
+
 
 class EnvelopeTest(unittest.TestCase):
     def test_allocations_envelope(self):

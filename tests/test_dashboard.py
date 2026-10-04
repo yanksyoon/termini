@@ -447,7 +447,7 @@ class DashboardIntegrationTest(unittest.TestCase):
             "TERMINI_MIN_REDACTOR_VERSION": "3",
             "TERMINI_INVENTORY_PATH": cls.inventory_path,
             "TERMINI_TERMINAL_BACKEND": "local",
-            "TERMINI_SSH_PUBLIC_KEY": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJR2bq8RS3wcFV05oL8+m9nzkBr6kXzZVC13MkUiUE34 termini-breakglass",
+            "TERMINI_SSH_CA_PUBLIC_KEY": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJR2bq8RS3wcFV05oL8+m9nzkBr6kXzZVC13MkUiUE34 termini-operator-cert",
             "PYTHONUNBUFFERED": "1",
         })
         cls.proc = subprocess.Popen(

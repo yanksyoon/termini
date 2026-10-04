@@ -332,6 +332,51 @@ def set_node_public_ip(conn, node_id: str, public_ip: str | None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# SSH CA certificate ledger (POST /v1/projects/{pid}/ssh-key, D4)
+# ---------------------------------------------------------------------------
+
+def insert_ssh_certificate(conn, cert: dict) -> None:
+    conn.execute(
+        "INSERT INTO ssh_certificates (cert_id, project_id, principal, key_id,"
+        " key_algorithm, key_fingerprint, valid_from, valid_until, issued_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            cert["cert_id"], cert["project_id"], cert["principal"], cert["key_id"],
+            cert["key_algorithm"], cert["key_fingerprint"], cert["valid_from"],
+            cert["valid_until"], cert["issued_at"],
+        ),
+    )
+
+
+def get_ssh_certificate(conn, fingerprint: str) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM ssh_certificates WHERE key_fingerprint = ?", (fingerprint,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def revoke_ssh_certificate(conn, fingerprint: str, now: str) -> str | None:
+    """Revoke the active cert matching `fingerprint`.
+
+    Returns "revoked" when an active cert was revoked, "already_revoked" when it
+    was already revoked, or ``None`` when no such fingerprint was ever issued.
+    """
+    row = conn.execute(
+        "SELECT cert_id, revoked_at FROM ssh_certificates WHERE key_fingerprint = ?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        return None
+    if row["revoked_at"] is not None:
+        return "already_revoked"
+    conn.execute(
+        "UPDATE ssh_certificates SET revoked_at = ? WHERE cert_id = ?",
+        (now, row["cert_id"]),
+    )
+    return "revoked"
+
+
+# ---------------------------------------------------------------------------
 # Remediation / operation commands (dashboard.md §4.4, controller-api.md §6)
 # ---------------------------------------------------------------------------
 
