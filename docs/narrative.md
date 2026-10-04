@@ -48,7 +48,7 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 
 **1. Bare metal to an AI-ready fleet in seconds.** A stock Ubuntu node boots the pre-baked image, registers to the controller in **under 5 seconds**, and joins the LXD cluster with its role assigned (compute vs GPU inference) — no SRE, no manual config.
 
-**2. Natural-language intent, guardrail-enforced.** The presenter types *"deploy 3 worker agents for coding."* An on-prem model extracts a structured allocation; the deterministic guardrail clamps any impossible spec (`vcpus: 128` → host ceiling) and returns a validated, clamped plan — field by field, visible in the audit record.
+**2. Natural-language intent, guardrail-enforced.** The presenter types *"deploy 3 worker agents for coding — plus a fast LLM."* An on-prem model extracts a structured allocation (three `agent_vm`s and one `inference_vm`, which resolves to the always-on Node C inference service rather than a launched VM); the deterministic guardrail clamps any impossible spec (`vcpus: 128` → host ceiling) and returns a validated, clamped plan — field by field, visible in the audit record.
 
 **3. Governed self-healing with a data boundary.** OOM a VM live. Telemetry crosses a threshold, a deterministic rule selects a pre-approved playbook action (`restart` the runaway workload), and the action lands with a full audit trail — while a C2 field injected into the stream is rejected by the controller-side governance gate **before any byte is stored or forwarded.**
 
@@ -66,7 +66,7 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 - We do **not** claim a machine-learning model proposes or selects remediations in the live loop. The day-2 operator is a **deterministic threshold rule over frozen playbooks** (restart on OOM, stop on disk failure); there is no model call in the remediation path.
 - We do **not** claim the demo launches VMs from natural language. The allocation path ends at a **validated, clamped plan** — `apply` returns a provisioning job, and LXD materialization is the node channel's scope (not shown live).
 - We do **not** claim hotplug resize or node drain/migration. The operator **restarts** the runaway workload on OOM and **stops** the heaviest workload on disk failure; `vm.resize` and `node.drain` are allowlisted for the human dashboard path, not issued by the operator loop.
-- We do **not** claim browser-generated keys or a CA-signed short-lived SSH certificate. Access is a **controller-held key** surfaced as a web terminal and an `ssh` string.
+- We do **not** claim long-lived or shared SSH credentials. Access is a **controller-held SSH CA**: the operator generates a keypair in the browser, uploads only the public half, and the controller signs a **short-lived (≤8 h), principal-bound OpenSSH certificate** — surfaced as a web terminal and an `ssh` string, revocable before TTL.
 - We do **not** claim an on-node redactor that drops C2 fields. The governance gate is **controller-side**: a non-conforming telemetry batch is rejected fail-closed (422), not field-dropped.
 - We do **not** claim Datadog "can't" monitor on-prem — it does, via its agent. We claim it is SaaS-architected with no self-hosted/air-gapped AI offering.
 - We do **not** claim the Samsung × Mistral deal "failed" or "proves ops is unsolved." We claim only: *maintenance and operations remain open and under-served*, and the deal is bespoke, not productized.
