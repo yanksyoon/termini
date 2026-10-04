@@ -27,6 +27,12 @@ id_ed25519*
 .sudo_as_admin_successful
 .gitconfig
 
+# --- terraform / termini local state ---
+*.tfvars
+*.auto.tfvars
+.terraform/
+.termini/
+
 # --- language / tooling ---
 __pycache__/
 *.py[cod]
