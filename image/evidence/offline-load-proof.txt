@@ -1,0 +1,40 @@
+=== build under test ===
+0.00.000.367 I srv  llama_server: initializing ...
+version: 0.5.0-dev (build 1, commit 7fe450e19)
+built with GNU 13.3.0 for Linux x86_64
+
+=== binary is self-contained (system libs only) ===
+  	linux-vdso.so.1 (0x00007ffcda789000)
+  	libgomp.so.1 => /lib/x86_64-linux-gnu/libgomp.so.1 (0x000077265aac6000)
+  	libstdc++.so.6 => /lib/x86_64-linux-gnu/libstdc++.so.6 (0x0000772659600000)
+  	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x000077265a9dd000)
+  	libgcc_s.so.1 => /lib/x86_64-linux-gnu/libgcc_s.so.1 (0x000077265a9af000)
+  	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000772659200000)
+  	/lib64/ld-linux-x86-64.so.2 (0x000077265ab24000)
+
+=== network interfaces inside the namespace ===
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo:       0       0    0    0    0     0          0         0        0       0    0    0    0     0       0          0
+
+=== routed uplink check (must fail) ===
+no DNS -> no network (expected)
+
+=== interfaces after bringing loopback up ===
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+
+=== sha256 of the on-disk model ===
+74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db  /home/ubuntu/.hermes/profiles/agents/cache/scratch/smoke/qwen2.5-0.5b-instruct-q4_k_m.gguf
+
+=== GET /health ===
+{"status":"ok"}
+=== GET /v1/models (id only) ===
+{"id":null,"model":"/home/ubuntu/.hermes/profiles/agents/cache/scratch/smoke/qwen2.5-0.5b-instruct-q4_k_m.gguf","capabilities":["completion"]}
+
+=== POST /v1/chat/completions ===
+{"choices":[{"finish_reason":"stop","index":0,"message":{"role":"assistant","content":"prewarmed model online."}}],"created":1791105317,"model":"/home/ubuntu/.hermes/profiles/agents/cache/scratch/smoke/qwen2.5-0.5b-instruct-q4_k_m.gguf","system_fingerprint":"b1-7fe450e19","object":"chat.completion","usage":{"completion_tokens":7,"prompt_tokens":39,"total_tokens":46,"prompt_tokens_details":{"cached_tokens":0}},"id":"chatcmpl-6b7i7HCN8FZKmhSM5qRTWceYS7u4VbhD","timings":{"cache_n":0,"prompt_n":39,"prompt_ms":215.818,"prompt_per_token_ms":5.533794871794872,"prompt_per_second":180.7078186249525,"predicted_n":7,"predicted_ms":92.557,"predicted_per_token_ms":15.426166666666667,"predicted_per_second":64.8249186987478}}
+=== server log: model read from local disk ===
+0.00.003.943 I srv    load_model: loading model '/home/ubuntu/.hermes/profiles/agents/cache/scratch/smoke/qwen2.5-0.5b-instruct-q4_k_m.gguf'
+0.00.620.886 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 512, kv_unified = 'false'
+0.00.624.889 I srv  llama_server: model loaded
+0.00.624.902 I srv  llama_server: listening on http://127.0.0.1:8099

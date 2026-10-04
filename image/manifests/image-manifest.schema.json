@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://termini.example/schemas/image-manifest.schema.json",
+  "title": "Termini pre-baked image build manifest",
+  "description": "Emitted by pipeline/build-image.sh at the end of a bake. Consumed by publish-image.sh and by downstream tasks (cloud-init bootstrap, Node C inference service). Checksums are computed from the produced artifacts; they are never hand-written.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "alias",
+    "version",
+    "immutable_tag",
+    "variant",
+    "gitsha",
+    "built_at",
+    "base_image",
+    "artifacts",
+    "pins",
+    "contents",
+    "first_boot"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^1\\.[0-9]+$" },
+    "alias": { "type": "string", "enum": ["agentic-os/w3"] },
+    "version": { "type": "string", "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]+$" },
+    "immutable_tag": { "type": "string", "pattern": "^agentic-os-w3-[0-9]{4}\\.[0-9]{2}\\.[0-9]+\\+g[0-9a-f]{7,40}$" },
+    "variant": { "type": "string", "enum": ["compute", "gpu"] },
+    "gitsha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "built_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "base_image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "release", "arch", "url", "sha256"],
+      "properties": {
+        "name": { "type": "string" },
+        "release": { "type": "string" },
+        "arch": { "type": "string", "enum": ["amd64", "arm64"] },
+        "url": { "type": "string", "pattern": "^https://" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "format", "path", "size_bytes", "sha256"],
+        "properties": {
+          "name": { "type": "string" },
+          "format": { "type": "string", "enum": ["qcow2", "rootfs-tar", "lxd-image"] },
+          "path": { "type": "string" },
+          "size_bytes": { "type": "integer", "minimum": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "pins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["llamacpp_commit", "lxd_snap_channel", "models"],
+      "properties": {
+        "llamacpp_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "lxd_snap_channel": { "type": "string" },
+        "lxd_snap_revision": { "type": ["string", "null"] },
+        "models": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["deepseek-flash", "deepseek-v4-pro"],
+          "properties": {
+            "deepseek-flash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "deepseek-v4-pro": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        }
+      }
+    },
+    "contents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["llama_server_path", "model_root", "agent_vm_alias", "bootstrap_unit"],
+      "properties": {
+        "llama_server_path": { "type": "string" },
+        "model_root": { "type": "string" },
+        "agent_vm_alias": { "type": "string" },
+        "bootstrap_unit": { "type": "string" }
+      }
+    },
+    "first_boot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preflight_unit", "boot_log_path", "network_required"],
+      "properties": {
+        "preflight_unit": { "type": "string" },
+        "boot_log_path": { "type": "string" },
+        "network_required": { "type": "boolean", "const": false }
+      }
+    }
+  }
+}
