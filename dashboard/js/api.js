@@ -1,0 +1,148 @@
+/*
+ * REST client for the Termini controller (dashboard.md surfaces, contract
+ * controller-api.md §3 error envelope, §1.5 Idempotency-Key).
+ *
+ * Every method returns parsed JSON or throws ApiError. The caller decides how
+ * to surface failures; nothing here touches the DOM.
+ */
+
+import { apiUrl } from "./core/config.js";
+
+export class ApiError extends Error {
+  constructor(status, envelope, url) {
+    const e = envelope && envelope.error ? envelope.error : {};
+    super(e.message || `HTTP ${status}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = e.code || (status === 0 ? "NETWORK" : "INTERNAL");
+    this.details = e.details || [];
+    this.request_id = e.request_id || null;
+    this.url = url;
+    // Full parsed body (a rejected /intents returns the plan alongside the
+    // error envelope, contract §4.2 — keep it so the UI can render it).
+    this.body = envelope || null;
+  }
+}
+
+export class ApiClient {
+  constructor(cfg) {
+    this.cfg = cfg;
+    // optional hook: (info) => void, used for the degraded-backend banner
+    this.onResult = null;
+  }
+
+  _project() {
+    if (!this.cfg.projectId) {
+      throw new ApiError(0, { error: { code: "INVALID_ARGUMENT", message: "projectId is not configured" } }, "");
+    }
+    return encodeURIComponent(this.cfg.projectId);
+  }
+
+  async _request(method, path, { body, query, idempotent } = {}) {
+    const url = apiUrl(this.cfg, path, query);
+    const headers = { "X-Termini-Version": "1", Accept: "application/json" };
+    if (this.cfg.token) headers.Authorization = `Bearer ${this.cfg.token}`;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (idempotent) headers["Idempotency-Key"] = newKey();
+
+    let res;
+    try {
+      res = await fetch(url, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        // keep the SSE/polling path from wedging on a dead backend
+        signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
+      });
+    } catch (err) {
+      const e = new ApiError(0, { error: { code: "NETWORK", message: `controller unreachable: ${err.message}` } }, url);
+      if (this.onResult) this.onResult({ ok: false, error: e });
+      throw e;
+    }
+
+    let parsed = null;
+    const text = await res.text();
+    if (text) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = null;
+      }
+    }
+    if (!res.ok) {
+      const e = new ApiError(res.status, parsed, url);
+      if (this.onResult) this.onResult({ ok: false, error: e });
+      throw e;
+    }
+    if (this.onResult) this.onResult({ ok: true, url, status: res.status });
+    return parsed;
+  }
+
+  listNodes() {
+    return this._request("GET", `/projects/${this._project()}/nodes`);
+  }
+
+  getNode(nodeId) {
+    return this._request("GET", `/projects/${this._project()}/nodes/${encodeURIComponent(nodeId)}`);
+  }
+
+  getMetrics(nodeId, { start, end, resolution, metrics } = {}) {
+    return this._request("GET", `/projects/${this._project()}/nodes/${encodeURIComponent(nodeId)}/metrics`, {
+      query: { start, end, resolution, metrics },
+    });
+  }
+
+  /** As-built fallback when the node list omits `health` (server.py _node_view). */
+  latestSample(nodeId) {
+    return this._request("GET", "/telemetry/recent", { query: { node: nodeId, limit: 1 } });
+  }
+
+  rebootNode(nodeId, delayS = 0) {
+    return this._request("POST", `/projects/${this._project()}/nodes/${encodeURIComponent(nodeId)}/actions/reboot`, {
+      body: { delay_s: delayS },
+      idempotent: true,
+    });
+  }
+
+  drainNode(nodeId, { reason = "manual", evacuate_to } = {}) {
+    const body = { reason };
+    if (evacuate_to) body.evacuate_to = evacuate_to;
+    return this._request("POST", `/projects/${this._project()}/nodes/${encodeURIComponent(nodeId)}/actions/drain`, {
+      body,
+      idempotent: true,
+    });
+  }
+
+  submitIntent(body) {
+    return this._request("POST", `/projects/${this._project()}/intents`, { body, idempotent: true });
+  }
+
+  applyPlan(planId) {
+    return this._request("POST", `/projects/${this._project()}/vms/apply`, { body: { plan_id: planId }, idempotent: true });
+  }
+
+  approveRemediation(commandId, note) {
+    const body = note ? { note } : {};
+    return this._request("POST", `/projects/${this._project()}/remediations/${encodeURIComponent(commandId)}/approve`, {
+      body,
+      idempotent: true,
+    });
+  }
+
+  denyRemediation(commandId, { reason, note } = {}) {
+    const body = {};
+    if (reason) body.reason = reason;
+    if (note) body.note = note;
+    return this._request("POST", `/projects/${this._project()}/remediations/${encodeURIComponent(commandId)}/deny`, {
+      body,
+      idempotent: true,
+    });
+  }
+}
+
+export function newKey() {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
