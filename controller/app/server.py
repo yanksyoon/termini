@@ -16,6 +16,7 @@ and dashboard.md §1–§4):
     POST /v1/nodes/{nid}/telemetry                (node_token)       -> 202
     GET  /v1/nodes/{nid}/telemetry/recent         (node_token)       -> 200
     GET  /v1/telemetry/recent?node=&limit=        (project_token)    -> 200
+    POST /v1/operator/lease                       (project_token)    -> 200
     GET  /v1/projects/{pid}/logs                  (SSE, token in ?token)
     GET  /stream/v1?token=...                     (WebSocket event stream)
     GET  /terminal/v1/nodes/{node_id}?token=...    (WebSocket terminal)
@@ -42,6 +43,7 @@ from . import commands as cmd_mod
 from . import ulid
 from . import sshca as sshca_mod
 from .operator import store as opstore
+from .operator import triggers as op_triggers
 
 log = logging.getLogger("termini.controller")
 
@@ -216,6 +218,8 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 return self._operator_audits(conn)
             if segs[2] == "decisions":
                 return self._operator_decisions(conn)
+        if method == "POST" and segs[:2] == ["v1", "operator"] and len(segs) == 3 and segs[2] == "lease":
+            return self._operator_lease(conn)
         raise errors.not_found(f"no route: {method} {path}")
 
     def do_OPTIONS(self) -> None:
@@ -759,6 +763,31 @@ class ControllerHandler(BaseHTTPRequestHandler):
         self._require_project(conn, self.server.project["id"])
         limit = self._limit_param()
         return 200, {"decisions": opstore.list_decisions(conn, limit)}
+
+    def _operator_lease(self, conn) -> tuple[int, dict]:
+        """POST /v1/operator/lease — acquire/renew the single-owner operator lease.
+
+        Both the in-process loop (via `opstore.acquire_lease` in `loop.py`) and the
+        standalone CLI (this endpoint) acquire the same per-project lease before
+        remediating, so only one operator instance ever acts at a time.
+        """
+        self._require_project(conn, self.server.project["id"])
+        body = self._read_body()
+        owner_id = body.get("owner_id")
+        if not isinstance(owner_id, str) or not owner_id.strip():
+            raise errors.invalid_argument("owner_id is required")
+        ttl_s = float(getattr(self.server.cfg, "operator_lease_ttl_s", 10.0))
+        now = op_triggers.now_iso_ms()
+        owned = opstore.acquire_lease(
+            conn, self.server.project["id"], owner_id.strip(), now, ttl_s
+        )
+        lease = opstore.get_lease(conn, self.server.project["id"])
+        return 200, {
+            "owner": owned,
+            "owner_id": lease["owner_id"] if lease else None,
+            "acquired_at": lease["acquired_at"] if lease else None,
+            "expires_at": lease["expires_at"] if lease else None,
+        }
 
     def _limit_param(self, default: int = 50) -> int:
         raw = self._query().get("limit", str(default))

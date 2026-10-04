@@ -15,7 +15,11 @@ Run directly:
 It polls the controller's telemetry store over HTTP (GET /v1/telemetry/recent),
 evaluates the frozen thresholds through the same stateful `TriggerEngine` the
 in-process loop uses (hysteresis + debounce), selects a playbook action, and
-issues a real LXD REST command against --lxd-url. Trigger latch state persists to
+issues a real LXD REST command against --lxd-url. Before every poll it acquires
+the controller's single-owner lease (POST /v1/operator/lease, migration 0007), so
+it is a standby that issues nothing whenever the in-process loop (or another
+standalone operator) already owns the project — remediation is idempotent across
+operator instances. Trigger latch state persists to
 --state-file (JSON) so a cold restart of the operator process re-arms the exact
 same latch — this is what lets the dry-run exercise "persisted triggers" from a
 cold process. Each remediation is audited to --audit-out (JSONL) with detection
@@ -103,16 +107,37 @@ def run_operator(
     log=print,
 ) -> dict:
     recent_url = f"{controller_url.rstrip('/')}/v1/telemetry/recent?node={node_id}&limit={limit}"
+    lease_url = f"{controller_url.rstrip('/')}/v1/operator/lease"
     lxd = executor.LxdExecutor(lxd_url, dry_run=dry_run, retry_max=2, backoff_s=0.5)
     engine = triggers.TriggerEngine(thresholds)
     state = _load_state(state_file)
+    owner_id = "cli:" + ulid.new_ulid()
     fired: set[str] = set()
     audits: list[dict] = []
     started = time.monotonic()
     polls = 0
+    standby = False
 
     while time.monotonic() - started < duration_s:
         polls += 1
+        # Single-owner lease (migration 0007): only one operator may remediate per
+        # project. Acquire/renew the lease through the controller; a non-owner is
+        # a standby and issues nothing this poll. Fail closed on any error.
+        ls_status, ls_body = _http_json(
+            "POST", lease_url, body={"owner_id": owner_id},
+            token=project_token, timeout=10,
+        )
+        owned = (ls_status == 200 and isinstance(ls_body, dict)
+                 and ls_body.get("owner") is True)
+        if not owned:
+            if not standby:
+                log(f"[operator] standby (another operator owns the lease) "
+                    f"owner_id={owner_id}")
+                standby = True
+            time.sleep(poll_interval_s)
+            continue
+        standby = False
+
         status, body = _http_json("GET", recent_url, token=project_token, timeout=10)
         if status != 200 or not isinstance(body, dict):
             log(f"[operator] recent -> HTTP {status} {body}")

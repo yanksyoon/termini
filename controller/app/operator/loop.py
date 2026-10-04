@@ -78,6 +78,13 @@ class OperatorLoop(threading.Thread):
         self.cooldown_s = cfg.operator_cooldown_s
         self.window = cfg.operator_window
         self.cadence_report_s = getattr(cfg, "cadence_report_s", 30.0)
+        # Single-owner lease (migration 0007): only one operator may act per
+        # project. The in-process loop's identity is stable across a controller
+        # restart ("loop:<project_id>") so a restart re-acquires its own lease
+        # instead of standing by for the previous incarnation's TTL to lapse.
+        self.owner_id = f"loop:{project['id']}"
+        self.lease_ttl_s = max(1.0, float(getattr(cfg, "operator_lease_ttl_s", 10.0)))
+        self._standby_logged = False
         self._stop = threading.Event()
         self._polls = 0
         self._max_lag_s = 0.0
@@ -132,6 +139,18 @@ class OperatorLoop(threading.Thread):
         records produced this pass (empty if nothing fired)."""
         produced: list[dict] = []
         with db.session(self.cfg.db_path) as conn:
+            # Single-owner lease: if another operator (e.g. the standalone CLI
+            # driven by OPERATOR_CMD) holds the lease, this loop is a standby and
+            # issues nothing this pass. Renews its own lease when it is the owner.
+            if not opstore.acquire_lease(
+                conn, self.project["id"], self.owner_id,
+                triggers.now_iso_ms(), self.lease_ttl_s,
+            ):
+                if not self._standby_logged:
+                    log.info("operator loop is standby (lease held by another operator)")
+                    self._standby_logged = True
+                return produced
+            self._standby_logged = False
             th = self._load_thresholds(conn)
             engine = triggers.TriggerEngine(th)
             for node in store.list_nodes(conn, self.project["id"]):

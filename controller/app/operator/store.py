@@ -255,3 +255,60 @@ def save_trigger_state(conn, node_id: str, rule_id: str, state: dict, now: str) 
             int(state.get("fired_count", 0)), now,
         ),
     )
+
+
+# ------------------------------------------------------------------ lease
+# Single-owner operator lease (migration 0007). The in-process loop and the
+# standalone CLI both acquire this before issuing any remediation; a non-owner
+# is a standby that issues nothing. `acquire_lease` is a single atomic SQL
+# statement so two concurrent callers (SQLite serializes writers) can never both
+# conclude they own the lease.
+
+def acquire_lease(conn, project_id: str, owner_id: str, now_iso: str, ttl_s: float) -> bool:
+    """Atomically acquire (or renew) the per-project operator lease.
+
+    Returns True if `owner_id` now holds the lease. A non-expired lease held by a
+    different owner is left untouched (that owner keeps acting; this caller is a
+    standby). The caller's own unexpired lease is renewed (expiry extended). A
+    lease whose `expires_at` has passed is taken over regardless of prior owner.
+
+    `now_iso` and the stored timestamps must share the same RFC3339-with-millis
+    format (see `triggers.now_iso_ms` / `_iso_from_epoch`), so lexicographic
+    comparison is chronological. `expires_at` is derived from `now_iso` (not the
+    wall clock) so the lease is deterministic in the caller's clock and unit
+    testable with a fixed `now_iso`.
+    """
+    from . import triggers as _triggers
+    epoch = _triggers.parse_epoch_ms(now_iso)
+    if epoch is None:
+        epoch = time.time()
+    expires_at = _iso_from_epoch(epoch + ttl_s)
+    conn.execute(
+        """
+        INSERT INTO operator_lease (project_id, owner_id, acquired_at, expires_at)
+        VALUES (:pid, :owner, :now, :expiry)
+        ON CONFLICT(project_id) DO UPDATE SET
+            owner_id = CASE
+                WHEN operator_lease.expires_at <= :now OR operator_lease.owner_id = :owner
+                    THEN :owner ELSE operator_lease.owner_id END,
+            acquired_at = CASE
+                WHEN operator_lease.expires_at <= :now THEN :now ELSE operator_lease.acquired_at END,
+            expires_at = CASE
+                WHEN operator_lease.expires_at <= :now OR operator_lease.owner_id = :owner
+                    THEN :expiry ELSE operator_lease.expires_at END
+        """,
+        {"pid": project_id, "owner": owner_id, "now": now_iso, "expiry": expires_at},
+    )
+    row = conn.execute(
+        "SELECT owner_id FROM operator_lease WHERE project_id = ?", (project_id,)
+    ).fetchone()
+    return row is not None and row["owner_id"] == owner_id
+
+
+def get_lease(conn, project_id: str) -> dict | None:
+    """Return the current lease row for a project (or None if never acquired)."""
+    row = conn.execute(
+        "SELECT project_id, owner_id, acquired_at, expires_at"
+        " FROM operator_lease WHERE project_id = ?", (project_id,)
+    ).fetchone()
+    return dict(row) if row else None
