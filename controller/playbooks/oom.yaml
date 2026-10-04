@@ -1,0 +1,16 @@
+# OOM remediation playbook — Termini controller.
+# Frozen rule: oom-guard-01 (docs/contracts/node-telemetry.md §5).
+# Thresholds live in config (env), NOT here: see TERMINI_OOM_MEM_THRESHOLD and
+# TERMINI_OOM_SUSTAIN. This file declares only the mapping from the health
+# condition to the remediation action.
+version: 1
+rule_id: oom-guard-01
+type: oom
+description: Restart the heaviest workload when host memory is sustained above the OOM threshold.
+action:
+  kind: instance.restart
+  target: heaviest
+  params:
+    force: true
+    timeout_s: 30
+reason: host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.
