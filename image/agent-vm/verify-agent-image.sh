@@ -62,7 +62,7 @@ done
 [ "$ready" = 1 ] || echo "[verify] WARN: termini-agent not active yet; running acceptance anyway"
 
 echo "== stage 4/4: offline acceptance inside the VM"
-tar -C "$SELF_DIR" -cf - tools/offline-acceptance.sh | "$LXD" exec "$NAME" -- tar -C /root -xf -
+tar -C "$SELF_DIR" -cf - tools/offline-acceptance.sh tools/net-accounting.sh | "$LXD" exec "$NAME" -- tar -C /root -xf -
 set +e
 "$LXD" exec "$NAME" -- bash /root/tools/offline-acceptance.sh
 accept_rc=$?
