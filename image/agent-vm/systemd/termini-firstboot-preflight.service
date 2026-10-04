@@ -1,0 +1,18 @@
+[Unit]
+Description=Termini agent VM first-boot preflight (offline bake assertion)
+Documentation=https://github.com/yanksyoon/termini
+DefaultDependencies=no
+After=local-fs.target systemd-remount-fs.service
+Before=termini-agent.service
+ConditionPathExists=/var/lib/termini/.baked-offline
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/termini-agent-preflight.sh
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

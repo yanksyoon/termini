@@ -1,0 +1,32 @@
+{
+  "kind": "termini.agent_selfcheck",
+  "agent_version": "2026.10.0",
+  "python": "3.12.3",
+  "runtime_imports": {
+    "openai": "ok",
+    "httpx": "ok",
+    "pydantic": "ok",
+    "yaml": "ok",
+    "tenacity": "ok",
+    "structlog": "ok",
+    "langchain_core": "ok",
+    "langgraph": "ok",
+    "google.adk": "ok"
+  },
+  "framework_venvs": {
+    "langchain": "ok",
+    "crewai": "ok",
+    "autogen": "ok"
+  },
+  "config": {
+    "path": "/etc/termini/agent.yaml",
+    "status": "valid",
+    "inference_base_url": "http://10.10.0.13:8080",
+    "default_model": "deepseek-flash",
+    "allowed_models": [
+      "deepseek-flash",
+      "deepseek-v4-pro"
+    ]
+  },
+  "ok": true
+}
