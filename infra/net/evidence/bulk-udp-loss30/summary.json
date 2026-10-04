@@ -1,0 +1,93 @@
+{
+  "target_mb": 64.0,
+  "loss": "30%",
+  "deadline_s": 30.0,
+  "baseline": {
+    "runs": 3,
+    "completed": 3,
+    "elapsed_s": [
+      1.042,
+      1.035,
+      1.029
+    ],
+    "mean_s": 1.035,
+    "max_s": 1.042,
+    "p95_s": 1.042,
+    "rounds": [
+      1,
+      1,
+      1
+    ],
+    "wire_bytes": [
+      67503624,
+      67503624,
+      67503624
+    ],
+    "retransmits": [
+      0,
+      0,
+      0
+    ],
+    "chunk_retries": [
+      null,
+      null,
+      null
+    ],
+    "sha256_match": [
+      true,
+      true,
+      true
+    ]
+  },
+  "under_loss": {
+    "runs": 5,
+    "completed": 5,
+    "elapsed_s": [
+      11.534,
+      8.624,
+      11.12,
+      10.091,
+      10.111
+    ],
+    "mean_s": 10.296,
+    "max_s": 11.534,
+    "p95_s": 11.534,
+    "rounds": [
+      10,
+      10,
+      9,
+      10,
+      9
+    ],
+    "wire_bytes": [
+      96399888,
+      96759672,
+      96844488,
+      96577392,
+      96493944
+    ],
+    "retransmits": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "chunk_retries": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "sha256_match": [
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "verdict": "PASS",
+  "failures": []
+}

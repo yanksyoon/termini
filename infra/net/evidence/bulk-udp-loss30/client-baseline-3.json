@@ -1,0 +1,30 @@
+{
+  "role": "client",
+  "transport": "udp",
+  "target_bytes": 67108864,
+  "sent_bytes": 67108864,
+  "elapsed_s": 1.029,
+  "mbps": 521.86,
+  "completed": true,
+  "server": {
+    "transport": "udp",
+    "size": 67108864,
+    "payload": 1360,
+    "nseq": 49345,
+    "received_units": 49345,
+    "received_bytes": 67108864,
+    "complete": true,
+    "retransmits": 0,
+    "queries": 2,
+    "sha256": "3b6a07d0d404fab4e23b6d34bc6696a6a312dd92821332385e5af7c01c421351"
+  },
+  "payload": 1360,
+  "rate_mbps": 800.0,
+  "rounds": 1,
+  "wire_bytes": 67503624,
+  "resumed_units": 0,
+  "deadline_s": 30.0,
+  "failed_units": 0,
+  "local_sha256": "3b6a07d0d404fab4e23b6d34bc6696a6a312dd92821332385e5af7c01c421351",
+  "sha256_match": true
+}
