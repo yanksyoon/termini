@@ -66,6 +66,39 @@ record_scalar() { # key value
   printf 'scalar\t%s\t%s\n' "$1" "$2" >>"$records"
 }
 
+# --- boot-time network accounting --------------------------------------------
+# `network_downloads_at_boot` is DERIVED from the kernel's own counters, never a
+# literal. Mirrors image/agent-vm/tools/net-accounting.sh (kept in-tree here so
+# the node bake stays self-contained). A fetch at boot — e.g. re-pulling model
+# weights — lands as non-loopback RX bytes far above the link-local/DHCP
+# allowance and fails the preflight.
+TERMINI_LINK_LOCAL_DHCP_ALLOWANCE_BYTES="${TERMINI_LINK_LOCAL_DHCP_ALLOWANCE_BYTES:-8192}"
+net_counters() { # prints "<rx_bytes> <tx_bytes> <rx_packets> <tx_packets> <n_ifaces> <iface,list>"
+  local src="${TERMINI_PROC_NET_DEV:-/proc/net/dev}"
+  [ -r "$src" ] || { printf '0 0 0 0 0 \n'; return 0; }
+  awk '
+    /:/ {
+      line = $0; sub(/^[[:space:]]+/, "", line); c = index(line, ":")
+      if (c == 0) next
+      iface = substr(line, 1, c - 1); gsub(/[[:space:]]/, "", iface)
+      if (iface == "" || iface == "lo") next
+      rest = substr(line, c + 1); sub(/^[[:space:]]+/, "", rest)
+      split(rest, f, /[[:space:]]+/)
+      rb += f[1] + 0; rp += f[2] + 0; tb += f[9] + 0; tp += f[10] + 0; n++
+      ifs = (ifs == "" ? iface : ifs "," iface)
+    }
+    END { printf "%d %d %d %d %d %s\n", rb, tb, rp, tp, n, ifs }
+  ' "$src"
+}
+net_downloaded_bytes() { # <rx_bytes> -> bytes beyond the link-local/DHCP allowance
+  local rx="${1:-0}"
+  if [ "$rx" -gt "$TERMINI_LINK_LOCAL_DHCP_ALLOWANCE_BYTES" ] 2>/dev/null; then
+    printf '%d\n' "$((rx - TERMINI_LINK_LOCAL_DHCP_ALLOWANCE_BYTES))"
+  else
+    printf '0\n'
+  fi
+}
+
 IMAGE_VERSION="unknown"
 if [ -f "$ROOT/etc/termini/image-version" ]; then
   IMAGE_VERSION="$(head -n1 "$ROOT/etc/termini/image-version")"
@@ -163,7 +196,38 @@ else
   fi
 fi
 
-# --- 4. emit the boot log -----------------------------------------------------
+# --- 4. boot-time network accounting (real measurement) -----------------------
+# On a real boot (root=/) this is the node's own traffic; against a staged
+# --root the host's counters are not the image's, so unless a fixture is
+# injected via TERMINI_PROC_NET_DEV we record that it was not applicable rather
+# than inventing a number.
+NET_MEASURED=0
+NET_RX=0; NET_TX=0; NET_RXP=0; NET_TXP=0; NET_NIF=0; NET_IFS=""; NET_DL=0
+if [ "$ROOT" = "/" ] || [ -n "${TERMINI_PROC_NET_DEV:-}" ]; then
+  read -r NET_RX NET_TX NET_RXP NET_TXP NET_NIF NET_IFS <<<"$(net_counters)"
+  NET_RX="${NET_RX:-0}"; NET_TX="${NET_TX:-0}"; NET_RXP="${NET_RXP:-0}"
+  NET_TXP="${NET_TXP:-0}"; NET_NIF="${NET_NIF:-0}"; NET_IFS="${NET_IFS:-}"
+  NET_DL="$(net_downloaded_bytes "$NET_RX")"
+  NET_MEASURED=1
+  if [ "$NET_DL" = 0 ]; then
+    record_check no_boot_network_downloads true \
+      "rx_bytes=$NET_RX (<= allowance $TERMINI_LINK_LOCAL_DHCP_ALLOWANCE_BYTES) ifaces=${NET_IFS:-none}"
+  else
+    record_check no_boot_network_downloads false \
+      "downloaded_bytes=$NET_DL rx_bytes=$NET_RX ifaces=${NET_IFS:-none}"
+  fi
+fi
+record_scalar net_measured "$NET_MEASURED"
+record_scalar net_allowance_bytes "$TERMINI_LINK_LOCAL_DHCP_ALLOWANCE_BYTES"
+record_scalar net_rx_bytes "$NET_RX"
+record_scalar net_tx_bytes "$NET_TX"
+record_scalar net_rx_packets "$NET_RXP"
+record_scalar net_tx_packets "$NET_TXP"
+record_scalar net_ifaces "$NET_IFS"
+record_scalar net_n_ifaces "$NET_NIF"
+record_scalar net_downloaded_bytes "$NET_DL"
+
+# --- 5. emit the boot log -----------------------------------------------------
 install -d -m 0755 "$(dirname "$LOG_OUT")" 2>/dev/null || mkdir -p "$(dirname "$LOG_OUT")"
 verdict="pass"
 if [ "$rc" -ne 0 ]; then verdict="fail"; fi
@@ -199,7 +263,22 @@ doc = {
     "models": models,
     "checks": checks,
     "verdict": verdict,
-    "network_downloads_at_boot": 0,
+    "network": {
+        "method": "proc_net_dev",
+        "source": os.environ.get("TERMINI_PROC_NET_DEV") or "/proc/net/dev",
+        "measured": scalars.get("net_measured") == "1",
+        "allowance_bytes": int(scalars.get("net_allowance_bytes") or 0),
+        "rx_bytes": int(scalars.get("net_rx_bytes") or 0),
+        "tx_bytes": int(scalars.get("net_tx_bytes") or 0),
+        "rx_packets": int(scalars.get("net_rx_packets") or 0),
+        "tx_packets": int(scalars.get("net_tx_packets") or 0),
+        "nonloopback_interfaces": [i for i in (scalars.get("net_ifaces") or "").split(",") if i],
+        "nonloopback_interface_count": int(scalars.get("net_n_ifaces") or 0),
+        "downloaded_bytes": int(scalars.get("net_downloaded_bytes") or 0),
+    },
+    # Derived from the counter above (bytes received beyond the link-local/DHCP
+    # allowance); NOT a literal. 0 == no network download happened at boot.
+    "network_downloads_at_boot": int(scalars.get("net_downloaded_bytes") or 0),
     "verified_offline": verdict == "pass",
 }
 with open(out, "w", encoding="utf-8") as fh:
@@ -209,4 +288,9 @@ PY
 
 echo "[first-boot] verdict=$verdict log=$LOG_OUT"
 echo "[first-boot] models resolved from local disk: ${MODELS_DIR} (fs=${fs_type})"
+if [ "$NET_MEASURED" = 1 ]; then
+  echo "[first-boot] network_downloads_at_boot=$NET_DL (measured rx_bytes=$NET_RX from /proc/net/dev, allowance=$TERMINI_LINK_LOCAL_DHCP_ALLOWANCE_BYTES)"
+else
+  echo "[first-boot] network_downloads_at_boot=0 (not measured: rehearsal root)"
+fi
 exit "$rc"

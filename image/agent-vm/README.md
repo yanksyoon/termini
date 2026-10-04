@@ -92,10 +92,18 @@ network, asserts:
 1. the bake sentinel + image digest exist;
 2. the runtime venv, all three framework venvs, and the Node runtime are present;
 3. every pinned requirements lock is on disk;
-4. **`termini-agent selfcheck` imports every agent dependency offline and validates `/etc/termini/agent.yaml`** against the on-prem inference allow-list.
+4. **`termini-agent selfcheck` imports every agent dependency offline and validates `/etc/termini/agent.yaml`** against the on-prem inference allow-list;
+5. **boot-time network activity is measured** from `/proc/net/dev` (the `network`
+   block in the log). `network_downloads_at_boot` is the bytes received on
+   non-loopback interfaces beyond a documented link-local/DHCP allowance — a
+   measurement, not the hardcoded `0` it used to be. The preflight records it
+   (the guest VM is launched with a NIC in production); **enforcement** lives in
+   `tools/offline-acceptance.sh`, which runs on the NIC-less offline profile
+   where the zero-download guarantee is structural.
 
 It writes `/var/log/termini/first-boot.json` (`verdict`, per-module import status,
-`network_downloads_at_boot: 0`) and exits non-zero on any failure.
+the measured `network` block, `network_downloads_at_boot` derived from it) and
+exits non-zero on any failure.
 
 ## 5. Verification (the card's acceptance)
 
@@ -111,14 +119,20 @@ NIC**), waits for `termini-agent` to become active, runs
 `tools/offline-acceptance.sh` inside, and copies the evidence out. Checks:
 
 - `no_network_interface` — only `lo` exists (so any boot-time fetch is impossible);
+- `network_downloads_at_boot` — **measured live** from `/proc/net/dev` inside the
+  VM (not read back from the preflight log): 0 on a clean offline boot, non-zero
+  once a real fetch happens;
+- `no_egress_interface` — no non-loopback link holds a routable (non-link-local)
+  address; fails closed if the VM could reach off-host;
 - `agent_selfcheck` + per-module `dep` lines — runtime + 3 framework venvs + config all import offline;
-- `preflight_verdict` / `network_downloads_at_boot` — `pass` / `0`;
+- `preflight_verdict` — `pass`;
 - `agent_service_active`, `status_surface`, `governance_egress_deny`;
 - `node_libs_importable` — `openai`+`pino`+`undici`;
 - `no_route_to_controller` — the VM cannot reach the GCP controller.
 
 Committed evidence lives in `evidence/` (`offline-acceptance.json`,
-`first-boot.json`, `selfcheck.json`, `status.json`, `boot-journal.txt`).
+`offline-acceptance.net-download-negative.json`, `first-boot.json`,
+`selfcheck.json`, `status.json`, `boot-journal.txt`).
 
 ## 6. Cross-node ADK call path (`t_fd8eee6c`)
 
@@ -183,6 +197,7 @@ image/agent-vm/
     src/termini_agent/stream_metrics.py  per-delta streaming accounting
     tests/                            bake-time unit tests (incl. stream_metrics + config allow-list)
   tools/offline-acceptance.sh       in-VM acceptance checks
+  tools/net-accounting.sh           /proc/net/dev boot network accounting (measurement)
   tools/validate_manifest.py        manifest schema/structural validation
   manifests/agent-image-manifest.schema.json
   evidence/                         committed run evidence

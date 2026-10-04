@@ -25,7 +25,12 @@
     {
       "name": "network_downloads_at_boot",
       "ok": true,
-      "detail": "network_downloads_at_boot=0"
+      "detail": "network_downloads_at_boot=0 (rx_bytes=0 tx_bytes=0 packets=0/0 ifaces=0:none allowance=8192)"
+    },
+    {
+      "name": "no_egress_interface",
+      "ok": true,
+      "detail": "no non-loopback interface holds a routable address"
     },
     {
       "name": "agent_service_active",
