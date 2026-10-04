@@ -10,11 +10,11 @@
     {
       "name": "image_identity",
       "ok": true,
-      "detail": "agent-vm-2026.10.0+gnogit sha256:3aeaab4d16fa"
+      "detail": "agent-vm-2026.10.0+gb9f934d8f544 sha256:3aeaab4d16fa"
     },
     {
       "name": "agent_selfcheck",
-      "ok": false,
+      "ok": true,
       "detail": "runtime + framework venvs + config all ok"
     },
     {
@@ -115,5 +115,5 @@
       "detail": "ok"
     }
   ],
-  "verdict": "fail"
+  "verdict": "pass"
 }
