@@ -7,6 +7,8 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
+import time
 import urllib.error
 import urllib.request
 
@@ -95,12 +97,26 @@ def check_w5_1(ctx: CheckContext) -> dict:
 
 def check_w5_2(ctx: CheckContext) -> dict:
     criterion = "the web terminal opens a working shell on a node"
-    method = "WebSocket /terminal/v1/nodes/{node_id}?token=… ; send `echo __ACCEPTANCE__` and read the PTY output"
+    method = ("WebSocket /terminal/v1/nodes/{node_id}?token=… ; run a command that "
+              "prints a value only the shell can produce and require its OUTPUT "
+              "(never the PTY echo) to show a remote (SSH) node session")
     node_id = _first_node_id(ctx)
     if not node_id or not ctx.project_token:
         art = ctx.ev.record("W5.2", "W5.2 terminal (skipped)", "WS /terminal/v1/nodes", "no node id / token")
         return result("W5.2", WS, criterion, method, "skipped", "no node id available",
                       art, reason="no node id / project token available to open a terminal")
+
+    # The command expands to `W5OUT_<hostname>_<ssh|local>_END`. The literal
+    # command line sent to the PTY contains `$(hostname)` / `$(...)`, so the
+    # expanded token can ONLY appear in the command's OUTPUT — never in the
+    # terminal's local echo of the typed line. That is what makes this probe
+    # assert on a real result instead of on the line-discipline echo (which used
+    # to sail through even when the node shell was unreachable). The embedded
+    # `$SSH_CONNECTION` check additionally proves the shell is on a *node*
+    # reached over SSH, not a `bash` on the controller host.
+    probe = ("echo W5OUT_$(hostname)_"
+             "$( [ -n \"$SSH_CONNECTION\" ] && echo ssh || echo local )_END\n")
+    out_re = re.compile(r"W5OUT_([A-Za-z0-9._-]+)_(ssh|local)_END")
 
     ws_url = f"ws://{ctx.controller_url.split('://', 1)[-1].rstrip('/')}/terminal/v1/nodes/{node_id}?token={ctx.project_token}"
     output = ""
@@ -108,14 +124,28 @@ def check_w5_2(ctx: CheckContext) -> dict:
     err_code = None
     status = "fail"
     reason = None
+    match = None
     try:
         ws = WsClient(ws_url, timeout=8)
         ws.connect()
-        ws.send_text(json.dumps({"type": "input", "data": base64.b64encode(b"echo __ACCEPTANCE__\n").decode()}))
-        for _ in range(20):
-            frame = ws.recv_frame(timeout=5)
+        ws.send_text(json.dumps({"type": "input", "data": base64.b64encode(probe.encode()).decode()}))
+        # Keep reading until the command output arrives or a wall-clock deadline
+        # passes. A single idle window must not fail a healthy-but-slow node: the
+        # first frames are the shell banner and the local echo of the typed line,
+        # and on a loaded host the expanded output can lag the echo by seconds.
+        deadline = time.monotonic() + 30.0
+        frames = 0
+        while frames < 80 and time.monotonic() < deadline:
+            try:
+                frame = ws.recv_frame(timeout=8)
+            except TimeoutError:
+                continue  # idle window — keep waiting until the deadline
+            except Exception as exc:  # noqa: BLE001
+                output += f"<recv error: {type(exc).__name__}: {exc}>\n"
+                break
             if frame is None:
                 break
+            frames += 1
             output += json.dumps(frame) + "\n"
             # recv_frame returns the raw text frame (a JSON envelope); decode the
             # base64 `output.data` payload to read the PTY bytes.
@@ -130,8 +160,9 @@ def check_w5_2(ctx: CheckContext) -> dict:
                     pass
             if isinstance(obj, dict) and obj.get("type") == "error":
                 err_code = obj.get("code")
-            if "__ACCEPTANCE__" in decoded:
-                status = "pass"
+            match = out_re.search(decoded)
+            if match:
+                status = "pass" if match.group(2) == "ssh" else "fail"
                 break
         ws.close()
     except Exception as exc:  # noqa: BLE001
@@ -140,8 +171,18 @@ def check_w5_2(ctx: CheckContext) -> dict:
     art = ctx.ev.record("W5.2", "W5.2 web terminal shell", ws_url,
                         output + "\n--- decoded PTY ---\n" + decoded)
 
-    if status == "pass":
-        return result("W5.2", WS, criterion, method, "pass", "terminal echoed the marker", art)
+    if match and match.group(2) == "ssh":
+        return result("W5.2", WS, criterion, method, "pass",
+                      f"terminal opened an SSH shell on the node "
+                      f"(output `{match.group(0)}`, host {match.group(1)})", art)
+    if match and match.group(2) == "local":
+        # Output arrived, but it came from a controller-host shell — not a node.
+        return result("W5.2", WS, criterion, method, "fail",
+                      f"terminal ran a LOCAL shell (output `{match.group(0)}`), "
+                      f"not a shell on the node",
+                      art, reason=("the terminal backend opened a shell on the "
+                                   "controller host (no SSH_CONNECTION); a node "
+                                   "shell is required by dashboard.md §3.1"))
     if "404" in output:
         return result("W5.2", WS, criterion, method, "skipped",
                       "terminal WS endpoint not found (404) in running controller",
@@ -155,7 +196,8 @@ def check_w5_2(ctx: CheckContext) -> dict:
         reason = f"terminal returned an error ({err_code}): {output[:200]}"
         status = "fail"
     else:
-        reason = "terminal did not echo the sent command"
+        reason = ("terminal produced no command output (only, at most, the local "
+                  "echo of the typed line) — the node shell never ran the command")
         status = "fail"
     return result("W5.2", WS, criterion, method, status, output[:300], art, reason=reason)
 
@@ -183,7 +225,7 @@ def check_w5_3(ctx: CheckContext) -> dict:
                       art, reason="the SSH-string endpoint is not implemented in the running controller build (no route for GET /v1/projects/{pid}/nodes/{nid}/ssh)")
 
     ssh_string = body.get("ssh") or body.get("command") or body.get("ssh_command") or ""
-    fingerprint = body.get("fingerprint") or ""
+    fingerprint = body.get("fingerprint") or body.get("key_fingerprint") or ""
     wellformed = bool(ssh_string and ssh_string.startswith("ssh ") and "@" in ssh_string)
 
     if not wellformed:
@@ -191,18 +233,33 @@ def check_w5_3(ctx: CheckContext) -> dict:
                       f"ssh string malformed: {ssh_string!r}", art,
                       reason="SSH endpoint did not return a well-formed ssh command string")
 
+    # Prove the string works by executing it. Verdict is the child's EXIT STATUS
+    # (not empty output — a first-connect known-hosts notice, or any banner, on
+    # stderr would otherwise masquerade as a failure) and the known-hosts file is
+    # disabled so a fresh node never trips host-key prompts. Two attempts:
+    #   (a) the string exactly as the dashboard renders it (CA-signed operator
+    #       key, D4);
+    #   (b) the same target with the infra break-glass recovery key.
+    opts = ("-o BatchMode=yes -o StrictHostKeyChecking=no "
+            "-o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=6")
     key_candidates = ["/home/ubuntu/.ssh/termini_breakglass", "/root/.ssh/termini_breakglass"]
     key = next((k for k in key_candidates if os.path.isfile(k)), None)
-    login_result = "not attempted (no break-glass key present)"
-    if key and ssh_string:
-        login_result = run(f"timeout 12 ssh -i {key} -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=6 {ssh_string.split(' ', 1)[1]} true 2>&1")
-        if login_result.strip() == "":
-            login_result = "login OK (exit 0)"
+    attempts = [("the string as rendered", ssh_string.replace("ssh ", f"ssh {opts} ", 1) + " true")]
+    if key:
+        target = ssh_string.split(" ", 1)[1]
+        attempts.append(("break-glass key", f"ssh {opts} -i {key} {target} true"))
 
-    if "login OK" in login_result:
+    login_ok_via = ""
+    for label, cmd in attempts:
+        res = run(f"timeout 12 {cmd} 2>&1; echo \" RC=$?\"")
+        if res.rstrip().endswith("RC=0"):
+            login_ok_via = label
+            break
+
+    if login_ok_via:
         return result("W5.3", WS, criterion, method, "pass",
-                      f"well-formed string + fingerprint {fingerprint}; break-glass login succeeded", art)
+                      f"well-formed string + fingerprint {fingerprint}; login succeeded ({login_ok_via})", art)
 
     return result("W5.3", WS, criterion, method, "skipped",
                   f"well-formed ssh string returned ({ssh_string}); fingerprint={fingerprint}; login not independently verified",
-                  art, reason="SSH string is shown; the 'works' half requires a break-glass private key not provisioned in this demo env")
+                  art, reason="SSH string is shown; the 'works' half requires the paired key (break-glass or CA-signed operator key) and a reachable node in this demo env")
