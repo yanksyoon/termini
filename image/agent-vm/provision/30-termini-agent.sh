@@ -51,6 +51,10 @@ install -m 0644 "${BUILD_CTX}/systemd/termini-agent.service" \
   /etc/systemd/system/termini-agent.service
 install -m 0755 "${BUILD_CTX}/first-boot-preflight.sh" \
   /usr/local/sbin/termini-agent-preflight.sh
+# boot-time network-accounting library (derives network_downloads_at_boot)
+install -d -m 0755 /usr/local/lib/termini
+install -m 0644 "${BUILD_CTX}/tools/net-accounting.sh" \
+  /usr/local/lib/termini/net-accounting.sh
 systemctl enable termini-firstboot-preflight.service termini-agent.service
 # ssh stays enabled (default): the controller injects the project's public key at launch.
 # With no injected key there is nothing to log in with, so an idle sshd is harmless.

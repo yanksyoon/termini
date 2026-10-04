@@ -9,7 +9,7 @@ release and **not** a GPU run.
 
 | File | Produced by | What it shows |
 |------|-------------|---------------|
-| `boot-log.rehearsal.json` | `first-boot-preflight.sh` run against a stub root | the boot log shape; both aliases resolved from local disk; `network_downloads_at_boot: 0`; `verdict: pass` |
+| `boot-log.rehearsal.json` | `first-boot-preflight.sh` run against a stub root | the boot log shape; both aliases resolved from local disk; `network_downloads_at_boot: 0` with `network.measured: false` (a staged root is not a live boot); `verdict: pass` |
 | `image-manifest.rehearsal.json` | `rehearse_bake.py` | the exact manifest the builder emits, validated against `manifests/image-manifest.schema.json` |
 | `gpu-check.rehearsal.json` | `gpu_check.py` run against a stub fixture (fake `nvidia-smi` + `/dev` nodes + stub `libcudart`) | the `termini.gpu_check` report shape; `verdict: pass` with `gpu_reported`, `device_nodes`, `device_openable`, `cuda_runtime` all true |
 | `gpu-check.absent.json` | same verifier, no `nvidia-smi` on the host | the failure shape: `verdict: fail`, `reason: nvidia_smi_absent` |
