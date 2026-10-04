@@ -15,17 +15,16 @@
 # off the controller in production — this is a lab verification expedient).
 #
 # Usage: verify-placement.sh [--nodes "N1 N2"] [--node-alias A] [--profile P]
-#          [--instance NAME] [--host-alias A] [--key FILE] [--json]
+#          [--instance NAME] [--host-alias A] [--key FILE]
+# Emits a JSON report on stdout.
 set -euo pipefail
 
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODES_STR="${TERMINI_NODES:-demo-node-a demo-node-b}"
 NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w4}"
 HOST_ALIAS="${TERMINI_HOST_IMAGE_ALIAS:-agent-vm/2026.10.0}"
 PROFILE="${TERMINI_AGENT_PROFILE:-termini-agent}"
 INST="${TERMINI_TEST_INSTANCE:-agent-test}"
 KEY="${TERMINI_SSH_KEY:-$HOME/.ssh/termini_breakglass}"
-JSON=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -35,8 +34,7 @@ while [ "$#" -gt 0 ]; do
     --profile) PROFILE="$2"; shift 2 ;;
     --instance) INST="$2"; shift 2 ;;
     --key) KEY="$2"; shift 2 ;;
-    --json) JSON=1; shift ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -53,13 +51,14 @@ want_fp="$(lxc image info "$HOST_ALIAS" 2>/dev/null | awk '/^Fingerprint:/{print
 EGRESS_NODES=()
 cleanup_egress() {
   local n gw
-  for n in ${EGRESS_NODES[*]:-}; do
-    [ -n "$n" ] || continue
-    remote "$n" bash -lc 'nft delete table inet w4egress 2>/dev/null || true'
-    gw="$(remote "$n" cat /root/.w4-gw 2>/dev/null || true)"
-    if [ -n "$gw" ]; then remote "$n" ip route add default via "$gw" dev eth0 2>/dev/null || true; fi
-    remote "$n" rm -f /root/w4-test-key /root/w4-launch.sh /root/.w4-gw 2>/dev/null || true
-  done
+  if [ "${#EGRESS_NODES[@]}" -gt 0 ]; then
+    for n in "${EGRESS_NODES[@]}"; do
+      remote "$n" bash -lc 'nft delete table inet w4egress 2>/dev/null || true'
+      gw="$(remote "$n" cat /root/.w4-gw 2>/dev/null || true)"
+      if [ -n "$gw" ]; then remote "$n" ip route add default via "$gw" dev eth0 2>/dev/null || true; fi
+      remote "$n" rm -f /root/w4-test-key /root/w4-launch.sh /root/.w4-gw 2>/dev/null || true
+    done
+  fi
 }
 trap cleanup_egress EXIT
 

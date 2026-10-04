@@ -2,7 +2,7 @@
   "kind": "termini.agent_image_placement",
   "alias": "agent-os/w4",
   "host_alias": "agent-vm/2026.10.0",
-  "checked_at": "2026-10-04T11:40:43Z",
+  "checked_at": "2026-10-04T11:49:37Z",
   "nodes": {
     "demo-node-a": {
       "alias_resolves_local": true,
@@ -12,7 +12,7 @@
       "egress_blocked_before_launch": true,
       "egress_blocked_after_launch": true,
       "offline_launch_ok": true,
-      "launch_seconds": 115.7,
+      "launch_seconds": 80.9,
       "instance_state": "RUNNING",
       "network_downloads_at_boot": "0",
       "ssh_via_injected_key": true,
@@ -27,7 +27,7 @@
       "egress_blocked_before_launch": true,
       "egress_blocked_after_launch": true,
       "offline_launch_ok": true,
-      "launch_seconds": 83.7,
+      "launch_seconds": 61.3,
       "instance_state": "RUNNING",
       "network_downloads_at_boot": "0",
       "ssh_via_injected_key": true,
