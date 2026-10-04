@@ -1,0 +1,33 @@
+{"ok": true, "checks": [{"name":"image_alias_pinned","ok":true,"detail":"alias 'agentic-os/w3' resolves locally"}
+, {"name":"image_immutable_tag","ok":true,"detail":"immutable tag 'agentic-os-w3-2026.10.0+9704aa0825c8' resolves"}
+, {"name":"image_fingerprint","ok":true,"detail":"alias points at baked fingerprint 500cbf91d336"}
+, {"name":"controller_reachable","ok":true,"detail":"http://127.0.0.1:8085 answering"}
+, {"name":"controller_project","ok":true,"detail":"project 01J0DEM0WARM000000000000AB"}
+, {"name":"demo-node-a.running","ok":true,"detail":"container RUNNING"}
+, {"name":"demo-node-a.agent_online","ok":true,"detail":"termini-bootstrap state=ONLINE"}
+, {"name":"demo-node-a.no_error","ok":true,"detail":"no bootstrap error"}
+, {"name":"demo-node-a.registered","ok":true,"detail":"controller node_id=01M439BZK778 role=compute:2s"}
+, {"name":"demo-node-a.baked_offline","ok":true,"detail":"bake sentinel present (no boot-time fetch)"}
+, {"name":"demo-node-a.scratch","ok":true,"detail":"volume 'demo-scratch-a' attached at /mnt/termini-scratch and writable"}
+, {"name":"demo-node-a.telemetry","ok":true,"detail":"11 samples in the last 15s"}
+, {"name":"demo-node-b.running","ok":true,"detail":"container RUNNING"}
+, {"name":"demo-node-b.agent_online","ok":true,"detail":"termini-bootstrap state=ONLINE"}
+, {"name":"demo-node-b.no_error","ok":true,"detail":"no bootstrap error"}
+, {"name":"demo-node-b.registered","ok":true,"detail":"controller node_id=01M439D1EW2C role=compute:4s"}
+, {"name":"demo-node-b.baked_offline","ok":true,"detail":"bake sentinel present (no boot-time fetch)"}
+, {"name":"demo-node-b.scratch","ok":true,"detail":"volume 'demo-scratch-b' attached at /mnt/termini-scratch and writable"}
+, {"name":"demo-node-b.telemetry","ok":true,"detail":"12 samples in the last 15s"}
+, {"name":"demo-node-c.running","ok":true,"detail":"container RUNNING"}
+, {"name":"demo-node-c.agent_online","ok":true,"detail":"termini-bootstrap state=ONLINE"}
+, {"name":"demo-node-c.no_error","ok":true,"detail":"no bootstrap error"}
+, {"name":"demo-node-c.registered","ok":true,"detail":"controller node_id=01M439DWP9ET role=inference:6s"}
+, {"name":"demo-node-c.baked_offline","ok":true,"detail":"bake sentinel present (no boot-time fetch)"}
+, {"name":"demo-node-c.scratch","ok":true,"detail":"volume 'demo-scratch-c' attached at /mnt/termini-scratch and writable"}
+, {"name":"demo-node-c.telemetry","ok":true,"detail":"12 samples in the last 15s"}
+, {"name":"demo-node-c.inference_health","ok":true,"detail":"GET http://10.14.100.11:8080/health OK"}
+, {"name":"demo-node-c.inference_models","ok":true,"detail":"/v1/models answered"}
+, {"name":"demo-node-c.model_file","ok":true,"detail":"pinned GGUF present (4920736608 bytes)"}
+, {"name":"demo-node-c.model_sha_sidecar","ok":true,"detail":"sha256 sidecar present"}
+, {"name":"demo-node-c.model_fs_local","ok":true,"detail":"model root fs_type=ext2/ext3"}
+, {"name":"demo-node-c.model_resident","ok":true,"detail":"llama-server RSS=5567229952 bytes (>= 3000000000)"}
+], "failed": 0}

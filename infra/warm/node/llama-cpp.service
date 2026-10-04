@@ -1,0 +1,18 @@
+[Unit]
+Description=Termini resident llama.cpp inference server (Node C)
+Documentation=file:/opt/termini/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/termini/model.env
+# Only runs where the pinned GGUF is present (the inference node).
+ExecCondition=/usr/local/bin/termini-model-present
+ExecStart=/usr/local/bin/termini-llama
+Restart=always
+RestartSec=1
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
