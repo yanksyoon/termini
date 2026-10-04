@@ -594,13 +594,27 @@ class ControllerHandler(BaseHTTPRequestHandler):
         return caps
 
     def _build_plan(self, conn, project_id: str, result, raw_allocations) -> dict:
-        """Map a ValidationResult to the AllocationPlan shape (controller-api.md §4.2)."""
+        """Map a ValidationResult to the AllocationPlan shape (controller-api.md §4.2).
+
+        Runs §5.2 step 6 (per-node capacity clamp) + step 7 (commit) on top of
+        the deterministic validator output: every accepted `agent_vm` class is
+        clamped against its resolved node's allocatable capacity (registered −
+        reserve − allocated) and, if the whole plan is safe, committed.
+        """
         nodes = store.list_nodes(conn, project_id)
+        plan_id = ulid.new_ulid()
+        request_id = ulid.new_ulid()
         outcome = "accepted" if result.safe else "rejected"
         allocations = []
         reject_reasons = []
         for r in result.rejections:
             reject_reasons.append({"index": r.index, "reason": r.reason, "detail": r.detail})
+
+        # Committed capacity per node, loaded lazily so a role-check-only caller
+        # (no DB connection) can still drive the plan; plus this request's
+        # in-flight accounting so multiple classes on one node share the ceiling.
+        committed: dict[str, dict] = {}
+        pending: dict[str, dict] = {}  # node_id -> committed deltas to persist (step 7)
 
         for i, spec in enumerate(result.allocations):
             resolved_node = self._resolve_target(spec, nodes)
@@ -622,20 +636,89 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 })
                 continue
             clamped = [d.to_dict() for d in result.decisions if d.index == i]
+            resolved = spec.to_dict()
+            status = "accepted"
+
+            # §5.2 step 6: per-node capacity clamp (agent_vm only; inference_vm
+            # is a reference to the host service and reserves no VM capacity).
+            # Skipped when the resolved node reported no hardware capacity.
+            hw_raw = resolved_node.get("hardware_json") if resolved_node else None
+            if spec.type == "agent_vm" and resolved_node is not None and hw_raw:
+                node_id = resolved_node["id"]
+                if node_id not in committed:
+                    committed[node_id] = (
+                        store.allocated_capacity(conn, node_id) if conn is not None
+                        else {"cpu_allocated": 0, "ram_allocated_gb": 0, "disk_allocated_gb": 0}
+                    )
+                alloc = committed[node_id]
+                hw = json.loads(hw_raw) if hw_raw else {}
+                cap = health.capacity_of(
+                    hw, alloc["cpu_allocated"], alloc["ram_allocated_gb"], alloc["disk_allocated_gb"],
+                )
+                clamped_resolved, cap_decisions, cap_reject = health.clamp_to_node_capacity(
+                    spec.count, spec.vcpus, spec.ram_gb, spec.disk_gb, cap, index=i,
+                )
+                clamped.extend(cap_decisions)
+                # Merge the clamped per-VM fields back into the full spec shape
+                # (count is never changed by the capacity clamp).
+                resolved["vcpus"] = clamped_resolved["vcpus"]
+                resolved["ram_gb"] = clamped_resolved["ram_gb"]
+                resolved["disk_gb"] = clamped_resolved["disk_gb"]
+                if cap_reject:
+                    allocations.append({
+                        "index": i, "status": "rejected", "resolved": resolved,
+                        "guardrail": {"clamped_fields": clamped,
+                                      "reject_reasons": [{"reason": cap_reject}]},
+                        "node_id": node_id, "vm_ids": [],
+                    })
+                    reject_reasons.append({
+                        "index": i,
+                        "reason": cap_reject,
+                        "detail": _CAPACITY_REJECT_DETAILS.get(cap_reject, cap_reject),
+                    })
+                    outcome = "rejected"
+                    continue
+                status = "clamped" if cap_decisions else "accepted"
+                delta = {
+                    "cpu_allocated": resolved["count"] * resolved["vcpus"],
+                    "ram_allocated_gb": resolved["count"] * resolved["ram_gb"],
+                    "disk_allocated_gb": resolved["count"] * resolved["disk_gb"],
+                }
+                committed[node_id] = {
+                    "cpu_allocated": alloc["cpu_allocated"] + delta["cpu_allocated"],
+                    "ram_allocated_gb": alloc["ram_allocated_gb"] + delta["ram_allocated_gb"],
+                    "disk_allocated_gb": alloc["disk_allocated_gb"] + delta["disk_allocated_gb"],
+                }
+                p = pending.setdefault(
+                    node_id, {"cpu_allocated": 0, "ram_allocated_gb": 0, "disk_allocated_gb": 0})
+                for k in delta:
+                    p[k] += delta[k]
+
             realized_as = "host_service" if spec.type == "inference_vm" else "vm"
             allocations.append({
                 "index": i,
-                "status": "accepted",
-                "resolved": spec.to_dict(),
+                "status": status,
+                "resolved": resolved,
                 "guardrail": {"clamped_fields": clamped, "reject_reasons": []},
                 "node_id": resolved_node["id"] if resolved_node else None,
                 "realized_as": realized_as,
                 "vm_ids": [],
             })
 
+        # §5.2 step 7: commit accepted/clamped agent_vm capacity. All-or-nothing —
+        # any rejected class commits nothing and the plan is rejected upstream.
+        if outcome != "rejected":
+            now = store.now_iso()
+            for node_id, delta in pending.items():
+                store.commit_allocation(
+                    conn, project_id, plan_id, node_id,
+                    delta["cpu_allocated"], delta["ram_allocated_gb"], delta["disk_allocated_gb"],
+                    now,
+                )
+
         plan = {
-            "plan_id": ulid.new_ulid(),
-            "request_id": ulid.new_ulid(),
+            "plan_id": plan_id,
+            "request_id": request_id,
             "project_id": project_id,
             "outcome": outcome,
             "created_at": store.now_iso(),
@@ -811,6 +894,8 @@ class ControllerHandler(BaseHTTPRequestHandler):
             sample = store.latest_sample(conn, n["id"])
         hw = json.loads(n["hardware_json"]) if n["hardware_json"] else {}
         status, health_obj = health.node_status_health(n, sample, time.time())
+        alloc = store.allocated_capacity(conn, n["id"])
+        capacity = health.capacity_of(hw, alloc["cpu_allocated"], alloc["ram_allocated_gb"], alloc["disk_allocated_gb"])
         return {
             "node_id": n["id"],
             "registration_id": n["registration_id"],
@@ -819,7 +904,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
             "last_seen_at": n["last_seen_at"],
             "uptime_sec": health.uptime_sec(sample),
             "hardware": hw,
-            "capacity": health.capacity_of(hw),
+            "capacity": capacity,
             "health": health_obj,
         }
 
@@ -1155,4 +1240,12 @@ _ROLE_REJECT_DETAILS = {
     "invalid_target_node_type": "inference_vm must resolve to the inference node",
     "invalid_target_node": "agent_vm target node could not be resolved to a compute node",
     "gpu_not_allowed_for_agent": "GPU passthrough is not permitted on agent_vm",
+}
+
+# Human-readable detail for each per-node capacity rejection reason
+# (controller-api.md §5.2 step 6), surfaced alongside the machine-readable code.
+_CAPACITY_REJECT_DETAILS = {
+    "exceeds_node_ram_ceiling": "aggregate RAM exceeds the node's free capacity",
+    "exceeds_node_cpu_ceiling": "aggregate vCPU exceeds the node's overcommit ceiling",
+    "exceeds_node_disk_ceiling": "aggregate disk exceeds the node's free capacity",
 }
