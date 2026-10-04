@@ -136,6 +136,17 @@ Any of the following in an egress structure causes fail-closed (see §6):
 - MAC addresses in raw form, full IP addresses, serial numbers, asset tags
 - Any field not listed in 4.1 or 4.2 (deny-by-default)
 
+**Registration bootstrap exception (bounded C1).** The one-time registration body
+(`controller-api.md` §4.1, `node-bootstrap.md` §5.2) carries the node's own
+machine-inventory identifiers in the clear as a bounded C1 bootstrap exception:
+`machine.hostname`, `machine.underlay_ip`, and `machine.nics[].addresses`. These are
+the node's own addresses (not customer data) and are required for LXD cluster
+join/routing and controller inventory. Raw MAC is **not** part of this exception:
+the `nics[].mac` field is removed from the registration body, and MAC never
+egresses except as the hashed C1 `mac_address` telemetry field (§4.2). The
+exception applies to the `register`/`reconnect` endpoints only and is recorded in
+the audit log.
+
 ---
 
 ## 5. On-node redaction pipeline (Egress A)

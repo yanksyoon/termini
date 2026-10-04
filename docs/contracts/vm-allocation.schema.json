@@ -9,12 +9,12 @@
       "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
       "minLength": 26,
       "maxLength": 26,
-      "description": "ULID: 26 characters of Crockford base32 (uppercase, alphabet 0-9A-HJKMNP-TV-Z, no I/L/O/U), e.g. \"01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D\"."
+      "description": "ULID: 26 characters of Crockford base32 (uppercase, alphabet 0-9A-HJKMNP-TV-Z, no I/L/O/U), e.g. \"01M4349RPSZFTB60AVJEG0ZZY9\"."
     },
     "vm_type": {
       "type": "string",
       "enum": ["agent_vm", "inference_vm"],
-      "description": "agent_vm = small isolated task-oriented agent (deployable on any compute node A/B, optionally C). inference_vm = LLM serving VM; requires GPU passthrough and must target a GPU node (node C in the demo)."
+      "description": "agent_vm = small isolated task-oriented agent (deployable on any compute node A/B). inference_vm = a REFERENCE to the always-on, host-exposed llama.cpp inference service on Node C (infra-decisions.md D5); it is recorded and surfaced in the plan but NOT launched as a VM in the demo — it is realized as the pre-baked host service (agent-runtime.md §14.2). GPU passthrough is day-2 only and never exercised in the demo."
     },
     "allocation_spec": {
       "type": "object",
@@ -58,17 +58,19 @@
         "passthrough_gpu": {
           "type": "boolean",
           "default": false,
-          "description": "Only meaningful for inference_vm. For inference_vm the guardrail REQUIRES true (fixed decision: node C is a real GPU host). For agent_vm it must be false; a true value on agent_vm is a structural rejection."
+          "description": "Day-2 only: GPU passthrough (VFIO) is not built in the demo (infra-decisions.md D5). Any `true` value — on ANY class — is a structural rejection (gpu_passthrough_not_in_demo). It must be absent or false in every demo request."
         },
         "labels": {
           "type": "object",
-          "additionalProperties": { "type": "string" },
-          "description": "Optional free-form string labels for display only; not used in placement or guardrail decisions."
+          "maxProperties": 16,
+          "propertyNames": { "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" },
+          "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "description": "Optional display metadata (class C1). Bounded: at most 16 keys, keys match ^[a-z0-9][a-z0-9_-]{0,63}$ (lowercase, no whitespace), values 1..128 chars. Never used in placement or guardrail decisions. Excluded from guardrail_audit.raw_spec persistence (only a SHA-256 summary is stored) so no free-text C2/C1 reaches controller storage (governance.md §10 rule 7)."
         }
       },
       "examples": [
         { "type": "agent_vm", "count": 3, "vcpus": 2, "ram_gb": 4, "disk_gb": 8, "target_node": "auto" },
-        { "type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16, "disk_gb": 64, "passthrough_gpu": true, "target_node": "auto" }
+        { "type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16, "disk_gb": 64, "target_node": "auto" }
       ]
     },
     "allocation_request": {
@@ -111,12 +113,11 @@
           "enum": [
             "below_minimum",
             "above_absolute_maximum",
+            "above_host_max",
             "exceeds_node_cpu_ceiling",
             "exceeds_node_ram_ceiling",
             "exceeds_node_disk_ceiling",
-            "gpu_unavailable",
-            "gpu_required_for_inference",
-            "gpu_not_allowed_for_agent",
+            "gpu_passthrough_not_in_demo",
             "invalid_target_node_type",
             "unknown_field"
           ]
@@ -175,7 +176,7 @@
         "project_id": { "$ref": "#/$defs/ulid" },
         "timestamp": { "type": "string", "format": "date-time" },
         "actor": { "type": "string", "enum": ["user", "ai_operator", "system"] },
-        "raw_spec": { "$ref": "#/$defs/allocation_request", "description": "As submitted, before any clamping." },
+        "raw_spec": { "$ref": "#/$defs/allocation_request", "description": "As submitted, before any clamping. Customer-supplied free-text fields (labels) are C1 and are persisted only as a SHA-256 summary, never verbatim (governance.md §10 rule 7)." },
         "resolved_spec": { "$ref": "#/$defs/allocation_request", "description": "As executed, after clamping." },
         "outcome": { "type": "string", "enum": ["accepted", "rejected"] },
         "node_snapshot": {
@@ -205,11 +206,11 @@
   ],
   "examples": [
     {
-      "project_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D",
+      "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
       "source": "natural_language",
       "allocations": [
         { "type": "agent_vm", "count": 3, "vcpus": 2, "ram_gb": 4, "target_node": "auto" },
-        { "type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16, "passthrough_gpu": true }
+        { "type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16 }
       ]
     }
   ]

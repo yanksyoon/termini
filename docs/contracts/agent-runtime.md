@@ -122,20 +122,20 @@ Invariants (restated as testable in §15):
 
 ```json
 {
-  "command_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C5J",
+  "command_id": "01M4349RPY26W8Q453PZYK05CB",
   "type": "vm.launch",
   "payload": {
-    "vm_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C4H",
-    "project_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D",
+    "vm_id": "01M4349RPXWDC52ZDAVMPCMJSH",
+    "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
     "class": "agent_vm",
     "image": "agent-vm/2026.10.0",
     "member": "node-a",
     "limits": { "vcpus": 2, "ram_gb": 4, "disk_gb": 8 },
     "network": { "name": "lxdbr0" },
     "profile": "termini-agent",
-    "cloud_init": { "project_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D",
+    "cloud_init": { "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
                     "inference_default_model": "deepseek-flash" },
-    "idempotency_key": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C2F"
+    "idempotency_key": "01M4349RPVPP8X0W99R3TNZXW7"
   },
   "issued_by": "system",
   "issued_at": "2026-10-04T07:49:00Z",
@@ -183,7 +183,7 @@ Config applied through the LXD API (JSON), the canonical form:
   "config": {
     "limits.cpu": "2",
     "limits.memory": "4GiB",
-    "cloud-init.user-data": "#cloud-config\nwrite_files:\n  - path: /etc/termini/agent.yaml\n    permissions: '0600'\n    content: |\n      project_id: 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D\n      vm_id: 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C4H\n      node_id: 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E\n      inference:\n        base_url: http://10.10.0.13:8080\n        default_model: deepseek-flash\n        allowed_models: [deepseek-flash, deepseek-v4-pro]\n        token_file: /etc/termini/inference.token\n        stream: true\n        connect_timeout_s: 2\n        request_timeout_s: 120\n      broker:\n        endpoint: http://10.20.1.1:7071\n        pull_interval_s: 1\n        max_concurrent_tasks: 2\n      logging:\n        sink: /var/log/termini/agent.jsonl\n        local_only: true\n      governance:\n        telemetry_class: C0\n        egress: deny\nruncmd:\n  - [ systemctl, enable, --now, termini-agent.service ]\n"
+    "cloud-init.user-data": "#cloud-config\nwrite_files:\n  - path: /etc/termini/agent.yaml\n    permissions: '0600'\n    content: |\n      project_id: 01M4349RPSZFTB60AVJEG0ZZY9\n      vm_id: 01M4349RPXWDC52ZDAVMPCMJSH\n      node_id: 01M4349RPTT29RNTC6VBCXQ0RC\n      inference:\n        base_url: http://10.10.0.13:8080\n        default_model: deepseek-flash\n        allowed_models: [deepseek-flash, deepseek-v4-pro]\n        token_file: /etc/termini/inference.token\n        stream: true\n        connect_timeout_s: 2\n        request_timeout_s: 120\n      broker:\n        endpoint: http://10.20.1.1:7071\n        pull_interval_s: 1\n        max_concurrent_tasks: 2\n      logging:\n        sink: /var/log/termini/agent.jsonl\n        local_only: true\n      governance:\n        telemetry_class: C0\n        egress: deny\nruncmd:\n  - [ systemctl, enable, --now, termini-agent.service ]\n"
   },
   "devices": {
     "root": { "type": "disk", "pool": "local", "path": "/", "size": "8GiB" },
@@ -292,8 +292,8 @@ On `SIGTERM` (from `vm.stop`, `vm.resize`, `node.drain`, or node shutdown): stop
 
 ```json
 {
-  "task_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C6K",
-  "vm_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C4H",
+  "task_id": "01M4349RPZ4DMD3MT18EBZRQB4",
+  "vm_id": "01M4349RPXWDC52ZDAVMPCMJSH",
   "state": "succeeded",
   "started_at": "2026-10-04T07:49:02Z",
   "ended_at": "2026-10-04T07:49:41Z",
@@ -323,9 +323,9 @@ Two channels, deliberately asymmetric:
 
 ```json
 {
-  "task_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C6K",
-  "project_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D",
-  "vm_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C4H",
+  "task_id": "01M4349RPZ4DMD3MT18EBZRQB4",
+  "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
+  "vm_id": "01M4349RPXWDC52ZDAVMPCMJSH",
   "kind": "agent.run",
   "created_at": "2026-10-04T07:48:59Z",
   "ttl_s": 900,
@@ -334,7 +334,7 @@ Two channels, deliberately asymmetric:
     "context_refs": [],
     "model_preference": "auto"
   },
-  "trace_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C3G"
+  "trace_id": "01M4349RPWA213SX85ZABPJWCH"
 }
 ```
 
@@ -460,7 +460,7 @@ The wire format is the OpenAI Chat Completions shape plus Termini **headers** (s
 
 ```json
 {
-  "id": "chatcmpl-01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C7M",
+  "id": "chatcmpl-01M4349RQ09HMAX6RC9YPYQH4W",
   "object": "chat.completion",
   "created": 1791101000,
   "model": "deepseek-flash",
@@ -508,7 +508,7 @@ data: [DONE]
     "type": "termini_error",
     "code": "MODEL_UNAVAILABLE",
     "param": "model",
-    "request_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C7M"
+    "request_id": "01M4349RQ09HMAX6RC9YPYQH4W"
   }
 }
 ```
@@ -602,9 +602,9 @@ Agent status reaches the controller **only** as C0 counters folded into node tel
 ```json
 {
   "agents": [
-    { "vm_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C4H",
+    { "vm_id": "01M4349RPXWDC52ZDAVMPCMJSH",
       "state": "busy",
-      "current_task_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C6K",
+      "current_task_id": "01M4349RPZ4DMD3MT18EBZRQB4",
       "queue_depth": 0,
       "tasks_completed": 12,
       "tasks_failed": 1,
@@ -681,8 +681,7 @@ with `model: "deepseek-flash"`, a **static, versioned extraction template**, and
 | `vm.migrate` | Evacuation (stop→transfer→start, D7); VM resumes on the target with the same `vm_id`. |
 | `node.drain` | Evacuate every agent VM off the node (Scenario B); tasks requeued on the target. |
 | `node.reboot` | Drain then host reboot; identity survives (node-bootstrap §10). |
-| `ssh.inject_key` | Host-level (SSH CA, D4) — no agent-runtime action; does not affect tasks. |
-| `agent.dispatch_task` / `agent.cancel_task` | **Proposed additions** to the command allowlist (§17): enqueue/cancel a task envelope (§7.2). |
+| `agent.dispatch_task` / `agent.cancel_task` | Enqueue/cancel a task envelope (§7.2). |
 
 Every remediation that changes allocation also writes a `guardrail_audit` record with `actor: ai_operator` + the telemetry trigger (controller-api §5.4, node-telemetry §5), so autonomous changes are traceable.
 
@@ -748,7 +747,7 @@ All commands run **from inside an agent VM** unless noted.
 3. **Non-streaming chat:**
    ```bash
    curl -sS -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
-     -H "X-Termini-Request-Id: 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C7M" -H "X-Termini-Vm-Id: $VMID" \
+     -H "X-Termini-Request-Id: 01M4349RQ09HMAX6RC9YPYQH4W" -H "X-Termini-Vm-Id: $VMID" \
      -d '{"model":"deepseek-flash","messages":[{"role":"user","content":"ping"}],"max_tokens":8}' \
      http://10.10.0.13:8080/v1/chat/completions | jq '.choices[0].message.content'
    ```
@@ -798,9 +797,9 @@ All commands run **from inside an agent VM** unless noted.
 ### 19.2 `/etc/termini/agent.yaml` (canonical example)
 
 ```yaml
-project_id: 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0D
-vm_id: 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C4H
-node_id: 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E
+project_id: 01M4349RPSZFTB60AVJEG0ZZY9
+vm_id: 01M4349RPXWDC52ZDAVMPCMJSH
+node_id: 01M4349RPTT29RNTC6VBCXQ0RC
 agent_image_version: agent-vm-2026.10.0+g1ab2c3d
 inference:
   base_url: http://10.10.0.13:8080

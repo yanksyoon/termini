@@ -1,5 +1,5 @@
 """Telemetry schema enforcement — mirrors `app/fields.py` (and therefore
-`docs/telemetry-schema.md`).
+`docs/contracts/node-telemetry.md`).
 
 Strict, fail-closed validation:
 - Type mismatches, range/enum/pattern violations on a *present* field reject.

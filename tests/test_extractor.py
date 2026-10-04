@@ -32,7 +32,7 @@ CANONICAL_RAW = {
         {"type": "agent_vm", "count": 3, "vcpus": 1000, "ram_gb": 512, "disk_gb": 8,
          "passthrough_gpu": False, "target_node": "auto"},
         {"type": "inference_vm", "count": 1, "vcpus": 128, "ram_gb": 512, "disk_gb": 64,
-         "passthrough_gpu": True, "target_node": "auto"},
+         "passthrough_gpu": False, "target_node": "auto"},
     ]
 }
 
@@ -58,7 +58,7 @@ class CanonicalPromptTest(unittest.TestCase):
         self.assertEqual(agent.count, 3)
         self.assertEqual(inference.type, "inference_vm")
         self.assertEqual(inference.count, 1)
-        self.assertTrue(inference.passthrough_gpu)
+        self.assertFalse(inference.passthrough_gpu)
 
         for spec in result.allocations:
             role = spec.type

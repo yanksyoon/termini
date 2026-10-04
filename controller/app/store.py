@@ -22,7 +22,7 @@ def now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-# --- metrics registry: name -> (extractor, unit). Mirrors docs/telemetry-schema.md. ---
+# --- metrics registry: name -> (extractor, unit). Mirrors docs/contracts/node-telemetry.md. ---
 def _first(arr: Any) -> dict:
     return arr[0] if isinstance(arr, list) and arr and isinstance(arr[0], dict) else {}
 

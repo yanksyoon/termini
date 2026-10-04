@@ -24,8 +24,8 @@ and the `project_token` scoping rule) are inherited verbatim from
 ## 1. Telemetry contract (dashboard view)
 
 The dashboard renders node status/health and resource utilization charts. The
-data originates in node telemetry (`docs/contracts/node-telemetry.md` /
-`docs/telemetry-schema.md`), is ingested by the controller under the governance
+data originates in node telemetry (`docs/contracts/node-telemetry.md`, the single
+source of truth), is ingested by the controller under the governance
 gates (`controller-api.md` §2), and is served back to the dashboard over REST
 (poll) and the event stream (push).
 
@@ -37,7 +37,7 @@ List endpoint. `project_token` auth. Response:
 {
   "nodes": [
     {
-      "node_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E",
+      "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
       "registration_id": "termini-node-a",
       "role": "compute",
       "status": "online",
@@ -108,9 +108,9 @@ Same object as one list element, plus:
 { "node": { "...": "as above" }, "metrics_latest": { "...": "most recent telemetry Sample" } }
 ```
 
-`metrics_latest` is the raw most-recent `Sample` from
-`docs/telemetry-schema.md` §3 (flattened: host metrics, `disk[]`, `net[]`,
-`gpu[]`, `lxd_instances[]`, `inference{}`, `services[]`).
+`metrics_latest` is the raw most-recent `Sample` from `node-telemetry.md` §3
+(nested: host metrics, `disk[]`, `net[]`, `gpu[]`, `lxd_instances[]`,
+`inference{}`, `services[]`); the flat chart names are derived per §1.4's mapping.
 
 ### 1.3 Health flag derivation (frozen)
 
@@ -147,7 +147,7 @@ Query params: `start` (RFC3339), `end` (RFC3339), `resolution` ∈
 
 ```json
 {
-  "node_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E",
+  "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
   "resolution": "5s",
   "series": [
     {"name": "cpu_util_pct", "unit": "percent", "points": [{"t": "2026-10-04T07:49:00.000Z", "v": 31.2}]},
@@ -186,6 +186,24 @@ Points are downsampled to `resolution` (mean per bucket); `raw` returns every
 stored sample. Values are averaged per bucket and rounded to 4 decimals. The
 frontend converts bytes → GiB for display; the contract stays in bytes.
 
+**Nested→flat mapping (frozen).** The wire telemetry is **nested**
+(`node-telemetry.md` §4: `disk[]`, `net[]`, `gpu[]`, `inference{}`, plus flat host
+metrics). The controller derives these flat chart series from each sample with a
+fixed aggregation (mirrors `controller/app/store.py METRICS`):
+
+| flat name | source field | aggregation |
+|-----------|--------------|-------------|
+| `cpu_util_pct`, `cpu_core_count`, `ram_*`, `swap_used_bytes`, `load_avg_1m`, `cpu_temp_celsius` | flat host fields | direct |
+| `gpu_util_pct`, `gpu_vram_used_bytes`, `gpu_vram_total_bytes` | `gpu[]` | first element (`gpu[0]`) |
+| `net_rx_bytes`, `net_tx_bytes`, `net_latency_ms` | `net[]` | first element (`net[0]`) |
+| `disk_total_bytes`, `disk_free_bytes`, `disk_write_latency_ms` | `disk[]` | first element (`disk[0]`) |
+| `inference_tokens_per_s`, `inference_active_requests`, `inference_vram_used_bytes` | `inference{}` | direct |
+
+The demo has exactly one disk/NIC/GPU per node, so "first element" is the only
+element. Day-2 defines per-device series and a sum/max aggregation policy for
+multi-device hosts; until then this mapping is normative and `store.py METRICS`
+is the reference implementation.
+
 ### 1.5 Cadence (poll vs push)
 
 | Channel | Cadence | Notes |
@@ -215,14 +233,14 @@ application/customer logs are C2 and are **never** surfaced
 
 ```json
 {
-  "log_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C7X",
+  "log_id": "01M4349RQ1EN14D6JXQ5BAND4W",
   "ts": "2026-10-04T07:49:01.000Z",
-  "node_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E",
+  "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
   "severity": "info",
   "actor": "ai_operator",
   "message": "Node A disk failure predicted. Issuing node.drain.",
   "remediation": {
-    "command_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C5J",
+    "command_id": "01M4349RPY26W8Q453PZYK05CB",
     "type": "node.drain",
     "status": "pending_approval"
   }
@@ -289,12 +307,14 @@ resumption point after a gap.
 Two surfaces: the embedded xterm.js WebSocket terminal (node-level interactive
 shell) and the copyable SSH access string.
 
-### 3.1 WebSocket terminal — `wss://<controller-host>/terminal/v1/{node_id}?token=<project_token>`
+### 3.1 WebSocket terminal — `wss://<controller-host>/terminal/v1/nodes/{node_id}?token=<project_token>`
 
 Opens an interactive shell **on the selected node** (host-level, not a VM shell).
 `{node_id}` selects the target node; the controller validates that the node
 belongs to the token's `project_id` (`403 PERMISSION_DENIED` / `404 NOT_FOUND`)
-and then brokers the session.
+and then brokers the session. A **VM-level agent shell** is a separate surface at
+`wss://<controller-host>/terminal/v1/vms/{vm_id}` (LXD `lxc exec`), reconciled in
+`controller-api.md` §7.3 and architecture.md R14.
 
 **Auth handshake.** The `project_token` is carried in `?token=` (browsers cannot
 set a header on `new WebSocket`). The server validates the token and its project
@@ -316,7 +336,7 @@ Client → server:
 Server → client:
 
 ```json
-{"type": "ready",  "node_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E", "user": "ubuntu", "shell": "/bin/bash"}
+{"type": "ready",  "node_id": "01M4349RPTT29RNTC6VBCXQ0RC", "user": "ubuntu", "shell": "/bin/bash"}
 {"type": "output", "data": "dG90YWwgMjQK"}
 {"type": "exit",   "code": 0, "reason": "normal"}
 {"type": "error",  "code": "NODE_OFFLINE", "message": "node not reachable"}
@@ -339,11 +359,11 @@ Server → client:
 
 **How the controller reaches the node (mechanism, not wire contract).** Primary
 path is the node's outbound mTLS control channel (`/node/v1/{node_id}/channel`,
-D6); the demo terminal bridge MAY instead proxy via SSH using the break-glass key
-(§3.2) to the node host. The dashboard is agnostic to this: it only sees the
-`/terminal/v1/{node_id}` framing above.
+D6); the demo terminal bridge MAY instead proxy via SSH using a short-lived
+operator certificate (§3.2) to the node host. The dashboard is agnostic to this:
+it only sees the `/terminal/v1/nodes/{node_id}` framing above.
 
-### 3.2 SSH access string
+### 3.2 SSH access string (CA-signed certificate — D4)
 
 Frozen format (rendered verbatim by the dashboard, copy-to-clipboard):
 
@@ -356,11 +376,19 @@ ssh -i <private_key_path> [-p <port>] <user>@<public_ip>
 | `<user>` | `ubuntu` | infra inventory `ssh.user` (`SSH_USER`, default `ubuntu`) |
 | `<public_ip>` | node's NAT public IP | infra inventory `nodes[].public_ip` |
 | `<port>` | `22` | infra inventory `ssh.port` (omit `-p` when `22`) |
-| `<private_key_path>` | local path to the operator's private key | the private key paired with the break-glass `ssh_public_key` infra injected at provisioning (GCP metadata `ssh-keys: ubuntu:<pub>`) |
+| `<private_key_path>` | local path to the **operator's** private key | the browser-local (or user-supplied) keypair whose public key was uploaded to `POST /v1/projects/{project_id}/ssh-key` |
 
-The private key is held by the operator and **never transits the controller**
-(D4: "no private keys transit the controller"). The dashboard displays only the
-command string and the key fingerprint, never key material.
+Access model (D4): the controller holds an SSH CA. The operator's browser generates
+a keypair locally (or the operator uploads a public key); the private key never
+transits the controller. The controller signs the public key into a **short-lived
+certificate** (default 8 h, principal `root`) via
+`POST /v1/projects/{project_id}/ssh-key` (`controller-api.md` §4.3). The dashboard
+renders the `ssh -i <key>` command; the user runs it with the browser-local private
+key and the signed certificate installed alongside it.
+
+The infra-injected **break-glass key** is a ONE-TIME recovery path, injected at
+provisioning (GCP metadata `ssh-keys: ubuntu:<pub>`) and **removed after successful
+registration** (`node-bootstrap.md` §7) — it is NOT standing access.
 
 Endpoint that feeds the dashboard panel:
 
@@ -368,14 +396,14 @@ Endpoint that feeds the dashboard panel:
 
 ```json
 {
-  "node_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C1E",
+  "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
   "user": "ubuntu",
   "host": "34.136.10.11",
   "port": 22,
   "key_algorithm": "ed25519",
   "key_fingerprint": "SHA256:AbC123...==",
-  "key_comment": "termini-breakglass",
-  "command": "ssh -i ~/.ssh/termini_breakglass ubuntu@34.136.10.11"
+  "key_comment": "termini-operator-cert",
+  "command": "ssh -i ~/.ssh/termini_operator ubuntu@34.136.10.11"
 }
 ```
 
@@ -402,7 +430,7 @@ are already frozen in `controller-api.md` §4.2 and are not restated here.
 Body (optional): `{"delay_s": 0}`.
 
 ```json
-{ "command_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C5J", "type": "node.reboot",
+{ "command_id": "01M4349RPY26W8Q453PZYK05CB", "type": "node.reboot",
   "state": "queued", "issued_by": "human" }
 ```
 
@@ -415,14 +443,14 @@ Body (optional): `{"delay_s": 0}`.
 Body:
 
 ```json
-{ "reason": "disk_degradation", "evacuate_to": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C2F" }
+{ "reason": "disk_degradation", "evacuate_to": "01M4349RPVPP8X0W99R3TNZXW7" }
 ```
 
 `reason` enum (frozen): `disk_degradation | disk_failure | maintenance | manual`.
 `evacuate_to` is optional (omit → controller picks the target).
 
 ```json
-{ "command_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C5J", "type": "node.drain",
+{ "command_id": "01M4349RPY26W8Q453PZYK05CB", "type": "node.drain",
   "state": "queued", "issued_by": "human" }
 ```
 
@@ -458,7 +486,6 @@ immediately) or `required` (hold in `pending_approval` until a human decides).
 | `vm.destroy` | `required` |
 | `node.drain` | `required` |
 | `node.reboot` | `required` |
-| `ssh.inject_key` | `auto` (controller-initiated rotation) |
 | `agent.dispatch_task`, `agent.cancel_task` | `auto` |
 
 **Frozen threshold-rule → command mapping** (from `node-telemetry.md` §5):
@@ -475,7 +502,7 @@ immediately) or `required` (hold in `pending_approval` until a human decides).
 Body: `{}` (optional `{"note": "..."}`).
 
 ```json
-{ "command_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C5J", "state": "approved",
+{ "command_id": "01M4349RPY26W8Q453PZYK05CB", "state": "approved",
   "approved_by": "human", "approved_at": "2026-10-04T07:49:30Z" }
 ```
 
@@ -488,7 +515,7 @@ Body: `{"reason": "maintenance_window", "note": "..."}` (`reason` free-text,
 optional).
 
 ```json
-{ "command_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C5J", "state": "denied",
+{ "command_id": "01M4349RPY26W8Q453PZYK05CB", "state": "denied",
   "denied_by": "human", "denied_at": "2026-10-04T07:49:30Z" }
 ```
 
@@ -514,9 +541,9 @@ optional).
 
 | Contract surface | Dashboard consumes | Owning component | Existing source of truth |
 |------------------|--------------------|------------------|--------------------------|
-| Telemetry (status/health + series) | `GET /nodes`, `/nodes/{id}`, `/nodes/{id}/metrics`; WS `node.telemetry`, `node.health_changed` | **controller** (`app/server.py` `_list_nodes`/`_get_node`/`_get_metrics`; `app/store.py METRICS`) | `node-telemetry.md` / `telemetry-schema.md`; node daemon pushes C0/C1 telemetry, controller ingests under `governanceGate` |
+| Telemetry (status/health + series) | `GET /nodes`, `/nodes/{id}`, `/nodes/{id}/metrics`; WS `node.telemetry`, `node.health_changed` | **controller** (`app/server.py` `_list_nodes`/`_get_node`/`_get_metrics`; `app/store.py METRICS`) | `node-telemetry.md` (single source of truth); node daemon pushes C0/C1 telemetry, controller ingests under `governanceGate` |
 | AI-operator log stream | SSE `GET /logs`; WS `log.line` | **controller** (new streaming layer — backend task `t_3468e5f0`) + **AI-operator loop** | command/ack channel (`controller-api.md` §6) + `guardrail_audit` + threshold rules (`node-telemetry.md` §5) |
-| Terminal (WS + SSH string) | `WS /terminal/v1/{node_id}`; `GET /nodes/{id}/ssh` | **controller** (terminal bridge — `t_3468e5f0`) + **node** outbound channel / break-glass SSH | infra inventory (`ssh.user`, `nodes[].public_ip`), D4/D6 (`infra-decisions.md`) |
+| Terminal (WS + SSH string) | `WS /terminal/v1/nodes/{node_id}`; `GET /nodes/{id}/ssh` | **controller** (terminal bridge — `t_3468e5f0`) + **node** outbound channel / operator cert | infra inventory (`ssh.user`, `nodes[].public_ip`), D4/D6 (`infra-decisions.md`) |
 | Manual intervention | `/nodes/{id}/actions/{reboot,drain}`; `/intents` + `/vms/apply`; `/remediations/{id}/{approve,deny}` | **controller** (`t_3468e5f0`) + **guardrail validator** + **command channel** | `vm-allocation.schema.json`, `commandAllowlist()` (`controller-api.md` §5/§6), `governance.md` §9 |
 
 As-built vs. to-build delta (for the backend task): the controller core
@@ -524,7 +551,7 @@ As-built vs. to-build delta (for the backend task): the controller core
 `/nodes/{id}`, `/nodes/{id}/metrics`, `POST /nodes/{id}/telemetry`, and
 telemetry-recent endpoints. The following are **not yet implemented** and are the
 backend task's scope: heartbeat/reconnect (fallback), the WS `/stream/v1` event
-stream, SSE `/logs`, WS `/terminal/v1/{node_id}`, `GET /nodes/{id}/ssh`, the
+stream, SSE `/logs`, WS `/terminal/v1/nodes/{node_id}`, `GET /nodes/{id}/ssh`, the
 `/nodes/{id}/actions/{reboot,drain}` endpoints, `/remediations/{id}/{approve,deny}`,
 and the `approval` field on remediation commands.
 
@@ -544,33 +571,28 @@ and the `approval` field on remediation commands.
 
 ---
 
-## 7. Reconciliation with `controller-api.md` (this document wins)
+## 7. Reconciliation with `controller-api.md` (status)
 
-These are the points where the frozen `controller-api.md` disagrees with the
-dashboard surface this document freezes. The owning teams apply these to
-`controller-api.md` when they touch it; until then this document is normative for
-the dashboard.
+The two blocking disagreements from the W1 review (terminal target, SSH access
+model) are now resolved in this change set; `controller-api.md` and this document
+agree. The remaining entries below are additive frontend endpoints frozen here and
+now cross-referenced from `controller-api.md`.
 
-- **R-D1 — terminal target.** `controller-api.md` §7.3 defines the terminal as
-  VM-level `/terminal/v1/{vm_id}` (LXD `lxc exec`, "never node-level"). W5
-  requires a **node-level** shell (D4/D6: controller-brokered over the outbound
-  channel) and both the frontend and backend W5 tasks specify "selected node".
-  This document freezes `/terminal/v1/{node_id}` (host shell). VM-level `lxc exec`
-  is a separate, out-of-W5 surface.
-- **R-D2 — SSH access string and key.** `controller-api.md` §4.3 defines a shared
-  project keypair (private key shown once) and `ssh root@<node_ip>`. D4
-  (`infra-decisions.md`) **rejects** distributing a shared project private key,
-  and infra as-built injects a break-glass `ssh_public_key` as `ubuntu:<key>` with
-  `ssh.user = ubuntu`. This document freezes
-  `ssh -i <key> ubuntu@<public_ip>` with the break-glass key for the MVP, and
-  `GET /nodes/{id}/ssh` as the feeding endpoint. The D4 CA-signed browser-keypair
-  flow (browser generates a key, controller signs a short-lived cert) is the
-  post-MVP upgrade path, out of the 5-day scope.
-- **R-D3 — log envelope.** `controller-api.md` §7.2 (SSE) and §7.1 (`log.line`)
-  use a thin `{ts, level, text, node_id, vm_id}` shape with no actor, no
-  remediation linkage, and no backfill. This document freezes the full envelope
-  (§2.1: `log_id`, `severity`, `actor`, `remediation`, resume semantics) and
-  renames `level` → `severity`. The `log.line` mirror carries the full envelope.
+- **R-D1 — terminal target (RESOLVED).** `controller-api.md` §7.3 and this document
+  now agree: the dashboard terminal is **node-level**
+  (`/terminal/v1/nodes/{node_id}`, host shell, controller-brokered over the outbound
+  channel), and a **VM-level** agent shell lives at `/terminal/v1/vms/{vm_id}`
+  (`lxc exec`). Recorded as architecture.md R14.
+- **R-D2 — SSH access string and key (RESOLVED).** All four documents now agree on the
+  D4 CA model: the operator's browser-local key is signed into a short-lived
+  certificate by `POST /v1/projects/{project_id}/ssh-key` (`controller-api.md` §4.3);
+  the break-glass key is a one-time recovery path removed after registration
+  (`node-bootstrap.md` §7). The `ssh.inject_key` command and the shared project
+  keypair are removed everywhere.
+- **R-D3 — log envelope (RESOLVED).** `controller-api.md` §7.2/§7.1 now reference
+  this document's §2.1 as the canonical operator-log envelope (`log_id`, `severity`,
+  `actor`, `remediation`, `Last-Event-ID` resume); the thin `{ts, level, text}` shape
+  is retired.
 - **R-D4 — new endpoints.** `GET /nodes/{id}/ssh`,
   `POST /nodes/{id}/actions/reboot`, `POST /nodes/{id}/actions/drain`,
   `POST /remediations/{id}/approve`, `POST /remediations/{id}/deny`, and the
