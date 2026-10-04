@@ -272,7 +272,7 @@ These are the changes/confirmations the W1 contract authors (node registration, 
 
 Retrieved 2026-10-04.
 
-1. Canonical — *What MAAS can do* — https://canonical.com/maas/docs/what-maas-can-do
+1. Canonical — *What MAAS can do* — https://canonical.com/maas/docs/latest/uncategorized/what-maas-can-do/
 2. Canonical — *MAAS networking* — https://canonical.com/maas/docs/about-maas-networking
 3. Canonical — *MAAS Support* (self-support free; per-managed-machine tiers) — https://canonical.com/maas/support
 4. Canonical — *MAAS* product page — https://canonical.com/maas
@@ -287,7 +287,7 @@ Retrieved 2026-10-04.
 13. netboot.xyz project site — https://netboot.xyz/
 14. cloud-init docs — *Breaking changes / 24.3 single-process* — https://docs.cloud-init.io/en/24.4/reference/breaking_changes.html
 15. Ubuntu — `cloud-init` changelog, Noble 24.04 — https://launchpad.net/ubuntu/noble/+source/cloud-init/+changelog
-16. cloud-init LICENSE (GPL-3.0 / Apache-2.0 dual) — https://github.com/SadeghHayeri/cloud-init/blob/main/LICENSE
+16. cloud-init LICENSE (GPL-3.0 / Apache-2.0 dual) — https://github.com/canonical/cloud-init/blob/main/LICENSE
 17. GitHub — *ansible/ansible* (GPL-3.0+) — https://github.com/ansible/ansible
 18. Ansible — *Releases and maintenance* — https://docs.ansible.com/projects/ansible/latest/reference_appendices/release_and_maintenance.html
 19. Ansible version mapping (ansible-core 2.19/2.20) — https://ansiblebyexample.com/articles/ansible-terminology-ansible-vs-ansible-core-packages
@@ -299,7 +299,7 @@ Retrieved 2026-10-04.
 25. LXD — *How to migrate LXD instances between servers* (live-migration criteria) — https://canonical.com/lxd/docs/latest/howto/instances_migrate/
 26. LXD — *VM live migration implementation* (local vs shared storage) — https://canonical.com/lxd/docs/latest/reference/vm_live_migration_internals/
 27. LXD — *Ceph RBD storage driver* — https://canonical.com/lxd/docs/latest/reference/storage_ceph/
-28. Linux Containers — *Incus 6.0 LTS released* (Apache-2.0; live migration) — https://linuxcontainers.org/incus/news/2024_04_04_03_04.html
+28. Linux Containers — *Incus 6.0 LTS released* (Apache-2.0; live migration) — https://linuxcontainers.org/incus/news/2024_04_04_03_25.html
 29. Incus documentation home — https://linuxcontainers.org/incus/docs/main
 30. pkg.go.dev — *github.com/lxc/incus/v6* (Apache-2.0; `lxd-to-incus`) — https://pkg.go.dev/github.com/lxc/incus/v6
 31. OpenStack — *Kolla-Ansible quickstart 2025.1* (min host, Apache-2.0) — https://docs.openstack.org/kolla-ansible/2025.1/user/quickstart.html
@@ -310,7 +310,7 @@ Retrieved 2026-10-04.
 36. OVN project (Apache-2.0; ACLs, distributed routers) — https://www.ovn.org/
 37. LXD — *OVN network* (`security.acls`, uplink NAT) — https://canonical.com/lxd/docs/latest/reference/network_ovn/
 38. Linux kernel docs — *VXLAN* — https://docs.kernel.org/networking/vxlan.html
-39. Ubuntu Wiki — *FanNetworking* — https://wiki.ubuntu.com/FanNetworking
+39. LXD — *Bridge network (fan mode)* — https://canonical.com/lxd/docs/latest/reference/network_bridge/
 40. GitHub — *canonical/lxd* releases (removed `fan.type=ipip`) — https://github.com/canonical/lxd/releases
 41. Ubuntu Discourse — *Fan regression "binary attribute size out of range" (6.14 kernel)* — https://discourse.ubuntu.com/t/error-binary-attribute-size-out-of-range-when-adding-a-node-without-uplink-nic/70122
 42. Tailscale — *Pricing* (free ≤6 users; $8/$18 per user·mo) — https://tailscale.com/pricing

@@ -126,10 +126,8 @@ and in maintenance mode; Hugging Face's own README now recommends vLLM, SGLang, 
   **not a supported GCP configuration**. See §7.2.
 - Citations: GPU machine types <https://docs.cloud.google.com/compute/docs/gpus> ·
   G2/L4 launch + T4→L4 2–4× <https://cloud.google.com/blog/products/compute/introducing-g2-vms-with-nvidia-l4-gpus> ·
-  L4 pricing <https://cloudprice.net/gcp/compute/instances/g2-standard-24> /
-  <https://computeprices.com/providers/google/gpus/l4> ·
-  T4 pricing <https://frontend.modal.com/blog/nvidia-t4-price-article> ·
-  LXD GPU device <https://www.lxdubuntu.com/docs/reference/devices_gpu>.
+  L4/T4 pricing <https://cloud.google.com/compute/vm-instance-pricing> ·
+  LXD GPU device <https://canonical.com/lxd/docs/latest/reference/devices_gpu/>.
 
 ---
 
@@ -264,7 +262,7 @@ does not support/expose.
 container** with a `gpu` device — not a nested VM. This preserves the LXD/OVN story for the
 compute nodes while removing the demo's biggest failure mode. If a VM boundary is mandatory,
 budget fallback time and pre-test on real GCP hardware before demo day.
-Citations: LXD GPU device types <https://www.lxdubuntu.com/docs/reference/devices_gpu> ·
+Citations: LXD GPU device types <https://canonical.com/lxd/docs/latest/reference/devices_gpu/> ·
 GCP GPU attach/passthrough <https://docs.cloud.google.com/compute/docs/gpus>.
 
 ### 7.3 Setup-time budget (all pre-baked, none live)
@@ -301,7 +299,7 @@ This directly implements `project.md` adversarial advisory #2: the "installer" m
 | Legacy HF server | **REJECT** | TGI (archived) | github.com/huggingface/text-generation-inference |
 | Quantization | **ADOPT** | GGUF Q4_K_M default | huggingface.co/docs/hub/en/gguf |
 | GPU | **ADOPT** | GCP G2 / L4 24 GB (T4 fallback) | docs.cloud.google.com/compute/docs/gpus |
-| GPU presentation | **CHANGE plan** | host or LXD container, not nested VM | lxdubuntu.com/docs/reference/devices_gpu |
+| GPU presentation | **CHANGE plan** | host or LXD container, not nested VM | canonical.com/lxd/docs/latest/reference/devices_gpu/ |
 | Controller agent runtime | **ADOPT** | Google ADK (Apache-2.0) | github.com/google/adk-python |
 | Agent runtime fallback | **ADOPT** | LangGraph (MIT) | github.com/langchain-ai/langgraph |
 | Multi-agent framework | **REJECT** | AutoGen (maintenance) | github.com/microsoft/autogen |
@@ -370,10 +368,8 @@ Engines: <https://github.com/ggml-org/llama.cpp> · <https://llama.app/docs/api>
 
 GPU/quant: <https://docs.cloud.google.com/compute/docs/gpus> ·
 <https://cloud.google.com/blog/products/compute/introducing-g2-vms-with-nvidia-l4-gpus> ·
-<https://cloudprice.net/gcp/compute/instances/g2-standard-24> ·
-<https://computeprices.com/providers/google/gpus/l4> ·
-<https://frontend.modal.com/blog/nvidia-t4-price-article> ·
-<https://www.lxdubuntu.com/docs/reference/devices_gpu> ·
+<https://cloud.google.com/compute/vm-instance-pricing> ·
+<https://canonical.com/lxd/docs/latest/reference/devices_gpu/> ·
 <https://huggingface.co/docs/hub/en/gguf> ·
 <https://praveentechworld.com/blog/deepseek-r1-quantization-fp8-q4-local-vram-guide> ·
 <https://dexity.com/intel/run-deepseek-locally-2026> ·
