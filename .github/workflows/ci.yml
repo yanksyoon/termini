@@ -30,6 +30,9 @@ jobs:
           done < <(git ls-files '*.py')
           exit $rc
 
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests -v
+
       - name: Shellcheck scripts (if any)
         run: |
           if git ls-files '*.sh' | grep -q .; then
