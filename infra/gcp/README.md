@@ -90,6 +90,42 @@ Tunables: `serve_inference`, `inference_port`, `inference_model_url`,
 `inference_model_file`, `inference_model_sha256`, `inference_model_alias`,
 `llamacpp_commit`.
 
+## Cloud-init: unified with the node bootstrap (task `t_5e9c9d96`)
+
+`cloud-init/node.yaml.tftpl` is a **symlink** to the canonical node bootstrap
+template `infra/bootstrap/cloud-init/node-bootstrap.yaml.tftpl`, so the GCP VMs
+and the LXD node flow render **one** cloud-init (no drift). Every node gets the
+same SSH custody as the LXD flow: the team SSH public key injected into
+`authorized_keys` (idempotent), `ssh_pwauth: false` + key-only root (`sshd`
+policy `PasswordAuthentication no`, `PermitRootLogin prohibit-password`,
+`TrustedUserCAKeys`), `/etc/termini/config.yaml`, the single-use
+`enrollment_token`, and a start of `termini-bootstrap.service`.
+
+Inputs: `team_ssh_public_key` (falls back to `ssh_public_key`;
+empty = activation-only), `enrollment_token`, `controller_ssh_ca_pubkey`,
+`node_image_version`. Because `envsubst` has no conditionals, the optional YAML
+is built by the **caller** and handed to the template as plain
+`ssh_authorized_keys_block` / `extra_write_files` / `extra_runcmd` variables:
+
+* **GCP Terraform** — `main.tf` renders it through the provider-free
+  `module "userdata"` (`infra/gcp/userdata/`). The Node C `llama-serve.sh` block
+  arrives as the optional `extra_write_files` + `extra_runcmd` (the bootstrap
+  template hardcodes no Node C behaviour).
+* **GCP gcloud fallback** — `provision.sh` renders it through the same
+  `render-cloud-init.sh` (`--render-only` emits it with no gcloud calls).
+* **LXD flow** — `infra/bootstrap/render-cloud-init.sh` (envsubst).
+
+Verify the render offline (no project, no credentials, no state):
+
+```bash
+./verify-cloud-init.sh
+```
+
+It renders all three nodes through the module and asserts: symlink identity, no
+`placeholder`/unresolved token, team key + sshd hardening + CA + config/token on
+every node, the llama.cpp block on Node C only, valid YAML, and that the same
+template still renders through envsubst.
+
 ## Re-enabling the GPU (after a billing upgrade)
 
 The accelerator variables are preserved, defaulted off:
@@ -143,7 +179,14 @@ terraform output nodes
 
 ```bash
 cd infra/gcp
-PROJECT=my-project ./provision.sh               # creates exactly 3 VMs + inventory
+# TEAM_SSH_PUBKEY_FILE + ENROLLMENT_TOKEN are required so each node gets the same
+# SSH custody + registration inputs as the Terraform path (task t_5e9c9d96).
+TEAM_SSH_PUBKEY_FILE=~/.ssh/team.pub ENROLLMENT_TOKEN=... \
+  PROJECT=my-project ./provision.sh             # creates exactly 3 VMs + inventory
+
+# Render the cloud-init for node-a/b/c only (no gcloud, no credentials):
+TEAM_SSH_PUBKEY_FILE=~/.ssh/team.pub ENROLLMENT_TOKEN=... \
+  ./provision.sh --render-only --render-out /tmp/cloud-init
 ```
 
 ## Verification (acceptance)
@@ -163,8 +206,9 @@ Offline (no cloud) checks that need no credentials:
 ```bash
 terraform fmt -check -recursive
 terraform init -backend=false && terraform validate
-bash -n provision.sh verify.sh teardown.sh cloud-init/llama-serve.sh && shellcheck -S warning *.sh cloud-init/llama-serve.sh
+bash -n provision.sh verify.sh teardown.sh verify-cloud-init.sh cloud-init/llama-serve.sh && shellcheck -S warning *.sh cloud-init/llama-serve.sh
 jq -e . inventory.schema.json examples/inventory.example.json
+./verify-cloud-init.sh                          # renders + asserts the unified cloud-init
 ```
 
 ## Teardown

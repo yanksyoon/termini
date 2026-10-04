@@ -18,6 +18,7 @@
 # Usage:
 #   PROJECT=my-project ./provision.sh
 #   ./provision.sh --project my-project --zone us-central1-a
+#   TEAM_SSH_PUBKEY_FILE=~/.ssh/team.pub ENROLLMENT_TOKEN=... --render-only
 set -euo pipefail
 
 PROJECT="${PROJECT:-}"
@@ -44,8 +45,22 @@ SSH_SOURCE_RANGES="${SSH_SOURCE_RANGES:-0.0.0.0/0}"
 SSH_USER="${SSH_USER:-ubuntu}"
 INVENTORY_PATH="${INVENTORY_PATH:-$HOME/.termini/inventory.json}"
 
+# --- node cloud-init / SSH custody (task t_5e9c9d96) -------------------------
+# Both GCP paths render the SAME cloud-init as the LXD flow. The team SSH key is
+# injected into authorized_keys (+ sshd hardening); the controller CA anchors
+# TrustedUserCAKeys; the enrollment token is written for registration.
+CONTROLLER_URL="${CONTROLLER_URL:-https://controller.termini.internal}"
+CONTROLLER_CA_PUBKEY="${CONTROLLER_CA_PUBKEY:-}"
+TEAM_SSH_PUBKEY_FILE="${TEAM_SSH_PUBKEY_FILE:-}"
+ENROLLMENT_TOKEN="${ENROLLMENT_TOKEN:-}"
+NODE_IMAGE_VERSION="${NODE_IMAGE_VERSION:-$IMAGE_FAMILY}"
+# --render-only renders each node's user-data (no gcloud) for offline checks.
+RENDER_ONLY="${RENDER_ONLY:-0}"
+RENDER_OUT_DIR="${RENDER_OUT_DIR:-}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LLAMA_SERVE_SCRIPT="$SCRIPT_DIR/cloud-init/llama-serve.sh"
+RENDER_CLOUD_INIT="$SCRIPT_DIR/../bootstrap/render-cloud-init.sh"
 
 # GPU only when the accelerator count is non-zero (single switch, mirrors the
 # Terraform gpu_accelerator_count variable).
@@ -62,14 +77,12 @@ while [[ $# -gt 0 ]]; do
     --zone) ZONE="$2"; shift 2 ;;
     --prefix) PREFIX="$2"; shift 2 ;;
     --inventory) INVENTORY_PATH="$2"; shift 2 ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    --render-only) RENDER_ONLY=1; shift ;;
+    --render-out) RENDER_OUT_DIR="$2"; shift 2 ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
-
-[[ -n "$PROJECT" ]] || die "set PROJECT or pass --project"
-command -v gcloud >/dev/null || die "gcloud not found on PATH"
-command -v jq >/dev/null || die "jq not found on PATH"
 
 # Only /24 underlays are supported so the .11/.12/.13 host offsets are exact.
 if [[ ! "$NETWORK_CIDR" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\.0/24$ ]]; then
@@ -89,54 +102,69 @@ LABELS="project=termini,managed-by=gcloud,workstream=infra,task=t-f2173236"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
+# --- cloud-init user-data: render the SHARED bootstrap template --------------
+# Same template as the LXD flow (task t_5e9c9d96): team SSH key injection, sshd
+# hardening, controller CA, config + enrollment token. Node C's llama.cpp serve
+# block is passed in as the optional extra_write_files/extra_runcmd blocks.
+: "${ENROLLMENT_TOKEN:?ENROLLMENT_TOKEN is required (single-use controller token)}"
+[ -n "$TEAM_SSH_PUBKEY_FILE" ] || die "TEAM_SSH_PUBKEY_FILE is required (team SSH public key file)"
+[ -s "$TEAM_SSH_PUBKEY_FILE" ] || die "team key file empty/missing: $TEAM_SSH_PUBKEY_FILE"
+[ -f "$RENDER_CLOUD_INIT" ] || die "missing shared cloud-init renderer: $RENDER_CLOUD_INIT"
+
+llama_extra_write_files() {
+  local script
+  script="$(cat "$LLAMA_SERVE_SCRIPT")"
+  script="${script//__LLAMACPP_COMMIT__/$LLAMACPP_COMMIT}"
+  script="${script//__MODEL_URL__/$INFERENCE_MODEL_URL}"
+  script="${script//__MODEL_FILE__/$INFERENCE_MODEL_FILE}"
+  script="${script//__MODEL_SHA256__/$INFERENCE_MODEL_SHA256}"
+  script="${script//__MODEL_ALIAS__/$INFERENCE_MODEL_ALIAS}"
+  script="${script//__PORT__/$INFERENCE_PORT}"
+  printf '  - path: /usr/local/sbin/termini-llama-serve.sh\n'
+  printf '    permissions: %s\n' "'0755'"
+  printf '    owner: root:root\n'
+  printf '    content: |\n'
+  while IFS= read -r line; do printf '      %s\n' "$line"; done <<< "$script"
+}
+
 userdata() { # $1=node $2=role $3=underlay_ip $4=seed_ip
   local node="$1" role="$2" ip="$3" seed="$4"
-  local serve=false
-  [[ "$node" == "node-c" && "$SERVE_INFERENCE" == "1" ]] && serve=true
-
-  cat <<EOF
-#cloud-config
-write_files:
-  - path: /etc/termini/config.yaml
-    permissions: '0600'
-    owner: root:root
-    content: |
-      controller_url: https://controller.termini.internal
-      node_name: ${node}
-      role_hint: ${role}
-      underlay_ip: ${ip}
-      underlay_gw: ${GW_IP}
-      bootstrap_seed_ip: ${seed}
-      telemetry_interval_ms: 1000
-EOF
-
-  if [[ "$serve" == "true" ]]; then
+  local extra_write="" extra_runcmd=""
+  if [[ "$node" == "node-c" && "$SERVE_INFERENCE" == "1" ]]; then
     [[ -f "$LLAMA_SERVE_SCRIPT" ]] || die "missing $LLAMA_SERVE_SCRIPT"
-    local script
-    script="$(cat "$LLAMA_SERVE_SCRIPT")"
-    script="${script//__LLAMACPP_COMMIT__/$LLAMACPP_COMMIT}"
-    script="${script//__MODEL_URL__/$INFERENCE_MODEL_URL}"
-    script="${script//__MODEL_FILE__/$INFERENCE_MODEL_FILE}"
-    script="${script//__MODEL_SHA256__/$INFERENCE_MODEL_SHA256}"
-    script="${script//__MODEL_ALIAS__/$INFERENCE_MODEL_ALIAS}"
-    script="${script//__PORT__/$INFERENCE_PORT}"
-    printf '  - path: /usr/local/sbin/termini-llama-serve.sh\n'
-    printf '    permissions: %s\n' "'0755'"
-    printf '    owner: root:root\n'
-    printf '    content: |\n'
-    while IFS= read -r line; do printf '      %s\n' "$line"; done <<< "$script"
+    extra_write="$(llama_extra_write_files)"
+    extra_runcmd="  - [ /usr/local/sbin/termini-llama-serve.sh ]"
   fi
-
-  local bootstrap_start="systemctl enable --now termini-bootstrap.service 2>/dev/null || echo 'termini-bootstrap not installed (on-node daemon not shipped yet)'"
-  printf 'runcmd:\n'
-  printf '  # The on-node termini-bootstrap daemon is specified (docs/contracts/node-bootstrap.md)\n'
-  printf '  # but NOT shipped in this build: start it only if present so provisioning never\n'
-  printf '  # fails on a missing unit. Demo telemetry is chaos/node_sim.py; C2 is controller-side.\n'
-  printf '  - [ sh, -c, "%s" ]\n' "$bootstrap_start"
-  if [[ "$serve" == "true" ]]; then
-    printf '  - [ /usr/local/sbin/termini-llama-serve.sh ]\n'
-  fi
+  controller_url="$CONTROLLER_URL" node_name="$node" \
+    enrollment_token="$ENROLLMENT_TOKEN" team_ssh_pubkey="$(cat "$TEAM_SSH_PUBKEY_FILE")" \
+    role_hint="$role" underlay_ip="$ip" underlay_gw="$GW_IP" seed_ip="$seed" \
+    telemetry_interval_ms="1000" controller_ca_pubkey="$CONTROLLER_CA_PUBKEY" \
+    image_alias="${IMAGE_PROJECT}/${IMAGE_FAMILY}" image_version="$NODE_IMAGE_VERSION" \
+    extra_write_files="$extra_write" extra_runcmd="$extra_runcmd" \
+    "$RENDER_CLOUD_INIT"
 }
+
+# --render-only: emit each node's cloud-init (no gcloud needed) for offline
+# inspection / CI, then exit.
+if [[ "$RENDER_ONLY" == "1" ]]; then
+  for pair in "node-a:compute:$IP_A" "node-b:compute:$IP_B" "node-c:inference:$IP_C"; do
+    n="${pair%%:*}"; rest="${pair#*:}"; r="${rest%%:*}"; nip="${rest#*:}"
+    if [[ -n "$RENDER_OUT_DIR" ]]; then
+      mkdir -p "$RENDER_OUT_DIR"
+      userdata "$n" "$r" "${nip}/24" "$IP_A" > "$RENDER_OUT_DIR/$n.yaml"
+    else
+      printf -- '--- %s ---\n' "$n"
+      userdata "$n" "$r" "${nip}/24" "$IP_A"
+    fi
+  done
+  log "rendered cloud-init for node-a/b/c (no gcloud calls)"
+  exit 0
+fi
+
+[[ -n "$PROJECT" ]] || die "set PROJECT or pass --project"
+command -v gcloud >/dev/null || die "gcloud not found on PATH"
+command -v jq >/dev/null || die "jq not found on PATH"
+command -v envsubst >/dev/null || die "envsubst not found on PATH"
 
 log "project=$PROJECT region=$REGION zone=$ZONE prefix=$PREFIX cidr=$NETWORK_CIDR accel=$use_accel"
 

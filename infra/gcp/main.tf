@@ -26,27 +26,48 @@ locals {
   node_names  = sort(keys(local.node_spec))
   common_tags = ["termini-node"]
 
-  # Node C first-boot script with its placeholders resolved. replace() (not a
-  # templatefile) keeps the shell script's own ${VAR} interpolations literal.
-  llama_serve_script = replace(
-    replace(
-      replace(
-        replace(
-          replace(
-            replace(
-              file("${path.module}/cloud-init/llama-serve.sh"),
-              "__LLAMACPP_COMMIT__", var.llamacpp_commit
-            ),
-            "__MODEL_URL__", var.inference_model_url
-          ),
-          "__MODEL_FILE__", var.inference_model_file
-        ),
-        "__MODEL_SHA256__", var.inference_model_sha256
-      ),
-      "__MODEL_ALIAS__", var.inference_model_alias
-    ),
-    "__PORT__", tostring(var.inference_port)
-  )
+  # The team SSH key goes into cloud-init `authorized_keys` (node-bootstrap.md §7).
+  # Falls back to the break-glass key so a tfvars that only sets ssh_public_key
+  # still injects a key; empty => no ssh_authorized_keys stanza at all.
+  team_ssh_pubkey = var.team_ssh_public_key != "" ? var.team_ssh_public_key : var.ssh_public_key
+
+  node_image_alias   = "${var.image_project}/${var.image_family}"
+  node_image_version = var.node_image_version != "" ? var.node_image_version : var.image_family
+}
+
+# Per-node cloud-init user-data, rendered from the SHARED bootstrap template by a
+# provider-free local module so it can be rendered offline with no GCP access:
+#   terraform -chdir=infra/gcp/userdata output -json node_user_data
+# (infra/gcp/cloud-init/node.yaml.tftpl is a symlink to the same template the
+# LXD flow renders, so the two paths cannot drift — task t_5e9c9d96.)
+module "userdata" {
+  source = "./userdata"
+
+  # Absolute paths: a local module is copied under .terraform/modules, so it
+  # cannot reach the shared files via path.module. These are the SAME template
+  # and serve script the LXD flow uses.
+  cloud_init_template     = "${abspath(path.module)}/cloud-init/node.yaml.tftpl"
+  llama_serve_script_path = "${abspath(path.module)}/cloud-init/llama-serve.sh"
+
+  node_spec              = { for k, v in local.node_spec : k => { role = v.role, inference = v.inference } }
+  node_ip                = local.node_ip
+  gateway_ip             = local.gateway_ip
+  seed_ip                = local.seed_ip
+  network_cidr           = var.network_cidr
+  controller_url         = var.controller_url
+  controller_ca_pubkey   = var.controller_ssh_ca_pubkey
+  telemetry_interval_ms  = var.telemetry_interval_ms
+  team_ssh_pubkey        = local.team_ssh_pubkey
+  enrollment_token       = var.enrollment_token
+  image_alias            = local.node_image_alias
+  image_version          = local.node_image_version
+  serve_inference        = var.serve_inference
+  llamacpp_commit        = var.llamacpp_commit
+  inference_model_url    = var.inference_model_url
+  inference_model_file   = var.inference_model_file
+  inference_model_sha256 = var.inference_model_sha256
+  inference_model_alias  = var.inference_model_alias
+  inference_port         = var.inference_port
 }
 
 # --- Network -----------------------------------------------------------------
@@ -212,23 +233,12 @@ resource "google_compute_instance" "node" {
 
   metadata = merge(
     {
-      # Activation-only cloud-init (D3): writes /etc/termini/config.yaml and starts
-      # the pre-installed bootstrap daemon. No package installs, no model downloads.
-      user-data = templatefile("${path.module}/cloud-init/node.yaml.tftpl", {
-        node_name             = each.key
-        role_hint             = each.value.role
-        underlay_ip           = "${local.node_ip[each.key]}/${split("/", var.network_cidr)[1]}"
-        underlay_gw           = local.gateway_ip
-        seed_ip               = local.seed_ip
-        guest_cidr            = each.value.guest_cidr
-        controller_url        = var.controller_url
-        controller_ca_pubkey  = var.controller_ssh_ca_pubkey
-        telemetry_interval_ms = var.telemetry_interval_ms
-        # Node C only: run the CPU llama.cpp server (frozen contract: :8080, underlay-only).
-        serve_inference    = each.value.inference && var.serve_inference
-        inference_port     = var.inference_port
-        llama_serve_script = local.llama_serve_script
-      })
+      # Unified cloud-init (task t_5e9c9d96): the SAME template the LXD flow uses
+      # (infra/bootstrap/cloud-init/node-bootstrap.yaml.tftpl, via the
+      # cloud-init/node.yaml.tftpl symlink) gives every GCP node SSH key custody,
+      # the config + enrollment token, the controller SSH CA, sshd hardening, and
+      # the termini-bootstrap.service start. No package installs, no downloads.
+      user-data      = module.userdata.node_user_data[each.key]
       enable-oslogin = "FALSE"
     },
     var.ssh_public_key == "" ? {} : { ssh-keys = "${var.ssh_user}:${var.ssh_public_key}" },

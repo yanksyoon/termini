@@ -152,6 +152,10 @@ PORT=18099 NODE=bsp-verify infra/bootstrap/verify-bootstrap.sh | tee evidence/bo
 1. ~~**Bake the daemon + unit into the image alias.**~~ **Done (t_d8203794):**
    `image/pipeline/provision/60-node-bootstrap.sh` installs the canonical daemon +
    unit into the alias; `provision-node.sh` defaults `REFRESH_RUNTIME=0`.
-2. **Unify the GCP cloud-init** — `infra/gcp/cloud-init/node.yaml.tftpl` should render
-   from `cloud-init/node-bootstrap.yaml.tftpl` so the GCP path gets the same SSH key
-   injection + sshd hardening instead of a placeholder CA line.
+2. ~~**Unify the GCP cloud-init**~~ — **done in task `t_5e9c9d96`**:
+   `infra/gcp/cloud-init/node.yaml.tftpl` is now a **symlink** to
+   `cloud-init/node-bootstrap.yaml.tftpl`, and the GCP module renders it through
+   `infra/gcp/userdata/`, so the GCP path gets the same SSH key injection + sshd
+   hardening instead of a placeholder CA line. The Node C `llama.cpp` serve block
+   is passed in as the optional `extra_write_files`/`extra_runcmd` template
+   variables. See `infra/gcp/README.md`.
