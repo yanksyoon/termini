@@ -49,3 +49,14 @@ jobs:
             echo "::error::secret-shaped paths are tracked in git"; exit 1
           fi
           echo "no secret-shaped paths tracked"
+
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Dashboard unit tests (pure core modules, no deps)
+        run: node --test dashboard/tests/core.test.mjs
