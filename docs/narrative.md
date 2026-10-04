@@ -32,7 +32,7 @@ Termini's wedge is the missing middle: the controller bootstraps the hardware on
 
 **Where Termini wins:** Datadog is SaaS-architected — telemetry, traces, and logs ship to *its* cloud, and it has **no self-hosted / air-gapped AI offering** (FedRAMP customers are excluded from AI Credits; an entire market of "on-prem Datadog alternatives" exists for exactly this reason). Datadog also assumes the infrastructure *already exists*: no hardware bootstrapping, no VM provisioning, no day-0 story. And its remediation runs in its cloud, not on the customer's metal.
 
-Termini inverts the data direction: *same* delegation of operations, *opposite* data flow. Where Datadog exfiltrates telemetry to a SaaS, Termini runs a **self-hosted agentic remediation loop** — telemetry → threshold rule → advisory model → deterministic clamp → command allowlist → audited action — with the model on the customer's own GPU and only C0 hardware/OS telemetry ever leaving. Never say "we replace Datadog"; say: *"Datadog proved ops can be delegated — but it does it by moving your telemetry to their cloud. We do the same job for people who can't send anything off-prem."*
+Termini inverts the data direction: *same* delegation of operations, *opposite* data flow. Where Datadog exfiltrates telemetry to a SaaS, Termini runs a **self-hosted remediation loop** — telemetry → threshold rule → pre-approved playbook action → audited LXD execution — with intent extraction on the customer's own GPU and only C0 hardware/OS telemetry ever leaving. Never say "we replace Datadog"; say: *"Datadog proved ops can be delegated — but it does it by moving your telemetry to their cloud. We do the same job for people who can't send anything off-prem."*
 
 ### vs Samsung × Mistral (on-site AI)
 
@@ -48,9 +48,9 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 
 **1. Bare metal to an AI-ready fleet in seconds.** A stock Ubuntu node boots the pre-baked image, registers to the controller in **under 5 seconds**, and joins the LXD cluster with its role assigned (compute vs GPU inference) — no SRE, no manual config.
 
-**2. Natural-language intent, guardrail-enforced.** The presenter types *"deploy 3 worker agents and a fast LLM for coding."* An on-prem model extracts a structured allocation; the deterministic guardrail clamps any impossible spec (`vcpus: 128` → host ceiling) and the command allowlist turns the result into real VMs on real nodes.
+**2. Natural-language intent, guardrail-enforced.** The presenter types *"deploy 3 worker agents for coding."* An on-prem model extracts a structured allocation; the deterministic guardrail clamps any impossible spec (`vcpus: 128` → host ceiling) and returns a validated, clamped plan — field by field, visible in the audit record.
 
-**3. Governed self-healing with a data boundary.** Kill a node's disk (or OOM a VM) live. Telemetry crosses a threshold, the on-prem AI operator proposes a fix, clamp + allowlist approve it (`node.drain` + migrate, or `vm.resize`), and the action lands with a full audit trail — while a C2 field injected into the stream is blocked by the redactor **before any byte leaves the premises.**
+**3. Governed self-healing with a data boundary.** Kill a node's disk (or OOM a VM) live. Telemetry crosses a threshold, a deterministic rule selects a pre-approved playbook action (`restart` the runaway workload on OOM, `stop` the heaviest workload on disk failure), and the action lands with a full audit trail — while a C2 field injected into the stream is rejected by the controller-side governance gate **before any byte is stored or forwarded.**
 
 ---
 
@@ -62,6 +62,11 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 
 ## 6. Guardrails — what we do NOT claim
 
-- We do **not** claim "zero data ever leaves." The enforceable claim: *no C2 customer data egresses; only allowlisted C0 hardware/OS telemetry and transformed C1 identifiers leave, and only after fail-closed redaction* (`governance.md` §3–§6).
+- We do **not** claim "zero data ever leaves." The enforceable claim: *no C2 customer data egresses; only allowlisted C0 hardware/OS telemetry and transformed C1 identifiers leave, and only after a fail-closed governance gate* (`governance.md` §3–§6).
+- We do **not** claim a machine-learning model proposes or selects remediations in the live loop. The day-2 operator is a **deterministic threshold rule over frozen playbooks** (restart on OOM, stop on disk failure); there is no model call in the remediation path.
+- We do **not** claim the demo launches VMs from natural language. The allocation path ends at a **validated, clamped plan** — `apply` returns a provisioning job, and LXD materialization is the node channel's scope (not shown live).
+- We do **not** claim hotplug resize or node drain/migration. The operator **restarts** the runaway workload on OOM and **stops** the heaviest workload on disk failure; `vm.resize` and `node.drain` are allowlisted for the human dashboard path, not issued by the operator loop.
+- We do **not** claim browser-generated keys or a CA-signed short-lived SSH certificate. Access is a **controller-held key** surfaced as a web terminal and an `ssh` string.
+- We do **not** claim an on-node redactor that drops C2 fields. The governance gate is **controller-side**: a non-conforming telemetry batch is rejected fail-closed (422), not field-dropped.
 - We do **not** claim Datadog "can't" monitor on-prem — it does, via its agent. We claim it is SaaS-architected with no self-hosted/air-gapped AI offering.
 - We do **not** claim the Samsung × Mistral deal "failed" or "proves ops is unsolved." We claim only: *maintenance and operations remain open and under-served*, and the deal is bespoke, not productized.
