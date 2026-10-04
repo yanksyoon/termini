@@ -9,6 +9,8 @@ so the reviewer can separate "specified" from "proven".
 | `offline-load-proof.txt` | `sudo unshare -n bash offline-proof-server.sh` | the **pinned** llama.cpp build loads a **pre-warmed GGUF from local disk** and serves an OpenAI-compatible completion with **no network** (netns has only loopback; DNS fails) |
 | `../examples/boot-log.rehearsal.json` | `first-boot-preflight.sh --root <stub>` | the first-boot assertion passes on a complete root and reports `network_downloads_at_boot: 0` |
 | `../examples/image-manifest.rehearsal.json` | `rehearse_bake.py` | the builder's manifest validates against `manifests/image-manifest.schema.json` |
+| `../examples/gpu-check.rehearsal.json` | `gpu_check.py --smi <stub> --dev-dir <stub> --cudart <stub.so>` | the Node C GPU verifier's positive path: a stub `nvidia-smi` reports an L4, the stub `/dev/nvidia*` nodes open, and a real `libcudart` call (stub `.so`, `cudaGetDeviceCount`/`cudaMemGetInfo`/`cudaStreamCreate` via `ctypes`) succeeds — `verdict: pass` |
+| `../examples/gpu-check.absent.json` | `gpu_check.py --smi <missing>` | the verifier fails closed on a host with no `nvidia-smi` — `verdict: fail`, `reason: nvidia_smi_absent` |
 
 ## `offline-load-proof.txt`
 
@@ -31,5 +33,7 @@ Key lines the reviewer should look for:
 Caveat: this is a **CPU smoke model** on a dev host — the 65 tok/s figure is not a
 performance claim. Contract §11.4 throughput targets are for the GPU L4, not this host.
 
-**Not proven here (needs a build host / GPU):** the gpu variant's CUDA build, the
-real multi-GB bake, booting a GCP VM, and publishing the alias to a registry.
+**Not proven here (needs a build host / GPU):** the gpu variant's NVIDIA driver
+bake (`15-nvidia-driver.sh`) and CUDA build, the live `verify-gpu.sh` run against
+the Node C L4, the real multi-GB bake, booting a GCP VM, and publishing the alias
+to a registry.

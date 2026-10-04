@@ -33,6 +33,7 @@ locals {
   provisioners = [
     "00-base.sh",
     "10-node-os.sh",
+    "15-nvidia-driver.sh",
     "20-gpu-cuda.sh",
     "30-llamacpp.sh",
     "40-models.sh",

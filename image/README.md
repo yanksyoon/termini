@@ -30,7 +30,7 @@ so a fresh node's first boot installs nothing and downloads nothing.
 | Variant | Alias | Approx. on-disk size | Composition |
 |---------|-------|----------------------|-------------|
 | `compute` | `agentic-os/w3` (compute) | **~2.2 GiB** | Ubuntu 24.04 base (~0.6) + base pkgs (~0.6) + LXD snap (~0.25) + llama.cpp CPU (~0.03) + python/node/ruby deps (~0.7) |
-| `gpu` | `agentic-os/w3` (gpu, Node C) | **~19.5 GiB** | compute base + CUDA/cuDNN runtime (~3.5) + llama.cpp CUDA build (~0.2) + **model weights 12.95 GiB** |
+| `gpu` | `agentic-os/w3` (gpu, Node C) | **~20 GiB** | compute base + NVIDIA driver (~0.5) + CUDA/cuDNN runtime (~3.5) + llama.cpp CUDA build (~0.2) + **model weights 12.95 GiB** |
 
 The "~4 GiB GGUF" the task called for is the `deepseek-flash` weight (4.58 GiB);
 `deepseek-v4-pro` (8.37 GiB) is also resident on disk but **lazy-loaded** per
@@ -43,7 +43,7 @@ The "~4 GiB GGUF" the task called for is the `deepseek-flash` weight (4.58 GiB);
 | Base | Ubuntu Server 24.04 LTS, `chrony`, `nftables`, `openssh-server`, python3/ruby, cmake/gcc/git |
 | Hypervisor | LXD snap, channel `5.21/stable`, revision recorded to `/etc/termini/lxd-snap.txt`, `snap refresh --hold` so boot never refreshes |
 | Inference runtime | `llama.cpp` @ commit `7fe450e19305b828c199d602c23a8337aaa1f03b` (release `v0.5.0`) built to `/opt/termini/llama.cpp/bin/{llama-server,llama-cli}`; `llama-cpp@<alias>.service` template |
-| GPU (gpu variant) | CUDA runtime 12.4 (`cudart`, `cublas`, `nvrtc`) + cuDNN 9; NVIDIA **driver** comes from the GPU base image (kernel-coupled, not baked) |
+| GPU (gpu variant) | NVIDIA driver stack (`cuda-drivers-550` + `nvidia-smi`, step `15-nvidia-driver.sh`) + CUDA runtime 12.4 (`cudart`, `cublas`, `nvrtc`) + cuDNN 9. Nouveau is blacklisted and `nvidia`/`nvidia_uvm` load at boot; nothing is installed at boot. |
 | Weights | `deepseek-flash` + `deepseek-v4-pro` GGUF under `/var/lib/termini/models/`, sha256-pinned |
 | Agent deps | `/opt/termini/venv` (openai, httpx, pydantic, tenacity, structlog, langchain-core, langgraph), Node.js 20, ruby gems |
 | Offline proof | `/var/lib/termini/.baked-offline` sentinel + `/etc/termini/image-version` + `termini-firstboot-preflight.service` |
@@ -140,10 +140,10 @@ or mismatched baked artifact **fails loudly instead of downloading** — the
 One command, no build host required:
 
 ```bash
-image/pipeline/verify-pipeline.sh            # recipe check + local bake rehearsal
+image/pipeline/verify-pipeline.sh            # recipe check + bake rehearsal + GPU verifier rehearsal
 ```
 
-It runs two stages:
+It runs three stages:
 
 1. **Recipe check** (`build-image.sh --check`) — required files present, `bash -n`
    on every script, JSON well-formed, `python3 -m py_compile`, `shellcheck -S warning`
@@ -155,9 +155,39 @@ It runs two stages:
    - deleting one model file makes the preflight **fail** with
      `model_files_present`/`model_sizes_match`/`model_sha256_sidecars` false;
    - the emitted `image-manifest.json` validates against the schema.
+3. **GPU verifier rehearsal** (`tools/rehearse_gpu.py`) — drives `tools/gpu_check.py`
+   against stub fixtures (fake `nvidia-smi`, fake `/dev` nodes, a stub `libcudart`
+   built with `cc`) and asserts each verdict / failure reason.
 
 The committed evidence is in `examples/` (`boot-log.rehearsal.json`,
-`image-manifest.rehearsal.json`).
+`image-manifest.rehearsal.json`, `gpu-check.rehearsal.json`, `gpu-check.absent.json`).
+
+### Node C GPU enablement
+
+The gpu variant bakes the driver (`15-nvidia-driver.sh`) and the CUDA runtime
+(`20-gpu-cuda.sh`). Acceptance for the GPU node — *nvidia-smi reports the GPU and
+the device is usable from the host process* — is a standalone verifier:
+
+```bash
+image/pipeline/verify-gpu.sh                 # on live Node C: smi + host-process CUDA probe
+image/pipeline/verify-gpu.sh --rehearse      # offline: stub-fixture rehearsal
+```
+
+`tools/gpu_check.py` writes a JSON report (`kind: termini.gpu_check`) and exits
+non-zero with a stable `reason` (`nvidia_smi_absent`, `no_gpu_reported`,
+`device_nodes_missing`, `device_not_openable`, `cuda_runtime_unusable`). It proves
+usability at three levels: the driver answers (`nvidia-smi -L`), the device nodes
+open (`/dev/nvidiactl`, `/dev/nvidia0`), and a real runtime call succeeds from the
+checking process (`cudaGetDeviceCount`/`cudaMemGetInfo`/`cudaStreamCreate` via
+`libcudart` with `ctypes`).
+
+It is a **diagnostic**: per `node-bootstrap.md` §9 a missing driver/GPU must **not**
+block registration (the node registers with `machine.gpus: []` and DEGRADED), so
+nothing gates the first boot on it — `first-boot-preflight.sh` deliberately makes
+no GPU assertion. Driver selection is a build-time switch:
+`TERMINI_DRIVER_SOURCE=baked` (default; installs the pinned `cuda-drivers-<branch>`
+from NVIDIA's CUDA apt repo) or `image` (assert the base image already ships the
+stack and install nothing).
 
 ---
 
@@ -170,7 +200,11 @@ so the following are **specified and locally rehearsed, but not executed end-to-
   the real bake) requires a build host; `--check` and the rehearsal are what ran.
 - **No real node was booted** from the produced image. The first-boot preflight was
   exercised against a stub root (`examples/boot-log.rehearsal.json`), not a GCP VM.
-- **No GPU/CUDA was exercised.** The `gpu` variant's CUDA step is recipe-only here.
+- **No GPU/CUDA was exercised on real hardware.** The `gpu` variant's driver
+  (`15-nvidia-driver.sh`) and CUDA steps are recipe-only here, and `verify-gpu.sh`
+  ran only in `--rehearse` mode against stub fixtures (`examples/gpu-check.*.json`).
+  The live `verify-gpu.sh` run — the actual `nvidia-smi` + `libcudart` probe against
+  the Node C GPU — needs the real accelerator.
 - **The alias was not published to a registry.** `publish-image.sh` is written and
   the alias string is frozen; publishing needs a built artifact (needs the bake).
 - **`llama-server` model loading** was proven for real on the dev host: a CPU build
@@ -198,12 +232,15 @@ image/
     publish-image.sh                alias + version tag + checksum
     first-boot-preflight.sh         no-network boot assertion + boot log
     verify-pipeline.sh              clean-checkout verifier
-    provision/00..50*.sh            bake steps (base, LXD, CUDA, llama.cpp, models, agent deps)
+    verify-gpu.sh                   Node C GPU acceptance (live, or --rehearse)
+    provision/00..50*.sh            bake steps (base, LXD, NVIDIA driver, CUDA, llama.cpp, models, agent deps)
     packer/termini-node.pkr.hcl     VM/QCow2 recipe
     distrobuilder/termini-node.yaml container recipe
     systemd/termini-firstboot-preflight.service
     tools/verify_manifest.py        pin + manifest validator
     tools/rehearse_bake.py          local bake rehearsal
+    tools/gpu_check.py              nvidia-smi + host-process CUDA probe
+    tools/rehearse_gpu.py           GPU verifier rehearsal
   examples/                         committed rehearsal evidence
   evidence/                         what was actually executed (+ offline-load proof)
 ```
