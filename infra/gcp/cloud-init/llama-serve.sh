@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
-# termini-llama-serve.sh — first-boot CPU llama.cpp server for Node C.
+# termini-llama-serve.sh — first-boot host-exposed llama.cpp server for Node C.
 #
 # The generic Termini node image stays activation-only (D3). Node C is the one
 # node that must actually serve a model for the demo, so this script is injected
-# into Node C's cloud-init and builds a CPU-only llama.cpp plus a small quantized
-# GGUF model, then runs llama-server on the frozen contract port.
+# into Node C's cloud-init: it builds the pinned CPU-only llama.cpp and serves the
+# pinned `deepseek-flash` GGUF (image/models.lock.json, t_ab18d582) on the frozen
+# contract port.
 #
-# Frozen contract (docs/contracts/infra-decisions.md D2/D5):
+# Frozen contract (docs/contracts/infra-decisions.md D2/D5, agent-runtime.md AR-4/AR-6):
 #   * bind 0.0.0.0:8080 (the GCP firewall only allows 10.10.0.0/24 -> node-c:8080)
-#   * CPU inference: small model (Qwen2.5-1.5B-Instruct Q4_K_M) sized for CPU
+#   * OpenAI-compatible single-model deployment, served under the alias `deepseek-flash`
+#   * CPU inference (this footprint has no GPU; `--n-gpu-layers 0` is implicit in a
+#     GGML_CUDA=OFF build). The pinned 8B Q4_K_M runs ~6 tok/s on n2-standard-8.
+#
+# `--reasoning-format none` keeps the R1-distill ` thinking` block inline in the
+# assistant `content`, so plain OpenAI clients (termini-agent, the ADK demo) always
+# receive non-empty `content` and incremental SSE deltas instead of an empty
+# `content` with a separate `reasoning_content`.
 #
 # The __PLACEHOLDER__ tokens are substituted by Terraform (main.tf) at apply time
 # so this file stays a plain, lintable shell script.
@@ -17,6 +25,8 @@ set -euo pipefail
 LLAMACPP_COMMIT="__LLAMACPP_COMMIT__"
 MODEL_URL="__MODEL_URL__"
 MODEL_FILE="__MODEL_FILE__"
+MODEL_SHA256="__MODEL_SHA256__"
+MODEL_ALIAS="__MODEL_ALIAS__"
 PORT="__PORT__"
 
 PREFIX="/opt/termini/llama.cpp"
@@ -63,21 +73,28 @@ if [ ! -s "$MODEL_DIR/$MODEL_FILE" ]; then
   chmod 0644 "$MODEL_DIR/$MODEL_FILE.part"
   mv "$MODEL_DIR/$MODEL_FILE.part" "$MODEL_DIR/$MODEL_FILE"
 fi
-sha256sum "$MODEL_DIR/$MODEL_FILE" > "$MODEL_DIR/$MODEL_FILE.sha256"
+
+# Fail closed if the on-disk weights are not the pinned artifact.
+got_sha="$(sha256sum "$MODEL_DIR/$MODEL_FILE" | awk '{print $1}')"
+if [ "$got_sha" != "$MODEL_SHA256" ]; then
+  echo "FATAL: $MODEL_FILE sha256 $got_sha != pinned $MODEL_SHA256"
+  exit 1
+fi
+echo "$got_sha  $MODEL_FILE" > "$MODEL_DIR/$MODEL_FILE.sha256"
 
 id termini-infer >/dev/null 2>&1 || \
   useradd --system --no-create-home --shell /usr/sbin/nologin termini-infer
 
 cat > /etc/systemd/system/termini-llama-server.service <<UNIT
 [Unit]
-Description=Termini CPU llama.cpp server (Node C, :$PORT)
+Description=Termini host-exposed llama.cpp inference server (Node C, :$PORT)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=termini-infer
-ExecStart=$PREFIX/bin/llama-server --model $MODEL_DIR/$MODEL_FILE --host 0.0.0.0 --port $PORT --ctx-size 4096 --parallel 2
+ExecStart=$PREFIX/bin/llama-server --model $MODEL_DIR/$MODEL_FILE --alias $MODEL_ALIAS --host 0.0.0.0 --port $PORT --ctx-size 8192 --parallel 2 --reasoning-format none
 Restart=on-failure
 RestartSec=3
 
