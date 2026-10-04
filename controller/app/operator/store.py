@@ -5,9 +5,11 @@ and run inside the caller's transaction, matching `app/store.py` conventions.
 Idempotency is enforced here at the schema level:
   * `remediation_decisions.event_id` is UNIQUE — one health event can produce at
     most one decision, so a double-fired event can never issue two commands.
-  * `remediation_audits.idempotency_key` is UNIQUE — a repeated (node, rule,
-    target) remediation within the cooldown window is deduplicated before any
-    LXD call is made.
+  * `remediation_audits.idempotency_key` is intentionally NOT UNIQUE — a failed
+    remediation (result=error) can be retried and re-audited. A prior
+    ok/dry_run audit for the same key deduplicates a repeat remediation ONLY
+    within the bounded idempotency window (controller-api.md §1.5, 24h); an
+    expired entry no longer suppresses a genuine later episode.
 """
 from __future__ import annotations
 
@@ -17,6 +19,11 @@ import time
 from .. import ulid
 
 EVIDENCE_SAMPLE_CAP = 20  # bound the evidence window we persist
+
+# controller-api.md §1.5: two state-changing requests with the same idempotency
+# key within 24h are the same resource/plan. An audit older than this window
+# must not suppress a genuine re-remediation.
+IDEMPOTENCY_WINDOW_S = 24 * 60 * 60
 
 
 def insert_health_event(conn, event) -> None:
@@ -93,11 +100,28 @@ def idempotency_key_for(node_id: str, rule_id: str, action_kind: str, target: st
     return f"{node_id}:{rule_id}:{action_kind}:{target}:{episode}"
 
 
-def audit_by_idempotency_key(conn, key: str) -> dict | None:
-    row = conn.execute(
-        "SELECT * FROM remediation_audits WHERE idempotency_key = ?"
-        " ORDER BY executed_at DESC LIMIT 1", (key,)
-    ).fetchone()
+def audit_by_idempotency_key(conn, key: str,
+                             within_s: float | None = IDEMPOTENCY_WINDOW_S) -> dict | None:
+    """Most recent audit for `key`, restricted to the bounded idempotency window.
+
+    A prior ok/dry_run audit with the same key only counts as "already applied"
+    if it was executed within `within_s` seconds ago (default: the §1.5 24h
+    window). An expired entry is ignored, so a genuine later episode re-fires
+    instead of being silently suppressed forever. `within_s=None` (or <= 0)
+    disables the time bound and returns the most recent entry regardless of age.
+    """
+    if within_s is None or within_s <= 0:
+        row = conn.execute(
+            "SELECT * FROM remediation_audits WHERE idempotency_key = ?"
+            " ORDER BY executed_at DESC LIMIT 1", (key,)
+        ).fetchone()
+    else:
+        cutoff = time.time() - within_s
+        row = conn.execute(
+            "SELECT * FROM remediation_audits WHERE idempotency_key = ?"
+            " AND executed_at >= ? ORDER BY executed_at DESC LIMIT 1",
+            (key, _iso_from_epoch(cutoff)),
+        ).fetchone()
     return dict(row) if row else None
 
 

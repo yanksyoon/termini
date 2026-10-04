@@ -21,6 +21,11 @@ from app.operator import Thresholds, OperatorLoop  # noqa: E402
 from app.operator import detect, playbook, triggers  # noqa: E402
 from app.operator import store as opstore  # noqa: E402
 from app.operator.executor import LxdExecutor  # noqa: E402
+from app.operator.models import (  # noqa: E402
+    ExecResult,
+    HealthEvent,
+    RemediationAction,
+)
 from stub_lxd import StubLxd  # noqa: E402
 
 RAM_TOTAL = 34_359_738_368
@@ -288,6 +293,79 @@ class LoopIntegrationTest(unittest.TestCase):
 
         self.assertEqual(len(produced), 0)  # second poll suppressed by cooldown
         self.assertEqual(len(self.lxd.restart_requests()), 1)
+
+    # ------------------------------------------------------------------ D2
+    def _insert_audit_with_key(self, key, result_str="ok", executed_at=None):
+        """Persist a decision + audit with a fixed idempotency key, matching the
+        production loop's write path (ms-precision `now_iso`)."""
+        now = triggers.now_iso_ms()
+        with db.session(self.db_path) as conn:
+            event = HealthEvent(
+                event_id=ulid.new_ulid(), node_id=self.node_id,
+                rule_id="oom-guard-01", type="oom", metric="ram_used_bytes",
+                value=96.0, threshold=">= 95% of ram_total_bytes", fired_at=now,
+            )
+            opstore.insert_health_event(conn, event)
+            decision_id = ulid.new_ulid()
+            action = RemediationAction(
+                kind="instance.restart", params={"instance_name": "agent-c1"},
+                reason="oom", playbook="oom-guard-01", rule_id="oom-guard-01",
+            )
+            opstore.insert_decision(conn, decision_id, event, action, now)
+            audit_id = ulid.new_ulid()
+            result = ExecResult(result=result_str, method="PUT",
+                                path="/1.0/instances/agent-c1/state",
+                                body='{"action":"restart"}', status=200)
+            opstore.insert_audit(conn, audit_id, decision_id, event, action,
+                                 result, key, now, dry_run=False)
+            if executed_at is not None:
+                conn.execute("UPDATE remediation_audits SET executed_at = ?",
+                             (executed_at,))
+
+    def test_idempotency_key_time_bounded(self):
+        key = f"{self.node_id}:oom-guard-01:instance.restart:agent-c1:1"
+        self._insert_audit_with_key(key, "ok")
+
+        with db.session(self.db_path) as conn:
+            # Within the window the prior ok audit is a dedup source.
+            self.assertIsNotNone(
+                opstore.audit_by_idempotency_key(conn, key, within_s=3600))
+            # Age it past the window.
+            conn.execute("UPDATE remediation_audits SET executed_at = ?",
+                         ("2000-01-01T00:00:00.000Z",))
+
+        with db.session(self.db_path) as conn:
+            # Expired -> no dedup source (must re-fire).
+            self.assertIsNone(
+                opstore.audit_by_idempotency_key(conn, key, within_s=3600))
+            # Explicitly unbounded -> still returned regardless of age.
+            self.assertIsNotNone(
+                opstore.audit_by_idempotency_key(conn, key, within_s=None))
+
+    def test_expired_idempotency_audit_refires(self):
+        # Episode 1: sustained OOM fires and is remediated (one real command).
+        self._insert([oom_sample(100 + i, f"2026-10-04T08:00:{i:02d}Z", self.vm_id)
+                      for i in range(3)])
+        loop = self._make_loop()
+        loop.run_once()
+        self.assertEqual(len(self.lxd.restart_requests()), 1)
+
+        # Age the audit past the 24h idempotency window and drop the persisted
+        # trigger latch so a later fault produces the SAME episode key (a
+        # lost/reset-latch path). An unbounded lookup would treat the stale "ok"
+        # audit as already_applied and silently suppress this re-remediation.
+        with db.session(self.db_path) as conn:
+            conn.execute("UPDATE remediation_audits SET executed_at = ?",
+                         ("2000-01-01T00:00:00.000Z",))
+            conn.execute("DELETE FROM trigger_state")
+
+        # A new OOM episode (same key after the latch reset) must issue a real
+        # LXD command.
+        self._insert([oom_sample(600 + i, f"2026-10-04T08:10:{i:02d}Z", self.vm_id)
+                      for i in range(3)])
+        produced = loop.run_once()
+        self.assertEqual(len(produced), 1)
+        self.assertEqual(len(self.lxd.restart_requests()), 2)  # a real new command
 
 
 if __name__ == "__main__":

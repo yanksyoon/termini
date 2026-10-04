@@ -198,7 +198,9 @@ class OperatorLoop(threading.Thread):
         )
 
         # Idempotency: same episode already applied -> no-op (safety net only;
-        # the latch is the primary dedup).
+        # the latch is the primary dedup). The lookup is bounded by the §1.5 24h
+        # idempotency window, so an expired prior audit never suppresses a
+        # genuine later episode; failed entries are already excluded below.
         prior = opstore.audit_by_idempotency_key(conn, idem_key)
         if prior is not None and prior["result"] in ("ok", "dry_run"):
             result = ExecResult(

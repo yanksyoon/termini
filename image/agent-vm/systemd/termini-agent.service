@@ -1,0 +1,35 @@
+[Unit]
+Description=Termini in-VM agent runtime
+Documentation=https://github.com/yanksyoon/termini
+After=local-fs.target termini-firstboot-preflight.service
+Requires=termini-firstboot-preflight.service
+# No network ordering on purpose: the agent VM has no route off the premises, so
+# termini-agent must start, serve /status, and retry the broker regardless of NIC state.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/termini/venv/bin/termini-agent run --config /etc/termini/agent.yaml
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=25
+
+# Hardening: the agent cannot touch LXD, the host, or the firewall (§3.3).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=termini
+RuntimeDirectoryMode=0755
+ReadWritePaths=/var/log/termini /var/lib/termini /run/termini
+StateDirectory=termini-agent
+
+[Install]
+WantedBy=multi-user.target

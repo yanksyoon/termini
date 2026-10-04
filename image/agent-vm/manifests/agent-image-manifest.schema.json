@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Termini agent VM image manifest",
+  "type": "object",
+  "required": ["schema_version", "alias", "version", "immutable_tag", "gitsha",
+               "image_digest", "artifacts", "pins", "contents", "first_boot"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "alias": { "type": "string", "pattern": "^agent-vm/\\d{4}\\.\\d+\\.\\d+$" },
+    "version": { "type": "string" },
+    "immutable_tag": { "type": "string", "pattern": "^agent-vm-.+\\+g[0-9a-f]{12}$" },
+    "gitsha": { "type": "string" },
+    "image_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{12}$" },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "format", "size_bytes", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "format": { "type": "string", "enum": ["lxd-image", "qcow2"] },
+          "size_bytes": { "type": "integer", "minimum": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "pins": {
+      "type": "object",
+      "required": ["python", "node_version", "runtime", "frameworks"],
+      "properties": {
+        "python": { "type": "string" },
+        "node_version": { "type": "string" },
+        "runtime": { "type": "object", "additionalProperties": { "type": "string" } },
+        "frameworks": {
+          "type": "object",
+          "required": ["langchain", "crewai", "autogen"],
+          "additionalProperties": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      }
+    },
+    "contents": {
+      "type": "object",
+      "required": ["runtime_venv", "framework_venvs", "node_dir", "agent_bin", "config"],
+      "additionalProperties": { "type": "string" }
+    },
+    "first_boot": {
+      "type": "object",
+      "required": ["preflight_unit", "boot_log_path", "network_required"],
+      "properties": {
+        "preflight_unit": { "type": "string" },
+        "boot_log_path": { "type": "string" },
+        "network_required": { "type": "boolean", "const": false }
+      }
+    }
+  }
+}

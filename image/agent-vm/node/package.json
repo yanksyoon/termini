@@ -1,0 +1,12 @@
+{
+  "name": "termini-agent-node",
+  "version": "2026.10.0",
+  "private": true,
+  "description": "Node.js agent libraries pre-baked into the Termini agent VM (agent-runtime.md §3.2).",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "openai": "^6.0.0",
+    "pino": "^10.0.0",
+    "undici": "^7.0.0"
+  }
+}

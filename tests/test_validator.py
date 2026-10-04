@@ -186,6 +186,50 @@ class RejectionTest(unittest.TestCase):
         self.assertEqual(result.outcome, "rejected")
         self.assertEqual(result.rejections[0].reason, "malformed_component")
 
+    def test_passthrough_gpu_true_rejected(self):
+        # controller-api.md §5.3: `passthrough_gpu: true` on any class is a
+        # structural rejection (reason gpu_passthrough_not_in_demo), never clamped.
+        result = clamp_validate(
+            [{"type": "agent_vm", "count": 1, "vcpus": 2, "ram_gb": 4, "disk_gb": 8,
+              "passthrough_gpu": True}],
+            HOST_CAPS,
+        )
+        self.assertEqual(result.outcome, "rejected")
+        self.assertEqual(result.allocations, [])
+        self.assertEqual(result.rejections[0].reason, "gpu_passthrough_not_in_demo")
+
+    def test_passthrough_gpu_true_rejected_on_inference_vm(self):
+        result = clamp_validate(
+            [{"type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16, "disk_gb": 64,
+              "passthrough_gpu": True}],
+            HOST_CAPS,
+        )
+        self.assertEqual(result.outcome, "rejected")
+        self.assertEqual(result.allocations, [])
+        self.assertEqual(result.rejections[0].reason, "gpu_passthrough_not_in_demo")
+
+    def test_passthrough_gpu_true_poisons_otherwise_valid_components(self):
+        # All-or-nothing: one passthrough class rejects the whole request.
+        result = clamp_validate(
+            [
+                {"type": "agent_vm", "count": 1, "vcpus": 2, "ram_gb": 4, "disk_gb": 8},
+                {"type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16,
+                 "disk_gb": 64, "passthrough_gpu": True},
+            ],
+            HOST_CAPS,
+        )
+        self.assertEqual(result.outcome, "rejected")
+        self.assertEqual(result.allocations, [])
+
+    def test_passthrough_gpu_false_accepted(self):
+        result = clamp_validate(
+            [{"type": "agent_vm", "count": 1, "vcpus": 2, "ram_gb": 4, "disk_gb": 8,
+              "passthrough_gpu": False}],
+            HOST_CAPS,
+        )
+        self.assertTrue(result.safe)
+        self.assertFalse(result.allocations[0].passthrough_gpu)
+
 
 class EnvelopeTest(unittest.TestCase):
     def test_allocations_envelope(self):

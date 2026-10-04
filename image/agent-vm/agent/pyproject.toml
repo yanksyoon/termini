@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "termini-agent"
+version = "2026.10.0"
+description = "Termini in-VM agent runtime (task loop, inference client, local status socket)"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+# Runtime deps live in image/agent-vm/requirements/runtime.lock and are baked into
+# the image; this package declares none so it can be installed offline (`--no-deps`).
+dependencies = []
+
+[project.scripts]
+termini-agent = "termini_agent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
