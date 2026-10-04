@@ -6,12 +6,18 @@
 
 locals {
   # Frozen node roles/addresses from the D2 addressing plan.
-  #   Node A = LXD seed + compute, Node B = compute, Node C = GPU inference host.
+  #   Node A = LXD seed + compute, Node B = compute, Node C = inference host.
+  # Node C is CPU-only by default (gpu_accelerator_count = 0): it runs llama.cpp
+  # on CPU. Set gpu_accelerator_count = 1 + inference_machine_type = g2-standard-4
+  # to attach a real L4 after the billing account is upgraded.
   node_spec = {
-    node-a = { role = "compute", host = 11, guest_cidr = "10.20.1.0/24", seed = true, gpu = false }
-    node-b = { role = "compute", host = 12, guest_cidr = "10.20.2.0/24", seed = false, gpu = false }
-    node-c = { role = "inference", host = 13, guest_cidr = "10.20.3.0/24", seed = false, gpu = true }
+    node-a = { role = "compute", host = 11, guest_cidr = "10.20.1.0/24", seed = true, inference = false }
+    node-b = { role = "compute", host = 12, guest_cidr = "10.20.2.0/24", seed = false, inference = false }
+    node-c = { role = "inference", host = 13, guest_cidr = "10.20.3.0/24", seed = false, inference = true }
   }
+
+  # Single switch: a non-zero accelerator count re-enables the GPU on Node C.
+  accelerate_node_c = var.gpu_accelerator_count > 0
 
   node_ip     = { for k, v in local.node_spec : k => cidrhost(var.network_cidr, v.host) }
   gateway_ip  = cidrhost(var.network_cidr, 1)
@@ -19,6 +25,22 @@ locals {
   seed_ip     = local.node_ip[local.seed_node]
   node_names  = sort(keys(local.node_spec))
   common_tags = ["termini-node"]
+
+  # Node C first-boot script with its placeholders resolved. replace() (not a
+  # templatefile) keeps the shell script's own ${VAR} interpolations literal.
+  llama_serve_script = replace(
+    replace(
+      replace(
+        replace(
+          file("${path.module}/cloud-init/llama-serve.sh"),
+          "__LLAMACPP_COMMIT__", var.llamacpp_commit
+        ),
+        "__MODEL_URL__", var.inference_model_url
+      ),
+      "__MODEL_FILE__", var.inference_model_file
+    ),
+    "__PORT__", tostring(var.inference_port)
+  )
 }
 
 # --- Network -----------------------------------------------------------------
@@ -128,7 +150,7 @@ resource "google_compute_instance" "node" {
   for_each = local.node_spec
 
   name         = "${var.name_prefix}-${each.key}"
-  machine_type = each.value.gpu ? var.gpu_machine_type : var.compute_machine_type
+  machine_type = each.value.inference ? var.inference_machine_type : var.compute_machine_type
   zone         = var.zone
   description  = "Termini ${each.value.role} node ${each.key}."
 
@@ -160,9 +182,10 @@ resource "google_compute_instance" "node" {
     access_config {}
   }
 
-  # Real accelerator on Node C; nothing on A/B.
+  # Accelerator on Node C ONLY when gpu_accelerator_count > 0. Default is 0, so
+  # no guest_accelerator block is emitted and Node C is a plain CPU VM.
   dynamic "guest_accelerator" {
-    for_each = each.value.gpu ? [1] : []
+    for_each = (each.value.inference && local.accelerate_node_c) ? [1] : []
     content {
       type  = var.gpu_accelerator_type
       count = var.gpu_accelerator_count
@@ -170,8 +193,9 @@ resource "google_compute_instance" "node" {
   }
 
   scheduling {
-    # GPU instances cannot live-migrate; they must terminate on host maintenance.
-    on_host_maintenance = each.value.gpu ? "TERMINATE" : "MIGRATE"
+    # Accelerator instances cannot live-migrate; they must terminate on host
+    # maintenance. CPU-only nodes migrate normally.
+    on_host_maintenance = (each.value.inference && local.accelerate_node_c) ? "TERMINATE" : "MIGRATE"
     automatic_restart   = true
     provisioning_model  = "STANDARD"
   }
@@ -194,6 +218,10 @@ resource "google_compute_instance" "node" {
         controller_url        = var.controller_url
         controller_ca_pubkey  = var.controller_ssh_ca_pubkey
         telemetry_interval_ms = var.telemetry_interval_ms
+        # Node C only: run the CPU llama.cpp server (frozen contract: :8080, underlay-only).
+        serve_inference    = each.value.inference && var.serve_inference
+        inference_port     = var.inference_port
+        llama_serve_script = local.llama_serve_script
       })
       enable-oslogin = "FALSE"
     },
@@ -231,7 +259,7 @@ locals {
         private_ip   = google_compute_instance.node[name].network_interface[0].network_ip
         public_ip    = google_compute_instance.node[name].network_interface[0].access_config[0].nat_ip
         zone         = google_compute_instance.node[name].zone
-        accelerator  = local.node_spec[name].gpu ? { type = var.gpu_accelerator_type, count = var.gpu_accelerator_count } : null
+        accelerator  = (local.node_spec[name].inference && local.accelerate_node_c) ? { type = var.gpu_accelerator_type, count = var.gpu_accelerator_count } : null
         tags         = google_compute_instance.node[name].tags
         labels       = google_compute_instance.node[name].labels
       }

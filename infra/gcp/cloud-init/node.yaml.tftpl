@@ -2,6 +2,10 @@
 # Termini Node OS — activation-only cloud-init (docs/contracts/infra-decisions.md D3).
 # It writes the bootstrap daemon config and starts the pre-installed service.
 # It deliberately performs NO package installs and NO network downloads.
+#
+# Node C is the one exception: when `serve_inference` is true (the default) its
+# cloud-init also provisions a CPU llama.cpp server on the frozen contract port
+# 8080. Nodes A/B stay strictly activation-only.
 write_files:
   - path: /etc/termini/config.yaml
     permissions: '0600'
@@ -21,5 +25,15 @@ write_files:
       # Termini controller SSH CA — TrustedUserCAKeys (docs/contracts/infra-decisions.md D4).
       # Placeholder until the controller issues its CA key; sshd ignores comment lines.
       ${controller_ca_pubkey}
+%{ if serve_inference ~}
+  - path: /usr/local/sbin/termini-llama-serve.sh
+    permissions: '0755'
+    owner: root:root
+    content: |
+      ${replace(llama_serve_script, "\n", "\n      ")}
+%{ endif ~}
 runcmd:
   - [ systemctl, enable, --now, termini-bootstrap.service ]
+%{ if serve_inference ~}
+  - [ /usr/local/sbin/termini-llama-serve.sh ]
+%{ endif ~}
