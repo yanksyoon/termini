@@ -120,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
                 cfg, project, thresholds, playbooks,
                 instance_names=cfg.lxd_instance_names,
                 default_instance_name=cfg.lxd_default_instance_name,
+                logs=operator_logs,
             )
             loop.start()
         else:

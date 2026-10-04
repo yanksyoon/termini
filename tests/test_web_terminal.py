@@ -160,7 +160,7 @@ class WebTerminalBridgeTest(unittest.TestCase):
         cls.srv.server_close()
 
     def ws(self, node_id, token=TEST_TOKEN):
-        return WSClient("127.0.0.1", self.port, f"/terminal/v1/{node_id}?token={token}")
+        return WSClient("127.0.0.1", self.port, f"/terminal/v1/nodes/{node_id}?token={token}")
 
     def http_json(self, path):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=10) as r:

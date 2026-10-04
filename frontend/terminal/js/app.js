@@ -8,10 +8,14 @@ import { terminalUrl } from './framing.js';
 import { SshPanel } from './ssh-panel.js';
 
 const params = new URLSearchParams(location.search);
-const apiBase = (params.get('api') || location.origin).replace(/\/$/, '');
-const projectId = params.get('project') || 'demo';
-const token = params.get('token') || 'demo-project-token';
-const keyPath = params.get('key') || '~/.ssh/termini_breakglass';
+// Console-injected defaults (see console/serve.py): let one origin host the
+// dashboard + terminal without putting the controller/token in the URL.
+const DEFAULTS = (typeof window !== 'undefined' && window.__TERMINI_TERMINAL_DEFAULTS__) || {};
+const apiBase = (params.get('api') || DEFAULTS.api || location.origin).replace(/\/$/, '');
+const projectId = params.get('project') || DEFAULTS.project || 'demo';
+const token = params.get('token') || DEFAULTS.token || 'demo-project-token';
+const keyPath = params.get('key') || DEFAULTS.key || '~/.ssh/termini_breakglass';
+const wantNode = params.get('node') || DEFAULTS.node || '';
 
 const $ = (id) => document.getElementById(id);
 const nodesUrl = `${apiBase}/v1/projects/${projectId}/nodes`;
@@ -158,8 +162,10 @@ async function loadNodes() {
       const label = `${n.node_id}${n.role ? ` · ${n.role}` : ''}${n.state ? ` · ${n.state}` : ''}`;
       els.select.appendChild(new Option(label, n.node_id));
     }
-    els.select.value = nodes[0].node_id;
-    await selectNode(nodes[0].node_id);
+    // Preselect the ?node= target when it is one of the listed nodes.
+    const preferred = wantNode && nodes.some((n) => n.node_id === wantNode) ? wantNode : nodes[0].node_id;
+    els.select.value = preferred;
+    await selectNode(preferred);
   } catch (e) {
     els.select.innerHTML = '';
     els.select.appendChild(new Option('(failed to load nodes)', ''));
