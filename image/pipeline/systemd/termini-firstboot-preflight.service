@@ -1,0 +1,20 @@
+[Unit]
+Description=Termini first-boot offline preflight (proves baked artifacts resolve from local disk)
+Documentation=file:///opt/termini/README.md
+DefaultDependencies=no
+After=local-fs.target
+Before=termini-bootstrap.service
+ConditionPathExists=!/var/lib/termini/.preflight-done
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Exit non-zero => termini-bootstrap.service (Requisite) does not start, so a node
+# with missing/mismatched baked artifacts fails loudly instead of downloading.
+ExecStart=/usr/local/sbin/termini-first-boot-preflight --log-out /var/log/termini/first-boot.json
+ExecStartPost=/usr/bin/touch /var/lib/termini/.preflight-done
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

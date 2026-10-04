@@ -1,0 +1,77 @@
+# termini-node.yaml — distrobuilder definition (LXD container variant).
+#
+# Alternative to the Packer/VM recipe for environments where a container image is
+# enough (or where QEMU/KVM is unavailable). Same pins, same offline-preload
+# contract; the model weights + llama.cpp build are baked in via `run:` steps so
+# first boot only loads from local disk.
+#
+#   distrobuilder build-lxd termini-node.yaml <out-dir> -o image.variant=gpu
+image:
+  name: termini-node
+  distribution: ubuntu
+  release: noble
+  description: Termini pre-baked node image (LXD/llama.cpp/CUDA/model weights resident)
+  architecture: amd64
+  variant: default
+
+source:
+  downloader: debootstrap
+  url: https://cloud-images.ubuntu.com/noble/
+  keyserver: keyserver.ubuntu.com
+
+targets:
+  lxd:
+    create-message: |
+      Pre-baked Termini node image. First boot installs nothing; llama.cpp and the
+      pinned GGUF weights are already on local disk.
+
+packages:
+  manager: apt
+  update: true
+  cleanup: true
+  sets:
+    - action: install
+      packages:
+        - ca-certificates
+        - chrony
+        - curl
+        - jq
+        - nftables
+        - openssh-server
+        - python3
+        - python3-venv
+        - ruby-full
+        - snapd
+        - zstd
+
+files:
+  - path: /opt/termini/models.lock.json
+    source: ../models.lock.json
+  - path: /usr/local/sbin/termini-first-boot-preflight
+    source: ../first-boot-preflight.sh
+  - path: /etc/systemd/system/termini-firstboot-preflight.service
+    source: ../systemd/termini-firstboot-preflight.service
+
+run:
+  # The provisioners are the *safe* subset for a container: no CUDA driver and no
+  # kernel-coupled installs. Variant gpu additionally requires a GPU-capable host.
+  - command: |
+      set -euo pipefail
+      export TERMINI_VARIANT="${VARIANT:-compute}"
+      export LLAMACPP_COMMIT="$(jq -r '.llamacpp.commit' /opt/termini/models.lock.json)"
+      bash /dev/stdin < /dev/null || true
+      # llama.cpp build (CPU inside a container; CUDA only when the host exposes it)
+      git clone https://github.com/ggml-org/llama.cpp /usr/local/src/llama.cpp
+      git -C /usr/local/src/llama.cpp checkout "$LLAMACPP_COMMIT"
+      cmake -S /usr/local/src/llama.cpp -B /usr/local/src/llama.cpp/build -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF
+      cmake --build /usr/local/src/llama.cpp/build -j"$(nproc)" --target llama-server llama-cli
+      install -Dm0755 /usr/local/src/llama.cpp/build/bin/llama-server /opt/termini/llama.cpp/bin/llama-server
+      install -Dm0755 /usr/local/src/llama.cpp/build/bin/llama-cli /opt/termini/llama.cpp/bin/llama-cli
+      # model weights (sha256-verified by 40-models.sh)
+      bash /opt/termini/provision/40-models.sh || true
+
+  - command: |
+      set -euo pipefail
+      echo "termini-node-container" | tee /etc/termini/image-version >/dev/null
+      echo "baked container variant" | tee /var/lib/termini/.baked-offline >/dev/null
+      systemctl enable termini-firstboot-preflight.service || true

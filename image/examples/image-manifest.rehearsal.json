@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "alias": "agentic-os/w3",
+  "version": "2026.10.0",
+  "immutable_tag": "agentic-os-w3-2026.10.0+gdeadbeefcafe",
+  "variant": "compute",
+  "gitsha": "deadbeefcafe",
+  "built_at": "2026-10-04T00:00:00Z",
+  "base_image": {
+    "name": "ubuntu-24.04-server-cloudimg-amd64",
+    "release": "20260911",
+    "arch": "amd64",
+    "url": "https://cloud-images.ubuntu.com/noble/20260911/noble-server-cloudimg-amd64.img",
+    "sha256": "612b2c0cc1bc413a6cb8c38fd611794caf0f2b436c50013d8b3794db12ad7354"
+  },
+  "artifacts": [
+    {
+      "name": "rehearsal-compute.tar.gz",
+      "format": "lxd-image",
+      "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-ql0y8chi/rehearsal-compute.tar.gz",
+      "size_bytes": 2130,
+      "sha256": "b54bf96b5e457ad8cf995ebcdfda0617fde626769f92c6f2531288a92229f0ad"
+    }
+  ],
+  "pins": {
+    "llamacpp_commit": "7fe450e19305b828c199d602c23a8337aaa1f03b",
+    "lxd_snap_channel": "5.21/stable",
+    "lxd_snap_revision": null,
+    "models": {
+      "deepseek-flash": "87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d",
+      "deepseek-v4-pro": "0b319bd0572f2730bfe11cc751defe82045fad5085b4e60591ac2cd2d9633181"
+    }
+  },
+  "contents": {
+    "llama_server_path": "/opt/termini/llama.cpp/bin/llama-server",
+    "model_root": "/var/lib/termini/models",
+    "agent_vm_alias": "agent-vm/2026.10.0",
+    "bootstrap_unit": "termini-bootstrap.service"
+  },
+  "first_boot": {
+    "preflight_unit": "termini-firstboot-preflight.service",
+    "boot_log_path": "/var/log/termini/first-boot.json",
+    "network_required": false
+  }
+}
