@@ -1,0 +1,7 @@
+# Raw run artifacts (temp controllers, dmesg captures, per-run JSON) are large
+# and machine-local; the curated summaries are committed instead:
+#   evidence/detect_vs_kill_summary.json
+#   evidence/concurrency.json
+#   evidence/kernel_oom.json
+#   evidence/live_inprocess.json
+evidence/raw/
