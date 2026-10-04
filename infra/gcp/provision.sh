@@ -8,7 +8,8 @@
 #     VXLAN/UDP(4789) and llama.cpp HTTP(8080, node C only)
 #   - node-a/b = compute machine type; node-c = CPU-heavy inference host
 #     (CPU-only by default — free-tier billing rejects every non-TPU accelerator)
-#   - node-c additionally serves CPU llama.cpp on :8080 (small GGUF model)
+#   - node-c additionally serves host-exposed CPU llama.cpp on :8080 (pinned
+#     deepseek-flash GGUF, OpenAI-compatible, alias `deepseek-flash`)
 #   - an inventory JSON at $INVENTORY_PATH for downstream tasks
 #
 # Requires an authenticated gcloud (GOOGLE_APPLICATION_CREDENTIALS or
@@ -30,8 +31,10 @@ GPU_ACCELERATOR_TYPE="${GPU_ACCELERATOR_TYPE:-nvidia-l4}"
 GPU_ACCELERATOR_COUNT="${GPU_ACCELERATOR_COUNT:-0}"
 SERVE_INFERENCE="${SERVE_INFERENCE:-1}"
 INFERENCE_PORT="${INFERENCE_PORT:-8080}"
-INFERENCE_MODEL_URL="${INFERENCE_MODEL_URL:-https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf}"
-INFERENCE_MODEL_FILE="${INFERENCE_MODEL_FILE:-qwen2.5-1.5b-instruct-q4_k_m.gguf}"
+INFERENCE_MODEL_URL="${INFERENCE_MODEL_URL:-https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf}"
+INFERENCE_MODEL_FILE="${INFERENCE_MODEL_FILE:-DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf}"
+INFERENCE_MODEL_SHA256="${INFERENCE_MODEL_SHA256:-87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d}"
+INFERENCE_MODEL_ALIAS="${INFERENCE_MODEL_ALIAS:-deepseek-flash}"
 LLAMACPP_COMMIT="${LLAMACPP_COMMIT:-7fe450e19305b828c199d602c23a8337aaa1f03b}"
 IMAGE_PROJECT="${IMAGE_PROJECT:-ubuntu-os-cloud}"
 IMAGE_FAMILY="${IMAGE_FAMILY:-ubuntu-2404-lts-amd64}"
@@ -114,6 +117,8 @@ EOF
     script="${script//__LLAMACPP_COMMIT__/$LLAMACPP_COMMIT}"
     script="${script//__MODEL_URL__/$INFERENCE_MODEL_URL}"
     script="${script//__MODEL_FILE__/$INFERENCE_MODEL_FILE}"
+    script="${script//__MODEL_SHA256__/$INFERENCE_MODEL_SHA256}"
+    script="${script//__MODEL_ALIAS__/$INFERENCE_MODEL_ALIAS}"
     script="${script//__PORT__/$INFERENCE_PORT}"
     printf '  - path: /usr/local/sbin/termini-llama-serve.sh\n'
     printf '    permissions: %s\n' "'0755'"

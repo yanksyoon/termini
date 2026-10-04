@@ -1,0 +1,54 @@
+Node C inference endpoint activation evidence — 2026-10-04T11:51:30Z
+Captured by kanban task t_95528ae8 (owner of the inference endpoint).
+
+$ hostname
+termini-node-c.asia-south1-a.c.termini-510609.internal
+
+$ date -u
+Sun Oct  4 11:51:32 UTC 2026
+
+$ sha256sum /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf
+87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d  /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf
+
+$ cat /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf.sha256
+87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d  DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf
+
+$ ls -la /var/lib/termini/models/
+total 5896568
+drwxr-xr-x 2 root root       4096 Oct  4 11:45 .
+drwxr-xr-x 3 root root       4096 Oct  4 11:09 ..
+-rw-r--r-- 1 root root 4920736608 Oct  4 11:45 DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf
+-rw-r--r-- 1 root root        107 Oct  4 11:45 DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf.sha256
+-rw-r--r-- 1 root root 1117320736 Oct  4 11:10 qwen2.5-1.5b-instruct-q4_k_m.gguf
+-rw-r--r-- 1 root root        124 Oct  4 11:10 qwen2.5-1.5b-instruct-q4_k_m.gguf.sha256
+
+$ /opt/termini/llama.cpp/bin/llama-server --version
+0.00.000.352 I srv  llama_server: initializing ...
+version: 0.5.0-dev (build 1, commit 7fe450e19)
+built with GNU 13.3.0 for Linux x86_64
+
+$ systemctl cat termini-llama-server.service
+# /etc/systemd/system/termini-llama-server.service
+[Unit]
+Description=Termini host-exposed llama.cpp inference server (Node C, :8080)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=termini-infer
+ExecStart=/opt/termini/llama.cpp/bin/llama-server --model /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf --alias deepseek-flash --host 0.0.0.0 --port 8080 --ctx-size 8192 --parallel 2 --reasoning-format none
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+
+$ systemctl is-active termini-llama-server.service
+active
+
+$ ss -lntp | grep 8080
+LISTEN 0      512          0.0.0.0:8080      0.0.0.0:*    users:(("llama-server",pid=10930,fd=3))                
+
+$ curl -s http://127.0.0.1:8080/v1/models
+{"models":[{"name":"deepseek-flash","model":"deepseek-flash","modified_at":"","size":"","digest":"","type":"model","description":"","tags":[""],"capabilities":["completion"],"parameters":"","details":{"parent_model":"","format":"gguf","family":"","families":[""],"parameter_size":"","quantization_level":""}}],"object":"list","data":[{"id":"deepseek-flash","aliases":["deepseek-flash"],"tags":[],"object":"model","created":1791114704,"owned_by":"llamacpp","meta":{"vocab_type":2,"n_vocab":128256,"n_ctx":4096,"n_ctx_train":131072,"n_embd":4096,"n_params":8030261312,"size":4912898304,"ftype":"Q4_K - Medium"}}]}

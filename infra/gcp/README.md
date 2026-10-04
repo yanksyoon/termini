@@ -68,17 +68,27 @@ service, no installs, no downloads). Node C is the one exception: when
 1. installs `build-essential cmake git curl`,
 2. clones and builds **CPU-only, static** `llama-server` at the pinned commit
    (`llamacpp_commit`, default `7fe450e1…`, matching `image/models.lock.json`),
-3. downloads the pinned **Qwen2.5-1.5B-Instruct Q4_K_M** GGUF to
-   `/var/lib/termini/models/` (small model — CPU inference is slow),
-4. runs it as `termini-llama-server.service` on **`0.0.0.0:8080`**.
+3. downloads the pinned **`deepseek-flash`** GGUF
+   (`bartowski/DeepSeek-R1-Distill-Llama-8B-Q4_K_M`, 4.92 GB, sha256-pinned in
+   `image/models.lock.json`) to `/var/lib/termini/models/` and **aborts the boot
+   if the sha256 does not match**,
+4. runs it as `termini-llama-server.service` on **`0.0.0.0:8080`** as an
+   OpenAI-compatible single-model deployment aliased **`deepseek-flash`**
+   (`agent-runtime.md` AR-4/AR-6; `--reasoning-format none` so the R1 ` thinking`
+   block stays inline in `content` and plain clients always see text).
 
 The underlay firewall rule allows `10.10.0.0/24 → node-c:8080` only, so the
 endpoint is reachable from Node A but never public. Health probe:
 `curl http://10.10.0.13:8080/health`. The first build takes ~10–20 min; the
 service is idempotent across reboots (`/var/log/termini-llama-serve.log`).
+The pinned 8B Q4_K_M runs at ~6 tok/s (prompt ~12 tok/s) on `n2-standard-8` CPU.
+
+Acceptance for the endpoint itself (Node A → Node C completion + streaming) is
+verified by `infra/inference/verify-inference.sh`; see `infra/inference/`.
 
 Tunables: `serve_inference`, `inference_port`, `inference_model_url`,
-`inference_model_file`, `llamacpp_commit`.
+`inference_model_file`, `inference_model_sha256`, `inference_model_alias`,
+`llamacpp_commit`.
 
 ## Re-enabling the GPU (after a billing upgrade)
 
@@ -191,7 +201,7 @@ Re-provisioned from a clean project on the supplied free-tier billing account:
 | Node A | `n2-standard-2` @ `10.10.0.11` — RUNNING, no accelerator, SSH OK |
 | Node B | `n2-standard-2` @ `10.10.0.12` — RUNNING, no accelerator, SSH OK |
 | Node C | `n2-standard-8` @ `10.10.0.13` — RUNNING, no accelerator, SSH OK |
-| llama.cpp | Node C `:8080` (Qwen2.5-1.5B-Instruct Q4_K_M), reachable from Node A over the underlay |
+| llama.cpp | Node C `:8080` (pinned `deepseek-flash` = DeepSeek-R1-Distill-Llama-8B Q4_K_M, alias `deepseek-flash`), reachable from Node A over the underlay |
 | Inventory | `/home/ubuntu/.termini/inventory.json` (valid vs `inventory.schema.json`) |
 
 **Why A/B are `n2-standard-2` here.** The project's `CPUS_ALL_REGIONS` quota is
@@ -204,6 +214,16 @@ cap; `2 + 2 + 8 = 12` fits and keeps Node C CPU-heavy. Restore A/B to
 (`g2-standard-4` + `nvidia-l4`) was rejected by free-tier billing. Nodes A/B, the
 VPC, firewall rules and static IPs were then torn down; this run starts clean and
 re-provisions all three with a CPU-only Node C.
+
+**Inference endpoint activation (`t_95528ae8`, W3).** On the live footprint Node C
+was switched from the stopgap Qwen2.5-1.5B weight to the pinned **`deepseek-flash`**
+GGUF from `image/models.lock.json` (t_ab18d582), served with `--alias deepseek-flash`
+so `/v1/models` and completions report the frozen contract alias. GPU device
+visibility was re-confirmed absent (`nvidia-smi` absent, `lspci` no NVIDIA device,
+no `/dev/nvidia*`) — the free-tier billing account rejects non-TPU accelerators, so
+host-exposed CPU llama.cpp is the sanctioned D5 path. Acceptance ("a request from
+Node A to Node C returns a completion; streaming works") is captured in
+`infra/inference/evidence/` and reproducible with `infra/inference/verify-inference.sh`.
 
 ## Status / scope note
 

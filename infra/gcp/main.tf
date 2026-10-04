@@ -32,12 +32,18 @@ locals {
     replace(
       replace(
         replace(
-          file("${path.module}/cloud-init/llama-serve.sh"),
-          "__LLAMACPP_COMMIT__", var.llamacpp_commit
+          replace(
+            replace(
+              file("${path.module}/cloud-init/llama-serve.sh"),
+              "__LLAMACPP_COMMIT__", var.llamacpp_commit
+            ),
+            "__MODEL_URL__", var.inference_model_url
+          ),
+          "__MODEL_FILE__", var.inference_model_file
         ),
-        "__MODEL_URL__", var.inference_model_url
+        "__MODEL_SHA256__", var.inference_model_sha256
       ),
-      "__MODEL_FILE__", var.inference_model_file
+      "__MODEL_ALIAS__", var.inference_model_alias
     ),
     "__PORT__", tostring(var.inference_port)
   )

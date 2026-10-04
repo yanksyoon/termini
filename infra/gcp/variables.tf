@@ -77,21 +77,33 @@ variable "gpu_accelerator_count" {
 # --- Node C inference serving (CPU llama.cpp) ---------------------------------
 
 variable "serve_inference" {
-  description = "Provision a CPU llama.cpp server (Qwen2.5-1.5B-Instruct Q4_K_M) on Node C at boot. Set false to keep Node C activation-only."
+  description = "Provision a host-exposed CPU llama.cpp server on Node C at boot (pinned deepseek-flash GGUF, OpenAI-compatible on :8080). Set false to keep Node C activation-only."
   type        = bool
   default     = true
 }
 
 variable "inference_model_url" {
-  description = "GGUF model URL downloaded onto Node C when serve_inference is true."
+  description = "GGUF model URL downloaded onto Node C when serve_inference is true. Default is the pinned deepseek-flash weight from image/models.lock.json (t_ab18d582)."
   type        = string
-  default     = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+  default     = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf"
 }
 
 variable "inference_model_file" {
   description = "Filename the GGUF model is saved as under /var/lib/termini/models on Node C."
   type        = string
-  default     = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+  default     = "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf"
+}
+
+variable "inference_model_sha256" {
+  description = "sha256 of the GGUF; first boot aborts unless the downloaded file matches (pinned in image/models.lock.json)."
+  type        = string
+  default     = "87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d"
+}
+
+variable "inference_model_alias" {
+  description = "Model alias llama-server advertises and accepts (frozen contract: deepseek-flash, agent-runtime.md AR-6)."
+  type        = string
+  default     = "deepseek-flash"
 }
 
 variable "inference_port" {
