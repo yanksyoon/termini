@@ -29,12 +29,16 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve()
+REPO = HERE.parents[3]
 IMAGE_DIR = HERE.parents[2]
 PIPELINE_DIR = IMAGE_DIR / "pipeline"
 LOCK = IMAGE_DIR / "models.lock.json"
 SCHEMA = IMAGE_DIR / "manifests" / "image-manifest.schema.json"
 PREFLIGHT = PIPELINE_DIR / "first-boot-preflight.sh"
 VERIFY = PIPELINE_DIR / "tools" / "verify_manifest.py"
+PROVISION_STEP = PIPELINE_DIR / "provision" / "60-node-bootstrap.sh"
+BOOTSTRAP_PY = REPO / "infra" / "bootstrap" / "node" / "termini-bootstrap.py"
+BOOTSTRAP_UNIT = REPO / "infra" / "bootstrap" / "node" / "termini-bootstrap.service"
 EXAMPLES = IMAGE_DIR / "examples"
 
 STUB_PAD = 4096
@@ -96,6 +100,39 @@ def run_preflight(root: Path, log_out: Path) -> subprocess.CompletedProcess:
          "--verify-sha", "--allow-stub"],
         capture_output=True, text=True, env=env, check=False,
     )
+
+
+def rehearse_provision_step(tmp: Path) -> list[str]:
+    """Run image/pipeline/provision/60-node-bootstrap.sh against a DESTDIR and
+    assert it installs the CANONICAL node bootstrap daemon + systemd unit verbatim
+    (the artefacts the alias bake depends on) at the right modes."""
+    failures: list[str] = []
+    dst = tmp / "provision-root"
+    env = dict(os.environ)
+    env.update(
+        DESTDIR=str(dst),
+        TERMINI_BOOTSTRAP_PY=str(BOOTSTRAP_PY),
+        TERMINI_BOOTSTRAP_UNIT=str(BOOTSTRAP_UNIT),
+    )
+    proc = subprocess.run(
+        ["bash", str(PROVISION_STEP)], capture_output=True, text=True, env=env, check=False,
+    )
+    print((proc.stdout or proc.stderr).strip())
+    if proc.returncode != 0:
+        return [f"60-node-bootstrap.sh failed (rc={proc.returncode}): {proc.stderr.strip()}"]
+
+    bin_out = dst / "usr/local/bin/termini-bootstrap"
+    unit_out = dst / "etc/systemd/system/termini-bootstrap.service"
+    if not bin_out.is_file() or bin_out.read_bytes() != BOOTSTRAP_PY.read_bytes():
+        failures.append("provision step did not install the canonical termini-bootstrap binary verbatim")
+    elif (bin_out.stat().st_mode & 0o777) != 0o755:
+        failures.append(f"termini-bootstrap mode is {oct(bin_out.stat().st_mode & 0o777)}, expected 0o755")
+    if not unit_out.is_file() or unit_out.read_bytes() != BOOTSTRAP_UNIT.read_bytes():
+        failures.append("provision step did not install the canonical termini-bootstrap.service verbatim")
+    if not failures:
+        print(f"[rehearse] provision step: termini-bootstrap (0755) + unit baked from "
+              f"{BOOTSTRAP_PY.relative_to(REPO)}")
+    return failures
 
 
 def build_manifest(tmp: Path, real_lock: dict, alias: str, version: str, variant: str) -> Path:
@@ -210,6 +247,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.write_examples:
             EXAMPLES.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(manifest, EXAMPLES / "image-manifest.rehearsal.json")
+
+        # 4. the provision step bakes the canonical node bootstrap daemon + unit
+        failures.extend(rehearse_provision_step(tmp))
     finally:
         if args.keep:
             print(f"[rehearse] workspace kept at {tmp}")

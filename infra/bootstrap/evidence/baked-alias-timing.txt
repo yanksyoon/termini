@@ -1,0 +1,14 @@
+# Fresh node from the re-baked alias agentic-os/w3 (fingerprint f99942910bed),
+# REFRESH_RUNTIME=0 (no provision-time runtime push) — task t_d8203794.
+# The daemon + unit are baked by image/pipeline/provision/60-node-bootstrap.sh.
+#
+# Command: REFRESH_RUNTIME=0 PORT=18099 NODE=bsp-verify infra/bootstrap/verify-bootstrap.sh
+# Full transcript: evidence/baked-alias-bootstrap-run.txt
+
+unit:                  Type=notify SubState=running
+register_ms:           100        (service start -> controller 2xx ack; contract §12.5, <5000)
+boot_to_registered_ms: 3520       (/proc/uptime at ack, node clock; <5000)
+node_id:               01M43DZM1EXQXZ975XB391PWB1 (stable across reboot, 1 controller row)
+passwordless SSH:      PASS (injected team key, password auth refused)
+key installer:         idempotent (exactly one copy after re-run + reboot)
+RESULT:                PASS

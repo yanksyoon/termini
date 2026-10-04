@@ -87,6 +87,9 @@ log "llama.cpp binaries: $(ls -1 "$LLAMA_BIN_DIR" | tr '\n' ' ')"
 # ---------------------------------------------------------------------------
 # 2. base image
 resolve_base() {
+  # Explicit override wins (e.g. a base whose packages are already present when
+  # the build host's containers have no working DNS — see image/README.md).
+  if [ -n "${TERMINI_BAKE_BASE:-}" ]; then printf '%s\n' "$TERMINI_BAKE_BASE"; return 0; fi
   # Prefer an already-imported vanilla Ubuntu 24.04 (noble) image, excluding our
   # own published aliases so a re-bake never stacks on top of a previous bake.
   # Falls back to the remote images: source (still a one-time bake step).
@@ -116,12 +119,21 @@ wait_until 60 "build container running" lxc_running "$BUILD_CONTAINER" || die "b
 
 # ---------------------------------------------------------------------------
 # 3. provision
-log "installing runtime packages (python3/jq/curl/ca-certificates)"
+log "installing runtime packages (python3/jq/curl/ca-certificates) — skipped if already present"
 lxc exec "$BUILD_CONTAINER" -- bash -euo pipefail -c '
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq
-  apt-get install -y -qq --no-install-recommends \
-    python3 jq curl ca-certificates libgomp1 >/dev/null
+  # Install only what the base is missing, so a base image whose packages are
+  # already present bakes without any apt/network access (no-DNS build hosts).
+  missing=""
+  for p in python3 jq curl ca-certificates libgomp1; do
+    dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"
+  done
+  if [ -n "$missing" ]; then
+    apt-get update -qq
+    apt-get install -y -qq --no-install-recommends $missing >/dev/null
+  else
+    echo "[bake] runtime packages already present in the base image"
+  fi
   apt-get clean
   rm -rf /var/lib/apt/lists/*
   python3 --version
@@ -133,12 +145,22 @@ lxc file push "$LLAMA_BIN_DIR/llama-server" "$BUILD_CONTAINER/opt/termini/llama.
 lxc file push "$LLAMA_BIN_DIR/llama-cli" "$BUILD_CONTAINER/opt/termini/llama.cpp/bin/llama-cli"
 lxc exec "$BUILD_CONTAINER" -- chmod 0755 /opt/termini/llama.cpp/bin/llama-server /opt/termini/llama.cpp/bin/llama-cli
 
-lxc file push "$WARM_DIR/node/termini-bootstrap.py" "$BUILD_CONTAINER/usr/local/bin/termini-bootstrap"
 lxc file push "$WARM_DIR/node/termini-llama.sh" "$BUILD_CONTAINER/usr/local/bin/termini-llama"
 lxc file push "$WARM_DIR/node/termini-model-present.sh" "$BUILD_CONTAINER/usr/local/bin/termini-model-present"
-lxc file push "$WARM_DIR/node/termini-bootstrap.service" "$BUILD_CONTAINER/etc/systemd/system/termini-bootstrap.service"
 lxc file push "$WARM_DIR/node/llama-cpp.service" "$BUILD_CONTAINER/etc/systemd/system/llama-cpp.service"
-lxc exec "$BUILD_CONTAINER" -- chmod 0755 /usr/local/bin/termini-bootstrap /usr/local/bin/termini-llama /usr/local/bin/termini-model-present
+lxc exec "$BUILD_CONTAINER" -- chmod 0755 /usr/local/bin/termini-llama /usr/local/bin/termini-model-present
+
+# Canonical node bootstrap daemon + unit. Run the SAME provision step the image
+# pipeline uses (image/pipeline/provision/60-node-bootstrap.sh) against the
+# canonical sources (infra/warm/node/* are symlinks to infra/bootstrap/node/*),
+# so the published alias ships exactly what the image recipe installs — no drift,
+# and no provision-time runtime push needed downstream.
+lxc file push "$REPO_ROOT/image/pipeline/provision/60-node-bootstrap.sh" "$BUILD_CONTAINER/tmp/60-node-bootstrap.sh"
+lxc file push "$WARM_DIR/node/termini-bootstrap.py" "$BUILD_CONTAINER/tmp/termini-bootstrap.py"
+lxc file push "$WARM_DIR/node/termini-bootstrap.service" "$BUILD_CONTAINER/tmp/termini-bootstrap.service"
+lxc exec "$BUILD_CONTAINER" -- env TERMINI_BOOTSTRAP_PY=/tmp/termini-bootstrap.py \
+  TERMINI_BOOTSTRAP_UNIT=/tmp/termini-bootstrap.service bash /tmp/60-node-bootstrap.sh
+lxc exec "$BUILD_CONTAINER" -- rm -f /tmp/60-node-bootstrap.sh /tmp/termini-bootstrap.py /tmp/termini-bootstrap.service
 
 # static model env + image markers
 lxc exec "$BUILD_CONTAINER" -- bash -euo pipefail -c "
@@ -169,6 +191,9 @@ lxc exec "$BUILD_CONTAINER" -- bash -euo pipefail -c '
   cloud-init clean --logs --machine-id >/dev/null 2>&1 || cloud-init clean --logs >/dev/null 2>&1 || true
   rm -rf /var/lib/cloud/instances /var/lib/cloud/instance /var/lib/cloud/data
   rm -f /etc/termini/config.yaml /var/lib/termini/enrollment.token
+  # no baked node identity/state: a node from this alias always enrolls fresh
+  rm -f /var/lib/termini/state.json
+  find /var/lib/termini/identity -mindepth 1 -delete 2>/dev/null || true
 '
 
 # ---------------------------------------------------------------------------

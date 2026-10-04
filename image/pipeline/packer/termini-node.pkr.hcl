@@ -38,6 +38,7 @@ locals {
     "30-llamacpp.sh",
     "40-models.sh",
     "50-agent-deps.sh",
+    "60-node-bootstrap.sh",
   ]
   image_stamp = "termini-node-${var.version}-${var.variant}"
 }
@@ -81,6 +82,15 @@ build {
     destination = "/tmp/termini-firstboot-preflight.service"
   }
 
+  provisioner "file" {
+    source      = "${path.root}/../../../infra/bootstrap/node/termini-bootstrap.py"
+    destination = "/tmp/termini-bootstrap.py"
+  }
+  provisioner "file" {
+    source      = "${path.root}/../../../infra/bootstrap/node/termini-bootstrap.service"
+    destination = "/tmp/termini-bootstrap.service"
+  }
+
   # The numbered provisioners, in order. Overlay-mounted so they run as root.
   dynamic "provisioner" {
     for_each = local.provisioners
@@ -106,8 +116,9 @@ build {
       "sudo install -m 0644 /tmp/termini-firstboot-preflight.service /etc/systemd/system/termini-firstboot-preflight.service",
       "echo \"${local.image_stamp}\" | sudo tee /etc/termini/image-version >/dev/null",
       "echo \"baked $(date -u +%Y-%m-%dT%H:%M:%SZ) variant=${var.variant} version=${var.version} llama.cpp=${var.llamacpp_commit}\" | sudo tee /var/lib/termini/.baked-offline >/dev/null",
-      # termini-bootstrap.service is planned but not shipped yet (docs/contracts/node-bootstrap.md):
-      # the enable below is best-effort (|| true) and a no-op for that unit until it exists.
+      # 60-node-bootstrap.sh installs + enables termini-bootstrap.service from the
+      # canonical infra/bootstrap/node sources; here we only finish the first-boot
+      # preflight and re-assert both enables (idempotent).
       "sudo systemctl enable termini-firstboot-preflight.service termini-bootstrap.service || true",
     ]
   }

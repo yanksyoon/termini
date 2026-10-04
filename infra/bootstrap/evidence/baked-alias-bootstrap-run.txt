@@ -1,0 +1,184 @@
+
+=== team SSH key (generated locally for this run; public half is injected) ===
+$ ssh-keygen -t ed25519 -N  -C termini-team-key -f /home/ubuntu/.hermes/profiles/infra/cache/scratch/bsp-verify.0GSoct/team_ed25519
+Generating public/private ed25519 key pair.
+Your identification has been saved in /home/ubuntu/.hermes/profiles/infra/cache/scratch/bsp-verify.0GSoct/team_ed25519
+Your public key has been saved in /home/ubuntu/.hermes/profiles/infra/cache/scratch/bsp-verify.0GSoct/team_ed25519.pub
+The key fingerprint is:
+SHA256:qxQgua78zo7R1u+OigkQX3v14PzviHPyDxMd5WslwEs termini-team-key
+The key's randomart image is:
++--[ED25519 256]--+
+|           .. .  |
+|   .        E+   |
+|. o o   o  ...o .|
+| o + o + o ... + |
+|. o . o S o . o  |
+|... .. . o . .   |
+|...o .. . +      |
+|o.B  .o.o..=     |
+|.=+*..++.=oo+    |
++----[SHA256]-----+
+public key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFO4rj0eGKmcmISFwdQ6PiqEk/8QJ2vkWC87CISPtY7o termini-team-key
+
+=== start scratch controller on :18099 (fresh DB) ===
+PASS  controller up
+
+=== provision FRESH node 'bsp-verify' from pre-baked alias agentic-os/w3 ===
+$ lxc delete --force bsp-verify
+Error: Failed checking instance exists "local:bsp-verify": Failed to fetch instance "bsp-verify" in project "default": Instance not found
+$ bash /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_d8203794/infra/bootstrap/provision-node.sh bsp-verify compute bsp-verify-1791116677-28761
+[provision] creating bsp-verify from alias agentic-os/w3
+[provision] bsp-verify configured (cloud-init user-data 4204 bytes)
+
+=== rendered cloud-init user-data (first 40 lines) ===
+#cloud-config
+# Termini node bootstrap — cloud-init user-data (task t_066b6e3d, W3).
+#
+# Runs on a node created from the pre-baked image alias `agentic-os/w3`
+# (version 2026.10.0). It performs NO apt/network fetch: every runtime is
+# already baked. It does exactly three things and nothing else:
+#
+#   1. installs the team SSH public key into authorized_keys (correct perms,
+#      idempotent — a re-run never duplicates the line);
+#   2. writes the per-node inputs the bootstrap daemon needs
+#      (/etc/termini/config.yaml + the single-use enrollment token) and wires the
+#      controller SSH CA as a TrustedUserCAKeys anchor;
+#   3. starts the pre-installed termini-bootstrap.service, which registers with
+#      the controller and reports READY only after the controller acknowledges.
+#
+# The rendered user-data is the ONLY per-node input boot needs
+# (docs/contracts/node-bootstrap.md §3.2).
+
+hostname: bsp-verify
+fqdn: bsp-verify
+prefer_fqdn_over_hostname: false
+
+# Harden sshd before it is (re)started; PasswordAuthentication no and key-only
+# root login, matching docs/contracts/node-bootstrap.md §7. `ssh_authorized_keys`
+# below is cloud-init's native, idempotent default-user injection; the runcmd
+# script additionally guarantees /root/.ssh/authorized_keys (see §7).
+ssh_pwauth: false
+disable_root: false
+ssh_authorized_keys:
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFO4rj0eGKmcmISFwdQ6PiqEk/8QJ2vkWC87CISPtY7o termini-team-key
+
+write_files:
+  - path: /etc/termini/config.yaml
+    permissions: '0600'
+    owner: root:root
+    content: |
+      controller_url: http://10.14.100.1:18099
+      node_name: bsp-verify
+      role_hint: compute
+      underlay_ip: 10.10.0.0/24
+
+=== boot node and time boot -> controller acknowledgement ===
+$ lxc start bsp-verify
+
+=== TIMING ===
+host clock (lxc start -> controller has node) : 4.088s
+node /proc/uptime when controller saw node   : 3.91s
+boot_to_registered_ms (state.json, node clock): 3520 ms
+register_ms (service start -> 2xx ack)        : 100 ms
+PASS  registered node_id=01M43DZM1EXQXZ975XB391PWB1
+PASS  registration (service start -> controller ack) 100 ms < 5000 ms  [contract §12.5]
+
+=== systemd unit state after registration ===
+$ lxc exec bsp-verify -- systemctl is-active termini-bootstrap.service
+active
+$ lxc exec bsp-verify -- systemctl show termini-bootstrap.service -p Type -p SubState
+Type=notify
+SubState=running
+$ lxc exec bsp-verify -- journalctl -u termini-bootstrap.service -b --no-pager -n 6
+Oct 04 12:24:53 bsp-verify systemd[1]: Starting termini-bootstrap.service - Termini node bootstrap (register + telemetry)...
+Oct 04 12:24:53 bsp-verify termini-bootstrap[313]: 2026-10-04T12:24:53Z [termini-bootstrap] REGISTERED node_id=01M43DZM1EXQXZ975XB391PWB1 role=compute register_ms=100 boot_to_registered_ms=3520
+Oct 04 12:24:53 bsp-verify systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (register + telemetry).
+
+=== controller's own record of the node ===
+{
+    "nodes": [
+        {
+            "node_id": "01M43DZM1EXQXZ975XB391PWB1",
+            "registration_id": "30557eb347308d79bba3cb0ded7bcae6",
+            "role": "compute",
+            "status": "online",
+            "last_seen_at": "2026-10-04T12:24:57Z",
+            "uptime_sec": 7,
+            "hardware": {
+                "cpu": {
+                    "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+                    "sockets": 1,
+                    "cores": 8,
+                    "threads": 8
+                },
+                "memory": {
+                    "total_bytes": 20948180992
+                },
+                "gpus": [],
+                "disks": [
+                    {
+                        "device": "/dev/root",
+                        "type": "ssd",
+                        "size_bytes": 1,
+                        "health": "ok"
+                    }
+                ]
+            },
+            "capacity": {
+                "cpu_cores": 8,
+                "ram_gb": 19,
+                "disk_gb": 0,
+                "gpu_free": 0,
+                "cpu_allocated": 0,
+                "ram_allocated_gb": 0
+            },
+            "health": {
+                "cpu_util_pct": 23.58,
+                "ram_used_pct": 0.4,
+
+=== SSH login with the cloud-init-injected team key (no password) ===
+node ip: 10.14.100.123
+PASS  passwordless SSH as root succeeded: Warning: Permanently added '10.14.100.123' (ED25519) to the list of known hosts. root bsp-verify
+$ ssh -i /home/ubuntu/.hermes/profiles/infra/cache/scratch/bsp-verify.0GSoct/team_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=8 root@10.14.100.123 grep -c . /root/.ssh/authorized_keys; stat -c "%a %U:%G %n" /root/.ssh /root/.ssh/authorized_keys
+Warning: Permanently added '10.14.100.123' (ED25519) to the list of known hosts.
+1
+700 root:root /root/.ssh
+600 root:root /root/.ssh/authorized_keys
+
+=== password auth must be refused ===
+PASS  password auth refused (PasswordAuthentication no)
+$ ssh -i /home/ubuntu/.hermes/profiles/infra/cache/scratch/bsp-verify.0GSoct/team_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=8 root@10.14.100.123 sshd -T 2>/dev/null | grep -E "^passwordauthentication|^permitrootlogin|^trustedusercakeys"
+Warning: Permanently added '10.14.100.123' (ED25519) to the list of known hosts.
+permitrootlogin without-password
+passwordauthentication no
+trustedusercakeys /etc/ssh/termini_ca.pub
+
+=== idempotency: re-run the key installer (must not duplicate the key) ===
+$ lxc exec bsp-verify -- /usr/local/sbin/termini-install-ssh-key
+$ lxc exec bsp-verify -- /usr/local/sbin/termini-install-ssh-key
+PASS  exactly one copy of the team key in authorized_keys
+
+=== idempotency: reboot reconnects with the same node_id (no re-enrollment) ===
+$ timeout 40 lxc stop bsp-verify --timeout 20
+$ lxc start bsp-verify
+node_id before=01M43DZM1EXQXZ975XB391PWB1 after=01M43DZM1EXQXZ975XB391PWB1  node_rows=1
+PASS  node_id stable across reboot
+PASS  controller still has exactly one node (no duplicate)
+$ lxc exec bsp-verify -- cat /var/lib/termini/state.json
+{
+  "state": "ONLINE",
+  "updated_at": "2026-10-04T12:25:00Z",
+  "node_id": "01M43DZM1EXQXZ975XB391PWB1",
+  "role": "compute",
+  "registration_id": "bsp-verify",
+  "cluster_member": "bsp-verify",
+  "register_ms": 100,
+  "boot_to_registered_ms": 3520,
+  "last_error": null,
+  "seq": 7,
+  "last_telemetry_at": "2026-10-04T12:25:00Z"
+}
+PASS  team key still present exactly once after reboot
+
+=== VERDICT ===
+RESULT: PASS — fresh node registered with the controller, passwordless SSH with the injected key works, flow is idempotent.
