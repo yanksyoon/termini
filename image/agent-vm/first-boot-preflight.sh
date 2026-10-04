@@ -44,6 +44,17 @@ record_check() { printf 'check\t%s\t%s\t%s\n' "$1" "$2" "$3" >>"$records"; [ "$2
 record_scalar() { printf 'scalar\t%s\t%s\n' "$1" "$2" >>"$records"; }
 record_dep() { printf 'dep\t%s\t%s\t%s\n' "$1" "$2" "$3" >>"$records"; }
 
+# --- boot-time network accounting (the real measurement) ----------------------
+# `network_downloads_at_boot` is DERIVED from /proc/net/dev, never a literal.
+# The library is installed by provision/30-termini-agent.sh; the script-relative
+# path is the fallback when running from a checkout (rehearsal/testing).
+NET_LIB="${TERMINI_NET_ACCOUNTING_LIB:-/usr/local/lib/termini/net-accounting.sh}"
+if [ ! -r "$NET_LIB" ]; then
+  NET_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tools/net-accounting.sh"
+fi
+# shellcheck source=/dev/null
+[ -r "$NET_LIB" ] && . "$NET_LIB"
+
 for tool in jq sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || { echo "FATAL: $tool is required" >&2; exit 3; }
 done
@@ -125,7 +136,42 @@ else
   record_check agent_deps_importable true "skipped (rehearsal root != /)"
 fi
 
-# --- 4. emit the boot log -----------------------------------------------------
+# --- 4. boot-time network accounting (real measurement) -----------------------
+# Read the kernel counters. On a real boot (root=/) this is the machine's own
+# traffic; against a staged --root the host's counters are not the image's, so
+# unless a test fixture is injected via TERMINI_PROC_NET_DEV we record that the
+# measurement was not applicable rather than inventing a number.
+#
+# NB this MEASURES and RECORDS but does not fail the boot: the guest VM is
+# legitimately launched with a NIC in production, and on a shared host bridge a
+# fresh veth can receive unrelated flooded frames. Enforcement of the
+# zero-download claim lives in tools/offline-acceptance.sh, which runs on the
+# NIC-less offline profile where the guarantee is structural.
+NET_MEASURED=0
+NET_RX=0; NET_TX=0; NET_RXP=0; NET_TXP=0; NET_NIF=0; NET_IFS=""; NET_DL=0
+NET_ALLOWANCE="${TERMINI_LINK_LOCAL_DHCP_ALLOWANCE_BYTES:-8192}"
+if [ "$ROOT" = "/" ] || [ -n "${TERMINI_PROC_NET_DEV:-}" ]; then
+  if command -v termini_net_counters >/dev/null 2>&1; then
+    read -r NET_RX NET_TX NET_RXP NET_TXP NET_NIF NET_IFS <<<"$(termini_net_counters)"
+    NET_RX="${NET_RX:-0}"; NET_TX="${NET_TX:-0}"; NET_RXP="${NET_RXP:-0}"
+    NET_TXP="${NET_TXP:-0}"; NET_NIF="${NET_NIF:-0}"; NET_IFS="${NET_IFS:-}"
+    NET_DL="$(termini_net_downloaded_bytes "$NET_RX")"
+    NET_MEASURED=1
+  else
+    echo "WARN: net-accounting library unavailable; network measurement skipped" >&2
+  fi
+fi
+record_scalar net_measured "$NET_MEASURED"
+record_scalar net_allowance_bytes "$NET_ALLOWANCE"
+record_scalar net_rx_bytes "$NET_RX"
+record_scalar net_tx_bytes "$NET_TX"
+record_scalar net_rx_packets "$NET_RXP"
+record_scalar net_tx_packets "$NET_TXP"
+record_scalar net_ifaces "$NET_IFS"
+record_scalar net_n_ifaces "$NET_NIF"
+record_scalar net_downloaded_bytes "$NET_DL"
+
+# --- 5. emit the boot log -----------------------------------------------------
 install -d -m 0755 "$(dirname "$LOG_OUT")" 2>/dev/null || mkdir -p "$(dirname "$LOG_OUT")"
 verdict="pass"; [ "$rc" -eq 0 ] || verdict="fail"
 export PREFLIGHT_RECORDS="$records" PREFLIGHT_DEP_REPORT="$DEP_REPORT"
@@ -157,7 +203,22 @@ doc = {
     "deps": deps,
     "selfcheck": report,
     "verdict": verdict,
-    "network_downloads_at_boot": 0,
+    "network": {
+        "method": "proc_net_dev",
+        "source": os.environ.get("TERMINI_PROC_NET_DEV") or "/proc/net/dev",
+        "measured": scalars.get("net_measured") == "1",
+        "allowance_bytes": int(scalars.get("net_allowance_bytes") or 0),
+        "rx_bytes": int(scalars.get("net_rx_bytes") or 0),
+        "tx_bytes": int(scalars.get("net_tx_bytes") or 0),
+        "rx_packets": int(scalars.get("net_rx_packets") or 0),
+        "tx_packets": int(scalars.get("net_tx_packets") or 0),
+        "nonloopback_interfaces": [i for i in (scalars.get("net_ifaces") or "").split(",") if i],
+        "nonloopback_interface_count": int(scalars.get("net_n_ifaces") or 0),
+        "downloaded_bytes": int(scalars.get("net_downloaded_bytes") or 0),
+    },
+    # Derived from the counter above (bytes received beyond the link-local/DHCP
+    # allowance); NOT a literal. 0 == no network download happened at boot.
+    "network_downloads_at_boot": int(scalars.get("net_downloaded_bytes") or 0),
     "verified_offline": verdict == "pass",
 }
 with open(out, "w", encoding="utf-8") as fh:
@@ -166,5 +227,10 @@ with open(out, "w", encoding="utf-8") as fh:
 PY
 
 echo "[first-boot] verdict=$verdict log=$LOG_OUT"
-echo "[first-boot] agent deps resolved from local disk (venvs + node), network_downloads_at_boot=0"
+echo "[first-boot] agent deps resolved from local disk (venvs + node)"
+if [ "$NET_MEASURED" = 1 ]; then
+  echo "[first-boot] network_downloads_at_boot=$NET_DL (measured rx_bytes=$NET_RX from /proc/net/dev, allowance=$NET_ALLOWANCE)"
+else
+  echo "[first-boot] network_downloads_at_boot=0 (not measured: rehearsal root)"
+fi
 exit "$rc"

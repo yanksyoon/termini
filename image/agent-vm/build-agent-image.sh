@@ -61,6 +61,7 @@ REQUIRED=(
   "$CTX_DIR/config/agent.yaml.template"
   "$CTX_DIR/first-boot-preflight.sh"
   "$CTX_DIR/tools/offline-acceptance.sh"
+  "$CTX_DIR/tools/net-accounting.sh"
   "$CTX_DIR/manifests/agent-image-manifest.schema.json"
   "$CTX_DIR/tools/validate_manifest.py"
 )
