@@ -91,14 +91,23 @@ def main(argv: list[str] | None = None) -> int:
     if cfg.operator_enabled:
         thresholds = Thresholds(
             oom_ram_pct=cfg.oom_ram_pct,
+            oom_clear_pct=cfg.oom_clear_pct,
             oom_consecutive=cfg.oom_consecutive,
+            oom_clear_consecutive=cfg.oom_clear_consecutive,
+            disk_fail_consecutive=cfg.disk_fail_consecutive,
+            disk_fail_clear_consecutive=cfg.disk_fail_clear_consecutive,
             disk_free_pct=cfg.disk_free_pct,
+            disk_free_clear_pct=cfg.disk_free_clear_pct,
             disk_free_consecutive=cfg.disk_free_consecutive,
             disk_write_latency_ms=cfg.disk_write_latency_ms,
+            disk_write_latency_clear_ms=cfg.disk_write_latency_clear_ms,
             disk_latency_consecutive=cfg.disk_latency_consecutive,
             disk_free_slope_bps=cfg.disk_free_slope_bps,
+            disk_clear_consecutive=cfg.disk_clear_consecutive,
             latency_ms=cfg.latency_ms,
+            latency_clear_ms=cfg.latency_clear_ms,
             latency_consecutive=cfg.latency_consecutive,
+            latency_clear_consecutive=cfg.latency_clear_consecutive,
         )
         try:
             playbooks = op_playbook.load_playbooks(cfg.playbooks_dir)

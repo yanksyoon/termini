@@ -33,6 +33,7 @@ from chaos import common  # noqa: E402
 # rule_id -> (action label, LXD method, path template, body)
 ACTIONS = {
     "oom-guard-01": ("vm.restart", "POST", "/1.0/instances/{instance}/state", {"action": "restart", "force": True}),
+    "disk-fail-01": ("disk.drain", "POST", "/1.0/instances/{instance}/state", {"action": "stop", "force": True}),
     "disk-degrade-01": ("disk.drain", "POST", "/1.0/instances/{instance}/state", {"action": "stop", "force": True}),
     "latency-01": ("net.probe", "POST", "/1.0/instances/{instance}/state", {"action": "restart"}),
 }
@@ -41,10 +42,10 @@ ACTIONS = {
 def select_action(samples: list[dict], thresholds: dict) -> dict | None:
     """Pure: given an ascending sample series, return the first firing rule.
 
-    Deterministic precedence: OOM, then disk-degrade, then latency.
+    Deterministic precedence: OOM, then disk-fail, then disk-degrade, then latency.
     """
     results = common.evaluate_series(samples, thresholds)
-    for rule in ("oom-guard-01", "disk-degrade-01", "latency-01"):
+    for rule in ("oom-guard-01", "disk-fail-01", "disk-degrade-01", "latency-01"):
         if results[rule]["fired"]:
             last = samples[-1] if samples else {}
             ram_pct = _ram_pct(last)

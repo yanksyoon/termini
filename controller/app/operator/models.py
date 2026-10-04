@@ -4,10 +4,11 @@ These are plain dataclasses (no I/O, no side effects) so the detector, chooser,
 and executor stay independently unit-testable. The loop (`loop.py`) is the only
 piece that touches the database and the LXD REST client together.
 
-The `type` vocabulary (oom | disk_degrade | latency) is the detector's health
-condition. The `rule_id` is the frozen traceability id from
+The `type` vocabulary (oom | disk_fail | disk_degrade | latency) is the
+detector's health condition. The `rule_id` is the frozen traceability id from
 `docs/contracts/node-telemetry.md` §5:
-    oom-guard-01, disk-degrade-01, latency-guard-01.
+    oom-guard-01, disk-fail-01, disk-degrade-01, gpu-oos-01 (plus the
+    harness-only latency-01, which thresholds net[].latency_ms).
 """
 from __future__ import annotations
 
@@ -22,12 +23,14 @@ class HealthEvent:
     event_id: str
     node_id: str
     rule_id: str
-    type: str                       # oom | disk_degrade | latency
+    type: str                       # oom | disk_fail | disk_degrade | latency
     metric: str                     # e.g. ram_used_bytes, disk_free_bytes, net_latency_ms
     value: float | None             # the offending value (percent/bytes/ms or slope)
     threshold: str                  # human-readable threshold description
-    fired_at: str                   # RFC3339 UTC
+    fired_at: str                   # RFC3339 UTC (ms)
     evidence: list = field(default_factory=list)  # ordered sample dicts (oldest first)
+    breach_started_at: str | None = None  # ts of the first breaching sample (latency base)
+    episode: int = 0                # trigger fire counter for this (node, rule)
 
 
 @dataclass

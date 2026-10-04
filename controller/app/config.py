@@ -100,17 +100,27 @@ class Config:
     operator_window: int
     operator_dry_run: bool
     operator_cooldown_s: float
+    cadence_report_s: float
     playbooks_dir: str
     # Detection thresholds (config, not code — task requirement).
     oom_ram_pct: float
+    oom_clear_pct: float
     oom_consecutive: int
+    oom_clear_consecutive: int
+    disk_fail_consecutive: int
+    disk_fail_clear_consecutive: int
     disk_free_pct: float
+    disk_free_clear_pct: float
     disk_free_consecutive: int
     disk_write_latency_ms: float
+    disk_write_latency_clear_ms: float
     disk_latency_consecutive: int
     disk_free_slope_bps: float
+    disk_clear_consecutive: int
     latency_ms: float
+    latency_clear_ms: float
     latency_consecutive: int
+    latency_clear_consecutive: int
     # LXD REST target + instance-name mapping.
     lxd_base_url: str
     lxd_instance_names: dict[str, str]
@@ -185,16 +195,26 @@ class Config:
             operator_window=_int_env("TERMINI_OPERATOR_WINDOW", 60),
             operator_dry_run=_bool_env("TERMINI_OPERATOR_DRY_RUN", False),
             operator_cooldown_s=_float_env("TERMINI_OPERATOR_COOLDOWN_S", 60.0),
+            cadence_report_s=_float_env("TERMINI_OPERATOR_CADENCE_REPORT_S", 30.0),
             playbooks_dir=playbooks_dir,
             oom_ram_pct=_float_env("TERMINI_OOM_RAM_PCT", 95.0),
+            oom_clear_pct=_float_env("TERMINI_OOM_CLEAR_PCT", 90.0),
             oom_consecutive=_int_env("TERMINI_OOM_CONSECUTIVE", 2),
+            oom_clear_consecutive=_int_env("TERMINI_OOM_CLEAR_CONSECUTIVE", 3),
+            disk_fail_consecutive=_int_env("TERMINI_DISK_FAIL_CONSECUTIVE", 1),
+            disk_fail_clear_consecutive=_int_env("TERMINI_DISK_FAIL_CLEAR_CONSECUTIVE", 3),
             disk_free_pct=_float_env("TERMINI_DISK_FREE_PCT", 5.0),
+            disk_free_clear_pct=_float_env("TERMINI_DISK_FREE_CLEAR_PCT", 15.0),
             disk_free_consecutive=_int_env("TERMINI_DISK_FREE_CONSECUTIVE", 3),
             disk_write_latency_ms=_float_env("TERMINI_DISK_WRITE_LATENCY_MS", 50.0),
+            disk_write_latency_clear_ms=_float_env("TERMINI_DISK_WRITE_LATENCY_CLEAR_MS", 30.0),
             disk_latency_consecutive=_int_env("TERMINI_DISK_LATENCY_CONSECUTIVE", 5),
             disk_free_slope_bps=_float_env("TERMINI_DISK_FREE_SLOPE_BPS", -5_000_000.0),
+            disk_clear_consecutive=_int_env("TERMINI_DISK_CLEAR_CONSECUTIVE", 3),
             latency_ms=_float_env("TERMINI_LATENCY_MS", 250.0),
+            latency_clear_ms=_float_env("TERMINI_LATENCY_CLEAR_MS", 150.0),
             latency_consecutive=_int_env("TERMINI_LATENCY_CONSECUTIVE", 3),
+            latency_clear_consecutive=_int_env("TERMINI_LATENCY_CLEAR_CONSECUTIVE", 3),
             lxd_base_url=os.environ.get("TERMINI_LXD_BASE_URL", "").strip()
             or "http://127.0.0.1:8443",
             lxd_instance_names=instance_names,

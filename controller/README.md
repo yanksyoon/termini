@@ -43,20 +43,30 @@ is hardcoded.
 | `TERMINI_MIN_REDACTOR_VERSION` | `3` | redactor-config minimum |
 | `TERMINI_TELEMETRY_INTERVAL_MS` | `1000` | node cadence default |
 | `TERMINI_OPERATOR_ENABLED` | `1` | run the in-process operator loop thread |
-| `TERMINI_OPERATOR_POLL_INTERVAL_S` | `1.0` | detect/act poll interval |
+| `TERMINI_OPERATOR_POLL_INTERVAL_S` | `1.0` | detect/act poll interval (tune 1–2 s for the demo) |
+| `TERMINI_OPERATOR_CADENCE_REPORT_S` | `30.0` | log a poll-cadence summary every N s |
 | `TERMINI_OPERATOR_DRY_RUN` | `0` | log intended LXD command, send nothing |
 | `TERMINI_OPERATOR_COOLDOWN_S` | `60` | suppress re-fire of the same rule on a node |
 | `TERMINI_OPERATOR_WINDOW` | `60` | telemetry samples inspected per node |
 | `TERMINI_PLAYBOOKS_DIR` | `playbooks/` | remediation playbook directory |
-| `TERMINI_OOM_RAM_PCT` | `95.0` | OOM rule: mem% threshold |
-| `TERMINI_OOM_CONSECUTIVE` | `2` | OOM rule: consecutive samples |
+| `TERMINI_OOM_RAM_PCT` | `95.0` | oom-guard-01: mem% enter threshold |
+| `TERMINI_OOM_CLEAR_PCT` | `90.0` | oom-guard-01: mem% clear (re-arm) threshold |
+| `TERMINI_OOM_CONSECUTIVE` | `2` | oom-guard-01: consecutive breaching samples |
+| `TERMINI_OOM_CLEAR_CONSECUTIVE` | `3` | oom-guard-01: consecutive healthy samples to re-arm |
+| `TERMINI_DISK_FAIL_CONSECUTIVE` | `1` | disk-fail-01: any mount_ro fires immediately |
+| `TERMINI_DISK_FAIL_CLEAR_CONSECUTIVE` | `3` | disk-fail-01: consecutive rw samples to re-arm |
 | `TERMINI_DISK_FREE_PCT` | `5.0` | disk rule: free% floor |
+| `TERMINI_DISK_FREE_CLEAR_PCT` | `15.0` | disk rule: free% clear threshold |
 | `TERMINI_DISK_FREE_CONSECUTIVE` | `3` | disk rule: consecutive samples at floor |
 | `TERMINI_DISK_WRITE_LATENCY_MS` | `50.0` | disk rule: write-latency threshold |
+| `TERMINI_DISK_WRITE_LATENCY_CLEAR_MS` | `30.0` | disk rule: write-latency clear threshold |
 | `TERMINI_DISK_LATENCY_CONSECUTIVE` | `5` | disk rule: consecutive samples |
 | `TERMINI_DISK_FREE_SLOPE_BPS` | `-5000000.0` | disk rule: steep-negative free slope |
+| `TERMINI_DISK_CLEAR_CONSECUTIVE` | `3` | disk rule: consecutive healthy samples to re-arm |
 | `TERMINI_LATENCY_MS` | `250.0` | latency rule: net latency threshold |
+| `TERMINI_LATENCY_CLEAR_MS` | `150.0` | latency rule: net latency clear threshold |
 | `TERMINI_LATENCY_CONSECUTIVE` | `3` | latency rule: consecutive samples |
+| `TERMINI_LATENCY_CLEAR_CONSECUTIVE` | `3` | latency rule: consecutive healthy samples |
 | `TERMINI_LXD_BASE_URL` | `http://127.0.0.1:8443` | LXD REST endpoint (executor) |
 | `TERMINI_LXD_INSTANCE_NAMES` | `{}` | JSON `{vm_id: lxd_name}` mapping |
 | `TERMINI_LXD_DEFAULT_INSTANCE_NAME` | `agent` | fallback instance name |
@@ -169,12 +179,42 @@ make chaos SCENARIO=oom OPERATOR_CMD="python3 controller/app/operator/cli.py \
 | File | Health type | Rule | Action (LXD REST) |
 |------|-------------|------|-------------------|
 | `playbooks/oom.yaml` | `oom` | `oom-guard-01` | `instance.restart` the heaviest workload (`PUT /1.0/instances/{name}/state`) |
+| `playbooks/disk-fail.yaml` | `disk_fail` | `disk-fail-01` | `instance.stop` to drain the node whose disk remounted read-only (EXT4 I/O error) |
 | `playbooks/disk-degrade.yaml` | `disk_degrade` | `disk-degrade-01` | `instance.stop` to drain the heaviest workload off the degraded node |
 | `playbooks/latency.yaml` | `latency` | `latency-01` | `instance.restart` the affected workload |
 
 Playbooks are parsed by a bundled stdlib-only YAML-subset parser
 (`app/operator/yaml.py`) — no PyYAML dependency. Every threshold is an env var
 (see table above); the frozen demo defaults match `chaos/chaos.json`.
+
+### Persisted triggers, hysteresis, and detection latency
+
+Detection is **stateful and persisted**, not an in-memory threshold check:
+
+- **Thresholds are durable.** On first poll the loop seeds `trigger_config`
+  (SQLite, migration `0003`) from the env vars above, then reads them back on
+  every poll — a value written to that table survives a controller restart and
+  takes effect on the next poll with no re-deploy.
+- **Hysteresis + debounce.** Each rule has an *enter* threshold (fire) and a
+  distinct *clear* threshold (re-arm). A trigger fires only when the metric is
+  currently breached for `*_consecutive` samples, then **latches** until the
+  metric returns below the clear threshold for `*_clear_consecutive` samples.
+  A single noisy sample never fires; a recovering metric never re-fires inside
+  the band; and a genuine re-occurrence after recovery is a new episode (new
+  command).
+- **Latch persists across restarts.** `trigger_state` holds one row per
+  (node, rule) — `armed`/`fired`, `last_fired_at`, `fired_count`. On restart
+  the loop reloads it, so an already-remediated fault is not re-fired from a
+  cold start.
+- **Detection latency is measured and logged.** Every fire records
+  `breach_started_at` (the first breaching sample's timestamp) and `fired_at`
+  (ms precision), and every remediation logs `detection_latency_s`
+  (`breach → fire`) and `remediation_latency_s` (`fire → LXD command`). The
+  standalone CLI writes both to its `--audit-out` JSONL.
+
+The same engine runs in-process (`app/operator/loop.py`, SQLite-backed) and
+standalone (`app/operator/cli.py`, `--state-file` JSON-backed), so the chaos
+harness can exercise persisted triggers from a cold operator process.
 
 ### Guarantees
 
@@ -193,7 +233,7 @@ Playbooks are parsed by a bundled stdlib-only YAML-subset parser
 
 ```bash
 make verify           # core acceptance: register→role, telemetry, 422-on-malformed
-make verify-operator  # operator loop vs the chaos harness (oom/disk/latency/healthy)
+make verify-operator  # operator loop vs the chaos harness (oom/disk-degrade/disk-fail/latency/healthy)
 python3 -m unittest discover -s tests   # unit + integration (core + dashboard surfaces)
 ```
 

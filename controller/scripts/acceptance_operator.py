@@ -38,10 +38,10 @@ OPERATOR_CMD = (
     " --controller-url {controller_url} --lxd-url {lxd_url}"
     " --node {node_id} --project-token {project_token}"
     " --thresholds '{thresholds_json}'"
-    " --duration 40 --audit-out {audit_out}"
+    " --duration 40 --audit-out {audit_out} --state-file {state_file}"
 )
 
-SCENARIOS = ["oom", "disk-degrade", "latency", "healthy"]
+SCENARIOS = ["oom", "disk-degrade", "disk-fail", "latency", "healthy"]
 
 
 def _read_jsonl(path: str) -> list[dict]:
@@ -59,14 +59,18 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for name in SCENARIOS:
         print(f"\n=== scenario: {name} ===")
-        audit_out = str(pathlib.Path(tempfile.mkdtemp(prefix="op-audit-")) / f"{name}.jsonl")
-        # {audit_out} is NOT a chaos placeholder, so substitute it ourselves and
-        # leave the five placeholders run.run_scenario actually formats.
-        cmd = OPERATOR_CMD.replace("{audit_out}", audit_out)
+        d = pathlib.Path(tempfile.mkdtemp(prefix="op-audit-"))
+        audit_out = str(d / f"{name}.jsonl")
+        state_file = str(d / f"{name}.state.json")
+        # {audit_out} / {state_file} are NOT chaos placeholders, so substitute
+        # them ourselves and leave the five placeholders run.run_scenario formats.
+        cmd = OPERATOR_CMD.replace("{audit_out}", audit_out).replace("{state_file}", state_file)
         res = run.run_scenario(name, run.config.load(None), operator_cmd=cmd)
         run._print_report(res)
         audits = _read_jsonl(audit_out)
         res["audit_count"] = len(audits)
+        res["detection_latency_s"] = [a.get("detection_latency_s") for a in audits
+                                      if a.get("detection_latency_s") is not None]
         results.append(res)
 
     print("\n================ SUMMARY ================")
@@ -80,7 +84,8 @@ def main(argv: list[str] | None = None) -> int:
               f"(expected {'>=1' if cmd.get('expected') else '0'}) "
               f"audits={res.get('audit_count')}")
 
-    # Every remediation scenario must have produced an audit record.
+    # Every remediation scenario must have produced an audit record, and each
+    # audit must carry a measured detection latency (fault onset -> fire).
     for res in results:
         expects_remediation = res["scenario"] != "healthy"
         if expects_remediation and res.get("audit_count", 0) < 1:
@@ -90,9 +95,19 @@ def main(argv: list[str] | None = None) -> int:
         elif not expects_remediation and res.get("audit_count", 0) != 0:
             print(f"  FAIL  healthy: expected 0 audits, got {res.get('audit_count')}")
             failed += 1
+        if expects_remediation and not res.get("detection_latency_s"):
+            print(f"  FAIL  {res['scenario']}: audits missing detection latency")
+            failed += 1
+        if res.get("detection_latency_s"):
+            worst = max(res["detection_latency_s"])
+            print(f"         {res['scenario']}: detection latencies={res['detection_latency_s']}s "
+                  f"(max {worst}s)")
+            if worst > 10.0:
+                print(f"  FAIL  {res['scenario']}: detection latency {worst}s > 10s budget")
+                failed += 1
 
     print(f"\n{len(results) - failed} passed, {failed} failed "
-          f"(dry-run + idempotency asserted in the unit suite)")
+          f"(dry-run + idempotency + restart persistence asserted in the unit suite)")
     return 1 if failed else 0
 
 
