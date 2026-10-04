@@ -21,6 +21,7 @@ to match (all such updates are applied in the same change set that added this fi
 | Node bootstrap | `docs/contracts/node-bootstrap.md` | Node-side boot → register → LXD join → telemetry → SSH injection; failure/retry matrix |
 | Controller API | `docs/contracts/controller-api.md` | REST/WS surface, tokens, error envelope, guardrail/clamp validator, command channel, event stream |
 | Node telemetry | `docs/contracts/node-telemetry.md` | C0/C1 telemetry schema, ingest validation, threshold-trigger linkage |
+| Dashboard | `docs/contracts/dashboard.md` | Customer dashboard ↔ controller: telemetry view, AI-operator log stream, terminal (WS + SSH string), manual intervention |
 | Allocation schema | `docs/contracts/vm-allocation.schema.json` | Structural `AllocationRequest` / `AllocationPlan` / guardrail audit JSON Schema |
 | Agent runtime | `docs/contracts/agent-runtime.md` | Agent VM image, LXD launch contract, in-VM runtime + broker, llama.cpp inference interface |
 | Governance | `docs/contracts/governance.md` | C0/C1/C2 taxonomy, on-node redactor, external-call boundary, audit chain, enforcement hooks |
