@@ -1,0 +1,16 @@
+# Latency remediation playbook — Termini controller.
+# Rule: latency-01 (net[].latency_ms sustained above threshold; the frozen
+# telemetry schema has no application p95 field, so the rule thresholds the only
+# latency signal it carries — see chaos/README.md).
+# Thresholds live in config (env): TERMINI_LATENCY_MS, TERMINI_LATENCY_CONSECUTIVE.
+version: 1
+rule_id: latency-01
+type: latency
+description: Restart the affected workload when network latency is sustained above threshold.
+action:
+  kind: instance.restart
+  target: heaviest
+  params:
+    force: true
+    timeout_s: 30
+reason: network latency sustained above threshold; restart the affected workload.

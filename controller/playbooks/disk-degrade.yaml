@@ -1,0 +1,21 @@
+# Disk-degradation remediation playbook — Termini controller.
+# Frozen rule: disk-degrade-01 (docs/contracts/node-telemetry.md §5).
+# Thresholds live in config (env): TERMINI_DISK_FREE_PCT,
+# TERMINI_DISK_FREE_CONSECUTIVE, TERMINI_DISK_WRITE_LATENCY_MS,
+# TERMINI_DISK_LATENCY_CONSECUTIVE, TERMINI_DISK_FREE_SLOPE_BPS.
+#
+# Remediation: drain the heaviest workload off the degraded node (stop it) so it
+# can be migrated elsewhere — the first, observable step of "migrate workload off
+# the degraded node". Image pruning (`image.prune`, pure LXD REST) is the other
+# supported action for reclaiming disk and is available by changing `action`
+# below; it is exercised by the executor unit tests.
+version: 1
+rule_id: disk-degrade-01
+type: disk_degrade
+description: Drain the heaviest workload off a disk-degraded node so it can be migrated.
+action:
+  kind: instance.stop
+  target: heaviest
+  params:
+    force: true
+reason: disk free space degraded below threshold or falling steeply; drain the heaviest workload so it can be migrated off the degraded node.

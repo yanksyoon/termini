@@ -28,6 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from . import db, errors, governance, registration, role, store, validate
+from .operator import store as opstore
 
 log = logging.getLogger("termini.controller")
 
@@ -141,6 +142,13 @@ class ControllerHandler(BaseHTTPRequestHandler):
             return self._node_recent(conn, segs[2])
         if method == "GET" and segs[:2] == ["v1", "telemetry"] and segs[2:] == ["recent"]:
             return self._recent(conn)
+        if method == "GET" and segs[:2] == ["v1", "operator"] and len(segs) == 3:
+            if segs[2] == "events":
+                return self._operator_events(conn)
+            if segs[2] == "audits":
+                return self._operator_audits(conn)
+            if segs[2] == "decisions":
+                return self._operator_decisions(conn)
         raise errors.not_found(f"no route: {method} {path}")
 
     def do_POST(self) -> None:
@@ -323,6 +331,23 @@ class ControllerHandler(BaseHTTPRequestHandler):
         for n in store.list_nodes(conn, self.server.project["id"]):
             out[n["id"]] = store.recent_samples(conn, n["id"], limit)
         return 200, {"nodes": out}
+
+    def _operator_events(self, conn) -> tuple[int, dict]:
+        self._require_project(conn, self.server.project["id"])
+        node_id = self._query().get("node")
+        limit = self._limit_param()
+        return 200, {"events": opstore.list_health_events(conn, node_id, limit)}
+
+    def _operator_audits(self, conn) -> tuple[int, dict]:
+        self._require_project(conn, self.server.project["id"])
+        node_id = self._query().get("node")
+        limit = self._limit_param()
+        return 200, {"audits": opstore.list_audits(conn, node_id, limit)}
+
+    def _operator_decisions(self, conn) -> tuple[int, dict]:
+        self._require_project(conn, self.server.project["id"])
+        limit = self._limit_param()
+        return 200, {"decisions": opstore.list_decisions(conn, limit)}
 
     def _limit_param(self, default: int = 50) -> int:
         raw = self._query().get("limit", str(default))
