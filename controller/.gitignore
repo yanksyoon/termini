@@ -1,0 +1,15 @@
+# runtime artifacts (never commit)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# secrets
+.env
+.env.*
