@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "owner_task": "t_bcae0231",
+  "description": "Termini inference network path selection. 'direct' is the frozen demo path (docs/contracts/infra-decisions.md D2 — underlay routing, no overlay). 'ovn' is the day-2 overlay and the documented fallback.",
+  "active": "direct",
+  "active_profile": "onprem",
+  "paths": {
+    "direct": {
+      "host": "10.10.0.13",
+      "port": 8080,
+      "interface": "ens4",
+      "next_hop": "",
+      "encap_overhead": 0,
+      "description": "Host-level underlay route to the llama.cpp host. No encapsulation, no OVN/fan, no bridge hop: the agent's egress is SNATed onto the underlay and routed straight to Node C. 'interface' is the node's underlay NIC (ens4 on the GCP demo images; rename per node). Node C is on-link on the underlay, so no next hop is set; add one only if the inference host is off-subnet."
+    },
+    "ovn": {
+      "host": "10.10.0.13",
+      "port": 8080,
+      "interface": "ovn0",
+      "next_hop": "",
+      "encap_overhead": 50,
+      "description": "OVN logical-router path carried over Geneve (UDP 6081) into the overlay. Day-2 overlay; fallback only. 50 bytes of outer headers (IPv4 20 + UDP 8 + Geneve 8 + inner Ethernet 14) are subtracted from the path MTU. The destination is on-link on the logical network, so no next hop is set."
+    }
+  },
+  "mtu_profiles": {
+    "onprem": {
+      "underlay_mtu": 1500,
+      "direct": 1500,
+      "ovn": 1450
+    },
+    "gcp": {
+      "underlay_mtu": 1460,
+      "direct": 1460,
+      "ovn": 1410
+    }
+  },
+  "notes": [
+    "GCP VPC MTU is 1460, so on the demo VPC the same 50-byte walk-off applies to 1460 (direct) -> 1410 (ovn).",
+    "The lab (infra/net/lab) reproduces the on-prem profile on native Ethernet: 1500 direct, 1450 overlay.",
+    "Path MTU is the largest IP payload the path carries without fragmentation; the DF-bit probe payload is path_mtu - 28 (20 IP + 8 ICMP)."
+  ]
+}

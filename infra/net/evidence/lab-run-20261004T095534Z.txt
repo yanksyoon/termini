@@ -1,0 +1,186 @@
+==============================================================
+ Termini direct-vs-overlay network lab   20261004T095534Z
+==============================================================
+
+---- interface MTUs ----------------------------------------------------
+direct  path (ula, routed underlay) MTU = 1500
+overlay path (vxa, VXLAN tunnel)    MTU = 1450
+encap overhead observed (direct - overlay) = 50 bytes
+
+---- starting mock llama.cpp (OpenAI SSE) on 10.10.0.13:8123 ------
+mock llama.cpp ready (pid 241110)
+
+=============== 1. DF-bit path-MTU probes ==============================
+probe custom -> 10.10.0.13: DF payload=1472 (MTU 1500): pass (expected pass)
+probe custom -> 10.99.0.13: DF payload=1472 (MTU 1500): fail (expected fail)
+probe custom -> 10.99.0.13: DF payload=1422 (MTU 1450): pass (expected pass)
+probe custom -> 10.10.0.13: DF payload=1422 (MTU 1450): pass (expected pass)
+
+---- PMTU sweep (binary search for the real path MTU) ------------------
+path-mtu sweep 10.10.0.13: max DF payload=1472 bytes -> path MTU=1500
+path-mtu sweep 10.99.0.13: max DF payload=1422 bytes -> path MTU=1450
+
+=============== 2. sustained streaming load ============================
+--- direct path, 180s ---
+== inference load test ==
+path      : active
+endpoint  : http://10.10.0.13:8123/v1/chat/completions
+duration  : 180s  concurrency=2  prompt=65536B
+{
+  "url": "http://10.10.0.13:8123/v1/chat/completions",
+  "prompt_bytes": 65644,
+  "duration_s": 180.0,
+  "concurrency": 2,
+  "requests": 334,
+  "completed": 334,
+  "dropped": 0,
+  "aborted": 0,
+  "tokens": 21376,
+  "bytes_in": 4190698,
+  "first_token_ms": {
+    "p50": 2.23,
+    "p95": 4.92,
+    "max": 15.68
+  },
+  "inter_token_ms": {
+    "p50": 16.99,
+    "p95": 17.49,
+    "max": 27.23
+  },
+  "request_total_ms": {
+    "p50": 1091.21,
+    "p95": 1110.58,
+    "max": 1142.16
+  },
+  "errors": []
+}
+RESULT: PASS — zero dropped connections
+--- overlay path, 60s ---
+== inference load test ==
+path      : active
+endpoint  : http://10.99.0.13:8123/v1/chat/completions
+duration  : 60s  concurrency=2  prompt=65536B
+{
+  "url": "http://10.99.0.13:8123/v1/chat/completions",
+  "prompt_bytes": 65644,
+  "duration_s": 60.0,
+  "concurrency": 2,
+  "requests": 114,
+  "completed": 114,
+  "dropped": 0,
+  "aborted": 0,
+  "tokens": 7296,
+  "bytes_in": 1430358,
+  "first_token_ms": {
+    "p50": 3.28,
+    "p95": 8.17,
+    "max": 15.02
+  },
+  "inter_token_ms": {
+    "p50": 17.08,
+    "p95": 18.25,
+    "max": 28.51
+  },
+  "request_total_ms": {
+    "p50": 1099.08,
+    "p95": 1132.22,
+    "max": 1196.06
+  },
+  "errors": []
+}
+RESULT: PASS — zero dropped connections
+
+=============== 3. overlay PMTU black hole =============================
+probe custom -> 10.32.0.2: DF payload=1472 (MTU 1500): fail (expected fail)
+probe custom -> 10.32.0.2: DF payload=1422 (MTU 1450): pass (expected pass)
+--- black-hole streaming load, 30s (drops expected) ---
+== inference load test ==
+path      : active
+endpoint  : http://10.32.0.2:8123/v1/chat/completions
+duration  : 30s  concurrency=2  prompt=65536B
+{
+  "url": "http://10.32.0.2:8123/v1/chat/completions",
+  "prompt_bytes": 65644,
+  "duration_s": 30.0,
+  "concurrency": 2,
+  "requests": 8,
+  "completed": 0,
+  "dropped": 6,
+  "aborted": 2,
+  "tokens": 0,
+  "bytes_in": 0,
+  "first_token_ms": {
+    "p50": 0.0,
+    "p95": 0.0,
+    "max": 0.0
+  },
+  "inter_token_ms": {
+    "p50": 0.0,
+    "p95": 0.0,
+    "max": 0.0
+  },
+  "request_total_ms": {
+    "p50": 0.0,
+    "p95": 0.0,
+    "max": 0.0
+  },
+  "errors": [
+    "TimeoutError: timed out",
+    "TimeoutError: timed out",
+    "TimeoutError: timed out",
+    "TimeoutError: timed out",
+    "TimeoutError: timed out",
+    "TimeoutError: timed out"
+  ]
+}
+RESULT: FAIL — dropped connections (see report)
+--- direct path control, 30s ---
+== inference load test ==
+path      : active
+endpoint  : http://10.10.0.13:8123/v1/chat/completions
+duration  : 30s  concurrency=2  prompt=65536B
+{
+  "url": "http://10.10.0.13:8123/v1/chat/completions",
+  "prompt_bytes": 65644,
+  "duration_s": 30.0,
+  "concurrency": 2,
+  "requests": 60,
+  "completed": 60,
+  "dropped": 0,
+  "aborted": 0,
+  "tokens": 3840,
+  "bytes_in": 752820,
+  "first_token_ms": {
+    "p50": 2.9,
+    "p95": 6.3,
+    "max": 7.4
+  },
+  "inter_token_ms": {
+    "p50": 16.99,
+    "p95": 17.31,
+    "max": 20.79
+  },
+  "request_total_ms": {
+    "p50": 1092.28,
+    "p95": 1097.99,
+    "max": 1105.54
+  },
+  "errors": []
+}
+RESULT: PASS — zero dropped connections
+
+=============== summary ================================================
+PROBE direct  @ 1500: OK (pass)
+PROBE overlay @ 1500 (direct MTU): OK (fail)
+PROBE overlay @ 1450 (tunnel MTU): OK (pass)
+PROBE direct  @ 1450: OK (pass)
+LOAD direct: PASS (0 dropped)
+LOAD overlay: PASS (0 dropped)
+PROBE blackhole overlay @ 1500: OK (fail)
+PROBE blackhole overlay @ 1450: OK (pass)
+LOAD blackhole: dropped connections (expected — demonstrates the failure mode)
+LOAD direct-control: PASS (0 dropped)
+
+evidence written under: /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_bcae0231/repo/infra/net/evidence
+run log: /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_bcae0231/repo/infra/net/evidence/lab-run-20261004T095534Z.txt
+LAB RESULT: PASS
