@@ -12,6 +12,8 @@ Validation policy (task t_26f5ba13):
     clamped to ``min(requested, host_max)``;
   * unknown component types, malformed components, missing required fields,
     and over-long component lists are REJECTED (all-or-nothing);
+  * ``passthrough_gpu: true`` on ANY class is a structural REJECTION with reason
+    ``gpu_passthrough_not_in_demo`` (controller-api.md §5.1/§5.3, day-2 only);
   * every alteration is reported as a ``ClampDecision`` (requested vs applied).
 
 Full node-resolution / GPU / capacity-accounting guardrail logic
@@ -36,6 +38,7 @@ from .types import (
     REASON_DEFAULTED,
     REASON_EMPTY,
     REASON_EXTRACTION_FAILED,
+    REASON_GPU_PASSTHROUGH_NOT_IN_DEMO,
     REASON_MALFORMED,
     REASON_MISSING_COUNT,
     REASON_MISSING_TYPE,
@@ -195,6 +198,18 @@ def clamp_validate(components: Any, host_caps: Any) -> ValidationResult:
             _reject(result, index, REASON_UNKNOWN_TYPE, f"unknown type {comp_type!r}")
             continue
 
+        # Structural rejection (controller-api.md §5.1/§5.3): GPU passthrough is
+        # day-2 only, so `passthrough_gpu: true` on ANY class rejects the request
+        # (reason gpu_passthrough_not_in_demo). Never clamped.
+        if _coerce_bool(component.get("passthrough_gpu"), default=False):
+            _reject(
+                result,
+                index,
+                REASON_GPU_PASSTHROUGH_NOT_IN_DEMO,
+                f"{comp_type} passthrough_gpu=true is day-2 only",
+            )
+            continue
+
         caps_for_role = caps.for_role(comp_type)
         role_floor = ROLE_FLOORS[comp_type]
 
@@ -237,7 +252,7 @@ def clamp_validate(components: Any, host_caps: Any) -> ValidationResult:
         if failed:
             continue
 
-        passthrough = _coerce_bool(component.get("passthrough_gpu"), default=False)
+        # passthrough_gpu was already rejected above when true; only false survives.
         target_node = component.get("target_node")
         if not isinstance(target_node, str) or target_node == "":
             target_node = "auto"
@@ -249,7 +264,7 @@ def clamp_validate(components: Any, host_caps: Any) -> ValidationResult:
                 vcpus=values["vcpus"],
                 ram_gb=values["ram_gb"],
                 disk_gb=values["disk_gb"],
-                passthrough_gpu=passthrough,
+                passthrough_gpu=False,
                 target_node=target_node,
             )
         )
