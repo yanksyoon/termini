@@ -1,0 +1,77 @@
+name: ci-watchdog
+
+# HARD MERGE GUARANTEE.
+# Branch protection and rulesets are unavailable on this private free-plan repo,
+# and `gh pr merge` will happily merge a pending/failing PR. So this watchdog
+# reverts any commit that reaches `main` while its CI run failed.
+#
+# Safety: it refuses to revert its own reverts (message prefix "[watchdog]" /
+# "Revert ") so a genuinely broken main cannot ping-pong forever.
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: ci-watchdog-main
+  cancel-in-progress: false
+
+jobs:
+  revert-red-main:
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Inspect the failing commit
+        id: inspect
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          msg="$(git log -1 --format=%s "$SHA")"
+          echo "subject=${msg:0:72}" >> "$GITHUB_OUTPUT"
+          if printf '%s' "$msg" | grep -qiE '^\[watchdog\]|^Revert '; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Revert the red commit on main
+        if: steps.inspect.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          git config user.name  "ci-watchdog[bot]"
+          git config user.email "ci-watchdog@users.noreply.github.com"
+          if ! git revert --no-commit "$SHA"; then
+            echo "::error::revert of $SHA did not apply cleanly"
+            git revert --abort || true
+            exit 1
+          fi
+          git commit -m "[watchdog] revert red commit ${SHA:0:7} on main"
+          git push origin HEAD:main
+
+      - name: Open an issue about the red main
+        if: always() && steps.inspect.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN: ${{ github.event.workflow_run.html_url }}
+          SUBJECT: ${{ steps.inspect.outputs.subject }}
+        run: |
+          body="$(printf 'CI failed on a commit that reached `main`.\n\n- commit: `%s`\n- subject: %s\n- failing run: %s\n\nThe ci-watchdog reverted (or attempted to revert) this commit. Re-land it properly through a PR + `scripts/land.sh`.\n' "$SHA" "$SUBJECT" "$RUN")"
+          gh issue create --title "[watchdog] main went red at ${SHA:0:7}" --body "$body" || true
