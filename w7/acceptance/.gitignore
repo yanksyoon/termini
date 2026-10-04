@@ -1,0 +1,6 @@
+# Runtime artifacts — evidence + summary are produced by run.py and may contain
+# environment-specific data. They are deliberately not committed.
+evidence/
+summary.json
+__pycache__/
+*.pyc
