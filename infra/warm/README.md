@@ -48,7 +48,7 @@ re-enrolling, and streams C1-transformed telemetry at the demo cadence
 |---|---|---|
 | Node hypervisor | LXD **containers** (instant boot, no KVM/GPU here) | LXD **VMs** on GCP nodes A/B/C (`image/pipeline/packer`) |
 | LXD cluster | single-node LXD; nodes are separate instances | 3-member `termini` cluster (`infra-decisions.md` D1) |
-| Inference | host-exposed `llama.cpp`, **CPU** (`--n-gpu-layers 0`) — D5 topology, no GPU on this host | same host-exposed service on Node C **GPU** |
+| Inference | host-exposed `llama.cpp`, **CPU** (`--n-gpu-layers 0`); serve flags mirrored from the frozen Node C contract (`--ctx-size 8192 --parallel 2 --reasoning-format none`) — D5 topology, no GPU on this host | same host-exposed service on Node C **GPU** |
 | Model | the **real pinned** `deepseek-flash` GGUF (4.58 GiB) resident in RAM | same, plus `deepseek-v4-pro` lazy |
 | Guest `agent-vm` image | pinned alias preloaded in the host store; no nested LXD to preload into containers | preloaded into each node's local LXD store (D3) |
 | Transport | plain HTTP on the demo underlay | mTLS + LXD join tokens (`# not in controller core`) |
