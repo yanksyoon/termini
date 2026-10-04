@@ -70,7 +70,8 @@ print("-" * 60)
 print(f"{'TOTAL':<5} {total_planned:>7}s {'':>5} {total_spoken:>6.1f}s {total_act:>7.1f}s {total_actual:>6.1f}s {total_actual-total_planned:>+6.1f}s")
 
 def fmt(s):
-    return f"{int(s)//60}:{int(s)%60:02d}"
+    s = round(s)
+    return f"{s//60}:{s%60:02d}"
 
 print()
 print(f"Slot: {fmt(SLOT_SECS)}  Target (<=): {fmt(TARGET_SECS)}  Actual total: {fmt(total_actual)}")
