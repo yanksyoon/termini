@@ -316,7 +316,7 @@
       <div class="card">
         <h3>vs <span class="blue">Datadog</span> (infra ops)</h3>
         <ul>
-          <li>Datadog <b>exfiltrates</b> telemetry to its SaaS; Termini runs a <b>self-hosted remediation loop</b> — intent extraction on the customer’s own GPU.</li>
+          <li>Datadog <b>exfiltrates</b> telemetry to its SaaS; Termini runs a <b>self-hosted remediation loop</b> — intent extraction on the customer’s own hardware.</li>
           <li>Datadog has <b>no self-hosted / air-gapped AI</b>; Termini serves an entire market that can’t send anything off-prem.</li>
           <li>Datadog assumes the infra <b>already exists</b>; Termini owns day-0 bootstrap too.</li>
           <li>Only <b>C0 hardware/OS telemetry</b> ever leaves Termini’s boundary.</li>
@@ -383,16 +383,16 @@
     <div class="resolve"><span class="tag">Resolved</span><span class="ans"><b>LXD</b> (5.21/stable) as a 3-member cluster. <b>OpenStack rejected</b> — hours-to-days of setup for problems this demo doesn’t have.</span></div>
     <div class="cols two" style="margin-top:18px;">
       <div class="card">
-        <h3><span class="num">▦</span> Networking — no overlay</h3>
-        <p>Each node keeps a <b>local NAT bridge</b> on its own subnet; cross-node traffic rides the <b>physical underlay by real IP</b>. GPU inference is reachable at <b>http://10.10.0.13:8080</b>.</p>
+        <h3><span class="num">▦</span> Inference path — no overlay</h3>
+        <p>Each node keeps a <b>local NAT bridge</b> on its own subnet; the <b>inference leg rides the physical underlay by real IP</b>. The on-prem inference service (<b>llama.cpp</b>) on Node C is reachable at <b>http://10.10.0.13:8080</b>. Agent-workload addressing uses a <b>VXLAN overlay</b> (<b>10.99.0.0/24</b>); the latency-critical inference leg stays on the underlay.</p>
       </div>
       <div class="card">
-        <h3><span class="num">◈</span> No tunnel to misconfigure</h3>
-        <p>A single static route either works or it doesn’t — <b>no encapsulation</b>. Guest MTU clamped to the underlay (<b>1460</b>) to avoid PMTU black holes.</p>
+        <h3><span class="num">◈</span> No tunnel on the inference leg</h3>
+        <p>On the inference leg, a single static route either works or it doesn’t — <b>no encapsulation</b>. Guest MTU clamped to the underlay (<b>1460</b>) to avoid PMTU black holes.</p>
       </div>
     </div>
-    <div class="risk"><span class="rlabel">Contested:</span> overlay tunnels (OVN/Fan/VXLAN) silently drop packets on MTU mismatch and add per-call latency. Resolved by <b>removing the tunnel</b> entirely.</div>
-    <div class="proof"><span class="plabel">How the demo proves it</span> — from an agent VM on Node A, <b>curl http://10.10.0.13:8080/v1/models</b> returns the model list over standard HTTP; watch <b>traceroute</b> and streamed tokens with no tunnel in the path.</div>
+    <div class="risk"><span class="rlabel">Contested:</span> overlay tunnels (OVN/Fan/VXLAN) silently drop packets on MTU mismatch and add per-call latency. The latency-critical inference leg avoids the overlay entirely.</div>
+    <div class="proof"><span class="plabel">How the demo proves it</span> — from an agent VM on Node A, <b>curl http://10.10.0.13:8080/v1/models</b> returns the model list over standard HTTP; watch <b>traceroute</b> and streamed tokens with no tunnel on the inference leg.</div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">08</span></div>
   </section>
 
@@ -456,7 +456,7 @@
   <section class="slide">
     <div class="kicker"><span class="n">10</span> &nbsp;Live demo</div>
     <h2>What you are about to see</h2>
-    <div class="lede">A live, on-premise cluster running on bare hardware. Four moments, in order:</div>
+    <div class="lede">A live cluster on cloud VMs standing in for on-premise bare hardware. Four moments, in order:</div>
     <div class="see-list">
       <div class="see-item"><span class="idx">1</span><div><div class="t">Node powers on → registered in &lt;5s</div><div class="d">Pre-baked image activates, joins the LXD cluster, role assigned. No package installs.</div></div></div>
       <div class="see-item"><span class="idx">2</span><div><div class="t">Plain English → validated plan</div><div class="d">“Deploy 3 worker agents for coding, plus a fast LLM.” Spec extracted on-prem — the fast-LLM reference resolves to the Node C inference service — clamped, validated.</div></div></div>

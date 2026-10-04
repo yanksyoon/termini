@@ -46,7 +46,7 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 
 ## 4. The 3 proof points the demo shows
 
-**1. Bare metal to an AI-ready fleet in seconds.** A stock Ubuntu node boots the pre-baked image, registers to the controller in **under 5 seconds**, and joins the LXD cluster with its role assigned (compute vs GPU inference) — no SRE, no manual config.
+**1. Bare metal to an AI-ready fleet in seconds.** A stock Ubuntu node boots the pre-baked image, registers to the controller in **under 5 seconds**, and joins the LXD cluster with its role assigned (compute vs inference) — no SRE, no manual config.
 
 **2. Natural-language intent, guardrail-enforced.** The presenter types *"deploy 3 worker agents for coding — plus a fast LLM."* An on-prem model extracts a structured allocation (three `agent_vm`s and one `inference_vm`, which resolves to the always-on Node C inference service rather than a launched VM); the deterministic guardrail clamps any impossible spec (`vcpus: 128` → host ceiling) and returns a validated, clamped plan — field by field, visible in the audit record.
 
@@ -70,3 +70,4 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 - We do **not** claim an on-node redactor that drops C2 fields. The governance gate is **controller-side**: a non-conforming telemetry batch is rejected fail-closed (422), not field-dropped.
 - We do **not** claim Datadog "can't" monitor on-prem — it does, via its agent. We claim it is SaaS-architected with no self-hosted/air-gapped AI offering.
 - We do **not** claim the Samsung × Mistral deal "failed" or "proves ops is unsolved." We claim only: *maintenance and operations remain open and under-served*, and the deal is bespoke, not productized.
+- We do **not** claim GPU-accelerated inference in the live demo. The demo runs CPU-only inference (`llama.cpp --n-gpu-layers 0` on Node C); GPU acceleration is a config knob for paid/bare-metal accounts, not shown live.
