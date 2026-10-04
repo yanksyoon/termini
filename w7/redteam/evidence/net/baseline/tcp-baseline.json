@@ -1,0 +1,11 @@
+{
+  "role": "client",
+  "host": "10.14.100.50",
+  "port": 9099,
+  "target_bytes": 67108864,
+  "sent_bytes": 67108864,
+  "elapsed_s": 0.033,
+  "mbps": 16184.05,
+  "completed": true,
+  "error": null
+}

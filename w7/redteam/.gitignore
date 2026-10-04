@@ -1,0 +1,10 @@
+# red-team runtime state — NEVER commit (contains single-use enrollment + project tokens)
+**/controller.db
+**/controller.db-wal
+**/controller.db-shm
+**/*.pid
+**/env.json
+**/finish.log
+**/controller.log
+**/boot_harness.log
+**/legacy-apt/stall-proxy.log

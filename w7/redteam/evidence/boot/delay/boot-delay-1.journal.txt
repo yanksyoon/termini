@@ -1,0 +1,8 @@
+2026-10-04T11:10:10+00:00 rt-delay-1 systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:10:17+00:00 rt-delay-1 systemd[1]: Stopping termini-bootstrap.service - Termini node bootstrap (registration + telemetry)...
+2026-10-04T11:10:17+00:00 rt-delay-1 systemd[1]: termini-bootstrap.service: Deactivated successfully.
+2026-10-04T11:10:17+00:00 rt-delay-1 systemd[1]: Stopped termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:10:17+00:00 rt-delay-1 systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:10:25+00:00 rt-delay-1 termini-bootstrap[485]: 2026-10-04T11:10:25Z [termini-bootstrap] registration retry in 1s: register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M439Q915FD4M020TSQWQCMJP'}}
+2026-10-04T11:10:34+00:00 rt-delay-1 termini-bootstrap[485]: 2026-10-04T11:10:34Z [termini-bootstrap] registration retry in 2s: register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M439QHVBPAQS5PBYY84XNB8E'}}
+2026-10-04T11:10:44+00:00 rt-delay-1 termini-bootstrap[485]: 2026-10-04T11:10:44Z [termini-bootstrap] registration retry in 4s: register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M439QVN6A4A31N7MPVDVYRNC'}}

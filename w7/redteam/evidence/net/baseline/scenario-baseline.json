@@ -1,0 +1,447 @@
+{
+  "ping_a_to_b": {
+    "raw_tail": ".\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b\n--- 10.14.100.252 ping statistics ---\n3000 packets transmitted, 3000 received, 0% packet loss, time 3003ms\nrtt min/avg/max/mdev = 0.005/0.010/0.134/0.005 ms, ipg/ewma 1.001/0.007 ms",
+    "summary": "3000 packets transmitted, 3000 received, 0% packet loss, time 3003ms",
+    "loss_pct": 0.0,
+    "rtt_min_ms": 0.005,
+    "rtt_avg_ms": 0.01,
+    "rtt_max_ms": 0.134,
+    "rtt_mdev_ms": 0.005
+  },
+  "ping_a_to_c": {
+    "raw_tail": ".\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b.\b \b\n--- 10.14.100.50 ping statistics ---\n3000 packets transmitted, 3000 received, 0% packet loss, time 3000ms\nrtt min/avg/max/mdev = 0.005/0.008/0.155/0.005 ms, ipg/ewma 1.000/0.006 ms",
+    "summary": "3000 packets transmitted, 3000 received, 0% packet loss, time 3000ms",
+    "loss_pct": 0.0,
+    "rtt_min_ms": 0.005,
+    "rtt_avg_ms": 0.008,
+    "rtt_max_ms": 0.155,
+    "rtt_mdev_ms": 0.005
+  },
+  "tcp_a_to_c": {
+    "role": "client",
+    "host": "10.14.100.50",
+    "port": 9099,
+    "target_bytes": 67108864,
+    "sent_bytes": 67108864,
+    "elapsed_s": 0.033,
+    "mbps": 16184.05,
+    "completed": true,
+    "error": null
+  },
+  "chat_baseline": {
+    "role": "chat",
+    "host": "10.14.100.50",
+    "n": 20,
+    "ok": 20,
+    "failed": 0,
+    "retried_calls": 0,
+    "latency_s": {
+      "min": 3.345,
+      "max": 8.927,
+      "mean": 5.505
+    },
+    "calls": [
+      {
+        "i": 0,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 3.345,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 3.345,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 1,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.833,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.833,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 2,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.111,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.111,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 3,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.077,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.077,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 4,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.066,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.066,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 5,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.321,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.321,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 6,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 5.584,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 5.584,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 7,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.706,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.706,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 8,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.837,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.837,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 9,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 6.737,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 6.737,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 10,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.893,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.893,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 11,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.66,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.66,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 12,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 7.086,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 7.086,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 13,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 5.516,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 5.516,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 14,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 4.521,
+          "tokens": 1,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 4.521,
+            "tokens": 1,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 15,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 6.217,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 6.217,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 16,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 7.696,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 7.696,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 17,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 8.312,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 8.312,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 18,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 8.927,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 8.927,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      },
+      {
+        "i": 19,
+        "attempts": 1,
+        "final": {
+          "ok": true,
+          "http": 200,
+          "latency_s": 5.654,
+          "tokens": 0,
+          "error": null
+        },
+        "per_attempt": [
+          {
+            "ok": true,
+            "http": 200,
+            "latency_s": 5.654,
+            "tokens": 0,
+            "error": null
+          }
+        ]
+      }
+    ]
+  },
+  "elapsed_s": 121.25
+}

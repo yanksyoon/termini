@@ -1,0 +1,28 @@
+        if total <= 0:
+            continue
+        dev = "/dev/root" if path == "/" else "/dev/termini"
+        out.append({
+            "path": dev,
+            "total_bytes": total,
+            "free_bytes": free,
+            "write_latency_ms": 0.5,
+            "mount_ro": False,
+        })
+    if not out:
+        out.append({"path": "/dev/root", "total_bytes": 1, "free_bytes": 0,
+                    "write_latency_ms": 0.5, "mount_ro": False})
+    return out
+
+
+def net_facts(ifname: str) -> list:
+    try:
+        with open(f"/sys/class/net/{ifname}/statistics/rx_bytes", encoding="utf-8") as fh:
+            rx = int(fh.read().strip())
+        with open(f"/sys/class/net/{ifname}/statistics/tx_bytes", encoding="utf-8") as fh:
+            tx = int(fh.read().strip())
+    except OSError:
+        rx = tx = 0
+    return [{"iface": ifname, "rx_bytes": rx, "tx_bytes": tx, "latency_ms": 0.3}]
+
+
+def inference_snapshot(cfg: dict) -> dict | None:

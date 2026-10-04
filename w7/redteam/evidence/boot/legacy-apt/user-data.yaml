@@ -1,0 +1,9 @@
+#cloud-config
+# The PRE-HARDENING cloud-init: installs packages at boot (D3 forbids this).
+write_files:
+  - path: /etc/apt/sources.list.d/legacy-mirror.list
+    permissions: '0644'
+    content: |
+      deb [trusted=yes] http://10.14.100.1:8095/ubuntu noble main
+runcmd:
+  - [ sh, -c, "apt-get update && apt-get install -y --no-install-recommends curl" ]

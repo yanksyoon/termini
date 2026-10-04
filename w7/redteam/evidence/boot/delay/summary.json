@@ -1,0 +1,53 @@
+{
+  "runs": [
+    {
+      "tag": "delay-1",
+      "status": "timeout",
+      "copy_s": 61.28,
+      "start_to_online_s": null,
+      "total_s": 111.69,
+      "last_state": "REGISTERING",
+      "node_id": null,
+      "first_error": "register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M439Q915FD4M020TSQWQCMJP'}}",
+      "budget_s": 50.0,
+      "scenario": "delay",
+      "controller_url": "http://10.14.100.1:8198"
+    },
+    {
+      "tag": "delay-2",
+      "status": "timeout",
+      "copy_s": 22.03,
+      "start_to_online_s": null,
+      "total_s": 72.31,
+      "last_state": "REGISTERING",
+      "node_id": null,
+      "first_error": "register failed: HTTP 401: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M439SDMGZJKMFP12QKWFHG6N'}}",
+      "budget_s": 50.0,
+      "scenario": "delay",
+      "controller_url": "http://10.14.100.1:8198"
+    },
+    {
+      "tag": "delay-3",
+      "status": "timeout",
+      "copy_s": 20.49,
+      "start_to_online_s": null,
+      "total_s": 70.58,
+      "last_state": "REGISTERING",
+      "node_id": null,
+      "first_error": "register failed: HTTP 502: ",
+      "budget_s": 50.0,
+      "scenario": "delay",
+      "controller_url": "http://10.14.100.1:8198"
+    }
+  ],
+  "by_scenario": {
+    "delay": {
+      "attempts": 3,
+      "online": 0,
+      "start_to_online_s": {},
+      "service_start_to_register_s": {},
+      "within_demo_timeout": false
+    }
+  },
+  "demo_timeout_s": 30.0
+}

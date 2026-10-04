@@ -1,0 +1,115 @@
+{
+  "role": "chat",
+  "host": "10.14.100.50",
+  "n": 5,
+  "ok": 5,
+  "failed": 0,
+  "retried_calls": 0,
+  "latency_s": {
+    "min": 5.589,
+    "max": 11.841,
+    "mean": 8.745
+  },
+  "calls": [
+    {
+      "i": 0,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 6.384,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 6.384,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 1,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 9.884,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 9.884,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 2,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 5.589,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 5.589,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 3,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 11.841,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 11.841,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    },
+    {
+      "i": 4,
+      "attempts": 1,
+      "final": {
+        "ok": true,
+        "http": 200,
+        "latency_s": 10.029,
+        "tokens": 0,
+        "error": null
+      },
+      "per_attempt": [
+        {
+          "ok": true,
+          "http": 200,
+          "latency_s": 10.029,
+          "tokens": 0,
+          "error": null
+        }
+      ]
+    }
+  ]
+}

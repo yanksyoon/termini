@@ -1,0 +1,970 @@
+{
+  "kill": {
+    "health_before": [
+      {
+        "node_id": "01M43AJH1FZZDXTDSXTXJB2BZG",
+        "registration_id": "7b215241086842957c3205019f74a9fa",
+        "role": "inference",
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:05Z",
+        "uptime_sec": 289,
+        "hardware": {
+          "cpu": {
+            "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+            "sockets": 1,
+            "cores": 4,
+            "threads": 4
+          },
+          "memory": {
+            "total_bytes": 8589934592
+          },
+          "gpus": [
+            {
+              "model": "NVIDIA L4",
+              "vram_bytes": 25769803776
+            }
+          ],
+          "disks": [
+            {
+              "device": "/dev/root",
+              "type": "ssd",
+              "size_bytes": 1,
+              "health": "ok"
+            }
+          ]
+        },
+        "capacity": {
+          "cpu_cores": 4,
+          "ram_gb": 8,
+          "disk_gb": 0,
+          "gpu_free": 1,
+          "cpu_allocated": 0,
+          "ram_allocated_gb": 0
+        },
+        "health": {
+          "cpu_util_pct": 15.79,
+          "ram_used_pct": 65.4,
+          "disk_ok": true,
+          "gpu_ok": false,
+          "inference_ok": true,
+          "services": [
+            {
+              "name": "termini-bootstrap",
+              "status": "running"
+            },
+            {
+              "name": "llama-cpp",
+              "status": "running"
+            }
+          ],
+          "degraded_reasons": [
+            "gpu_unavailable"
+          ]
+        }
+      }
+    ],
+    "t_kill": 1791113409.7150724,
+    "stop_rc": 0,
+    "stream_client_exit_s_after_kill": 2.39,
+    "stream_result": {
+      "role": "stream",
+      "host": "10.14.100.50",
+      "n": 1,
+      "completed": 0,
+      "cut": 1,
+      "runs": [
+        {
+          "completed": false,
+          "chunks": 20,
+          "latency_s": 4.697,
+          "error": null,
+          "i": 0
+        }
+      ]
+    },
+    "time_to_degraded_s": 2.64,
+    "time_to_offline_s": 44.41,
+    "time_to_recover_online_s": 40.5,
+    "time_to_recover_inference_s": 40.5,
+    "health_timeline": [
+      {
+        "t": 1791113405.718,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:05Z"
+      },
+      {
+        "t": 1791113406.224,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:06Z"
+      },
+      {
+        "t": 1791113406.728,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:06Z"
+      },
+      {
+        "t": 1791113407.235,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:06Z"
+      },
+      {
+        "t": 1791113407.742,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:07Z"
+      },
+      {
+        "t": 1791113408.248,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:07Z"
+      },
+      {
+        "t": 1791113408.755,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:08Z"
+      },
+      {
+        "t": 1791113409.261,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:08Z"
+      },
+      {
+        "t": 1791113409.767,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:08Z"
+      },
+      {
+        "t": 1791113410.274,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113410.778,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113411.283,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113411.786,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113412.292,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113412.799,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113413.305,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113413.812,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113414.315,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113414.835,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113415.353,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113415.876,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113416.4,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113416.915,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113417.437,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113417.97,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113418.494,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113419.017,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113419.532,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113420.087,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113420.613,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113421.141,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113421.675,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113422.193,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113422.725,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113423.244,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113423.761,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113424.284,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113424.796,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113425.305,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113425.815,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113426.323,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113426.834,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113427.345,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113427.851,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113428.358,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113428.87,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113429.381,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113429.897,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113430.411,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113430.924,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113431.435,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113431.953,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113432.491,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113433.009,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113433.518,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113434.027,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113434.542,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113435.059,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113435.572,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113436.084,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113436.589,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113437.096,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113437.605,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113438.119,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113438.625,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113439.131,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113439.636,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113440.141,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113440.649,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113441.156,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113441.662,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113442.167,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113442.671,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113443.179,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113443.684,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113444.19,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113444.694,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113445.199,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113445.703,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113446.209,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113446.728,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113447.248,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113447.756,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113448.266,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113448.774,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113449.286,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113449.803,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113450.331,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113450.865,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113451.396,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113451.907,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113452.439,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113452.946,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113453.455,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113453.969,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113454.483,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113455.006,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113455.516,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113456.024,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113456.541,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113457.061,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113457.575,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113458.084,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113458.597,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113459.116,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113459.621,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113460.13,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113460.659,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113461.172,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113461.728,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113462.26,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113462.775,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:02Z"
+      },
+      {
+        "t": 1791113463.291,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:02Z"
+      },
+      {
+        "t": 1791113463.801,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:03Z"
+      },
+      {
+        "t": 1791113464.311,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:03Z"
+      },
+      {
+        "t": 1791113464.832,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:03Z"
+      },
+      {
+        "t": 1791113465.385,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:04Z"
+      },
+      {
+        "t": 1791113465.923,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:04Z"
+      },
+      {
+        "t": 1791113466.439,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:06Z"
+      },
+      {
+        "t": 1791113466.952,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:06Z"
+      },
+      {
+        "t": 1791113467.46,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:07Z"
+      },
+      {
+        "t": 1791113467.967,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:07Z"
+      },
+      {
+        "t": 1791113468.474,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:07Z"
+      },
+      {
+        "t": 1791113468.986,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:08Z"
+      },
+      {
+        "t": 1791113469.494,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:08Z"
+      },
+      {
+        "t": 1791113470.002,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:09Z"
+      },
+      {
+        "t": 1791113470.52,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:09Z"
+      },
+      {
+        "t": 1791113471.03,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:09Z"
+      },
+      {
+        "t": 1791113471.556,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:11Z"
+      },
+      {
+        "t": 1791113472.086,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:11Z"
+      },
+      {
+        "t": 1791113472.658,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:12Z"
+      },
+      {
+        "t": 1791113473.19,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:12Z"
+      },
+      {
+        "t": 1791113473.708,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:12Z"
+      },
+      {
+        "t": 1791113474.25,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:13Z"
+      },
+      {
+        "t": 1791113474.837,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:13Z"
+      },
+      {
+        "t": 1791113475.372,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:15Z"
+      },
+      {
+        "t": 1791113475.898,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:15Z"
+      },
+      {
+        "t": 1791113476.446,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:15Z"
+      },
+      {
+        "t": 1791113477.032,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:16Z"
+      },
+      {
+        "t": 1791113477.603,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:16Z"
+      },
+      {
+        "t": 1791113478.12,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:17Z"
+      },
+      {
+        "t": 1791113478.669,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:17Z"
+      },
+      {
+        "t": 1791113479.194,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:18Z"
+      },
+      {
+        "t": 1791113479.707,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:18Z"
+      },
+      {
+        "t": 1791113480.244,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:18Z"
+      },
+      {
+        "t": 1791113480.753,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:20Z"
+      },
+      {
+        "t": 1791113481.269,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:20Z"
+      },
+      {
+        "t": 1791113481.786,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:21Z"
+      },
+      {
+        "t": 1791113482.315,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:21Z"
+      },
+      {
+        "t": 1791113482.823,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:22Z"
+      },
+      {
+        "t": 1791113483.331,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:22Z"
+      },
+      {
+        "t": 1791113483.864,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:22Z"
+      },
+      {
+        "t": 1791113484.375,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:23Z"
+      },
+      {
+        "t": 1791113484.886,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:23Z"
+      },
+      {
+        "t": 1791113485.395,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:25Z"
+      },
+      {
+        "t": 1791113485.901,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:25Z"
+      },
+      {
+        "t": 1791113486.417,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:26Z"
+      },
+      {
+        "t": 1791113486.933,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:26Z"
+      },
+      {
+        "t": 1791113487.489,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:26Z"
+      },
+      {
+        "t": 1791113487.994,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:27Z"
+      },
+      {
+        "t": 1791113488.555,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:27Z"
+      },
+      {
+        "t": 1791113489.077,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:28Z"
+      },
+      {
+        "t": 1791113489.6,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:28Z"
+      },
+      {
+        "t": 1791113490.133,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:30Z"
+      },
+      {
+        "t": 1791113490.662,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:30Z"
+      },
+      {
+        "t": 1791113491.224,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:30Z"
+      },
+      {
+        "t": 1791113491.784,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:31Z"
+      },
+      {
+        "t": 1791113492.345,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:31Z"
+      },
+      {
+        "t": 1791113492.896,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:32Z"
+      },
+      {
+        "t": 1791113493.435,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:32Z"
+      },
+      {
+        "t": 1791113493.949,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:32Z"
+      },
+      {
+        "t": 1791113494.458,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:33Z"
+      }
+    ],
+    "status_transitions": [
+      {
+        "t": 1791113405.718,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:30:05Z"
+      },
+      {
+        "t": 1791113454.483,
+        "status": "offline",
+        "last_seen_at": "2026-10-04T11:30:09Z"
+      },
+      {
+        "t": 1791113462.775,
+        "status": "degraded",
+        "last_seen_at": "2026-10-04T11:31:02Z"
+      }
+    ],
+    "elapsed_s": 89.44
+  }
+}

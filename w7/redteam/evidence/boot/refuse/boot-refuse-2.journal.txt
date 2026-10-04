@@ -1,0 +1,4 @@
+2026-10-04T11:14:59+00:00 rt-refuse-2 systemd[1]: Started termini-bootstrap.service - Termini node bootstrap (registration + telemetry).
+2026-10-04T11:15:01+00:00 rt-refuse-2 termini-bootstrap[325]: 2026-10-04T11:15:01Z [termini-bootstrap] registration retry in 1s: Remote end closed connection without response
+2026-10-04T11:15:02+00:00 rt-refuse-2 termini-bootstrap[325]: 2026-10-04T11:15:02Z [termini-bootstrap] registration retry in 2s: Remote end closed connection without response
+2026-10-04T11:15:04+00:00 rt-refuse-2 termini-bootstrap[325]: 2026-10-04T11:15:04Z [termini-bootstrap] registration retry in 4s: Remote end closed connection without response

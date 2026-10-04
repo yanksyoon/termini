@@ -1,0 +1,15 @@
+[
+  {
+    "tag": "dnsfail-1",
+    "status": "timeout",
+    "copy_s": 15.38,
+    "start_to_online_s": null,
+    "total_s": 35.65,
+    "last_state": "REGISTERING",
+    "node_id": null,
+    "first_error": "<urlopen error [Errno -2] Name or service not known>",
+    "budget_s": 20.0,
+    "scenario": "dnsfail",
+    "controller_url": "http://termini-controller.invalid:8099"
+  }
+]
