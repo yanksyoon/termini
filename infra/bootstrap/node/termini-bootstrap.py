@@ -34,15 +34,19 @@ prints the persisted state as JSON.
 """
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
 import platform
 import random
+import re
 import socket
+import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 CONFIG_PATH = os.environ.get("TERMINI_CONFIG", "/etc/termini/config.yaml")
@@ -281,9 +285,128 @@ def cpu_util_pct() -> float:
         return 0.0
 
 
+# Last successfully measured values, used only as a fallback when a probe
+# cannot run (e.g. the controller is unreachable). They are never the value a
+# healthy sample reports; see `measure_controller_rtt_ms` / `_probe_disk`.
+_NET_LATENCY_LAST: dict[str, float] = {}
+_DISK_WRITE_LATENCY_LAST: dict[str, float] = {}
+
+# Paths whose I/O latency the disk facts probe (device label, filesystem path).
+_DISK_MOUNTS = (("/dev/root", "/"), ("/dev/termini", "/var/lib/termini"))
+
+# Socket timeout for the controller RTT probe. Matches the inter-node connect
+# budget in docs/contracts/agent-runtime.md (2 s), so a path degraded past the
+# latency-01 threshold (250 ms) is still measured rather than timing out.
+RTT_PROBE_TIMEOUT_S = 2.0
+# Bytes per write-latency probe; large enough to reach the device (not just the
+# page cache) but small enough that one probe per sample is free.
+DISK_PROBE_BYTES = 8192
+_PING_RTT_RE = re.compile(r"time=([0-9.]+)\s*ms")
+
+
+def _controller_endpoint(cfg: dict) -> tuple[str, int] | None:
+    """(host, port) of the controller the node registers/streams to."""
+    try:
+        parts = urllib.parse.urlsplit(cfg.get("controller_url") or "")
+    except ValueError:
+        return None
+    host = parts.hostname
+    if not host:
+        return None
+    try:
+        port = parts.port
+    except ValueError:
+        return None
+    if port is None:
+        port = 443 if parts.scheme == "https" else 80
+    return host, port
+
+
+def _icmp_rtt_ms(host: str, timeout: float = RTT_PROBE_TIMEOUT_S) -> float | None:
+    """One ICMP echo round-trip to `host` via the system `ping`, in ms.
+
+    ICMP measures the bare path RTT to the controller without dragging in the
+    controller process's accept/handling time, which is what the contract's
+    "round-trip to controller" (`net[].latency_ms`) means. Returns None when
+    `ping` is unavailable or the host does not answer.
+    """
+    try:
+        proc = subprocess.run(
+            ["ping", "-c", "1", "-n", "-W", str(max(1, int(timeout))), host],
+            capture_output=True, text=True, timeout=timeout + 1.0, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = _PING_RTT_RE.search(proc.stdout)
+    return round(float(m.group(1)), 3) if m else None
+
+
+def _tcp_connect_rtt_ms(host: str, port: int, timeout: float = RTT_PROBE_TIMEOUT_S) -> float | None:
+    """Fallback RTT: time a TCP handshake to the controller host:port."""
+    t0 = time.monotonic()
+    try:
+        conn = socket.create_connection((host, port), timeout=timeout)
+    except OSError:
+        return None
+    conn.close()
+    return round((time.monotonic() - t0) * 1000.0, 3)
+
+
+def measure_controller_rtt_ms(cfg: dict, timeout: float = RTT_PROBE_TIMEOUT_S) -> float | None:
+    """Measure one round-trip to the controller, in ms.
+
+    Contract §4.4 defines `net[].latency_ms` as the "round-trip to controller".
+    ICMP echo is used first (the same probe the fan-network red-team harness
+    uses, `w7/redteam/net/net_chaos.py`); a TCP handshake to the controller's
+    port is the fallback when `ping` is not installed. Injected path delay
+    (tc netem) therefore shows up directly in the sample instead of a
+    hardcoded constant. Returns None when the controller is unreachable.
+    """
+    ep = _controller_endpoint(cfg)
+    if ep is None:
+        return None
+    host, port = ep
+    rtt = _icmp_rtt_ms(host, timeout)
+    if rtt is not None:
+        return rtt
+    return _tcp_connect_rtt_ms(host, port, timeout)
+
+
+def _probe_disk(path: str) -> tuple[float | None, bool]:
+    """Time an fsync'd write into `path`; return `(latency_ms, mount_ro)`.
+
+    `latency_ms` is the wall time to write `DISK_PROBE_BYTES` and fsync it
+    (contract §4.3 "write I/O latency"), or None when the probe could not run.
+    `mount_ro` is True only when the write failed with EROFS — the definitive
+    "filesystem flipped read-only" signal behind disk-fail-01 — rather than the
+    previous hardcoded False. A fixed probe file is truncated in place, so the
+    probe adds no free-space drift of its own.
+    """
+    probe = os.path.join(path, ".termini-io-probe")
+    try:
+        fd = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    except OSError as e:
+        return None, getattr(e, "errno", None) == errno.EROFS
+    latency: float | None = None
+    mount_ro = False
+    try:
+        t0 = time.monotonic()
+        os.write(fd, b"\0" * DISK_PROBE_BYTES)
+        os.fsync(fd)
+        latency = round((time.monotonic() - t0) * 1000.0, 3)
+    except OSError as e:
+        mount_ro = getattr(e, "errno", None) == errno.EROFS
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    return latency, mount_ro
+
+
 def disk_facts() -> list:
     out = []
-    for path in ("/", "/var/lib/termini"):
+    for dev, path in _DISK_MOUNTS:
         try:
             st = os.statvfs(path)
         except OSError:
@@ -292,21 +415,26 @@ def disk_facts() -> list:
         free = st.f_bavail * st.f_frsize
         if total <= 0:
             continue
-        dev = "/dev/root" if path == "/" else "/dev/termini"
+        latency, mount_ro = _probe_disk(path)
+        if latency is None:
+            latency = _DISK_WRITE_LATENCY_LAST.get(path, 0.0)
+        else:
+            _DISK_WRITE_LATENCY_LAST[path] = latency
         out.append({
             "path": dev,
             "total_bytes": total,
             "free_bytes": free,
-            "write_latency_ms": 0.5,
-            "mount_ro": False,
+            "write_latency_ms": latency,
+            "mount_ro": mount_ro,
         })
     if not out:
         out.append({"path": "/dev/root", "total_bytes": 1, "free_bytes": 0,
-                    "write_latency_ms": 0.5, "mount_ro": False})
+                    "write_latency_ms": _DISK_WRITE_LATENCY_LAST.get("/", 0.0),
+                    "mount_ro": False})
     return out
 
 
-def net_facts(ifname: str) -> list:
+def net_facts(cfg: dict, ifname: str) -> list:
     try:
         with open(f"/sys/class/net/{ifname}/statistics/rx_bytes", encoding="utf-8") as fh:
             rx = int(fh.read().strip())
@@ -314,7 +442,14 @@ def net_facts(ifname: str) -> list:
             tx = int(fh.read().strip())
     except OSError:
         rx = tx = 0
-    return [{"iface": ifname, "rx_bytes": rx, "tx_bytes": tx, "latency_ms": 0.3}]
+    rtt = measure_controller_rtt_ms(cfg)
+    if rtt is None:
+        # Controller unreachable: report the last measured RTT rather than a
+        # fabricated constant (0.0 only until the first successful probe).
+        rtt = _NET_LATENCY_LAST.get(ifname, 0.0)
+    else:
+        _NET_LATENCY_LAST[ifname] = rtt
+    return [{"iface": ifname, "rx_bytes": rx, "tx_bytes": tx, "latency_ms": rtt}]
 
 
 def inference_snapshot(cfg: dict) -> dict | None:
@@ -479,7 +614,7 @@ def build_sample(cfg: dict, seq: int) -> dict:
         "mac_address": _file_or_uuid_hash(mac_of(ifname)),
         "project_id": cfg.get("project_id") or new_ulid(),
         "disk": disk_facts(),
-        "net": net_facts(ifname),
+        "net": net_facts(cfg, ifname),
     }
     inf = inference_snapshot(cfg)
     if inf is not None:
