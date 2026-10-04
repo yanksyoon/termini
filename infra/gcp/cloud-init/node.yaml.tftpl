@@ -1,0 +1,25 @@
+#cloud-config
+# Termini Node OS — activation-only cloud-init (docs/contracts/infra-decisions.md D3).
+# It writes the bootstrap daemon config and starts the pre-installed service.
+# It deliberately performs NO package installs and NO network downloads.
+write_files:
+  - path: /etc/termini/config.yaml
+    permissions: '0600'
+    owner: root:root
+    content: |
+      controller_url: ${controller_url}
+      node_name: ${node_name}
+      role_hint: ${role_hint}
+      underlay_ip: ${underlay_ip}
+      underlay_gw: ${underlay_gw}
+      bootstrap_seed_ip: ${seed_ip}
+      telemetry_interval_ms: ${telemetry_interval_ms}
+  - path: /etc/ssh/termini_ca.pub
+    permissions: '0644'
+    owner: root:root
+    content: |
+      # Termini controller SSH CA — TrustedUserCAKeys (docs/contracts/infra-decisions.md D4).
+      # Placeholder until the controller issues its CA key; sshd ignores comment lines.
+      ${controller_ca_pubkey}
+runcmd:
+  - [ systemctl, enable, --now, termini-bootstrap.service ]

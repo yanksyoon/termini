@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://termini.internal/contracts/gcp-inventory.schema.json",
+  "title": "Termini GCP node inventory",
+  "description": "Node inventory emitted by infra/gcp (Terraform local_file or provision.sh). Downstream tasks (LXD cluster bring-up, inference exposure) read this to target Nodes A/B/C. One entry per provisioned VM.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_by", "project", "region", "zone", "network", "ssh", "nodes"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "generated_by": { "type": "string", "enum": ["terraform", "provision.sh"] },
+    "generated_at": { "type": "string", "format": "date-time", "description": "Set by provision.sh; omitted by Terraform so plans stay clean." },
+    "project": { "type": "string", "minLength": 1 },
+    "region": { "type": "string", "minLength": 1 },
+    "zone": { "type": "string", "minLength": 1 },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vpc", "subnetwork", "cidr", "gateway"],
+      "properties": {
+        "vpc": { "type": "string" },
+        "subnetwork": { "type": "string" },
+        "cidr": { "type": "string", "description": "The single underlay CIDR shared by all nodes (D2)." },
+        "gateway": { "type": "string" }
+      }
+    },
+    "ssh": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user", "port"],
+      "properties": {
+        "user": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "hostname", "role", "machine_type", "private_ip", "public_ip", "zone", "accelerator", "tags", "labels"],
+        "properties": {
+          "name": { "type": "string", "enum": ["node-a", "node-b", "node-c"] },
+          "hostname": { "type": "string" },
+          "role": { "type": "string", "enum": ["compute", "inference"] },
+          "machine_type": { "type": "string" },
+          "private_ip": { "type": "string", "description": "Static underlay address (10.10.0.11/12/13)." },
+          "public_ip": { "type": ["string", "null"] },
+          "zone": { "type": "string" },
+          "accelerator": {
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type", "count"],
+                "properties": {
+                  "type": { "type": "string" },
+                  "count": { "type": "integer", "minimum": 1 }
+                }
+              }
+            ],
+            "description": "null on compute nodes; {type,count} on the GPU node."
+          },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "labels": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

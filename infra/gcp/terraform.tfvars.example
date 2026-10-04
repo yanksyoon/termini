@@ -1,0 +1,22 @@
+# Copy to terraform.tfvars and fill in the project id, then `terraform apply`.
+# terraform.tfvars is gitignored; never commit a real project id or key material.
+
+project = "REPLACE_WITH_YOUR_GCP_PROJECT_ID"
+region  = "us-central1"
+zone    = "us-central1-a"
+
+# Frozen underlay plan (docs/contracts/infra-decisions.md D2).
+network_cidr = "10.10.0.0/24"
+
+# Acceptance: A/B compute-optimized, C a real GPU with an attached L4.
+compute_machine_type  = "n2-standard-4"
+gpu_machine_type      = "g2-standard-4"
+gpu_accelerator_type  = "nvidia-l4"
+gpu_accelerator_count = 1
+
+# DEMO ONLY — lock this down before any real use (your admin CIDR or 35.235.240.0/20 for IAP).
+ssh_source_ranges = ["0.0.0.0/0"]
+ssh_user          = "ubuntu"
+
+# Where downstream tasks read the node inventory from.
+inventory_path = "/home/ubuntu/.termini/inventory.json"
