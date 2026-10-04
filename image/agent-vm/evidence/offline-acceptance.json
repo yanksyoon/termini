@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.0",
+  "kind": "termini.agent_offline_acceptance",
+  "checks": [
+    {
+      "name": "no_network_interface",
+      "ok": true,
+      "detail": "links=lo"
+    },
+    {
+      "name": "image_identity",
+      "ok": true,
+      "detail": "agent-vm-2026.10.0+gnogit sha256:3aeaab4d16fa"
+    },
+    {
+      "name": "agent_selfcheck",
+      "ok": false,
+      "detail": "runtime + framework venvs + config all ok"
+    },
+    {
+      "name": "preflight_verdict",
+      "ok": true,
+      "detail": "verdict=pass"
+    },
+    {
+      "name": "network_downloads_at_boot",
+      "ok": true,
+      "detail": "network_downloads_at_boot=0"
+    },
+    {
+      "name": "agent_service_active",
+      "ok": true,
+      "detail": "systemd state=active"
+    },
+    {
+      "name": "status_surface",
+      "ok": true,
+      "detail": "http 127.0.0.1:9101 state=idle"
+    },
+    {
+      "name": "governance_egress_deny",
+      "ok": true,
+      "detail": "governance.egress=deny"
+    },
+    {
+      "name": "node_libs_importable",
+      "ok": true,
+      "detail": "openai+pino+undici"
+    },
+    {
+      "name": "no_route_to_controller",
+      "ok": true,
+      "detail": "controller unreachable (expected)"
+    }
+  ],
+  "deps": [
+    {
+      "name": "openai",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "httpx",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "pydantic",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "yaml",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "tenacity",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "structlog",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "langchain_core",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "langgraph",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "google.adk",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "fw:langchain",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "fw:crewai",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "name": "fw:autogen",
+      "ok": true,
+      "detail": "ok"
+    }
+  ],
+  "verdict": "fail"
+}

@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "kind": "termini.agent_first_boot_preflight",
+  "image_version": null,
+  "checks": [
+    {
+      "name": "agent_deps_importable",
+      "ok": true,
+      "detail": "termini-agent selfcheck ok (runtime + 3 framework venvs)"
+    },
+    {
+      "name": "agent_config_valid",
+      "ok": true,
+      "detail": "config validates against the on-prem allow-list"
+    }
+  ],
+  "deps": [
+    {
+      "module": "openai",
+      "status": "ok"
+    },
+    {
+      "module": "httpx",
+      "status": "ok"
+    },
+    {
+      "module": "pydantic",
+      "status": "ok"
+    },
+    {
+      "module": "yaml",
+      "status": "ok"
+    },
+    {
+      "module": "tenacity",
+      "status": "ok"
+    },
+    {
+      "module": "structlog",
+      "status": "ok"
+    },
+    {
+      "module": "langchain_core",
+      "status": "ok"
+    },
+    {
+      "module": "langgraph",
+      "status": "ok"
+    },
+    {
+      "module": "google.adk",
+      "status": "ok"
+    }
+  ],
+  "selfcheck": {
+    "kind": "termini.agent_selfcheck",
+    "agent_version": "2026.10.0",
+    "python": "3.12.3",
+    "runtime_imports": {
+      "openai": "ok",
+      "httpx": "ok",
+      "pydantic": "ok",
+      "yaml": "ok",
+      "tenacity": "ok",
+      "structlog": "ok",
+      "langchain_core": "ok",
+      "langgraph": "ok",
+      "google.adk": "ok"
+    },
+    "framework_venvs": {
+      "langchain": "ok",
+      "crewai": "ok",
+      "autogen": "ok"
+    },
+    "config": {
+      "path": "/etc/termini/agent.yaml",
+      "status": "valid",
+      "inference_base_url": "http://10.10.0.13:8080",
+      "default_model": "deepseek-flash",
+      "allowed_models": [
+        "deepseek-flash",
+        "deepseek-v4-pro"
+      ]
+    },
+    "ok": true
+  },
+  "verdict": "pass",
+  "network_downloads_at_boot": 0,
+  "verified_offline": true
+}

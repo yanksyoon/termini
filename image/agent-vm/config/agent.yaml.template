@@ -1,0 +1,27 @@
+# Termini agent VM runtime config — BAKED DEFAULT.
+#
+# cloud-init renders the authoritative /etc/termini/agent.yaml at launch
+# (agent-runtime.md §4.4). This baked copy lets termini-agent.service start and
+# serve /status even before cloud-init runs (e.g. an offline bake-inspection boot).
+project_id: 01J00000000000000000000000
+vm_id: 01J00000000000000000000001
+node_id: 01J00000000000000000000002
+agent_image_version: agent-vm-2026.10.0
+inference:
+  base_url: http://10.10.0.13:8080
+  default_model: deepseek-flash
+  allowed_models: [deepseek-flash, deepseek-v4-pro]
+  token_file: /etc/termini/inference.token
+  stream: true
+  connect_timeout_s: 2
+  request_timeout_s: 120
+broker:
+  endpoint: http://10.20.1.1:7071
+  pull_interval_s: 1
+  max_concurrent_tasks: 2
+logging:
+  sink: /var/log/termini/agent.jsonl
+  local_only: true
+governance:
+  telemetry_class: C0
+  egress: deny

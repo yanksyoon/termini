@@ -1,0 +1,4 @@
+# Isolated venv /opt/termini/venvs/autogen — AutoGen framework (project.md §4).
+# NOTE: W0 research (docs/research/02) marks upstream AutoGen as maintenance-mode;
+# included here because project.md §4 and the W4 card name it explicitly.
+autogen-agentchat

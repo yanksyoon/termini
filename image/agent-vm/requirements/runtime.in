@@ -1,0 +1,14 @@
+# Termini agent runtime venv — installed at /opt/termini/venv (used by termini-agent.service).
+# Mirrors agent-runtime.md §3.2 plus the ADOPTED agent runtime (Google ADK).
+# setuptools is pinned so the termini-agent package can be installed offline with
+# `pip install --no-deps --no-build-isolation` (no build-requires download at bake time).
+openai
+httpx
+pydantic
+PyYAML
+tenacity
+structlog
+langchain-core
+langgraph
+google-adk
+setuptools
