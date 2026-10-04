@@ -359,11 +359,11 @@ Server → client:
 
 **How the controller reaches the node (mechanism, not wire contract).** Primary
 path is the node's outbound mTLS control channel (`/node/v1/{node_id}/channel`,
-D6); the demo terminal bridge MAY instead proxy via SSH using the controller-held
-key (§3.2) to the node host. The dashboard is agnostic to this:
+D6); the demo terminal bridge MAY instead proxy via SSH using a short-lived,
+CA-signed operator cert (§3.2) to the node host. The dashboard is agnostic to this:
 it only sees the `/terminal/v1/nodes/{node_id}` framing above.
 
-### 3.2 SSH access string (controller-held key — D4)
+### 3.2 SSH access string (CA-signed — D4)
 
 Frozen format (rendered verbatim by the dashboard, copy-to-clipboard):
 
@@ -376,14 +376,15 @@ ssh -i <private_key_path> [-p <port>] <user>@<public_ip>
 | `<user>` | `ubuntu` | infra inventory `ssh.user` (`SSH_USER`, default `ubuntu`) |
 | `<public_ip>` | node's NAT public IP | infra inventory `nodes[].public_ip` |
 | `<port>` | `22` | infra inventory `ssh.port` (omit `-p` when `22`) |
-| `<private_key_path>` | local path to the **operator's** key | the controller-held key the dashboard surfaces (default `~/.ssh/termini_operator`) |
+| `<private_key_path>` | local path to the **operator's browser-local** key | the key the operator generated locally; its CA-signed short-lived cert sits alongside it (default `~/.ssh/termini_operator`) |
 
-Access model (D4): the **controller holds an SSH key**, surfaced as a one-click web
-terminal plus this copy-paste `ssh` string — no passwords and no project private key
-displayed in the UI. The dashboard renders the `ssh -i <key>` command; the user runs
-it with the controller-held key. The **SSH CA + short-lived, principal-bound
-certificate** model (browser-local keypair → `POST /v1/projects/{project_id}/ssh-key`)
-is the day-2 (B7) hardening, not the demo path.
+Access model (D4): the **controller holds an SSH CA**, not a user key. The operator (or
+dashboard) generates a keypair **locally in the browser** and uploads only the public
+half; the controller signs it into a **short-lived (≤8 h), principal-bound certificate**
+(`POST /v1/projects/{project_id}/ssh-key`, `controller-api.md` §4.3). The dashboard
+renders the `ssh -i <key>` command pointing at that browser-local key; the signed cert
+sits alongside it. Revocation is `POST /v1/projects/{project_id}/ssh-key/revoke`, and
+every issuance/revocation lands in the `ssh_certificates` ledger.
 
 The infra-injected **break-glass key** is a ONE-TIME recovery path, injected at
 provisioning (GCP metadata `ssh-keys: ubuntu:<pub>`) and **removed after successful
@@ -399,6 +400,7 @@ Endpoint that feeds the dashboard panel:
   "user": "ubuntu",
   "host": "34.136.10.11",
   "port": 22,
+  "auth_model": "ssh_ca",
   "key_algorithm": "ed25519",
   "key_fingerprint": "SHA256:AbC123...==",
   "key_comment": "termini-operator-cert",
@@ -587,12 +589,13 @@ now cross-referenced from `controller-api.md`.
   channel), and a **VM-level** agent shell lives at `/terminal/v1/vms/{vm_id}`
   (`lxc exec`). Recorded as architecture.md R14.
 - **R-D2 — SSH access string and key (RESOLVED).** The documents now agree on the
-  controller-held-key model: the dashboard surfaces a one-click web terminal plus an
-  `ssh` string from the controller-held key (`controller-api.md` §4.3); the
-  SSH CA + short-lived-certificate issuance is day-2 (B7, task t_53df37ef). The
-  break-glass key is a one-time recovery path removed after registration
-  (`node-bootstrap.md` §7). The `ssh.inject_key` command and the shared project
-  keypair are removed everywhere.
+  controller-held-SSH-CA model: the dashboard surfaces a one-click web terminal plus an
+  `ssh` string whose `auth_model` is `ssh_ca` — the operator generates a keypair
+  locally in the browser and the controller signs a short-lived (≤8 h), principal-bound
+  certificate (`controller-api.md` §4.3), with `POST /v1/projects/{project_id}/ssh-key`
+  and `/ssh-key/revoke` (the `ssh_certificates` ledger). The break-glass key is a
+  one-time recovery path removed after registration (`node-bootstrap.md` §7). The
+  `ssh.inject_key` command and the shared project keypair are removed everywhere.
 - **R-D3 — log envelope (RESOLVED).** `controller-api.md` §7.2/§7.1 now reference
   this document's §2.1 as the canonical operator-log envelope (`log_id`, `severity`,
   `actor`, `remediation`, `Last-Event-ID` resume); the thin `{ts, level, text}` shape

@@ -448,11 +448,12 @@ remediation approve/deny (`POST /v1/projects/{project_id}/remediations/{command_
 and the node SSH access string (`GET /v1/projects/{project_id}/nodes/{node_id}/ssh`)
 are frozen in `dashboard.md` §3.2/§4 and are the frontend's manual-intervention surface.
 
-### 4.3 SSH access (user access — controller-held key, D4)
+### 4.3 SSH access (user access — controller-held SSH CA, D4)
 
-User SSH access follows `infra-decisions.md` D4: the **controller holds an SSH key**,
-surfaced in the dashboard as a **one-click web terminal** plus a copy-paste **`ssh`
-string**. No passwords and no project private key displayed in the UI.
+User SSH access follows `infra-decisions.md` D4: the **controller holds an SSH CA**, and
+the operator's keypair is generated **locally in the browser** — only the public half is
+uploaded. Access is surfaced in the dashboard as a **one-click web terminal** plus a
+copy-paste **`ssh`** string. No passwords and no project private key displayed in the UI.
 
 #### GET /v1/projects/{project_id}/nodes/{node_id}/ssh
 
@@ -467,6 +468,7 @@ copy-paste; the web terminal is served separately at `/terminal/v1/nodes/{node_i
   "user": "ubuntu",
   "host": "34.136.10.11",
   "port": 22,
+  "auth_model": "ssh_ca",
   "key_algorithm": "ed25519",
   "key_fingerprint": "SHA256:AbC123...==",
   "key_comment": "termini-operator-cert",
@@ -474,15 +476,49 @@ copy-paste; the web terminal is served separately at `/terminal/v1/nodes/{node_i
 }
 ```
 
-`public_ip` comes from the infra inventory (`infra/gcp` emits `inventory.json`); it is
-**not** present in node telemetry (`ip_public` is denied by `governance.md` §4.2).
+`auth_model` is `"ssh_ca"`; `key_algorithm`/`key_fingerprint`/`key_comment` derive from the
+CA public key (the trust anchor), and `command` references the operator's **browser-local**
+key (`~/.ssh/termini_operator`), never a controller-held key. `public_ip` comes from the
+infra inventory (`infra/gcp` emits `inventory.json`); it is **not** present in node
+telemetry (`ip_public` is denied by `governance.md` §4.2).
 
-**The full SSH CA model is day-2 (B7).** A controller-held SSH certificate authority
-signing **short-lived (≤8 h), principal-bound user certificates** — browser-local
-private keys, `ssh-keygen -s` signing, `POST /v1/projects/{project_id}/ssh-key` (with
-`POST /v1/projects/{project_id}/ssh-key/revoke` for pre-TTL revocation) — is the
-planned hardening (tracked as controller task t_53df37ef), not the demo path. The
-`ssh.inject_key` command and the shared project keypair are removed everywhere. The
+**SSH certificate issuance & revocation (day-1, D4).** The controller holds an Ed25519
+SSH CA. The operator (or dashboard) generates a keypair **locally in the browser** and
+uploads only the public half; the controller signs it into a **short-lived (≤8 h default,
+≤24 h max), principal-bound OpenSSH certificate** via `ssh-keygen -s`, and the node
+accepts it against the `TrustedUserCAKeys` trust anchor (`node-bootstrap.md` §7).
+
+#### POST /v1/projects/{project_id}/ssh-key
+
+Body: `{ "public_key": "<openssh public key line>", "principal": "root", "validity_s": 28800 }`
+(`principal`/`validity_s` optional; default principal and TTL come from controller config,
+default TTL 8 h, hard ceiling 24 h). Private-key material is rejected (`422`). Returns
+`200`:
+
+```json
+{
+  "cert_id": "01M4349RPY26W8Q453PZYK05CB",
+  "certificate": "ssh-ed25519-cert-v01@openssh.com AAAA...",
+  "ca_fingerprint": "SHA256:...",
+  "principal": "root",
+  "valid_from": "2026-10-04T07:00:00Z",
+  "valid_until": "2026-10-04T15:00:00Z",
+  "algorithm": "ed25519",
+  "key_fingerprint": "SHA256:..."
+}
+```
+
+`503 INTERNAL` when no CA key is configured at boot. Every issuance is recorded in the
+`ssh_certificates` ledger (migration `0006_ssh_ca.sql`).
+
+#### POST /v1/projects/{project_id}/ssh-key/revoke
+
+Body: `{ "fingerprint": "SHA256:..." }` — the public key fingerprint (`ssh-keygen` reports
+the same fingerprint for a key and its cert). Marks the ledger row `revoked` without
+deleting it. Returns `200 { "fingerprint": ..., "revoked": true }`; an unknown fingerprint
+returns `404`.
+
+The `ssh.inject_key` command and the shared project keypair are removed everywhere. The
 infra-injected break-glass key is a one-time recovery path removed after registration
 (`node-bootstrap.md` §7).
 
@@ -554,12 +590,6 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
    resolve to one (no inference node registered), → `REJECT`
    (`invalid_target_node_type`). The plan records `realized_as: "host_service"`
    and `vm_ids: []`; no VM is created and no GPU is allocated.
-
-   **B5 note (doc↔code):** the committed `_role_check` (`controller/app/server.py`)
-   still requires `passthrough_gpu` for `inference_vm` (rejecting it with
-   `gpu_required_for_inference`), so an `inference_vm` allocation is rejected
-   end-to-end until the controller B5 fix (t_53df37ef) removes that rule and realizes
-   `inference_vm` as `host_service` (no passthrough).
 4. **Per-field range clamp**: clamp each numeric field into its type range
    (table above). Record `decision: clamped` with `from`/`to`. Below-min and
    above-max both clamp to the nearest bound; never reject a pure range overflow.
@@ -642,8 +672,8 @@ The broader `commandAllowlist()` set (`vm.resize`, `vm.migrate`, `vm.stop`, `vm.
 `controller/app/commands.py` but not wired to any execution path in the demo** — marked
 future/day-2. `vm.launch` is **not** in the allowlist and there is no launch path
 (`_apply_plan` returns `vm_ids: []`). The retired `ssh.inject_key` verb is removed
-everywhere; user SSH access is the controller-held key + web terminal + `ssh` string
-(§4.3), never an `authorized_keys` write on a node.
+everywhere; user SSH access is the controller-held CA signing short-lived certs,
+surfaced as a web terminal + `ssh` string (§4.3), never an `authorized_keys` write on a node.
 
 This set is the `commandAllowlist()` from `governance.md` §9 — the AI operator may
 select among these types only; free-form shell is never executed.
@@ -713,7 +743,7 @@ Two terminal surfaces (reconciled with `dashboard.md` §3.1 — see architecture
 - **Node-level host shell** — `wss://<controller-host>/terminal/v1/nodes/{node_id}?token=<project_token>`:
   the primary dashboard terminal. Opens an interactive shell on the selected node
   host. The controller brokers the session over the node's outbound mTLS control
-  channel (D6) or via the controller-held SSH key (D4); no inbound SSH is
+  channel (D6) or via a short-lived CA-signed operator cert (D4); no inbound SSH is
   required.
 - **VM-level agent shell** — `wss://<controller-host>/terminal/v1/vms/{vm_id}?token=<project_token>`:
   opens a shell inside an agent VM via LXD (`lxc exec`) on the owning node.

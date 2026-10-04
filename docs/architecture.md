@@ -28,7 +28,7 @@ to match (all such updates are applied in the same change set that added this fi
 | W0 research | `docs/research/tech-landscape.md` | Build-vs-adopt verdicts, tool shortlist, BQ-1 model pin |
 
 **Net moat (from `tech-landscape.md` §2):** adopt the substrate (LXD + Ubuntu), the connectivity
-(underlay + controller-held SSH key), and the model (llama.cpp + GGUF Q4_K_M); build only two things — the
+(underlay + controller-held SSH CA), and the model (llama.cpp + GGUF Q4_K_M); build only two things — the
 governance boundary and the deterministic AI-operator control loop.
 
 ---
@@ -158,7 +158,7 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 | Node → Controller (egress) | **C0/C1 hardware/OS telemetry only.** C2 never egresses; fail-closed. | On-node redactor + controller `governanceGate` |
 | Controller → Node (inbound) | Typed commands only; task envelope may carry C2 **transiently** (never persisted/model-processed). | `commandAllowlist()` + inbound shape check |
 | Controller → external model | **Not in the demo loop** (the operator is deterministic). Day-2 only: C0 telemetry + static versioned template. | `governance.md` §7 (future) |
-| User SSH | Controller-held SSH key surfaced as a one-click web terminal + `ssh` string; the SSH CA + short-lived-cert model is day-2 (B7). | Controller-held key (D4) |
+| User SSH | Controller-held SSH CA signing short-lived (≤8 h), principal-bound user certs from browser-local keys; surfaced as a one-click web terminal + `ssh` string (`auth_model: ssh_ca`). | Controller-held CA (D4) |
 
 ---
 
@@ -335,15 +335,17 @@ node host (break-glass/debug); the VM shell is a secondary surface for agent ins
 
 ### R15 — SSH user access (W1-review D1/A1)
 
-**Answer:** user access is a **controller-held SSH key**, surfaced in the dashboard as a
-one-click web terminal plus an `ssh` string (`GET /v1/projects/{pid}/nodes/{nid}/ssh`). No
-passwords, no project private key shown in the UI. The **SSH CA + short-lived, principal-bound
-certificate** model is the day-2/B7 hardening (tracked as controller task t_53df37ef), not the
-demo path. The infra-injected break-glass key is a one-time recovery path **removed after
-registration** (`node-bootstrap.md` §7). The `ssh.inject_key` command and the shared project
-keypair are **removed everywhere**. **Rationale:** the demo shows real, honest access
-(controller-held key + web terminal + `ssh` string); full CA-based revocation/rotation is a
-future hardening, not a shipped claim.
+**Answer:** user access is a **controller-held SSH CA**, not a long-lived key. The operator (or
+dashboard) generates a keypair **locally in the browser**, uploads only the public half, and the
+controller signs it into a **short-lived (≤8 h), principal-bound certificate** (D4,
+`controller-api.md` §4.3); the dashboard surfaces a one-click web terminal plus an `ssh` string
+(`GET /v1/projects/{pid}/nodes/{nid}/ssh`, returning `auth_model: "ssh_ca"`). No passwords, no
+project private key shown in the UI. Revocation is `POST /v1/projects/{pid}/ssh-key/revoke`,
+backed by the `ssh_certificates` ledger. The infra-injected break-glass key is a one-time recovery
+path **removed after registration** (`node-bootstrap.md` §7). The `ssh.inject_key` command and the
+shared project keypair are **removed everywhere**. **Rationale:** the demo shows real, honest,
+scoped, revocable access — the operator's private key never leaves their machine and no long-lived
+controller key exists to leak.
 
 ### R16 — `inference_vm` is a reference, not a launchable VM (W1-review D2)
 
@@ -351,11 +353,11 @@ future hardening, not a shipped claim.
 Node C** (D5), recorded and surfaced in the plan but NOT launched in the demo (zero VMs, zero GPU
 allocation). `passthrough_gpu` is day-2 only: any `true` value is a structural rejection
 (`gpu_passthrough_not_in_demo`), enforced by `clamp_validate` (`termini/intent/validator.py`) and
-the schema. **B5 note (doc↔code):** the committed `_role_check` in `controller/app/server.py`
-still requires `passthrough_gpu` for `inference_vm` (rejecting it with `gpu_required_for_inference`),
-so an `inference_vm` allocation is rejected end-to-end until the controller B5 fix (t_53df37ef)
-removes that rule and realizes `inference_vm` as `host_service` (no passthrough).
-**Rationale:** the intent extractor must never emit a spec the demo guardrail cannot satisfy.
+the schema. `_role_check` (`controller/app/server.py`) no longer requires `passthrough_gpu` for
+`inference_vm`; it requires the class to resolve to the `inference` node (else
+`invalid_target_node_type`). `_resolve_target` maps `auto` to the inference node, and the plan
+records `realized_as: "host_service"` with `vm_ids: []`. **Rationale:** the intent extractor must
+never emit a spec the demo guardrail cannot satisfy.
 
 ### R17 — Registration C1 bootstrap exception (W1-review D3)
 
