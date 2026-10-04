@@ -97,7 +97,7 @@ The controller renders a small `user-data` (or GCP instance metadata keys) per n
 |-------|----------|------|---------|
 | `termini.controller_url` | yes | string (https URL) | e.g. `https://controller.termini.example` on port 443. |
 | `termini.enrollment_token` | yes | string (single-use, JWT) | Short-TTL (< 1 h), single-use, optionally bound to an expected machine ID/role. |
-| `termini.ca_pubkey` | yes | string (Ed25519 public key) | SSH CA public key placed in the node's `TrustedUserCAKeys`. |
+| `termini.ca_pubkey` | yes | string (Ed25519 public key) | Controller's SSH public key for user access (D4); the `TrustedUserCAKeys` trust anchor is the day-2 SSH CA (B7) placeholder. |
 | `termini.node_name` | yes | string | Cluster member name, e.g. `node-a`. |
 | `termini.role_hint` | no | enum `auto\|compute\|inference` | Advisory only; the controller assigns the authoritative role. Default `auto`. |
 | `termini.underlay_ip` | yes | string (CIDR) | Static underlay address, e.g. `10.10.0.11/24`. |
@@ -362,8 +362,9 @@ After `lxd init --preseed` succeeds, the daemon verifies membership via `GET /1.
 The controller does **not** drive LXD placement directly. It mints cluster join
 tokens at registration (seed API `POST /1.0/cluster/members` on
 `https://10.10.0.11:8443` with an LXD trust client cert) — cluster administration
-only. VM placement is a typed `vm.launch` command to the resolved node's daemon,
-which calls its **local** LXD API (`POST /1.0/instances?target=<member>`) —
+only. VM placement via a typed `vm.launch` command to the resolved node's daemon
+(which calls its **local** LXD API, `POST /1.0/instances?target=<member>`) is
+**day-2 — not wired in the demo** (`_apply_plan` returns `vm_ids: []`) —
 consistent with AR-2 (`agent-runtime.md` §4.1). The seed `8443` trust cert is
 therefore restricted to cluster-admin/join-token duties, never controller-driven
 placement. Member health is folded into node telemetry.
@@ -374,13 +375,20 @@ placement. Member health is folded into node telemetry.
 
 Injected at provisioning (cloud-init):
 
-1. **Controller SSH CA public key** → `/etc/ssh/termini_ca.pub` and `TrustedUserCAKeys` (user access; D4).
+1. **Controller SSH public key** → authorized for user access (D4). The
+   `TrustedUserCAKeys`/`termini_ca.pub` trust anchor is the **day-2 SSH CA (B7)**
+   placeholder, not the demo path.
 2. **Break-glass operator key** (optional) → `/root/.ssh/authorized_keys`, tagged with a marker comment. The daemon **removes that line after successful registration**; it is a one-time recovery path, not standing access.
 3. `PasswordAuthentication no`, `PermitRootLogin prohibit-password`, SSH bound to the underlay interface.
 
 At registration (step 1 above) the daemon reports `host_ssh_keys`. The controller records them and thereafter verifies host identity on every SSH the platform makes (no blind trust). A host-key change after registration raises a controller alert.
 
-Interactive user access is **not** distributed as a private key. The frontend generates a keypair in the browser (private key never sent), posts the public key, and receives back a **short-lived certificate** (default 8 h, principal `root`, optional source-address restriction). The xterm.js terminal is **controller-brokered** over the node's outbound channel (D6), so no inbound SSH is required.
+Interactive user access is **not** distributed as a private key. The dashboard shows a
+**controller-held SSH key** surfaced as a one-click web terminal plus an `ssh` string
+(`dashboard.md` §3.2), and the xterm.js terminal is **controller-brokered** over the
+node's outbound channel (D6), so no inbound SSH is required. The **short-lived
+(≤8 h), principal-bound certificate** flow (browser keypair → controller-signed cert)
+is the day-2 CA (B7) hardening, not the demo path.
 
 ---
 
@@ -436,10 +444,10 @@ Guiding rules: **registration and join failures must never leave a node unreacha
 ## 11. Security and governance constraints (node side)
 
 - The bootstrap daemon is the **sole egress path** for platform data; it emits **hardware/OS telemetry only**.
-- Controller commands are a **fixed typed verb set** — the `commandAllowlist()` from `controller-api.md` §6: `vm.launch`, `vm.resize`, `vm.migrate`, `vm.stop`, `vm.start`, `vm.destroy`, `node.drain`, `node.reboot`, `agent.dispatch_task`, `agent.cancel_task`. The daemon validates and executes known verbs only; it never `eval`s controller strings. Telemetry cadence is set via the registration response (not a command); health probes are folded into telemetry.
+- Controller commands are a **fixed typed verb set** — the `commandAllowlist()` from `controller-api.md` §6. The verbs actually wired in the demo are the human node actions `node.reboot`/`node.drain` plus the AI-operator's LXD REST actions (`instance.restart`, `instance.stop`, `instance.delete`, `image.prune`); the broader `vm.resize`/`vm.migrate`/`vm.stop`/`vm.start`/`vm.destroy`/`agent.dispatch_task`/`agent.cancel_task` set is declared in `controller/app/commands.py` but not wired (future/day-2), and `vm.launch` has no launch path (`_apply_plan` returns `vm_ids: []`). The daemon validates and executes known verbs only; it never `eval`s controller strings. Telemetry cadence is set via the registration response (not a command); health probes are folded into telemetry.
 - Enrollment tokens are single-use and short-TTL; the enrollment endpoint is the only unauthenticated (token-auth) controller call a node makes.
 - No private keys transit the controller (user keys stay in the browser; node keys stay on the node — only CSR/public keys move).
-- The break-glass SSH key is removed after registration (§7); standing SSH is CA-signed, short-lived, and scoped.
+- The break-glass SSH key is removed after registration (§7); standing SSH is the controller-held key + web terminal + `ssh` string (D4), with the CA-signed short-lived-cert model day-2 (B7).
 - Firewall: default-deny inbound; allow `22` from the admin CIDR, `8443` from cluster peers + controller, `8080` from the underlay on Node C only (D2).
 
 ---

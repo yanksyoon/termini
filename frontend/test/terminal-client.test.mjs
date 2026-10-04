@@ -94,7 +94,7 @@ function setup(overrides = {}) {
   const sockets = [];
   const events = [];
   const session = new TerminalSession({
-    url: 'ws://test/terminal/v1/node-a?token=t',
+    url: 'ws://test/terminal/v1/nodes/node-a?token=t',
     socketFactory: (url) => {
       const ws = new MockWebSocket(url);
       sockets.push(ws);
@@ -287,7 +287,7 @@ test('default timers are invoked with a safe `this` (browser Illegal-invocation 
   };
   try {
     const s = new TerminalSession({
-      url: 'ws://host/terminal/v1/n?token=t',
+      url: 'ws://host/terminal/v1/nodes/n?token=t',
       socketFactory: (u) => new MockWebSocket(u),
       random: () => 0,
       backoffBaseMs: 1,

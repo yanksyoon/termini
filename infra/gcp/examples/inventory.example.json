@@ -44,11 +44,11 @@
       "name": "node-c",
       "hostname": "termini-node-c",
       "role": "inference",
-      "machine_type": "g2-standard-4",
+      "machine_type": "n2-standard-8",
       "private_ip": "10.10.0.13",
       "public_ip": "34.136.10.13",
       "zone": "us-central1-a",
-      "accelerator": { "type": "nvidia-l4", "count": 1 },
+      "accelerator": null,
       "tags": ["termini-node", "termini-node-c"],
       "labels": { "managed-by": "terraform", "node": "node-c", "role": "inference" }
     }

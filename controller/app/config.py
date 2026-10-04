@@ -82,10 +82,14 @@ class Config:
     telemetry_batch_max: int
     # W5 dashboard surfaces (t_3468e5f0).
     inventory_path: str | None      # infra inventory.json (public_ip/ssh user+port)
-    ssh_key_path: str | None        # controller-held key for the terminal bridge proxy
-    ssh_public_key: str | None      # public half (fingerprint/comment), else derived
+    ssh_ca_key_path: str | None     # controller-held SSH CA private key (D4)
+    ssh_ca_public_key: str | None   # CA public half (fingerprint/comment), else derived
+    ssh_operator_key_path: str      # controller-local operator identity key (terminal bridge)
     ssh_key_comment: str
-    ssh_client_key_path: str        # operator's local key path shown in the SSH string
+    ssh_client_key_path: str        # operator's browser-local key path shown in the SSH string
+    ssh_cert_principal: str         # principal bound into issued certs (demo: root)
+    ssh_cert_default_validity_s: int  # default cert TTL (8 h)
+    ssh_cert_max_validity_s: int      # hard cert TTL ceiling (24 h)
     ssh_user: str                   # fallback when no inventory is loaded
     ssh_port: int
     log_ring_size: int
@@ -176,12 +180,19 @@ class Config:
             telemetry_interval_ms=_int_env("TERMINI_TELEMETRY_INTERVAL_MS", 1000),
             telemetry_batch_max=_int_env("TERMINI_TELEMETRY_BATCH_MAX", 200),
             inventory_path=_opt_str("TERMINI_INVENTORY_PATH"),
-            ssh_key_path=_opt_str("TERMINI_SSH_KEY_PATH"),
-            ssh_public_key=_opt_str("TERMINI_SSH_PUBLIC_KEY"),
+            ssh_ca_key_path=_opt_str("TERMINI_SSH_CA_KEY_PATH"),
+            ssh_ca_public_key=_opt_str("TERMINI_SSH_CA_PUBLIC_KEY"),
+            ssh_operator_key_path=os.environ.get(
+                "TERMINI_SSH_OPERATOR_KEY_PATH", "~/.termini/operator_key"
+            ).strip() or "~/.termini/operator_key",
             ssh_key_comment=os.environ.get("TERMINI_SSH_KEY_COMMENT", "termini-operator-cert").strip()
             or "termini-operator-cert",
             ssh_client_key_path=os.environ.get("TERMINI_SSH_CLIENT_KEY_PATH", "~/.ssh/termini_operator").strip()
             or "~/.ssh/termini_operator",
+            ssh_cert_principal=os.environ.get("TERMINI_SSH_CERT_PRINCIPAL", "root").strip()
+            or "root",
+            ssh_cert_default_validity_s=_int_env("TERMINI_SSH_CERT_DEFAULT_VALIDITY_S", 28800),
+            ssh_cert_max_validity_s=_int_env("TERMINI_SSH_CERT_MAX_VALIDITY_S", 86400),
             ssh_user=os.environ.get("TERMINI_SSH_USER", "ubuntu").strip() or "ubuntu",
             ssh_port=_int_env("TERMINI_SSH_PORT", 22),
             log_ring_size=_int_env("TERMINI_LOG_RING_SIZE", 10000),

@@ -238,11 +238,11 @@ application/customer logs are C2 and are **never** surfaced
   "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
   "severity": "info",
   "actor": "ai_operator",
-  "message": "Node A disk failure predicted. Issuing node.drain.",
+  "message": "Node A disk failure detected. Stopping heaviest workload.",
   "remediation": {
     "command_id": "01M4349RPY26W8Q453PZYK05CB",
-    "type": "node.drain",
-    "status": "pending_approval"
+    "type": "instance.stop",
+    "status": "executed"
   }
 }
 ```
@@ -359,11 +359,11 @@ Server → client:
 
 **How the controller reaches the node (mechanism, not wire contract).** Primary
 path is the node's outbound mTLS control channel (`/node/v1/{node_id}/channel`,
-D6); the demo terminal bridge MAY instead proxy via SSH using a short-lived
-operator certificate (§3.2) to the node host. The dashboard is agnostic to this:
+D6); the demo terminal bridge MAY instead proxy via SSH using the controller-held
+key (§3.2) to the node host. The dashboard is agnostic to this:
 it only sees the `/terminal/v1/nodes/{node_id}` framing above.
 
-### 3.2 SSH access string (CA-signed certificate — D4)
+### 3.2 SSH access string (controller-held key — D4)
 
 Frozen format (rendered verbatim by the dashboard, copy-to-clipboard):
 
@@ -376,15 +376,14 @@ ssh -i <private_key_path> [-p <port>] <user>@<public_ip>
 | `<user>` | `ubuntu` | infra inventory `ssh.user` (`SSH_USER`, default `ubuntu`) |
 | `<public_ip>` | node's NAT public IP | infra inventory `nodes[].public_ip` |
 | `<port>` | `22` | infra inventory `ssh.port` (omit `-p` when `22`) |
-| `<private_key_path>` | local path to the **operator's** private key | the browser-local (or user-supplied) keypair whose public key was uploaded to `POST /v1/projects/{project_id}/ssh-key` |
+| `<private_key_path>` | local path to the **operator's** key | the controller-held key the dashboard surfaces (default `~/.ssh/termini_operator`) |
 
-Access model (D4): the controller holds an SSH CA. The operator's browser generates
-a keypair locally (or the operator uploads a public key); the private key never
-transits the controller. The controller signs the public key into a **short-lived
-certificate** (default 8 h, principal `root`) via
-`POST /v1/projects/{project_id}/ssh-key` (`controller-api.md` §4.3). The dashboard
-renders the `ssh -i <key>` command; the user runs it with the browser-local private
-key and the signed certificate installed alongside it.
+Access model (D4): the **controller holds an SSH key**, surfaced as a one-click web
+terminal plus this copy-paste `ssh` string — no passwords and no project private key
+displayed in the UI. The dashboard renders the `ssh -i <key>` command; the user runs
+it with the controller-held key. The **SSH CA + short-lived, principal-bound
+certificate** model (browser-local keypair → `POST /v1/projects/{project_id}/ssh-key`)
+is the day-2 (B7) hardening, not the demo path.
 
 The infra-injected **break-glass key** is a ONE-TIME recovery path, injected at
 provisioning (GCP metadata `ssh-keys: ubuntu:<pub>`) and **removed after successful
@@ -474,28 +473,32 @@ applied.
 
 ### 4.4 Approve / deny AI remediation
 
-The AI operator issues remediation commands that pass `guardrailClamp()` and
+The AI operator issues remediation actions that pass `guardrailClamp()` and
 `commandAllowlist()`. Each command carries an `approval` policy: `auto` (execute
 immediately) or `required` (hold in `pending_approval` until a human decides).
 
-**Frozen approval policy:**
+**Frozen approval policy** (the `commandAllowlist()` set in
+`controller/app/commands.py`; the `vm.*`/`agent.*` verbs are declared but not wired
+to any execution path in the demo — future/day-2):
 
 | command type | approval |
 |--------------|----------|
-| `vm.resize`, `vm.migrate`, `vm.start`, `vm.stop` | `auto` |
-| `vm.destroy` | `required` |
+| `vm.resize`, `vm.migrate`, `vm.start`, `vm.stop` (future) | `auto` |
+| `vm.destroy` (future) | `required` |
 | `node.drain` | `required` |
 | `node.reboot` | `required` |
-| `agent.dispatch_task`, `agent.cancel_task` | `auto` |
+| `agent.dispatch_task`, `agent.cancel_task` (future) | `auto` |
 
-**Frozen threshold-rule → command mapping** (from `node-telemetry.md` §5):
+**Frozen threshold-rule → action mapping** (from `node-telemetry.md` §5; the AI
+operator's executor issues these LXD REST actions directly — they are **not** `vm.*`
+command verbs):
 
-| rule_id | action | command | approval |
-|---------|--------|---------|----------|
-| `oom-guard-01` | resize/migrate agent VM | `vm.resize` / `vm.migrate` | `auto` |
-| `disk-fail-01` | drain node, alert | `node.drain` | `required` |
-| `disk-degrade-01` | flag, alert only | (none — log line, `remediation: null`) | — |
-| `gpu-oos-01` | restart llama-cpp, alert | `node.reboot` (node C) | `required` |
+| rule_id | action | LXD action | approval |
+|---------|--------|------------|----------|
+| `oom-guard-01` | restart heaviest workload | `instance.restart` | `auto` (executor) |
+| `disk-fail-01` | stop heaviest workload | `instance.stop` | `auto` (executor) |
+| `disk-degrade-01` | stop heaviest workload | `instance.stop` | `auto` (executor) |
+| `gpu-oos-01` | alert only (surfaced, no autonomous action) | (none) | — |
 
 **Approve** — `POST /v1/projects/{project_id}/remediations/{command_id}/approve`
 
@@ -583,10 +586,11 @@ now cross-referenced from `controller-api.md`.
   (`/terminal/v1/nodes/{node_id}`, host shell, controller-brokered over the outbound
   channel), and a **VM-level** agent shell lives at `/terminal/v1/vms/{vm_id}`
   (`lxc exec`). Recorded as architecture.md R14.
-- **R-D2 — SSH access string and key (RESOLVED).** All four documents now agree on the
-  D4 CA model: the operator's browser-local key is signed into a short-lived
-  certificate by `POST /v1/projects/{project_id}/ssh-key` (`controller-api.md` §4.3);
-  the break-glass key is a one-time recovery path removed after registration
+- **R-D2 — SSH access string and key (RESOLVED).** The documents now agree on the
+  controller-held-key model: the dashboard surfaces a one-click web terminal plus an
+  `ssh` string from the controller-held key (`controller-api.md` §4.3); the
+  SSH CA + short-lived-certificate issuance is day-2 (B7, task t_53df37ef). The
+  break-glass key is a one-time recovery path removed after registration
   (`node-bootstrap.md` §7). The `ssh.inject_key` command and the shared project
   keypair are removed everywhere.
 - **R-D3 — log envelope (RESOLVED).** `controller-api.md` §7.2/§7.1 now reference

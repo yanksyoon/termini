@@ -58,7 +58,7 @@ http://<dashboard>/?api=https://<controller-host>&project=<pid>&token=<project_t
 
 ## Contract conformance (§3)
 
-* Terminal WS: `ws(s)://<host>/terminal/v1/{node_id}?token=<project_token>`.
+* Terminal WS: `ws(s)://<host>/terminal/v1/nodes/{node_id}?token=<project_token>`.
   Client frames `input` (base64), `resize`, `ping`; server frames `ready`,
   `output` (base64), `exit`, `error`, `pong`.
 * Auth failure → server close code `4401`; the client renders an error and does

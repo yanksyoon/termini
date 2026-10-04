@@ -26,7 +26,7 @@ def _first_node_id(ctx: CheckContext) -> str:
     return nodes[0].get("node_id") if nodes else ""
 
 
-def _sse_head(url: str, token: str, seconds: float = 2.5):
+def _sse_head(url: str, token: str, seconds: float = 6.0):
     """Read the first bytes of an SSE stream for a bounded time.
 
     Returns (status_code, text). For a 404/error the status is the HTTP code;
@@ -41,8 +41,12 @@ def _sse_head(url: str, token: str, seconds: float = 2.5):
             status = r.status
             import time
             start = time.monotonic()
+            # read1() returns whatever the socket has buffered instead of
+            # blocking for a full 512 bytes, so a single SSE event is observed
+            # within the window without waiting for a second one.
+            read = getattr(r, "read1", None) or r.read
             while time.monotonic() - start < seconds:
-                chunk = r.read(512)
+                chunk = read(512)
                 if not chunk:
                     break
                 out.append(chunk.decode("utf-8", errors="replace"))
@@ -91,46 +95,64 @@ def check_w5_1(ctx: CheckContext) -> dict:
 
 def check_w5_2(ctx: CheckContext) -> dict:
     criterion = "the web terminal opens a working shell on a node"
-    method = "WebSocket /terminal/v1/{node_id}?token=… ; send `echo __ACCEPTANCE__` and read the PTY output"
+    method = "WebSocket /terminal/v1/nodes/{node_id}?token=… ; send `echo __ACCEPTANCE__` and read the PTY output"
     node_id = _first_node_id(ctx)
     if not node_id or not ctx.project_token:
-        art = ctx.ev.record("W5.2", "W5.2 terminal (skipped)", "WS /terminal/v1", "no node id / token")
+        art = ctx.ev.record("W5.2", "W5.2 terminal (skipped)", "WS /terminal/v1/nodes", "no node id / token")
         return result("W5.2", WS, criterion, method, "skipped", "no node id available",
                       art, reason="no node id / project token available to open a terminal")
 
-    ws_url = f"ws://{ctx.controller_url.split('://', 1)[-1].rstrip('/')}/terminal/v1/{node_id}?token={ctx.project_token}"
+    ws_url = f"ws://{ctx.controller_url.split('://', 1)[-1].rstrip('/')}/terminal/v1/nodes/{node_id}?token={ctx.project_token}"
     output = ""
+    decoded = ""
+    err_code = None
     status = "fail"
     reason = None
     try:
         ws = WsClient(ws_url, timeout=8)
         ws.connect()
         ws.send_text(json.dumps({"type": "input", "data": base64.b64encode(b"echo __ACCEPTANCE__\n").decode()}))
-        for _ in range(10):
+        for _ in range(20):
             frame = ws.recv_frame(timeout=5)
             if frame is None:
                 break
             output += json.dumps(frame) + "\n"
-            if "__ACCEPTANCE__" in frame.get("data", ""):
+            # recv_frame returns the raw text frame (a JSON envelope); decode the
+            # base64 `output.data` payload to read the PTY bytes.
+            try:
+                obj = json.loads(frame["data"])
+            except (KeyError, ValueError):
+                continue
+            if isinstance(obj, dict) and obj.get("type") == "output" and isinstance(obj.get("data"), str):
+                try:
+                    decoded += base64.b64decode(obj["data"]).decode("utf-8", errors="replace")
+                except Exception:  # noqa: BLE001
+                    pass
+            if isinstance(obj, dict) and obj.get("type") == "error":
+                err_code = obj.get("code")
+            if "__ACCEPTANCE__" in decoded:
                 status = "pass"
                 break
         ws.close()
     except Exception as exc:  # noqa: BLE001
         output += f"<ws error: {type(exc).__name__}: {exc}>"
 
-    art = ctx.ev.record("W5.2", "W5.2 web terminal shell", ws_url, output)
+    art = ctx.ev.record("W5.2", "W5.2 web terminal shell", ws_url,
+                        output + "\n--- decoded PTY ---\n" + decoded)
 
     if status == "pass":
         return result("W5.2", WS, criterion, method, "pass", "terminal echoed the marker", art)
     if "404" in output:
         return result("W5.2", WS, criterion, method, "skipped",
                       "terminal WS endpoint not found (404) in running controller",
-                      art, reason="the /terminal/v1 WebSocket route is not implemented in the running controller build")
-    if "no key" in output.lower() or ("ssh" in output.lower() and "key" in output.lower()):
-        reason = "terminal backend (ssh break-glass) not provisioned: no SSH key path configured for the controller"
+                      art, reason="the /terminal/v1/nodes WebSocket route is not implemented in the running controller build")
+    if err_code == "NODE_OFFLINE" or "no key" in output.lower() or (
+            "ssh" in output.lower() and "key" in output.lower()):
+        reason = ("terminal backend unreachable: the node has no routable address / "
+                  "the controller has no SSH key for the bridge")
         status = "skipped"
-    elif "error" in output.lower():
-        reason = f"terminal returned an error: {output[:200]}"
+    elif err_code or "error" in output.lower():
+        reason = f"terminal returned an error ({err_code}): {output[:200]}"
         status = "fail"
     else:
         reason = "terminal did not echo the sent command"

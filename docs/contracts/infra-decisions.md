@@ -18,7 +18,7 @@ This document answers every open **infrastructure** question in `project.md` and
 | D1 | Cloud system: LXD vs MicroCloud vs OpenStack | **LXD snap, single 3-member cluster** (pinned channel) | MicroCloud, OpenStack |
 | D2 | Overlay networking for a shared logical subnet | **Underlay-routed services; no LXD overlay for the demo.** Per-node NAT bridges; cross-node traffic uses the VPC/LAN underlay | OVN, Fan networking, hand-rolled VXLAN/Geneve |
 | D3 | Pre-baked image strategy | **Immutable pre-baked host image + offline-preloaded workload images + activation-only cloud-init.** No package installs at boot | Live `cloud-init` package install, per-boot model download, single "mega-image" |
-| D4 | SSH key custody & rotation | **Controller-held SSH CA + short-lived, principal- and source-bound user certificates**; node identity via mTLS from a node-local key + controller-signed cert | Shared project private key in the UI, static passwords, long-lived per-node keys, agent-managed keys |
+| D4 | SSH key custody & rotation | **Controller-held SSH key, surfaced as a one-click web terminal + `ssh` string**; the SSH CA + short-lived, principal-bound user-certificate model is day-2 (B7); node identity via mTLS from a node-local key + controller-signed cert | Shared project private key in the UI, static passwords, long-lived per-node keys, agent-managed keys |
 | D5 | GPU access on Node C | **Host-exposed `llama.cpp` on Node C's underlay IP (OpenAI-compatible API)**; GPU passthrough is a day-2 path only | Full PCI/VFIO passthrough into a VM |
 | D6 | Node ↔ controller control topology | **Outbound-only control channel from each node** (mTLS WebSocket); push telemetry; no inbound SSH required | Controller pulls/scrapes nodes, inbound SSH from internet |
 | D7 | Cluster storage | **Local `zfs` pool per member** (`local`); no shared storage in the demo | MicroCeph/Ceph, NFS shared pool |
@@ -44,7 +44,7 @@ These choices share one bias: **maximise demo reliability and minimise the numbe
 
 **Consequences.**
 - `docs/contracts/node-bootstrap.md` specifies the exact `lxd init --preseed` seed/join sequence, token issuance, and join-failure fallback.
-- The controller mints cluster join tokens at registration via the seed's LXD REST API (`10.10.0.11:8443`) — **cluster administration only**. VM placement is a typed `vm.launch` command to the node daemon, which calls its **local** LXD API (AR-2); the controller never drives LXD placement directly. See D2 for addressing and D7 for storage.
+- The controller mints cluster join tokens at registration via the seed's LXD REST API (`10.10.0.11:8443`) — **cluster administration only**. VM placement via a typed `vm.launch` command to the node daemon (which calls its **local** LXD API, AR-2) is **day-2 — not wired in the demo** (`_apply_plan` returns `vm_ids: []`); the controller never drives LXD placement directly. See D2 for addressing and D7 for storage.
 
 ---
 
@@ -80,7 +80,7 @@ These choices share one bias: **maximise demo reliability and minimise the numbe
 | 443 | TCP | Controller public IP | Frontend/browser (public); nodes (outbound target) |
 | 8443 | TCP | Every node (`core.https_address`) | LXD cluster peers `10.10.0.0/24`; controller `10.10.0.10` for join-token minting only (cluster admin, not placement) |
 | 8080 | TCP | Node C | Underlay `10.10.0.0/24` (i.e. nodes A/B and their guest NAT traffic). Not public. |
-| 22 | TCP | Every node | Local admin CIDR only; **CA-signed certs only, no passwords** (D4). No inbound SSH is required for platform operation (D6). |
+| 22 | TCP | Every node | Local admin CIDR only; **controller-held SSH key, no passwords** (D4). No inbound SSH is required for platform operation (D6). |
 
 **Cross-node reachability worked example.**
 `agent VM (10.20.1.x on Node A) → 10.20.1.1 (bridge gw) → SNAT → 10.10.0.11 → underlay → 10.10.0.13:8080 (llama.cpp on Node C)`.
@@ -105,7 +105,7 @@ Node C firewall: `allow tcp/8080 from 10.10.0.0/24`. No MTU-sensitive tunnel is 
 1. **Host image — "Termini Node OS".** Ubuntu Server **24.04 LTS** minimal, plus, already on disk:
    - LXD **snap** pre-installed and pinned (`5.21/stable`, revision recorded);
    - the **`termini-bootstrap` daemon** installed as a `systemd` service (enabled, not started until config is present);
-   - `chrony` (time sync), `nftables` (default-deny firewall), `openssh-server` (CA-only, D4), and the NVIDIA **driver stack on the Node C image variant**.
+   - `chrony` (time sync), `nftables` (default-deny firewall), `openssh-server` (key-based access, D4), and the NVIDIA **driver stack on the Node C image variant**.
    - **The workload images are preloaded** into the local LXD image store from tarballs (see 3).
 2. **Guest image — "agent-vm"** (LXD VM, `agent-vm/<version>`): Python 3.12, Node.js, agent runtime deps, and a pre-warmed event/log pipeline. No model weights.
 3. **Guest image — "inference"** (LXD VM/container variant `inference/<version>`): the pinned `llama.cpp` runtime and any weights, present for completeness; **the demo does not launch it** (D5).
@@ -129,32 +129,47 @@ Images are tagged `termini-node-<YYYY.MM.DD>-<gitsha>` and `agent-vm-<version>`;
 
 ---
 
-## D4 — SSH key custody & rotation: controller CA + short-lived certificates + mTLS node identity
+## D4 — SSH key custody & rotation: controller-held key + web terminal + ssh string
 
 **Decision.**
-- The **controller holds an SSH certificate authority** (Ed25519). The **private CA key never leaves the controller's secret store** (GCP Secret Manager / KMS-backed). Nodes trust only the **CA public key**, injected at provisioning.
-- **Users never receive a private key from us.** The browser generates a keypair locally (or the user uploads a public key); the **private key never transits the controller**. The controller signs the user's public key into a **short-lived certificate**:
-  `ssh-keygen -s ca -I <user> -n <principal> -V +8h -O source-address=<cidr> <user.pub>`
-  bound to a principal (`root` for the demo), a TTL (default **8 h**), and optionally a source address.
-- **Node identity** is separate from user access: at first boot the bootstrap daemon generates a **node-local Ed25519 keypair**, sends a **CSR** in registration, and receives a controller-signed **client certificate**. This cert drives the outbound mTLS control channel (D6) and the controller's LXD API access is authorised separately by an LXD trust client cert that the controller holds.
-- **Host keys are pinned on first registration** (TOFU on the node→controller direction): the daemon reports its host public key; the controller records it and verifies it on every later SSH. No `StrictHostKeyChecking=no` in the fleet.
-- **Rotation.** The CA is rotatable without re-provisioning: nodes trust a **CA set** (`TrustedUserCAKeys` file with >1 key during a rollover window). Enrollment tokens are single-use and short-TTL. User certs are ≤8 h by construction. Node client certs have a bounded lifetime and are re-issued over the authenticated channel.
-- **No inbound SSH from the internet is required.** Interactive access (xterm.js) is brokered by the controller: it either opens the session over the node's outbound control channel (D6) or issues a short-lived operator certificate for LAN access. This is the governance-friendly default and it survives NAT.
+- The **controller holds an SSH key**; user access is surfaced in the dashboard as a
+  **one-click web terminal** plus a copy-paste **`ssh` string**
+  (`GET /v1/projects/{project_id}/nodes/{node_id}/ssh`, `dashboard.md` §3.2). No
+  passwords and no project private key displayed in the UI.
+- **No inbound SSH from the internet is required.** The web terminal is
+  controller-brokered over the node's outbound mTLS control channel (D6).
+- **Node identity** is separate from user access: at first boot the bootstrap daemon
+  generates a **node-local Ed25519 keypair**, sends a **CSR** in registration, and
+  receives a controller-signed **client certificate**. This cert drives the outbound
+  mTLS control channel (D6); the controller's LXD API access is authorised separately
+  by an LXD trust client cert that the controller holds.
+- **Host keys are pinned on first registration** (TOFU on the node→controller
+  direction): the daemon reports its host public key; the controller records it and
+  verifies it on every later SSH. No `StrictHostKeyChecking=no` in the fleet.
+- **The full SSH CA model is day-2 (B7).** A controller-held SSH certificate authority
+  signing **short-lived (≤8 h), principal-bound user certificates** — browser-local
+  private keys, `ssh-keygen -s` signing, `POST /v1/projects/{project_id}/ssh-key` —
+  is the planned hardening (tracked as controller task t_53df37ef), not the demo path.
+  No SSH CA code is committed on origin/main — the CA is a future addition.
 
 **Rationale.**
-- `project.md` proposed generating "an SSH keypair for the project" and displaying the private key on the frontend. That is a long-lived, fleet-wide, non-revocable secret: one leak compromises every node and there is no rotation story. It fails the governance bar the same document sets.
-- A CA model is the standard way to get **revocable, scoped, time-bounded** access, and it is cheap: `ssh-keygen` does the signing; nodes need one line of config.
-- Keeping the user's private key in the browser means the controller is never a custody point for user secrets — a much cleaner answer to "your data, our operations".
+- `project.md` proposed generating "an SSH keypair for the project" and displaying the
+  private key on the frontend. That is a long-lived, fleet-wide, non-revocable secret.
+  The demo instead shows the honest minimum: a controller-held key surfaced as a web
+  terminal + `ssh` string, with no fleet-wide secret handed to the user.
+- The CA model is the day-2 route to revocable, scoped, time-bounded access; it is
+  cheap (`ssh-keygen` signing, one config line on nodes) but not shipped in the demo.
 
 **Rejected alternatives.**
 - **Shared project private key shown in the UI.** Rejected (see above).
 - **Static root password or a shared password.** Rejected — no rotation, no attribution, no revocation.
 - **Long-lived per-node keypairs distributed by the controller.** Rejected — the controller would hold N long-lived private keys; blast radius and rotation cost scale with the fleet.
-- **Agent-managed SSH with no CA.** Rejected — unscoped, unauditable, unrevocable.
 
 **Consequences.**
-- `node-bootstrap.md` §7 defines the injected items (`termini.ca_pubkey`, break-glass key lifecycle) and host-key pinning.
-- The controller workstream owns CA storage, signing endpoints, and cert TTL policy; governance owns the audit trail of every issued cert.
+- `node-bootstrap.md` §7 defines the injected items and host-key pinning; the CA
+  trust-anchor (`TrustedUserCAKeys`) is a day-2 placeholder for B7, not the demo path.
+- The controller workstream owns key custody, the `ssh`-string endpoint, and the web
+  terminal bridge; governance owns the audit trail of every issued cert (day-2).
 
 ---
 
@@ -215,13 +230,13 @@ and firewall scope are unchanged.
 - A shared pool (Ceph/MicroCeph) is the thing that would let us do **live** migration, but it is a heavy, multi-node distributed system that is out of scope for 5 days and adds its own failure modes.
 
 **Consequence / honest limitation.** With per-member local storage, in-cluster movement
-of a running VM is **stop → transfer → start (evacuation)** in the demo. (Upstream LXD
-does support *stateful* live migration on a local pool — `migration.stateful=true` +
-`size.state ≥ limits.memory` — but it copies the root disk and is not on the demo
-critical path.) The fleet-remediation primitives that work identically on one node are
-**hotplug CPU/RAM resize** (Scenario A's first option) and **evacuation** (Scenario B).
-`project.md` Scenario A offers resize *or* live-migrate; the demo uses **resize** as the
-primary remediation and **evacuation** for the disk-failure scenario. Day-2 adds
+of a running VM is **stop → transfer → start (evacuation)** — an LXD primitive available
+but not driven by the demo's AI operator. (Upstream LXD does support *stateful* live
+migration on a local pool — `migration.stateful=true` + `size.state ≥ limits.memory` —
+but it copies the root disk and is not on the demo critical path.) The demo's AI operator
+remediates via `instance.restart` (OOM) and `instance.stop` (disk failure/degradation) —
+see `node-telemetry.md` §5 and `controller/playbooks/*.yaml`. Hotplug CPU/RAM resize and
+evacuation are LXD primitives noted here as day-2 options, not demo actions. Day-2 adds
 MicroCeph for cheap true live migration.
 
 **Rejected alternatives.** MicroCeph/Ceph (heavy, multi-node quorum), a shared NFS pool (single point of failure, not cluster-native), `btrfs` (weaker tooling for loop devices), `dir` (no snapshots).
@@ -247,10 +262,10 @@ MicroCeph for cheap true live migration.
 | LXD, OpenStack, or MicroCloud? | **LXD** (D1). MicroCloud and OpenStack rejected with rationale. |
 | How do nodes share a network under that cloud technology? | **Underlay routing + per-node NAT bridges** (D2); no OVN/fan/VXLAN in the demo. |
 | What should be pre-installed in the OS? How is the OS served? | **Immutable pre-baked host image + offline-preloaded workload images + activation-only cloud-init** (D3). |
-| SSH key custody / how customers get access | **Controller SSH CA + short-lived, scoped user certs; browser-local private keys** (D4). |
+| SSH key custody / how customers get access | **Controller-held SSH key + web terminal + `ssh` string** (D4); SSH CA + short-lived user certs = day-2 (B7). |
 | GPU passthrough vs host-exposed `llama.cpp` on Node C | **Host-exposed `llama.cpp`** on `10.10.0.13:8080`; passthrough deferred to day-2 (D5). |
 | How does the controller reach nodes? | **Outbound-only mTLS control channel** (D6), push telemetry (D8). |
-| Storage for the cluster / migration semantics | **Local ZFS per member** (D7); resize + evacuation for the demo, live migration deferred. |
+| Storage for the cluster / migration semantics | **Local ZFS per member** (D7); remediation via `instance.restart`/`instance.stop`, live migration deferred. |
 
 ## Cross-component invariants (other workstreams rely on these)
 

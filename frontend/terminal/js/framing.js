@@ -130,14 +130,15 @@ export function decodeFrame(text) {
 
 /**
  * Build the terminal WebSocket URL for a node:
- *   ws(s)://<host>/terminal/v1/{node_id}?token=<project_token>
+ *   ws(s)://<host>/terminal/v1/nodes/{node_id}?token=<project_token>
+ * (node-level shell; docs/contracts/dashboard.md §3.1, R-D1).
  * `origin` is the controller base (http:// or https://) or a full ws URL.
  */
 export function terminalUrl(origin, nodeId, token) {
   if (!nodeId) throw new Error('nodeId is required');
   const u = new URL(origin);
   u.protocol = u.protocol === 'https:' || u.protocol === 'wss:' ? 'wss:' : 'ws:';
-  u.pathname = `/terminal/v1/${encodeURIComponent(nodeId)}`;
+  u.pathname = `/terminal/v1/nodes/${encodeURIComponent(nodeId)}`;
   u.search = '';
   u.hash = '';
   if (token) u.search = `?${new URLSearchParams({ token }).toString()}`;

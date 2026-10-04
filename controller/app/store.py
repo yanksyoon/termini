@@ -264,6 +264,12 @@ def latest_sample(conn, node_id: str) -> dict | None:
     return json.loads(row["payload_json"]) if row else None
 
 
+def _epoch_to_rfc3339(ts: float) -> str:
+    """Format an epoch-second bucket start as RFC3339 with millis (dashboard.md §1.4)."""
+    dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
 def metric_series(
     conn, node_id: str, start: float | None, end: float | None,
     metric_names: list[str], resolution: str,
@@ -303,11 +309,15 @@ def metric_series(
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 slot["vals"][name].append(v)
 
-    for (t_label, _), slot in sorted(acc.items(), key=lambda kv: kv[0][1]):
+    for (t_label, t_epoch), slot in sorted(acc.items(), key=lambda kv: kv[0][1]):
+        # Contract §1.4: point timestamps are RFC3339. Raw points carry the sample
+        # ts verbatim; downsampled buckets are formatted from their epoch second so
+        # the dashboard's Date.parse() keeps every point (was epoch seconds).
+        ts_iso = t_label if bucket <= 0 else _epoch_to_rfc3339(t_epoch)
         for name in metric_names:
             vals = slot["vals"][name]
             if vals:
-                series[name]["points"].append({"t": t_label, "v": round(sum(vals) / len(vals), 4)})
+                series[name]["points"].append({"t": ts_iso, "v": round(sum(vals) / len(vals), 4)})
 
     return {"node_id": node_id, "resolution": resolution,
             "series": [series[n] for n in metric_names if n in series]}
@@ -319,6 +329,51 @@ def metric_series(
 
 def set_node_public_ip(conn, node_id: str, public_ip: str | None) -> None:
     conn.execute("UPDATE nodes SET public_ip = ? WHERE id = ?", (public_ip, node_id))
+
+
+# ---------------------------------------------------------------------------
+# SSH CA certificate ledger (POST /v1/projects/{pid}/ssh-key, D4)
+# ---------------------------------------------------------------------------
+
+def insert_ssh_certificate(conn, cert: dict) -> None:
+    conn.execute(
+        "INSERT INTO ssh_certificates (cert_id, project_id, principal, key_id,"
+        " key_algorithm, key_fingerprint, valid_from, valid_until, issued_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            cert["cert_id"], cert["project_id"], cert["principal"], cert["key_id"],
+            cert["key_algorithm"], cert["key_fingerprint"], cert["valid_from"],
+            cert["valid_until"], cert["issued_at"],
+        ),
+    )
+
+
+def get_ssh_certificate(conn, fingerprint: str) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM ssh_certificates WHERE key_fingerprint = ?", (fingerprint,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def revoke_ssh_certificate(conn, fingerprint: str, now: str) -> str | None:
+    """Revoke the active cert matching `fingerprint`.
+
+    Returns "revoked" when an active cert was revoked, "already_revoked" when it
+    was already revoked, or ``None`` when no such fingerprint was ever issued.
+    """
+    row = conn.execute(
+        "SELECT cert_id, revoked_at FROM ssh_certificates WHERE key_fingerprint = ?",
+        (fingerprint,),
+    ).fetchone()
+    if row is None:
+        return None
+    if row["revoked_at"] is not None:
+        return "already_revoked"
+    conn.execute(
+        "UPDATE ssh_certificates SET revoked_at = ? WHERE cert_id = ?",
+        (now, row["cert_id"]),
+    )
+    return "revoked"
 
 
 # ---------------------------------------------------------------------------

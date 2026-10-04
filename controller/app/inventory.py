@@ -118,11 +118,18 @@ def ssh_command_for(
     node: dict,
     inventory: Inventory,
     *,
-    public_key_line: str | None,
+    ca_public_key_line: str | None,
     key_comment: str,
     client_key_path: str,
 ) -> dict:
-    """Build the GET /nodes/{id}/ssh payload (dashboard.md §3.2)."""
+    """Build the GET /nodes/{id}/ssh payload (dashboard.md §3.2, D4 CA model).
+
+    The copy-paste command references the *operator's* browser-local private key
+    (``client_key_path``); the controller holds only the SSH CA, whose public
+    half is surfaced as ``key_algorithm``/``key_fingerprint`` (the trust anchor).
+    The signed short-lived certificate is installed alongside the browser-local
+    key, so no long-lived controller key ever appears in the string.
+    """
     host = node.get("public_ip") or inventory.public_ip_for(node)
     user = inventory.ssh_user
     port = inventory.ssh_port
@@ -130,9 +137,9 @@ def ssh_command_for(
     algo = "unknown"
     fp = ""
     comment = key_comment
-    if public_key_line:
-        parts = public_key_line.strip().split()
-        algo, fp = fingerprint_from_public_key(public_key_line)
+    if ca_public_key_line:
+        parts = ca_public_key_line.strip().split()
+        algo, fp = fingerprint_from_public_key(ca_public_key_line)
         if len(parts) >= 3:
             comment = parts[2]
 
@@ -154,5 +161,6 @@ def ssh_command_for(
         "key_algorithm": algo,
         "key_fingerprint": fp,
         "key_comment": comment,
+        "auth_model": "ssh_ca",
         "command": command,
     }

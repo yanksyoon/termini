@@ -1,0 +1,50 @@
+### local-resource / egress evidence 2026-10-04T11:06:37Z
+
+## pinned image is local (no remote fetch)
+500cbf91d336,500cbf91d336c468e3b157f47f90178b1614574ccdd1f38a18a5190ed103ce41,agentic-os/w3 (1 more),327.97MiB
+
+## model file is local and on a local filesystem
+/var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf 4920736608 bytes
+
+## demo-node-a
+-- runtime deps present in the baked image (no install at boot):
+/usr/bin/python3
+0
+-- bake sentinel (boot performs no fetch):
+-rw-r--r-- 1 root root 0 Oct  4 10:09 /var/lib/termini/.baked-offline
+-- network peers currently established (expect only the local controller):
+State     Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
+-- routes (default via the local bridge gateway, not the internet):
+default via 10.14.100.1 dev eth0 proto dhcp src 10.14.100.202 metric 100 
+10.14.100.0/24 dev eth0 proto kernel scope link src 10.14.100.202 metric 100 
+10.14.100.1 dev eth0 proto dhcp scope link src 10.14.100.202 metric 100 
+
+## demo-node-b
+-- runtime deps present in the baked image (no install at boot):
+/usr/bin/python3
+0
+-- bake sentinel (boot performs no fetch):
+-rw-r--r-- 1 root root 0 Oct  4 10:09 /var/lib/termini/.baked-offline
+-- network peers currently established (expect only the local controller):
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
+-- routes (default via the local bridge gateway, not the internet):
+default via 10.14.100.1 dev eth0 proto dhcp src 10.14.100.49 metric 100 
+10.14.100.0/24 dev eth0 proto kernel scope link src 10.14.100.49 metric 100 
+10.14.100.1 dev eth0 proto dhcp scope link src 10.14.100.49 metric 100 
+
+## demo-node-c
+-- runtime deps present in the baked image (no install at boot):
+/usr/bin/python3
+0
+-- bake sentinel (boot performs no fetch):
+-rw-r--r-- 1 root root 0 Oct  4 10:09 /var/lib/termini/.baked-offline
+-- network peers currently established (expect only the local controller):
+State     Recv-Q Send-Q Local Address:Port Peer Address:Port Process
+-- routes (default via the local bridge gateway, not the internet):
+default via 10.14.100.1 dev eth0 proto dhcp src 10.14.100.11 metric 100 
+10.14.100.0/24 dev eth0 proto kernel scope link src 10.14.100.11 metric 100 
+10.14.100.1 dev eth0 proto dhcp scope link src 10.14.100.11 metric 100 
+
+## controller is local-only
+curl: (22) The requested URL returned error: 403
+controller http_code=403

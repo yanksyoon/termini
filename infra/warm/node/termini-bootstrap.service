@@ -1,0 +1,16 @@
+[Unit]
+Description=Termini node bootstrap (registration + telemetry)
+Documentation=file:/opt/termini/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/termini-bootstrap
+Restart=always
+RestartSec=2
+# No inbound service, no privileged operations in the demo agent.
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

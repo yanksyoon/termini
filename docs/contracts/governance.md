@@ -292,7 +292,7 @@ External model calls additionally record `{model, prompt_template_version, input
 1. Every call has a unique **call_id** (ULID). Node and controller record the same id.
 2. Each side records **payload_sha256**; a verifier recomputes the hash and matches.
 3. **Hash chain**: the node maintains `chain = H(prev_chain || payload_sha256 || call_id)`; the controller maintains a parallel chain per node. Divergence between the two chains proves tampering or missing calls. The node exposes its chain tip as a C0 field (`governance_chain_tip`) so the controller can reconcile continuously.
-4. The controller exposes a read-only, authenticated `GET /v1/governance/audit?node_id=&since=` endpoint so a verifier can pull and reconcile recent records.
+4. The controller exposes a read-only, authenticated `GET /v1/operator/audits?node_id=&limit=` endpoint (`controller-api.md` §4.4) so a verifier can pull and reconcile recent records. (There is no `GET /v1/governance/audit` endpoint.)
 5. Every external model call is traceable via call_id → prompt template version → input field classes (all C0). A verifier can confirm no C1/C2 ever entered a model call.
 
 ---
@@ -334,7 +334,7 @@ The controller MUST implement these as code, not policy prose:
 ## 12. Cross-document alignment notes
 
 - `node-telemetry.md` (t_260694d8) MUST mark each telemetry field with its C-class from §4 and emit the `_redaction` metadata block.
-- `controller-api.md` (t_260694d8) MUST expose `governanceGate`, `externalModelCall`, and the `GET /v1/governance/audit` endpoint; rejection code `GOVERNANCE_REJECT` (422) is reserved here.
+- `controller-api.md` (t_260694d8) MUST expose `governanceGate`, `externalModelCall`, and the operator audit surface `GET /v1/operator/audits` (there is no `GET /v1/governance/audit`); rejection code `GOVERNANCE_REJECT` (422) is reserved here.
 - `node-bootstrap.md` (t_134e2f24) MUST place the redactor in the daemon's egress path and provide the redactor config as a versioned artifact.
 - `agent-runtime.md` (t_1addb6fd) MUST route agent logs/payloads to on-prem inference only and must not expose an egress path for C2.
 - `vm-allocation.schema.json` (t_260694d8) is the clamp validator referenced by §7.3; model output is advisory against it.

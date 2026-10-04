@@ -447,7 +447,7 @@ class DashboardIntegrationTest(unittest.TestCase):
             "TERMINI_MIN_REDACTOR_VERSION": "3",
             "TERMINI_INVENTORY_PATH": cls.inventory_path,
             "TERMINI_TERMINAL_BACKEND": "local",
-            "TERMINI_SSH_PUBLIC_KEY": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJR2bq8RS3wcFV05oL8+m9nzkBr6kXzZVC13MkUiUE34 termini-breakglass",
+            "TERMINI_SSH_CA_PUBLIC_KEY": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJR2bq8RS3wcFV05oL8+m9nzkBr6kXzZVC13MkUiUE34 termini-operator-cert",
             "PYTHONUNBUFFERED": "1",
         })
         cls.proc = subprocess.Popen(
@@ -519,6 +519,29 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertEqual(r["key_algorithm"], "ssh-ed25519")
         self.assertTrue(r["key_fingerprint"].startswith("SHA256:"))
         self.assertIn("ubuntu@", r["command"])
+
+    def test_metric_series_point_timestamps_are_rfc3339(self):
+        # Regression (W5 root integration): the dashboard charts call
+        # Date.parse(point.t). The downsampled /metrics series must emit RFC3339
+        # per contract §1.4, not epoch seconds — epoch silently dropped every
+        # point, so the resource-utilization charts rendered "no data".
+        import re
+        st, _ = self._telemetry(self.node_a["node_id"], self.node_a_token,
+                                valid_sample(seq=42, ts="2026-10-04T07:49:00.000Z"))
+        self.assertEqual(st, 202)
+        st, r = http(
+            "GET",
+            f"/v1/projects/{self.project_id}/nodes/{self.node_a['node_id']}"
+            "/metrics?resolution=5s&metrics=cpu_util_pct",
+            token="dash-project-token", port=PORT)
+        self.assertEqual(st, 200)
+        self.assertEqual(r["resolution"], "5s")
+        points = [p for s in r["series"] for p in s["points"]]
+        self.assertTrue(points, "expected at least one downsampled point")
+        reg = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"
+        for p in points:
+            self.assertRegex(p["t"], reg)
+            self.assertNotRegex(p["t"], r"^\d+(\.\d+)?$")
 
     def test_reboot_action_and_offline_guard(self):
         st, r = self._telemetry(self.node_a["node_id"], self.node_a_token, valid_sample(seq=1))

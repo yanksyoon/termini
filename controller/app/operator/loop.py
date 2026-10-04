@@ -10,6 +10,11 @@ short-lived SQLite transaction; trigger state, event, decision, and audit writes
 happen in the same transaction, so the latch and the decision log are always
 consistent with what was actually issued.
 
+Each fired remediation is also published to the controller's operator log stream
+(`OperatorLogs`, docs/contracts/dashboard.md §2) when a sink is injected by
+`app/main`, so the dashboard's live AI-operator panel reflects the loop. The sink
+is optional — unit tests and the standalone CLI construct the loop without one.
+
 Detection is **stateful and persisted** (see `operator/triggers.py` and migration
 0003): thresholds live in `trigger_config` (durable, not in-memory) and the
 per-(node, rule) hysteresis latch lives in `trigger_state`, so
@@ -47,12 +52,17 @@ class OperatorLoop(threading.Thread):
         instance_names: dict[str, str] | None = None,
         default_instance_name: str = "agent",
         lxd: executor.LxdExecutor | None = None,
+        logs=None,  # OperatorLogs sink: the dashboard's live AI-operator stream (see below)
     ):
         super().__init__(name="operator-loop", daemon=True)
         self.cfg = cfg
         self.project = project
         self.thresholds = thresholds  # env-seeded defaults (used to seed trigger_config)
         self.playbooks = playbooks
+        # OperatorLogs sink for the dashboard's live AI-operator stream
+        # (docs/contracts/dashboard.md §2). Optional: None keeps the loop
+        # self-contained for unit tests and the standalone CLI.
+        self.logs = logs
         self.instance_names = instance_names or {}
         self.default_instance_name = default_instance_name
         self.lxd = lxd or executor.LxdExecutor(
@@ -176,6 +186,7 @@ class OperatorLoop(threading.Thread):
         if action is None:
             log.info("event %s (%s) has no playbook action; recorded only",
                      event.rule_id, node_id)
+            self._emit_log(conn, node_id, f"{event.rule_id}: no playbook action; recorded only")
             return None
 
         decision_id = ulid.new_ulid()
@@ -210,12 +221,35 @@ class OperatorLoop(threading.Thread):
         remed_lat = self._latency_s(event.fired_at, now)
         log.info("node %s rule %s -> %s %s: %s (remediation_latency=%ss)",
                  node_id, event.rule_id, action.kind, target, result.result, remed_lat)
+        message = f"{event.rule_id}: {action.kind} {target} -> {result.result}".strip()
+        threshold = getattr(event, "threshold", None)
+        if threshold:
+            message += f" (threshold: {threshold})"
+        self._emit_log(conn, node_id, message)
         return {
             "audit_id": audit_id, "decision_id": decision_id, "event_id": event.event_id,
             "node_id": node_id, "rule_id": event.rule_id, "action_kind": action.kind,
             "result": result.result,
             "detection_latency_s": detect_lat, "remediation_latency_s": remed_lat,
         }
+
+    def _emit_log(self, conn, node_id: str, message: str) -> None:
+        """Publish one AI-operator line to the dashboard stream (dashboard.md §2).
+
+        No-op when the loop was constructed without a sink (unit tests / CLI).
+        Failures are logged and swallowed: the control loop must never die
+        because the observability stream hiccuped.
+        """
+        if self.logs is None:
+            return
+        try:
+            self.logs.append(
+                conn, self.project["id"],
+                node_id=node_id, severity="info", actor="ai_operator",
+                message=message, remediation=None,
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("failed to emit operator log line")
 
     @staticmethod
     def _latency_s(start: str | None, end: str | None) -> float | None:

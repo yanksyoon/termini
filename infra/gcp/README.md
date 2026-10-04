@@ -1,13 +1,18 @@
 # Termini — GCP node footprint (Nodes A, B, C)
 
 Reproducible IaC that creates the three-node Termini footprint on Google Cloud:
-**two compute nodes (A, B)** and **one real GPU node (C)**, on a single shared
-underlay network, with the frozen firewall/port plan and an inventory file other
-workstreams consume.
+**two compute nodes (A, B)** and **one CPU-only inference node (C)**, on a single
+shared underlay network, with the frozen firewall/port plan and an inventory file
+other workstreams consume.
 
 - Task: kanban `t_f2173236` (infra)
 - Decisions this implements: `docs/contracts/infra-decisions.md` (D2 networking,
-  D5 GPU, D6 control topology) and `docs/contracts/node-bootstrap.md` §3.
+  D5 inference, D6 control topology) and `docs/contracts/node-bootstrap.md` §3.
+- **Node C is CPU-only.** The GPU (L4) was dropped by user decision: the demo
+  project sits on a Google Cloud *free-tier* billing account, which rejects every
+  non-TPU accelerator with HTTP 400. Node C therefore runs `llama.cpp` on CPU
+  with a small quantized model. The accelerator variables are kept so the GPU can
+  be re-enabled after a billing upgrade (see below).
 - Two interchangeable paths, both create the **exact same footprint**:
   - **Terraform** (`*.tf`) — idempotent, plan/apply.
   - **gcloud script** (`provision.sh`) — one-shot fallback when Terraform is unavailable.
@@ -18,18 +23,26 @@ workstreams consume.
 |------|------|--------------|-------------|-------------|--------------|
 | `node-a` | compute (LXD seed) | `n2-standard-4` | — | `10.10.0.11/24` | `10.20.1.0/24` |
 | `node-b` | compute | `n2-standard-4` | — | `10.10.0.12/24` | `10.20.2.0/24` |
-| `node-c` | inference (GPU) | `g2-standard-4` | `nvidia-l4` × 1 | `10.10.0.13/24` | `10.20.3.0/24` |
+| `node-c` | inference (CPU) | `n2-standard-8` | — (CPU-only) | `10.10.0.13/24` | `10.20.3.0/24` |
 
 - **Underlay CIDR: `10.10.0.0/24`** (single VPC + single subnetwork shared by all
   three nodes), gateway `10.10.0.1`. This is the D2 addressing plan, frozen.
-- **Compute nodes** use `n2-standard-4` (4 vCPU / 16 GiB) — compute-optimized,
-  overridable via `compute_machine_type`.
-- **GPU node** uses `g2-standard-4`, which ships exactly **one NVIDIA L4** (24 GB,
-  AD102). The accelerator is attached through the `guest_accelerator` block and
-  scheduling is pinned to `on_host_maintenance = TERMINATE` (GPU instances cannot
-  live-migrate). Override with `gpu_machine_type` / `gpu_accelerator_type`.
+- **Nodes A/B** default to `n2-standard-4` (compute-optimized), overridable via
+  `compute_machine_type`.
+- **Node C** is CPU-heavy so `llama.cpp` has cores to run a small model:
+  `inference_machine_type = n2-standard-8` (8 vCPU / 32 GiB) by default. It has
+  **no `guest_accelerator` block** while `gpu_accelerator_count = 0`.
 - **Boot disk:** 60 GiB `pd-balanced` per node by default (the D7 loop-backed ZFS
   pool lives here).
+
+### vCPU budget vs `CPUS_ALL_REGIONS`
+
+The vCPU total must fit the project's `CPUS_ALL_REGIONS` quota (this demo project
+is capped at **12** vCPU, and a quota-increase request was denied). The ideal
+`4 + 4 + 8 = 16` layout does **not** fit; the demo tfvars sets
+`compute_machine_type = n2-standard-2` so that `2 + 2 + 8 = 12` fits while keeping
+Node C at `n2-standard-8`. Restore A/B to `n2-standard-4` (and/or raise the quota)
+when the cap allows.
 
 ## Ports opened (D2 port map)
 
@@ -45,6 +58,47 @@ Every resource carries `labels = {project, managed-by, workstream, task}` and
 network tags `termini-node` (+ per-node `termini-node-a|b|c`) so the footprint
 tears down cleanly (`deletion_protection = false`).
 
+## Node C CPU llama.cpp serving
+
+Nodes A/B are strictly activation-only (D3 cloud-init: config file + bootstrap
+service, no installs, no downloads). Node C is the one exception: when
+`serve_inference = true` (default) its cloud-init also runs
+`cloud-init/llama-serve.sh`, which on first boot:
+
+1. installs `build-essential cmake git curl`,
+2. clones and builds **CPU-only, static** `llama-server` at the pinned commit
+   (`llamacpp_commit`, default `7fe450e1…`, matching `image/models.lock.json`),
+3. downloads the pinned **Qwen2.5-1.5B-Instruct Q4_K_M** GGUF to
+   `/var/lib/termini/models/` (small model — CPU inference is slow),
+4. runs it as `termini-llama-server.service` on **`0.0.0.0:8080`**.
+
+The underlay firewall rule allows `10.10.0.0/24 → node-c:8080` only, so the
+endpoint is reachable from Node A but never public. Health probe:
+`curl http://10.10.0.13:8080/health`. The first build takes ~10–20 min; the
+service is idempotent across reboots (`/var/log/termini-llama-serve.log`).
+
+Tunables: `serve_inference`, `inference_port`, `inference_model_url`,
+`inference_model_file`, `llamacpp_commit`.
+
+## Re-enabling the GPU (after a billing upgrade)
+
+The accelerator variables are preserved, defaulted off:
+
+```hcl
+inference_machine_type = "g2-standard-4"   # ships one NVIDIA L4
+gpu_accelerator_count  = 1                 # 0 = CPU-only (default)
+gpu_accelerator_type   = "nvidia-l4"
+```
+
+With `gpu_accelerator_count = 1` the instance template emits the
+`guest_accelerator` block again, pins `on_host_maintenance = TERMINATE` (GPU
+instances cannot live-migrate), and the inventory records
+`accelerator = { type, count }` on Node C. `inference_machine_type` must then be
+a GPU machine type. Requires a **paid** billing account: free-tier rejects
+non-TPU accelerators (`Error 400: … free tier where non-TPU accelerators are not
+available`). Also ensure `serve_inference` builds the GPU variant or swap the
+binary for the pre-baked image (`image/pipeline`, D3).
+
 ## Inventory (downstream contract)
 
 Both paths write a JSON inventory to the **well-known path
@@ -56,8 +110,8 @@ at `examples/inventory.example.json`.
 {
   "schema_version": "1.0",
   "nodes": [
-    { "name": "node-a", "role": "compute",   "machine_type": "n2-standard-4", "private_ip": "10.10.0.11", "public_ip": "...", "accelerator": null },
-    { "name": "node-c", "role": "inference", "machine_type": "g2-standard-4", "private_ip": "10.10.0.13", "public_ip": "...", "accelerator": { "type": "nvidia-l4", "count": 1 } }
+    { "name": "node-a", "role": "compute",   "machine_type": "n2-standard-2", "private_ip": "10.10.0.11", "public_ip": "...", "accelerator": null },
+    { "name": "node-c", "role": "inference", "machine_type": "n2-standard-8", "private_ip": "10.10.0.13", "public_ip": "...", "accelerator": null }
   ]
 }
 ```
@@ -86,19 +140,20 @@ PROJECT=my-project ./provision.sh               # creates exactly 3 VMs + invent
 
 ```bash
 cd infra/gcp
-./verify.sh                                     # inventory + SSH + nvidia-smi + A->C inference
+./verify.sh                                     # inventory + SSH + no-accelerator + A->C inference
 ```
 
-`verify.sh` checks: inventory valid & 3 nodes; every node SSH-reachable;
-`nvidia-smi -L` works on Node C; and (optionally) Node A can reach
-`http://10.10.0.13:8080/health` on Node C over the underlay.
+`verify.sh` checks: inventory valid & 3 nodes; **no node declares an
+accelerator**; every node SSH-reachable; Node C has no accelerator device
+(`lspci`); and Node A can reach `http://10.10.0.13:8080/health` on Node C over
+the underlay. `--wait SECONDS` (default 1800) waits for the first-boot CPU build.
 
 Offline (no cloud) checks that need no credentials:
 
 ```bash
 terraform fmt -check -recursive
 terraform init -backend=false && terraform validate
-bash -n provision.sh verify.sh teardown.sh && shellcheck -S warning *.sh
+bash -n provision.sh verify.sh teardown.sh cloud-init/llama-serve.sh && shellcheck -S warning *.sh cloud-init/llama-serve.sh
 jq -e . inventory.schema.json examples/inventory.example.json
 ```
 
@@ -115,68 +170,43 @@ terraform destroy                               # or: PROJECT=my-project ./teard
 - **Compute API enabled** and **billing attached**;
 - credentials with `compute.instances.*`, `compute.networks.*`, `compute.firewalls.*`,
   `compute.addresses.*`;
-- **GPU quota**: `NVIDIA_L4_GPUS` (or `GPUS_ALL_REGIONS`) ≥ 1 in the chosen region,
-  and a zone that offers L4 (`us-central1-a/b/c/f`, `us-east1-*`, …);
-- **paid billing**: GPU/accelerator attach is rejected on a Google Cloud *free-tier*
-  billing account (`Error 400: Your billing account is currently in the free tier
-  where non-TPU accelerators are not available`). Node C requires an **upgraded
-  (paid) billing account**; Nodes A/B do not.
+- **vCPU headroom**: the footprint must fit `CPUS_ALL_REGIONS` (16 vCPU for the
+  default A/B=`n2-standard-4` + C=`n2-standard-8`; 12 with A/B=`n2-standard-2`);
+- **no GPU quota is required** for the CPU-only default. Re-enabling the GPU needs
+  `NVIDIA_L4_GPUS` (or `GPUS_ALL_REGIONS`) ≥ 1 in the region **and a paid billing
+  account**.
 
 > No credentials are stored in this repo. Pass them via the standard Google auth
 > chain (ADC file, `GOOGLE_APPLICATION_CREDENTIALS`, or an attached service account).
 
-## Live deployment record (task `t_f2173236`)
+## Live deployment record (task `t_f2173236`, CPU-only re-provision)
 
-First real `terraform apply` against the project supplied for the Termini demo:
+Re-provisioned from a clean project on the supplied free-tier billing account:
 
 | Item | Value |
 |------|-------|
 | Project | `termini-510609` |
 | Region / zone | **`asia-south1` / `asia-south1-a`** |
 | Underlay CIDR | `10.10.0.0/24` (VPC `termini-vpc`, subnet `termini-underlay`) |
-| Node A | `n2-standard-4` @ `10.10.0.11` — **created, SSH verified** |
-| Node B | `n2-standard-4` @ `10.10.0.12` — **created, SSH verified** |
-| Node C | `g2-standard-4` + `nvidia-l4` @ `10.10.0.13` — **BLOCKED** |
+| Node A | `n2-standard-2` @ `10.10.0.11` — RUNNING, no accelerator, SSH OK |
+| Node B | `n2-standard-2` @ `10.10.0.12` — RUNNING, no accelerator, SSH OK |
+| Node C | `n2-standard-8` @ `10.10.0.13` — RUNNING, no accelerator, SSH OK |
+| llama.cpp | Node C `:8080` (Qwen2.5-1.5B-Instruct Q4_K_M), reachable from Node A over the underlay |
+| Inventory | `/home/ubuntu/.termini/inventory.json` (valid vs `inventory.schema.json`) |
 
-**Blocker on Node C (and why 2 of 3 nodes exist).** The supplied project is on a
-Google Cloud *free-tier* billing account, so the Compute API refuses to attach any
-non-TPU accelerator:
+**Why A/B are `n2-standard-2` here.** The project's `CPUS_ALL_REGIONS` quota is
+12 and a Cloud Quotas increase request (`CPUS-ALL-REGIONS-per-project` → 24) was
+auto-denied (`stateDetail: "Quota request denied"`). `4 + 4 + 8 = 16` exceeds the
+cap; `2 + 2 + 8 = 12` fits and keeps Node C CPU-heavy. Restore A/B to
+`n2-standard-4` once the quota is raised.
 
-```
-Error 400: Your billing account is currently in the free tier where non-TPU
-accelerators are not available. Please upgrade to a paid billing account …
-```
-
-This is account-wide, not zonal: `NVIDIA_L4_GPUS` quota is 1 in both
-`asia-south1` and `us-central1`, and a **SPOT** `g2-standard-4` attempt failed with
-the identical error — no provisioning model or zone works around it. Node C
-therefore cannot be created until the billing account is upgraded.
-
-**State after the partial apply** (Terraform local state, 13/14 resources):
-VPC, subnetwork, all three static internal addresses, the five firewall rules and
-Nodes A/B are live. Node C and the inventory `local_file` are the only resources
-missing, and the inventory is gated on all three instances.
-
-**To finish once billing is upgraded** — the same plan resumes, creating only the
-GPU node and the inventory:
-
-```bash
-cd infra/gcp
-terraform apply                 # creates node-c + /home/ubuntu/.termini/inventory.json
-./verify.sh                     # 3 nodes, SSH, nvidia-smi on node-c
-```
-
-**To tear the partial footprint down:**
-
-```bash
-cd infra/gcp
-terraform destroy
-```
+**GPU history.** The prior run of this card created Nodes A/B but Node C
+(`g2-standard-4` + `nvidia-l4`) was rejected by free-tier billing. Nodes A/B, the
+VPC, firewall rules and static IPs were then torn down; this run starts clean and
+re-provisions all three with a CPU-only Node C.
 
 ## Status / scope note
 
 This module is the provisioning artifact. The exact acceptance sequence is
-`terraform apply` → `./verify.sh` (or `provision.sh` → `./verify.sh`). Both paths
-were authored to be run against a real project; see the task card for the
-verification evidence actually captured on this host.
-
+`terraform apply` → `./verify.sh` (or `provision.sh` → `./verify.sh`). See the
+task card for the verification evidence captured against the live footprint.
