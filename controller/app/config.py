@@ -105,6 +105,7 @@ class Config:
     operator_dry_run: bool
     operator_cooldown_s: float
     cadence_report_s: float
+    operator_lease_ttl_s: float      # single-owner lease TTL (migration 0007)
     playbooks_dir: str
     # Detection thresholds (config, not code — task requirement).
     oom_ram_pct: float
@@ -207,6 +208,7 @@ class Config:
             operator_dry_run=_bool_env("TERMINI_OPERATOR_DRY_RUN", False),
             operator_cooldown_s=_float_env("TERMINI_OPERATOR_COOLDOWN_S", 60.0),
             cadence_report_s=_float_env("TERMINI_OPERATOR_CADENCE_REPORT_S", 30.0),
+            operator_lease_ttl_s=_float_env("TERMINI_OPERATOR_LEASE_TTL_S", 10.0),
             playbooks_dir=playbooks_dir,
             oom_ram_pct=_float_env("TERMINI_OOM_RAM_PCT", 95.0),
             oom_clear_pct=_float_env("TERMINI_OOM_CLEAR_PCT", 90.0),

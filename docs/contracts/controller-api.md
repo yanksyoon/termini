@@ -542,6 +542,33 @@ A verifier reconciles the controller's audit/decision log against the node's
 `GET /v1/operator/events` and `GET /v1/operator/decisions`) is the canonical
 operator surface (`controller/app/server.py`).
 
+### 4.5 Operator lease (single owner)
+
+The AI-operator remediation loop has a **single-owner guarantee per project**: at
+most one operator instance may act at a time. The in-process `OperatorLoop` and
+the standalone CLI (`controller/app/operator/cli.py`, the documented
+`OPERATOR_CMD` path) both acquire the same per-project lease before issuing any
+remediation; a non-owner is a standby that issues nothing until the owner's lease
+lapses (crash/failover). This is what makes remediation idempotent across
+operator instances — two operators can never both issue an LXD command for one
+fault episode.
+
+#### POST /v1/operator/lease
+
+`project_token` auth. Body `{ "owner_id": "loop:01J0DEM0WARM000000000000AB" }`
+(the in-process loop uses `loop:<project_id>`; the standalone CLI uses
+`cli:<ulid>`). Acquires or renews the caller's lease (TTL
+`TERMINI_OPERATOR_LEASE_TTL_S`, default 10 s). Response `200 OK`:
+
+```json
+{ "owner": true, "owner_id": "loop:01J0DEM0WARM000000000000AB",
+  "acquired_at": "2026-10-04T07:49:05.000Z", "expires_at": "2026-10-04T07:49:15.000Z" }
+```
+
+`owner: false` means another operator holds the lease and this caller must stand
+by. The lease is persisted in the controller DB (`operator_lease`, migration
+0007), so the in-process loop and the standalone CLI share one source of truth.
+
 ---
 
 ## 5. Guardrail & Clamp Validator
