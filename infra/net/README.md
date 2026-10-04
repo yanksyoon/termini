@@ -178,7 +178,83 @@ The committed run result:
 Switch back to `direct` (the default) once the overlay is healthy again; it is the
 frozen demo path.
 
-## 7. Honest limitations
+## 7. Bulk transfer under packet loss (`bulk-transfer.py`, kanban `t_942dbaf4`)
+
+The W7 red-team found (`w7/redteam/fan-network-packet-loss.md` G2) that a **64 MiB
+single-stream TCP transfer stalls under `tc netem loss 30%`** — 2 003 672 /
+67 108 864 bytes (3.0 %) in 45 s, client never finishes — while small
+request/response calls survive. Any demo step that ships a model, image, or
+artifact over the lossy fan network would appear to hang. `infra/net/bulk-transfer.py`
+is the fix.
+
+### Two transports
+
+| `--transport` | How it works | Under 30 % loss |
+|---|---|---|
+| **`udp`** (default) | Reliable **selective repeat**. The file is cut into MTU-sized datagrams; the receiver keeps a bitmap and answers a query with it; the sender retransmits only the gaps, in rounds. Loss is decoupled from throughput — no congestion window to collapse, no RTO backoff. | completes |
+| `tcp` (fallback) | Fixed-size chunks, each over its **own short-lived TCP connection** with an app-level ACK and bounded retries. Robust where UDP is filtered; still slow under heavy loss. | usually stalls |
+
+Both modes verify completion (received byte count, optional SHA-256) so success
+is never reported on a partial transfer, and both **resume**: the receiver keeps
+a per-unit bitmap, so a re-run sends only what is still missing.
+
+### Usage
+
+```bash
+# receiver (Node C)
+python3 infra/net/bulk-transfer.py server --port 9200 \
+    --size 67108864 --out /root/artifact.bin
+
+# sender (Node A) — UDP, verified
+python3 infra/net/bulk-transfer.py client --host 10.10.0.13 --port 9200 \
+    --file ./artifact.bin --deadline 30 --verify sha256
+
+# TCP fallback
+python3 infra/net/bulk-transfer.py client --host 10.10.0.13 --port 9200 \
+    --file ./artifact.bin --transport tcp --chunk 65536 --streams 32 --deadline 30
+```
+
+### MTU / payload budget
+
+The UDP payload is chosen below the **smallest path MTU the demo can present**.
+The overlay path is 1410 B (GCP: 1460 − 50 B encap, §1); `payload ≤ MTU − 20 (IPv4)
+− 8 (UDP) − 8 (seq)` ⇒ **≤ 1374 on the overlay, ≤ 1432 on the direct path**. The
+default is **1360** (headroom, works on either path); raise it with `--payload`
+only when you have proven the path MTU (`mtu-probe.sh`).
+
+### Measured (this host, N runs)
+
+Acceptance harness: `infra/net/verify-bulk-transfer.sh` (applies `tc netem loss`,
+runs the transfer N times, records JSON + SHA-256, removes the qdisc on exit).
+
+| Scenario | Result |
+|---|---|
+| 64 MiB, clean path, UDP | **3/3 completed**, max **1.04 s**, SHA-256 ok |
+| 64 MiB, clean path, TCP | **0.13 s** (no regression vs the 0.033 s reference; the delta is host load) |
+| 64 MiB, `loss 30%`, UDP | **5/5 completed**, mean **10.3 s**, max **11.5 s**, SHA-256 ok, 9–10 rounds, 1.44× wire overhead |
+| 64 MiB, `loss 30%`, TCP | **stalls** (11.8 MB in 62 s) — the G2 finding; use UDP |
+| 64 MiB, `loss 30%`, UDP, two attempts (4 s then resume) | attempt 1 partial (46.8 MB); attempt 2 **resumed 34 447 units** and completed, SHA-256 ok |
+
+At ~6 MB/s sustained under 30 % loss, a single UDP attempt fits roughly
+**≥128 MiB inside a 30 s demo budget** (conservative); larger payloads still
+finish because each attempt is resumable and bounded — the tool never hangs.
+
+### Reproducing the failure itself
+
+The **red-team** harness is unchanged and is what defines the baseline:
+`w7/redteam/net/net_chaos.py --scenario loss` (which drives `traffic_probe.py`,
+the single-stream probe). Its recorded stall and the pre-fix numbers are in
+`w7/redteam/fan-network-packet-loss.md`; the acceptance evidence for the fix is
+under `infra/net/evidence/`.
+
+Re-run here on the dedicated `rt-net-*` underlay (**N=3**): ping loss
+29.3–30.3 %, the single-stream 64 MiB TCP probe **stalled on all three runs**
+(0.38 / 0.46 / 0.44 MB before `BrokenPipeError`, 9–21 s), while the same
+harness's 15/15 `llama.cpp` calls stayed OK; the clean-path baseline moved the
+full 64 MiB in **0.048 s** (11 229 Mbps). Raw summaries:
+`infra/net/evidence/redteam-repro-loss30/`.
+
+## 8. Honest limitations
 
 - `direct-route.sh up`/`down` are validated by `--dry-run` and by the lab, **not**
   against a live 3-node cluster — the GCP footprint (`infra/gcp`) is not
