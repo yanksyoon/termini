@@ -1,0 +1,27 @@
+[Unit]
+Description=Termini node bootstrap (register + telemetry)
+Documentation=file:/opt/termini/README.md
+# Registration is the first thing the node does; it needs the underlay up but not
+# the full multi-user world. Activation-only image: the unit is inert until
+# cloud-init has written the per-node config (docs/contracts/node-bootstrap.md §3.2).
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/termini/config.yaml
+
+[Service]
+# Type=notify: the unit is only `active` after the daemon sends READY=1, which it
+# does ONLY once the controller acknowledges registration (2xx). A node that is
+# still connecting stays `activating`; a terminal enrollment failure never reports
+# ready. `TimeoutStartSec=infinity` keeps the documented ACTIVATING/wait state
+# legal for a node that boots before its config/token exists.
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/local/bin/termini-bootstrap
+Restart=always
+RestartSec=2
+TimeoutStartSec=infinity
+# The agent needs no inbound socket and no privileged operations in the demo.
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

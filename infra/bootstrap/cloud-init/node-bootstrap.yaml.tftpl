@@ -1,0 +1,105 @@
+#cloud-config
+# Termini node bootstrap — cloud-init user-data (task t_066b6e3d, W3).
+#
+# Runs on a node created from the pre-baked image alias `${image_alias}`
+# (version ${image_version}). It performs NO apt/network fetch: every runtime is
+# already baked. It does exactly three things and nothing else:
+#
+#   1. installs the team SSH public key into authorized_keys (correct perms,
+#      idempotent — a re-run never duplicates the line);
+#   2. writes the per-node inputs the bootstrap daemon needs
+#      (/etc/termini/config.yaml + the single-use enrollment token) and wires the
+#      controller SSH CA as a TrustedUserCAKeys anchor;
+#   3. starts the pre-installed termini-bootstrap.service, which registers with
+#      the controller and reports READY only after the controller acknowledges.
+#
+# The rendered user-data is the ONLY per-node input boot needs
+# (docs/contracts/node-bootstrap.md §3.2).
+
+hostname: ${node_name}
+fqdn: ${node_name}
+prefer_fqdn_over_hostname: false
+
+# Harden sshd before it is (re)started; PasswordAuthentication no and key-only
+# root login, matching docs/contracts/node-bootstrap.md §7. `ssh_authorized_keys`
+# below is cloud-init's native, idempotent default-user injection; the runcmd
+# script additionally guarantees /root/.ssh/authorized_keys (see §7).
+ssh_pwauth: false
+disable_root: false
+ssh_authorized_keys:
+  - ${team_ssh_pubkey}
+
+write_files:
+  - path: /etc/termini/config.yaml
+    permissions: '0600'
+    owner: root:root
+    content: |
+      controller_url: ${controller_url}
+      node_name: ${node_name}
+      role_hint: ${role_hint}
+      underlay_ip: ${underlay_ip}
+      underlay_gw: ${underlay_gw}
+      bootstrap_seed_ip: ${seed_ip}
+      telemetry_interval_ms: ${telemetry_interval_ms}
+  - path: /var/lib/termini/enrollment.token
+    permissions: '0600'
+    owner: root:root
+    content: |
+      ${enrollment_token}
+  - path: /etc/ssh/termini_ca.pub
+    permissions: '0644'
+    owner: root:root
+    content: |
+      # Termini controller SSH CA — TrustedUserCAKeys (docs/contracts/infra-decisions.md D4).
+      ${controller_ca_pubkey}
+  - path: /etc/ssh/sshd_config.d/termini.conf
+    permissions: '0644'
+    owner: root:root
+    content: |
+      # Termini SSH policy (docs/contracts/node-bootstrap.md §7) — injected at provisioning.
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+      PubkeyAuthentication yes
+      TrustedUserCAKeys /etc/ssh/termini_ca.pub
+  - path: /etc/termini/ssh/team.pub
+    permissions: '0644'
+    owner: root:root
+    content: |
+      ${team_ssh_pubkey}
+  - path: /etc/termini/bootstrap-origin
+    permissions: '0644'
+    owner: root:root
+    content: |
+      image_alias=${image_alias}
+      image_version=${image_version}
+  - path: /usr/local/sbin/termini-install-ssh-key
+    permissions: '0755'
+    owner: root:root
+    content: |
+      #!/bin/sh
+      # Idempotently install the team SSH public key for root and the default user.
+      # Safe to re-run: the key line is added only when absent (grep -qxF).
+      set -eu
+      key_file=/etc/termini/ssh/team.pub
+      [ -s "$key_file" ] || exit 0
+      key=$(cat "$key_file")
+      for user in root ubuntu; do
+        home=$(getent passwd "$user" | cut -d: -f6) || continue
+        [ -n "$home" ] || continue
+        install -d -m 0700 -o "$user" -g "$user" "$home/.ssh"
+        touch "$home/.ssh/authorized_keys"
+        if ! grep -qxF "$key" "$home/.ssh/authorized_keys"; then
+          printf '%s\n' "$key" >> "$home/.ssh/authorized_keys"
+        fi
+        chmod 0600 "$home/.ssh/authorized_keys"
+        chown "$user:$user" "$home/.ssh/authorized_keys"
+      done
+
+runcmd:
+  # 1. install the injected team key (idempotent) and reload the hardened sshd
+  - [ /usr/local/sbin/termini-install-ssh-key ]
+  - [ systemctl, reload, ssh.service ]
+  # 2. start the pre-installed bootstrap daemon; it reports READY only after the
+  #    controller acknowledges registration (systemd Type=notify).
+  - [ systemctl, enable, --now, termini-bootstrap.service ]
