@@ -11,7 +11,7 @@ Repo root is **/home/ubuntu** (origin `https://github.com/yanksyoon/termini.git`
 4. **Commit — stage explicit paths only, never `git add -A`:** `git add <paths…> && git commit -m "<task-id> <type>: <summary>"`
 5. **Push:** `git push -u origin HEAD`
 6. **Open a PR:** `gh pr create --title "<task-id> <summary>" --body "<what / why / how verified>"`
-7. **Land it:** `gh pr checks --watch`; merge once CI is green, or once the reviewer approves when no required check is failing: `gh pr merge --squash --delete-branch`
+7. **Land it:** `scripts/land.sh` — watches CI, refuses to merge any failing check, else squash-merges + deletes the branch. Never blind-`gh pr merge`.
 8. **Record on the card:** metadata `{"commit", "pr", "merge_sha", "files", "verified_with"}`.
 
 ## Rules
