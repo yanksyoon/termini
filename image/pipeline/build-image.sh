@@ -67,9 +67,12 @@ check_recipe() {
   local required=(
     "$LOCK" "$SCHEMA"
     "$PROVISION_DIR/00-base.sh" "$PROVISION_DIR/10-node-os.sh"
-    "$PROVISION_DIR/20-gpu-cuda.sh" "$PROVISION_DIR/30-llamacpp.sh"
+    "$PROVISION_DIR/15-nvidia-driver.sh" "$PROVISION_DIR/20-gpu-cuda.sh"
+    "$PROVISION_DIR/30-llamacpp.sh"
     "$PROVISION_DIR/40-models.sh" "$PROVISION_DIR/50-agent-deps.sh"
     "$SELF_DIR/first-boot-preflight.sh" "$SELF_DIR/publish-image.sh"
+    "$SELF_DIR/verify-gpu.sh" "$SELF_DIR/tools/gpu_check.py"
+    "$SELF_DIR/tools/rehearse_gpu.py"
     "$PACKER_DIR/termini-node.pkr.hcl" "$VERIFY_MANIFEST"
     "$SELF_DIR/distrobuilder/termini-node.yaml"
   )

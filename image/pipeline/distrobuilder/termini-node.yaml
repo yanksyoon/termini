@@ -54,7 +54,8 @@ files:
 
 run:
   # The provisioners are the *safe* subset for a container: no CUDA driver and no
-  # kernel-coupled installs. Variant gpu additionally requires a GPU-capable host.
+  # kernel-coupled installs (the NVIDIA driver bake, provision/15-nvidia-driver.sh,
+  # is VM-only). Variant gpu additionally requires a GPU-capable host.
   - command: |
       set -euo pipefail
       export TERMINI_VARIANT="${VARIANT:-compute}"

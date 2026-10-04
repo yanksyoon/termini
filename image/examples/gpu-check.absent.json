@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "kind": "termini.gpu_check",
+  "ts": "2026-10-04T09:23:57Z",
+  "host": "hack",
+  "kernel": "6.8.0-142-generic",
+  "fixture": true,
+  "smi": {
+    "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-gpu-rehearsal-zeeydt7f/bin/does-not-exist",
+    "present": false,
+    "driver_version": null,
+    "cuda_version": null
+  },
+  "driver": {
+    "loaded": false,
+    "branch_recorded": null
+  },
+  "gpus": [],
+  "gpu_count": 0,
+  "device_nodes": [
+    {
+      "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-gpu-rehearsal-zeeydt7f/dev/nvidiactl",
+      "name": "nvidiactl",
+      "exists": true,
+      "is_char": false,
+      "mode": "0o664",
+      "openable": true,
+      "open_error": null
+    },
+    {
+      "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-gpu-rehearsal-zeeydt7f/dev/nvidia0",
+      "name": "nvidia0",
+      "exists": true,
+      "is_char": false,
+      "mode": "0o664",
+      "openable": true,
+      "open_error": null
+    },
+    {
+      "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-gpu-rehearsal-zeeydt7f/dev/nvidia-uvm",
+      "name": "nvidia-uvm",
+      "exists": true,
+      "is_char": false,
+      "mode": "0o664",
+      "openable": true,
+      "open_error": null
+    },
+    {
+      "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-gpu-rehearsal-zeeydt7f/dev/nvidia-modeset",
+      "name": "nvidia-modeset",
+      "exists": true,
+      "is_char": false,
+      "mode": "0o664",
+      "openable": true,
+      "open_error": null
+    },
+    {
+      "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-gpu-rehearsal-zeeydt7f/dev/nvidia-uvm-tools",
+      "name": "nvidia-uvm-tools",
+      "exists": false,
+      "is_char": false,
+      "openable": false,
+      "open_error": null
+    }
+  ],
+  "cudart": {
+    "path": null,
+    "usable": false,
+    "device_count": null,
+    "mem_free_bytes": null,
+    "mem_total_bytes": null,
+    "error": "libcudart not found"
+  },
+  "checks": [
+    {
+      "name": "nvidia_smi_present",
+      "ok": false,
+      "detail": "path=/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-gpu-rehearsal-zeeydt7f/bin/does-not-exist"
+    },
+    {
+      "name": "gpu_reported",
+      "ok": false,
+      "detail": "count=0 required=1 (smi stderr: nvidia-smi not found)"
+    },
+    {
+      "name": "device_nodes",
+      "ok": true,
+      "detail": "dev_dir=/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-gpu-rehearsal-zeeydt7f/dev ctl+0 present"
+    },
+    {
+      "name": "device_openable",
+      "ok": true,
+      "detail": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-gpu-rehearsal-zeeydt7f/dev/nvidiactl=ok; /home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-gpu-rehearsal-zeeydt7f/dev/nvidia0=ok"
+    },
+    {
+      "name": "cuda_runtime",
+      "ok": false,
+      "detail": "lib=not-found error=libcudart not found"
+    }
+  ],
+  "verdict": "fail",
+  "reason": "nvidia_smi_absent"
+}
