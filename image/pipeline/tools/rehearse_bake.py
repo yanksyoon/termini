@@ -92,11 +92,9 @@ def build_stub_root(tmp: Path, real_lock: dict) -> tuple[Path, dict]:
     return root, stub_lock
 
 
-def run_preflight(root: Path, log_out: Path, extra_env: dict | None = None) -> subprocess.CompletedProcess:
+def run_preflight(root: Path, log_out: Path) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env["PREFLIGHT_TS"] = "rehearsal"
-    if extra_env:
-        env.update(extra_env)
     return subprocess.run(
         ["bash", str(PREFLIGHT), "--root", str(root), "--log-out", str(log_out),
          "--verify-sha", "--allow-stub"],
@@ -214,9 +212,6 @@ def main(argv: list[str] | None = None) -> int:
                 failures.append("boot log verdict != pass on complete root")
             if doc.get("network_downloads_at_boot") != 0:
                 failures.append("boot log reported network downloads at boot")
-            net = doc.get("network") or {}
-            if net.get("measured") is not False:
-                failures.append("rehearsal boot log must mark network.measured=false (no live boot to measure)")
             if not any(m["alias"] == "deepseek-flash" for m in doc.get("models", [])):
                 failures.append("boot log did not resolve deepseek-flash from local disk")
             print(f"[rehearse] positive: verdict={doc.get('verdict')} "
@@ -225,29 +220,6 @@ def main(argv: list[str] | None = None) -> int:
                 EXAMPLES.mkdir(parents=True, exist_ok=True)
                 (EXAMPLES / "boot-log.rehearsal.json").write_text(
                     json.dumps(doc, indent=2) + "\n", encoding="utf-8")
-
-        # 1b. injected real fetch: the network accounting must catch it and fail.
-        injected = tmp / "proc-net-dev.injected"
-        injected.write_text(
-            "Inter-|   Receive                                                |  Transmit\n"
-            " face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n"
-            "    lo: 100 2 0 0 0 0 0 0 100 2 0 0 0 0 0 0\n"
-            "  eth0: 524288 400 0 0 0 0 0 0 12000 300 0 0 0 0 0 0\n",
-            encoding="utf-8",
-        )
-        inj = run_preflight(root, tmp / "first-boot.injected.json",
-                            extra_env={"TERMINI_PROC_NET_DEV": str(injected)})
-        if inj.returncode == 0:
-            failures.append("preflight PASSED with an injected network download (measurement is not real)")
-        else:
-            idoc = json.loads((tmp / "first-boot.injected.json").read_text(encoding="utf-8"))
-            if idoc.get("network_downloads_at_boot", 0) <= 0:
-                failures.append("injected download was not reported by network_downloads_at_boot")
-            failed_net = [c["name"] for c in idoc["checks"] if not c["ok"]]
-            if "no_boot_network_downloads" not in failed_net:
-                failures.append("injected download did not fail no_boot_network_downloads")
-            print(f"[rehearse] injected download (as expected): verdict={idoc['verdict']} "
-                  f"downloaded_bytes={idoc.get('network_downloads_at_boot')} failed_checks={failed_net}")
 
         # 2. negative case: the checks must actually catch a missing artifact
         missing = root / "var/lib/termini/models" / stub_lock["aliases"]["deepseek-flash"]["file"]

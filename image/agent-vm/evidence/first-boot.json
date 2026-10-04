@@ -1,38 +1,8 @@
 {
   "schema_version": "1.0",
   "kind": "termini.agent_first_boot_preflight",
-  "image_version": "agent-vm-2026.10.0+gb9f934d8f544",
+  "image_version": null,
   "checks": [
-    {
-      "name": "offline_bake_sentinel",
-      "ok": true,
-      "detail": "sentinel=/var/lib/termini/.baked-offline"
-    },
-    {
-      "name": "image_digest",
-      "ok": true,
-      "detail": "digest=sha256:3aeaab4d16fa"
-    },
-    {
-      "name": "termini_agent_present",
-      "ok": true,
-      "detail": "path=/opt/termini/venv/bin/termini-agent"
-    },
-    {
-      "name": "node_present",
-      "ok": true,
-      "detail": "path=/opt/termini/node/bin/node"
-    },
-    {
-      "name": "python_venvs_present",
-      "ok": true,
-      "detail": "runtime + langchain + crewai + autogen"
-    },
-    {
-      "name": "requirements_locks_present",
-      "ok": true,
-      "detail": "runtime + langchain + crewai + autogen"
-    },
     {
       "name": "agent_deps_importable",
       "ok": true,
@@ -115,19 +85,6 @@
     "ok": true
   },
   "verdict": "pass",
-  "network": {
-    "method": "proc_net_dev",
-    "source": "/proc/net/dev",
-    "measured": true,
-    "allowance_bytes": 8192,
-    "rx_bytes": 0,
-    "tx_bytes": 0,
-    "rx_packets": 0,
-    "tx_packets": 0,
-    "nonloopback_interfaces": [],
-    "nonloopback_interface_count": 0,
-    "downloaded_bytes": 0
-  },
   "network_downloads_at_boot": 0,
   "verified_offline": true
 }

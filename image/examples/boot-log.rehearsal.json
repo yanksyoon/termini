@@ -4,18 +4,18 @@
   "ts": "rehearsal",
   "image_version": "termini-node-rehearsal",
   "llama_cpp": {
-    "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-7l4n2xv9/root/opt/termini/llama.cpp/bin/llama-server",
+    "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-ql0y8chi/root/opt/termini/llama.cpp/bin/llama-server",
     "size_bytes": 35,
     "sha256": "07e2d51ff058a06aaa97be6708f5fcee3dcb570f2369485a65bd91e27ac930c1"
   },
   "model_root": {
     "fs_type": "ext2/ext3",
-    "fs_dev": "11955301"
+    "fs_dev": "12714572"
   },
   "models": [
     {
       "alias": "deepseek-flash",
-      "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-7l4n2xv9/root/var/lib/termini/models/stub-deepseek-flash.gguf",
+      "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-ql0y8chi/root/var/lib/termini/models/stub-deepseek-flash.gguf",
       "size_bytes": 4096,
       "expected_size_bytes": 4096,
       "expected_sha256": "23d3afe774bc5cf8425e49d2fafbb960c3e2d7abb776370bacd1c908c17d09c4",
@@ -23,7 +23,7 @@
     },
     {
       "alias": "deepseek-v4-pro",
-      "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-7l4n2xv9/root/var/lib/termini/models/stub-deepseek-v4-pro.gguf",
+      "path": "/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-ql0y8chi/root/var/lib/termini/models/stub-deepseek-v4-pro.gguf",
       "size_bytes": 4096,
       "expected_size_bytes": 4096,
       "expected_sha256": "e3f6b09168b27df2f7421fd8c661f6f23e33ee7e7aee78df400b6ce65a3e5d7a",
@@ -34,7 +34,7 @@
     {
       "name": "llama_server_present",
       "ok": true,
-      "detail": "path=/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-7l4n2xv9/root/opt/termini/llama.cpp/bin/llama-server size=35 sha256=07e2d51ff058a06aaa97be6708f5fcee3dcb570f2369485a65bd91e27ac930c1"
+      "detail": "path=/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-ql0y8chi/root/opt/termini/llama.cpp/bin/llama-server size=35 sha256=07e2d51ff058a06aaa97be6708f5fcee3dcb570f2369485a65bd91e27ac930c1"
     },
     {
       "name": "llama_build_record",
@@ -44,7 +44,7 @@
     {
       "name": "model_fs_local",
       "ok": true,
-      "detail": "fs_type=ext2/ext3 dev=11955301"
+      "detail": "fs_type=ext2/ext3 dev=12714572"
     },
     {
       "name": "model_files_present",
@@ -64,23 +64,10 @@
     {
       "name": "offline_bake_sentinel",
       "ok": true,
-      "detail": "sentinel=/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-7l4n2xv9/root/var/lib/termini/.baked-offline"
+      "detail": "sentinel=/home/ubuntu/.hermes/profiles/agents/cache/scratch/termini-rehearsal-ql0y8chi/root/var/lib/termini/.baked-offline"
     }
   ],
   "verdict": "pass",
-  "network": {
-    "method": "proc_net_dev",
-    "source": "/proc/net/dev",
-    "measured": false,
-    "allowance_bytes": 8192,
-    "rx_bytes": 0,
-    "tx_bytes": 0,
-    "rx_packets": 0,
-    "tx_packets": 0,
-    "nonloopback_interfaces": [],
-    "nonloopback_interface_count": 0,
-    "downloaded_bytes": 0
-  },
   "network_downloads_at_boot": 0,
   "verified_offline": true
 }

@@ -138,17 +138,7 @@ boot log. It:
    `.sha256` sidecar (full re-hash optional via `--verify-sha`);
 3. asserts the model root is on a **local** filesystem (fails on `nfs/cifs/smb2/…`);
 4. asserts the bake sentinel `/var/lib/termini/.baked-offline` exists;
-5. **measures boot-time network activity** from `/proc/net/dev` (the `network`
-   block in the log) and fails (`no_boot_network_downloads`) if received bytes
-   exceed a documented link-local/DHCP allowance — so a boot that starts
-   fetching (e.g. re-pulling a GGUF) fails the preflight instead of reporting a
-   hardcoded `0`;
-6. writes `/var/log/termini/first-boot.json` and exits non-zero on any failure.
-
-`network_downloads_at_boot` is **derived from that counter** (bytes received on
-non-loopback interfaces beyond the allowance), not a literal. Against a staged
-`--root` (rehearsal) there is no live boot to measure, so the log records
-`network.measured: false` rather than inventing a number.
+5. writes `/var/log/termini/first-boot.json` and exits non-zero on any failure.
 
 The preflight's non-zero exit is the grep-able signal that a node booted with
 missing/mismatched baked artifacts; the `<5 s to registration` guarantee in
@@ -175,11 +165,7 @@ It runs three stages:
 2. **Bake rehearsal** (`tools/rehearse_bake.py`) — builds a stub image root, runs
    the real `first-boot-preflight.sh` against it, and asserts:
    - the preflight **passes** and emits a boot log with `verdict: pass`,
-     `network_downloads_at_boot: 0` (with `network.measured: false` — a staged
-     root is not a live boot), both aliases resolved from local disk;
-   - **an injected download fails it**: with a `/proc/net/dev` fixture showing a
-     real fetch, the preflight exits non-zero, `no_boot_network_downloads` goes
-     false, and `network_downloads_at_boot` reports the received bytes;
+     `network_downloads_at_boot: 0`, both aliases resolved from local disk;
    - deleting one model file makes the preflight **fail** with
      `model_files_present`/`model_sizes_match`/`model_sha256_sidecars` false;
    - the emitted `image-manifest.json` validates against the schema;

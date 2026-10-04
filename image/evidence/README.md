@@ -7,7 +7,7 @@ so the reviewer can separate "specified" from "proven".
 | Evidence | Command (as run) | Proves |
 |----------|------------------|--------|
 | `offline-load-proof.txt` | `sudo unshare -n bash offline-proof-server.sh` | the **pinned** llama.cpp build loads a **pre-warmed GGUF from local disk** and serves an OpenAI-compatible completion with **no network** (netns has only loopback; DNS fails) |
-| `../examples/boot-log.rehearsal.json` | `first-boot-preflight.sh --root <stub>` | the first-boot assertion passes on a complete root; `network_downloads_at_boot: 0` with `network.measured: false` (a staged root is not a live boot — the field is measured from `/proc/net/dev` on a real boot, never hardcoded) |
+| `../examples/boot-log.rehearsal.json` | `first-boot-preflight.sh --root <stub>` | the first-boot assertion passes on a complete root and reports `network_downloads_at_boot: 0` |
 | `../examples/image-manifest.rehearsal.json` | `rehearse_bake.py` | the builder's manifest validates against `manifests/image-manifest.schema.json` |
 | `../examples/gpu-check.rehearsal.json` | `gpu_check.py --smi <stub> --dev-dir <stub> --cudart <stub.so>` | the Node C GPU verifier's positive path: a stub `nvidia-smi` reports an L4, the stub `/dev/nvidia*` nodes open, and a real `libcudart` call (stub `.so`, `cudaGetDeviceCount`/`cudaMemGetInfo`/`cudaStreamCreate` via `ctypes`) succeeds — `verdict: pass` |
 | `../examples/gpu-check.absent.json` | `gpu_check.py --smi <missing>` | the verifier fails closed on a host with no `nvidia-smi` — `verdict: fail`, `reason: nvidia_smi_absent` |
