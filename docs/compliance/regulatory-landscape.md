@@ -1,6 +1,6 @@
 # Termini — Regulatory Landscape (region-ranked)
 
-Status: draft — EU and non-EU sections complete; synthesis sections (design-control mapping + priority regions) are appended by sibling tasks.
+Status: draft — EU, non-EU, design-control mapping and priority-region sections complete; adversarial review note is appended by `verifier` (`t_d0635046`).
 Owner: `pitch` (EU rows — kanban task `t_9fae6ae9`). Non-EU rows: `pitch` (`t_0269f452`). Design-control mapping + priority regions: `architect` (`t_9128b7b9`). Adversarial review: `verifier` (`t_d0635046`).
 Consumed by: W9 root synthesis (`t_149e890a`), `docs/compliance/certifications.md`, and go-to-market positioning.
 Posture under analysis: **customer data stays on customer hardware; Termini operates the fleet remotely** ("your hardware, your data, our operations").
@@ -130,3 +130,54 @@ Ordering within EU: GDPR first (universal gatekeeper for every EU buyer), then t
 ## 5. Structure note for sibling tasks (do not remove)
 
 This file is a shared deliverable. Sections are appended in task order: EU rows (`t_9fae6ae9`) — §1–§4 and the §2 table; non-EU rows (`t_0269f452`) — extended the §2 table, added the non-EU ordering rationale and gaps G9–G13; `t_9128b7b9` appends "Design Control Mapping" and "Priority Regions & Segments"; `t_d0635046` appends the adversarial review note. Each appender should keep the table's four columns (`region | regulation | why the on-prem design helps | buyer/segment`) and cite primary sources.
+
+---
+
+## 6. Design Control Mapping (control → regulation → certification)
+
+Synthesis of §1–§2 (regulations) and `docs/compliance/certifications.md` (certifications) into a single control-by-control map. One row per named design control: the canonical set from §3, plus two controls named in §2 but not previously indexed (key custody split out of "data-at-rest"; tenant isolation). Every regulation is cited to its §2 row (primary sources live there) and every certification to its `certifications.md` §1 row. Where the architecture does NOT satisfy a requirement, the row points to the gap (§4, `certifications.md` §4, §6.1); nothing is smoothed over.
+
+The task-body control "remote operator access with audit logging" is composed of the **SSH CA** (access) and **audit chain** (logging) rows below plus the terminal surface (`controller-api.md` §7.3); it is not listed separately to avoid a third place of truth.
+
+| Control (where defined) | Regulations it satisfies | Certifications it supports | Residual gap |
+|---|---|---|---|
+| **C0/C1/C2 classification** (`governance.md` §3) | GDPR Art. 28(2)–(4) (sub-processor surface), Art. 32(1)(b); UK GDPR Art. 32; CCPA/CPRA (reasonable security); HIPAA (ePHI boundary); FADP Art. 8; PIPEDA Sch.1 P7; PDPA s.24; APPI Art. 23; KSA NCA ECC | SOC 2 Confidentiality C1.1/C1.2; ISO 27701 (minimization); EU Cloud CoC (personal-data scope) | — load-bearing for every "data plane ✓" row in §2 |
+| **On-node redactor + egress allowlist** (`governance.md` §4–§5) | GDPR Art. 28(2)–(4), Art. 32(1)(b); UK GDPR Art. 32; CCPA/CPRA; FADP Art. 8; PIPEDA P7; PDPA s.24; APPI Art. 23; KSA NCA ECC; UAE PDPL | ISO 27701; CSA STAR CCM data security; EU Cloud CoC | — |
+| **Fail-closed egress** (`governance.md` §6) | GDPR Art. 32(1)(b) resilience + Art. 44 (no transfer — nothing "made available"); UK GDPR Art. 44–49; FADP Art. 16; Quebec s.17; PDPA s.26; APPI Art. 28; APP 8; UAE Art. 22–23; KSA Art. 29 | SOC 2 CC7; HIPAA (ePHI never leaves); CSA CCM; EU Cloud CoC | The C2-never-egresses property is testable only via the audit chain — G1/G2 |
+| **`governanceGate` re-verification** (`governance.md` §9) | GDPR Art. 32(1)(b) (defense-in-depth); NIS2 Art. 21 | SOC 2 CC9; ISO 27001 A.8.x; CSA CCM | — |
+| **`externalModelCall()` — C0-only, static template** (`governance.md` §7/§7.2) | GDPR Art. 28(2)–(4) (the only sub-processor — the external model — sees only C0); EU AI Act (advisory loop = limited-risk; Termini is not the GPAI provider); UK ICO AI guidance; FADP/APPI/PDPA ops-plane rows | ISO 42001 A.7.4 (data-for-AI); ISO 27701; SOC 2 CC9 | AIMS paperwork unbuilt — `certifications.md` G-CERT4 |
+| **`guardrailClamp()` + `commandAllowlist()`** (`governance.md` §7.3) | EU AI Act Art. 6/Annex III (advisory output ⇒ limited-risk, not high-risk); UK ICO AI guidance | ISO 42001 (AI risk treatment); ISO 27001 A.8.2; NIST 800-53 CM-7; SOC 2 CC8 | — |
+| **G-AR-1 / G-AR-2** (`governance.md` §12) | GDPR Art. 4(7)/Art. 26 (keeps Termini in the processor lane; avoids joint controllership) | SOC 2 Confidentiality; ISO 27701 (processor boundary) | A design guarantee that must be continuously enforced — §1(a); G1/G4 |
+| **mTLS outbound-only control channel (D6)** (`architecture.md` §5) | GDPR Art. 32(1)(a); UK GDPR Art. 32; HIPAA §164.312(e)(1); GLBA; APPI Art. 23 | ISO 27001 A.8.24; NIST 800-53 SC-8; SOC 2 CC6; C5 cryptography | — |
+| **SSH CA — short-lived, principal-bound certs** (`architecture.md` §5 D4/R15) | GDPR Art. 32(1)(c); HIPAA §164.312(a)(1)/(d); GLBA; CCPA/CPRA; FADP Art. 8; PIPEDA P7 | ISO 27001 A.8.24; SOC 2 CC6; NIST 800-53 IA-2; PCI Req 8.3; C5 OPS/IDM | Operator actions are not session-logged (G15); no operator-geolocation policy (G2) |
+| **Audit chain + `governance_chain_tip`** (`governance.md` §8.3) | GDPR Art. 32(1)(d) + Art. 5(2) accountability; UK GDPR Art. 5(2); HIPAA §164.312(b); NIS2 Art. 21/23; DORA Art. 19 | ISO 27001 A.8.15/8.16; SOC 2 CC7; NIST 800-53 AU-2/AU-6; PCI Req 10; HITRUST; C5 logging | Covers egress + external model calls, NOT interactive SSH/terminal sessions (G15) |
+| **Data-at-rest on customer hardware** (`architecture.md` §4.5, §5 inv. #4) | GDPR Art. 3/32 + Data Act Ch. VI (free exit); DORA Art. 30(2); UK GDPR; FADP Art. 16; Quebec s.17; PIPEDA; PDPA s.26; APPI Art. 28; APP 8; UAE Art. 22–23; KSA Art. 29 + NDMO/SDAIA localization | SOC 2 Confidentiality C1.2; SecNumCloud data localization (partial — G-SNC); EU Cloud CoC data locations | SecNumCloud sovereignty is a corporate blocker, not a controls gap — G-SNC |
+| **Key custody — customer-retained, SSH CA** (`architecture.md` §5 inv. #4, D4) | GDPR Art. 32(1)(a)/(b); CCPA/CPRA; HIPAA; GLBA; FADP Art. 8; PIPEDA P7; KSA NCA ECC | ISO 27001 A.8.24; SOC 2 CC6; NIST 800-53 IA-2; PCI Req 8 | — (inv. #4: no private keys transit the controller) |
+| **Tenant isolation** (`architecture.md` §2–§3; VM-grade QEMU isolation in `agent-runtime.md`; per-project tokens) | CCPA/CPRA (reasonable security); PIPEDA P1/P7; KSA NCA ECC third-party/cloud; GDPR Art. 32 (indirect) | SOC 2 CC6; ISO 27001 A.8.2; CSA CCM IAM | **G14** — day-2 (OVN/ACL deferred in `infra-decisions.md` D2); single-customer demo does not exercise it |
+
+### 6.1 Open gaps — control-mapping additions
+
+§4 lists G1–G13 (regulatory) and `certifications.md` §4 lists G-SNC + G-CERT1–G-CERT5. The control mapping surfaces two gaps not previously indexed; together they complete "every place the current architecture does NOT satisfy a requirement":
+
+- **G14 — Tenant isolation is a day-2 control, not yet proven.** The CCPA/PIPEDA/KSA ECC "tenant isolation" claims rest on VM-grade (QEMU) isolation (`agent-runtime.md`) and per-project tokens, but multi-tenant network isolation (OVN + ACLs) is explicitly deferred to day-2 in `infra-decisions.md` D2 and the demo is single-customer. Until a shared-controller multi-customer deployment ships, tenant-isolation claims are design intent, not a demonstrated control. Owner: architect/infra.
+- **G15 — Interactive operator SSH/terminal actions are not session-logged.** The audit chain (`governance.md` §8) logs egress payloads and external model calls; the SSH CA authorizes the terminal surfaces (`/terminal/v1/nodes/{node_id}`, `/terminal/v1/vms/{vm_id}` via `lxc exec`) but operator session *activity* is not captured in the tamper-evident chain. ISO 27001 A.8.15/8.16, SOC 2 CC6/CC7, HIPAA §164.312(b) and PCI Req 10 all require logging of privileged-access activity. Owner: controller/security — add session recording/audit to the terminal bridge before claiming those certs.
+
+---
+
+## 7. Priority Regions & Segments (ranked first-adopters)
+
+Ranking method (all four factors are evidence-grounded, cited to §2 rows and `certifications.md` §2): (1) **regulatory pull** — which rules most directly reward the on-prem/remote-ops posture; (2) **on-prem willingness** — size and density of the regulated mid-market buyer base; (3) **certification overlap** — how much of the ISO 27001 → SOC 2 → ISO 42001 → 27701 sequence is reused; (4) **sales-cycle length** — structural friction (unshipped DPA/SCC, attestation windows, structural certs).
+
+| Rank | Region | Segment | Regulatory pull | On-prem willingness | Certification overlap | Sales-cycle length |
+|---|---|---|---|---|---|---|
+| **1** | **EU** (DACH / FR / Benelux first) | Data-sensitive SMB + regulated mid-market (finance via DORA, health via MDR) | Highest: GDPR is the universal gatekeeper and the processor/transfer/SCC question is answered *architecturally* (§1); AI Act positions the loop as limited-risk; Data Act is a positive differentiator | High among regulated mid-market; on-prem is the default for DORA/MDR buyers | Highest: ISO 27001 + 27701 + 42001 + SOC 2 + CSA STAR + EU Cloud CoC all target EU buyers | Moderate — gated on shipping the DPA/SCC/sub-processor artifacts (G1/G2/G8) |
+| **2** | **UK** | Regulated mid-market (finance, health, public sector) | Near-EU: UK GDPR ≈ EU GDPR (build carries over); ICO is the most active English-speaking AI regulator | High; dense regulated finance/health base | Identical to EU (ISO 27001 + SOC 2 + 27701 + 42001) | Shorter than EU — one English-speaking regulator; UK IDTA only for the break-glass path (G9) |
+| **3** | **US** | Healthcare (HIPAA) + finance (GLBA) + horizontal CCPA/CPRA | Broad but higher-friction: state privacy + sector rules; public sector (FedRAMP/StateRAMP) is revenue-gated | High in healthcare/finance | Medium — SOC 2 Type II observation window is calendar-driven (6–9 mo); HIPAA needs a BAA + HITRUST | Longer — BAA (G-CERT2) + SOC 2 window + HITRUST; FedRAMP/StateRAMP structural (G10/G-CERT3) |
+
+**Why this order (grounded in the evidence, not opinion):**
+
+- **EU first** because the posture maps 1:1 onto the exact questions an EU DPO asks. GDPR Art. 28/32/44–49 are answered by named controls (§6), the transfer question is engineered out of the standard path (§1b), and the AI Act's advisory-loop argument (limited-risk, not a GPAI provider) is a *differentiator*, not a burden. The certification sequencing in `certifications.md` §2 is EU-native (ISO 27001/27701/42001 + EU Cloud CoC + CSA STAR). The only real friction is the unshipped DPA/SCC package (G1), a drafting task, not a redesign.
+- **UK second** because it is the highest leverage per unit of effort: UK GDPR is substantively identical to EU GDPR, so the entire EU control set carries over with near-zero delta, and a single English-speaking regulator shortens the cycle. It is the fastest path to first regulated revenue behind the EU build.
+- **US third** because it is the largest addressable pool but the slowest to certify into: SOC 2 Type II has a calendar-driven observation window, HIPAA requires a BAA plus a HITRUST investment, and the public-sector route (FedRAMP/StateRAMP) is a structural, revenue-gated commitment (G10/G-CERT3). Enter via healthcare/finance mid-market; defer public sector.
+
+**Runner-up, recorded so the cut is auditable:** **Switzerland** sits just outside the top three — FADP Art. 60–63 *personal* criminal liability makes in-country data unusually valuable and the finance base is dense, but it is a smaller, non-EEA market that needs its own transfer instruments (G9/G11). **UAE/KSA** have the strongest on-prem pull anywhere, but remote operator access becomes a regulated cross-border transfer/access event (G9/G13) that forces an in-country ops presence — the biggest design tension in the whole landscape — so they are deliberately excluded from the first-adopter top three.
