@@ -9,11 +9,11 @@ Implements the frozen framing and session lifecycle in dashboard.md §3.1:
   * client close terminates the shell.
 
 Reaching the node: the primary path is the node's outbound mTLS control channel
-(D6); the demo bridge proxies via SSH using the break-glass key (dashboard.md
-§3.1, D4). The SSH backend shells out to the system ``ssh`` client over a local
-PTY (``pty`` + ``ssh -tt``), so terminal bytes are binary-clean and resizes are
-forwarded via SIGWINCH. A ``local`` backend (``bash -i``) exists for hermetic
-tests.
+(D6); the demo bridge proxies via SSH using a short-lived CA-signed operator
+certificate (dashboard.md §3.1, D4). The SSH backend shells out to the system
+``ssh`` client over a local PTY (``pty`` + ``ssh -tt``), so terminal bytes are
+binary-clean and resizes are forwarded via SIGWINCH. A ``local`` backend
+(``bash -i``) exists for hermetic tests.
 """
 from __future__ import annotations
 
@@ -211,9 +211,14 @@ class TerminalSession:
                 pass
 
 
-def spawn_shell(backend: str, *, key_path: str | None, user: str, host: str | None,
-                port: int, cols: int, rows: int) -> tuple[int, subprocess.Popen, str]:
-    """Open a PTY and spawn the shell. Returns (master_fd, proc, shell_label)."""
+def spawn_shell(backend: str, *, identity_key_path: str | None, cert_path: str | None,
+                user: str, host: str | None, port: int, cols: int, rows: int) -> tuple[int, subprocess.Popen, str]:
+    """Open a PTY and spawn the shell. Returns (master_fd, proc, shell_label).
+
+    The SSH backend authenticates with a short-lived, CA-signed operator
+    certificate (``identity_key_path`` + ``cert_path``), never a long-lived
+    controller-held key (D4).
+    """
     import pty
 
     if backend == BACKEND_LOCAL:
@@ -226,7 +231,11 @@ def spawn_shell(backend: str, *, key_path: str | None, user: str, host: str | No
             "-o", "UserKnownHostsFile=/dev/null",
             "-o", "ConnectTimeout=10",
             "-o", "LogLevel=ERROR",
-            "-i", key_path or "",
+            "-i", identity_key_path or "",
+        ]
+        if cert_path:
+            cmd += ["-o", f"CertificateFile={cert_path}"]
+        cmd += [
             "-p", str(port),
             f"{user}@{host}",
         ]

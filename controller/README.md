@@ -74,9 +74,13 @@ is hardcoded.
 | `TERMINI_LXD_TIMEOUT_S` | `10.0` | per-request timeout |
 | `TERMINI_LXD_RETRY_MAX` / `TERMINI_LXD_RETRY_BACKOFF_S` | `3` / `0.5` | retry with exponential backoff |
 | `TERMINI_INVENTORY_PATH` | (auto) | infra inventory.json (public_ip / ssh user+port) |
-| `TERMINI_SSH_KEY_PATH` | (none) | controller-held key for the terminal bridge proxy |
-| `TERMINI_SSH_PUBLIC_KEY` | (derived) | public half for the SSH-string fingerprint |
+| `TERMINI_SSH_CA_KEY_PATH` | (none) | controller-held SSH CA private key (Ed25519, D4) |
+| `TERMINI_SSH_CA_PUBLIC_KEY` | (derived) | CA public half for the SSH-string fingerprint |
+| `TERMINI_SSH_OPERATOR_KEY_PATH` | `~/.termini/operator_key` | controller-local operator identity key for the terminal bridge |
 | `TERMINI_SSH_KEY_COMMENT` | `termini-operator-cert` | key comment in the SSH string |
+| `TERMINI_SSH_CERT_PRINCIPAL` | `root` | principal bound into issued certificates |
+| `TERMINI_SSH_CERT_DEFAULT_VALIDITY_S` | `28800` | default certificate TTL (8 h) |
+| `TERMINI_SSH_CERT_MAX_VALIDITY_S` | `86400` | certificate TTL ceiling (24 h, never exceeded) |
 | `TERMINI_SSH_CLIENT_KEY_PATH` | `~/.ssh/termini_operator` | operator key path rendered in the SSH string |
 | `TERMINI_SSH_USER` / `TERMINI_SSH_PORT` | `ubuntu` / `22` | fallback when no inventory is loaded |
 | `TERMINI_LOG_RING_SIZE` | `10000` | operator-log ring buffer capacity |
@@ -97,6 +101,8 @@ REST (all under `/v1`):
 | GET | `/v1/projects/{pid}/nodes/{nid}` | project token | `200` node + `metrics_latest` |
 | GET | `/v1/projects/{pid}/nodes/{nid}/metrics` | project token | `200` time-series (`?start&end&resolution&metrics`) |
 | GET | `/v1/projects/{pid}/nodes/{nid}/ssh` | project token | `200` SSH string + fingerprint |
+| POST | `/v1/projects/{pid}/ssh-key` | project token | `200` signed short-lived cert (D4 CA) |
+| POST | `/v1/projects/{pid}/ssh-key/revoke` | project token | `200` revoke an issued cert |
 | POST | `/v1/projects/{pid}/nodes/{nid}/actions/reboot` | project token | `202 {command_id,type,state}` |
 | POST | `/v1/projects/{pid}/nodes/{nid}/actions/drain` | project token | `202 {command_id,type,state}` |
 | POST | `/v1/projects/{pid}/intents` | project token | `200` plan / `422` guardrail-rejected |
