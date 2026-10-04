@@ -1,0 +1,161 @@
+{
+  "two_process": [
+    {
+      "mode": "two-processes",
+      "restart_commands": 2,
+      "auditA_fires": 1,
+      "auditB_fires": 1,
+      "verdict": "DOUBLE-remediation",
+      "run": 0
+    },
+    {
+      "mode": "two-processes",
+      "restart_commands": 2,
+      "auditA_fires": 1,
+      "auditB_fires": 1,
+      "verdict": "DOUBLE-remediation",
+      "run": 1
+    },
+    {
+      "mode": "two-processes",
+      "restart_commands": 2,
+      "auditA_fires": 1,
+      "auditB_fires": 1,
+      "verdict": "DOUBLE-remediation",
+      "run": 2
+    },
+    {
+      "mode": "two-processes",
+      "restart_commands": 2,
+      "auditA_fires": 1,
+      "auditB_fires": 1,
+      "verdict": "DOUBLE-remediation",
+      "run": 3
+    },
+    {
+      "mode": "two-processes",
+      "restart_commands": 2,
+      "auditA_fires": 1,
+      "auditB_fires": 1,
+      "verdict": "DOUBLE-remediation",
+      "run": 4
+    },
+    {
+      "mode": "two-processes",
+      "restart_commands": 2,
+      "auditA_fires": 1,
+      "auditB_fires": 1,
+      "verdict": "DOUBLE-remediation",
+      "run": 5
+    },
+    {
+      "mode": "two-processes",
+      "restart_commands": 2,
+      "auditA_fires": 1,
+      "auditB_fires": 1,
+      "verdict": "DOUBLE-remediation",
+      "run": 6
+    },
+    {
+      "mode": "two-processes",
+      "restart_commands": 2,
+      "auditA_fires": 1,
+      "auditB_fires": 1,
+      "verdict": "DOUBLE-remediation",
+      "run": 7
+    },
+    {
+      "mode": "two-processes",
+      "restart_commands": 2,
+      "auditA_fires": 1,
+      "auditB_fires": 1,
+      "verdict": "DOUBLE-remediation",
+      "run": 8
+    },
+    {
+      "mode": "two-processes",
+      "restart_commands": 2,
+      "auditA_fires": 1,
+      "auditB_fires": 1,
+      "verdict": "DOUBLE-remediation",
+      "run": 9
+    }
+  ],
+  "two_inprocess": {
+    "mode": "two-inprocess-loops",
+    "runs": 10,
+    "double_remediation_runs": 0,
+    "records": [
+      {
+        "restart_commands": 1,
+        "remediation_audits": 1,
+        "remediation_decisions": 1,
+        "worker_errors": [],
+        "verdict": "single-remediation"
+      },
+      {
+        "restart_commands": 1,
+        "remediation_audits": 1,
+        "remediation_decisions": 1,
+        "worker_errors": [],
+        "verdict": "single-remediation"
+      },
+      {
+        "restart_commands": 1,
+        "remediation_audits": 1,
+        "remediation_decisions": 1,
+        "worker_errors": [],
+        "verdict": "single-remediation"
+      },
+      {
+        "restart_commands": 1,
+        "remediation_audits": 1,
+        "remediation_decisions": 1,
+        "worker_errors": [],
+        "verdict": "single-remediation"
+      },
+      {
+        "restart_commands": 1,
+        "remediation_audits": 1,
+        "remediation_decisions": 1,
+        "worker_errors": [],
+        "verdict": "single-remediation"
+      },
+      {
+        "restart_commands": 1,
+        "remediation_audits": 1,
+        "remediation_decisions": 1,
+        "worker_errors": [],
+        "verdict": "single-remediation"
+      },
+      {
+        "restart_commands": 1,
+        "remediation_audits": 1,
+        "remediation_decisions": 1,
+        "worker_errors": [],
+        "verdict": "single-remediation"
+      },
+      {
+        "restart_commands": 1,
+        "remediation_audits": 1,
+        "remediation_decisions": 1,
+        "worker_errors": [],
+        "verdict": "single-remediation"
+      },
+      {
+        "restart_commands": 1,
+        "remediation_audits": 1,
+        "remediation_decisions": 1,
+        "worker_errors": [],
+        "verdict": "single-remediation"
+      },
+      {
+        "restart_commands": 1,
+        "remediation_audits": 1,
+        "remediation_decisions": 1,
+        "worker_errors": [],
+        "verdict": "single-remediation"
+      }
+    ]
+  }
+}

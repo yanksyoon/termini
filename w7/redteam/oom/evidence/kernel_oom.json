@@ -1,0 +1,402 @@
+[
+  {
+    "tag": "80MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 3.477,
+    "kill_at_s": 3.705,
+    "window_s": 0.228,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268435456,
+    "max_pct_of_limit": 100.0,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49577.817309] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-8956-0.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-8956-0.service,task_memcg=/system.slice/oomrt-8956-0.service,task=python3,pid=382851,uid=0",
+      "[49577.817359] Memory cgroup out of memory: Killed process 382851 (python3) total-vm:306496kB, anon-rss:260992kB, file-rss:9344kB, shmem-rss:0kB, UID:0 pgtables:620kB oom_score_adj:0"
+    ],
+    "run": 0
+  },
+  {
+    "tag": "80MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 3.365,
+    "kill_at_s": 3.585,
+    "window_s": 0.221,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268423168,
+    "max_pct_of_limit": 100.0,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49581.744180] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-8956-1.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-8956-1.service,task_memcg=/system.slice/oomrt-8956-1.service,task=python3,pid=383347,uid=0",
+      "[49581.744193] Memory cgroup out of memory: Killed process 383347 (python3) total-vm:306496kB, anon-rss:261248kB, file-rss:9344kB, shmem-rss:0kB, UID:0 pgtables:624kB oom_score_adj:0"
+    ],
+    "run": 1
+  },
+  {
+    "tag": "80MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 3.147,
+    "kill_at_s": 3.348,
+    "window_s": 0.201,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268197888,
+    "max_pct_of_limit": 99.9,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49585.241092] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-8956-2.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-8956-2.service,task_memcg=/system.slice/oomrt-8956-2.service,task=python3,pid=383728,uid=0",
+      "[49585.241106] Memory cgroup out of memory: Killed process 383728 (python3) total-vm:306496kB, anon-rss:261372kB, file-rss:9344kB, shmem-rss:0kB, UID:0 pgtables:628kB oom_score_adj:0"
+    ],
+    "run": 2
+  },
+  {
+    "tag": "80MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 3.159,
+    "kill_at_s": 3.388,
+    "window_s": 0.229,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268435456,
+    "max_pct_of_limit": 100.0,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49588.719730] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-8956-3.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-8956-3.service,task_memcg=/system.slice/oomrt-8956-3.service,task=python3,pid=384051,uid=0",
+      "[49588.719749] Memory cgroup out of memory: Killed process 384051 (python3) total-vm:306496kB, anon-rss:261248kB, file-rss:9216kB, shmem-rss:0kB, UID:0 pgtables:616kB oom_score_adj:0"
+    ],
+    "run": 3
+  },
+  {
+    "tag": "80MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 3.153,
+    "kill_at_s": 3.378,
+    "window_s": 0.225,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268197888,
+    "max_pct_of_limit": 99.9,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49592.222791] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-8956-4.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-8956-4.service,task_memcg=/system.slice/oomrt-8956-4.service,task=python3,pid=384405,uid=0",
+      "[49592.222804] Memory cgroup out of memory: Killed process 384405 (python3) total-vm:306496kB, anon-rss:261248kB, file-rss:9216kB, shmem-rss:0kB, UID:0 pgtables:620kB oom_score_adj:0"
+    ],
+    "run": 4
+  },
+  {
+    "tag": "20MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 12.019,
+    "kill_at_s": 12.638,
+    "window_s": 0.619,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 266723328,
+    "max_pct_of_limit": 99.4,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49604.987268] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-6606-0.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-6606-0.service,task_memcg=/system.slice/oomrt-6606-0.service,task=python3,pid=384863,uid=0",
+      "[49604.987281] Memory cgroup out of memory: Killed process 384863 (python3) total-vm:298672kB, anon-rss:261120kB, file-rss:9344kB, shmem-rss:0kB, UID:0 pgtables:616kB oom_score_adj:0"
+    ],
+    "run": 0
+  },
+  {
+    "tag": "20MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 12.211,
+    "kill_at_s": 12.825,
+    "window_s": 0.615,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268435456,
+    "max_pct_of_limit": 100.0,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49617.994255] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-6606-1.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-6606-1.service,task_memcg=/system.slice/oomrt-6606-1.service,task=python3,pid=385674,uid=0",
+      "[49617.994286] Memory cgroup out of memory: Killed process 385674 (python3) total-vm:298672kB, anon-rss:261248kB, file-rss:9344kB, shmem-rss:0kB, UID:0 pgtables:616kB oom_score_adj:0"
+    ],
+    "run": 1
+  },
+  {
+    "tag": "20MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 12.556,
+    "kill_at_s": 13.174,
+    "window_s": 0.619,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 266481664,
+    "max_pct_of_limit": 99.3,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 1,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49631.542908] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-6606-2.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-6606-2.service,task_memcg=/system.slice/oomrt-6606-2.service,task=python3,pid=386303,uid=0",
+      "[49631.542955] Memory cgroup out of memory: Killed process 386303 (python3) total-vm:298672kB, anon-rss:260992kB, file-rss:9216kB, shmem-rss:0kB, UID:0 pgtables:616kB oom_score_adj:0"
+    ],
+    "run": 2
+  },
+  {
+    "tag": "20MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 13.338,
+    "kill_at_s": 14.672,
+    "window_s": 1.334,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": true,
+    "max_bytes": 266481664,
+    "max_pct_of_limit": 99.3,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 1,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49646.457024] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-6606-3.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-6606-3.service,task_memcg=/system.slice/oomrt-6606-3.service,task=python3,pid=387369,uid=0",
+      "[49646.457248] Memory cgroup out of memory: Killed process 387369 (python3) total-vm:298672kB, anon-rss:261248kB, file-rss:9344kB, shmem-rss:0kB, UID:0 pgtables:616kB oom_score_adj:0"
+    ],
+    "run": 3
+  },
+  {
+    "tag": "20MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 13.029,
+    "kill_at_s": 13.641,
+    "window_s": 0.612,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 266727424,
+    "max_pct_of_limit": 99.4,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49661.424893] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-6606-4.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-6606-4.service,task_memcg=/system.slice/oomrt-6606-4.service,task=python3,pid=389279,uid=0",
+      "[49661.424915] Memory cgroup out of memory: Killed process 389279 (python3) total-vm:298672kB, anon-rss:261248kB, file-rss:9216kB, shmem-rss:0kB, UID:0 pgtables:612kB oom_score_adj:0"
+    ],
+    "run": 4
+  },
+  {
+    "tag": "7MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 34.226,
+    "kill_at_s": 36.039,
+    "window_s": 1.813,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268341248,
+    "max_pct_of_limit": 100.0,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 2,
+    "operator_would_fire": true,
+    "kernel_oom_lines": [
+      "[49700.629145] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-6476-0.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-6476-0.service,task_memcg=/system.slice/oomrt-6476-0.service,task=python3,pid=390508,uid=0",
+      "[49700.629168] Memory cgroup out of memory: Killed process 390508 (python3) total-vm:299116kB, anon-rss:260992kB, file-rss:9344kB, shmem-rss:0kB, UID:0 pgtables:620kB oom_score_adj:0"
+    ],
+    "run": 0
+  },
+  {
+    "tag": "7MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 34.39,
+    "kill_at_s": 36.206,
+    "window_s": 1.816,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268435456,
+    "max_pct_of_limit": 100.0,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 2,
+    "operator_would_fire": true,
+    "kernel_oom_lines": [
+      "[49737.075119] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-6476-1.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-6476-1.service,task_memcg=/system.slice/oomrt-6476-1.service,task=python3,pid=394254,uid=0",
+      "[49737.075173] Memory cgroup out of memory: Killed process 394254 (python3) total-vm:299116kB, anon-rss:261108kB, file-rss:9216kB, shmem-rss:0kB, UID:0 pgtables:616kB oom_score_adj:0"
+    ],
+    "run": 1
+  },
+  {
+    "tag": "7MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 34.015,
+    "kill_at_s": 35.931,
+    "window_s": 1.916,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268435456,
+    "max_pct_of_limit": 100.0,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 1,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49773.337459] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-6476-2.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-6476-2.service,task_memcg=/system.slice/oomrt-6476-2.service,task=python3,pid=398368,uid=0",
+      "[49773.337478] Memory cgroup out of memory: Killed process 398368 (python3) total-vm:299116kB, anon-rss:260992kB, file-rss:9216kB, shmem-rss:0kB, UID:0 pgtables:616kB oom_score_adj:0"
+    ],
+    "run": 2
+  },
+  {
+    "tag": "7MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 33.758,
+    "kill_at_s": 35.672,
+    "window_s": 1.913,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268292096,
+    "max_pct_of_limit": 99.9,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 2,
+    "operator_would_fire": true,
+    "kernel_oom_lines": [
+      "[49809.092602] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-6476-3.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-6476-3.service,task_memcg=/system.slice/oomrt-6476-3.service,task=python3,pid=400775,uid=0",
+      "[49809.092614] Memory cgroup out of memory: Killed process 400775 (python3) total-vm:299116kB, anon-rss:261248kB, file-rss:9216kB, shmem-rss:0kB, UID:0 pgtables:620kB oom_score_adj:0"
+    ],
+    "run": 3
+  },
+  {
+    "tag": "7MB/s",
+    "limit_bytes": 268435456,
+    "breach_at_s": 34.402,
+    "kill_at_s": 36.352,
+    "window_s": 1.949,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268288000,
+    "max_pct_of_limit": 99.9,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 2,
+    "operator_would_fire": true,
+    "kernel_oom_lines": [
+      "[49846.752857] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-6476-4.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-6476-4.service,task_memcg=/system.slice/oomrt-6476-4.service,task=python3,pid=403637,uid=0",
+      "[49846.752937] Memory cgroup out of memory: Killed process 403637 (python3) total-vm:299116kB, anon-rss:260992kB, file-rss:9216kB, shmem-rss:0kB, UID:0 pgtables:620kB oom_score_adj:0"
+    ],
+    "run": 4
+  },
+  {
+    "tag": "stress-ng --vm 1",
+    "limit_bytes": 268435456,
+    "breach_at_s": 0.52,
+    "kill_at_s": 0.52,
+    "window_s": 0.0,
+    "window_is_upper_bound": true,
+    "breach_observed_at_sampling": false,
+    "exited_cleanly": false,
+    "max_bytes": 245731328,
+    "max_pct_of_limit": 91.5,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49848.479435] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-5541-0.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-5541-0.service,task_memcg=/system.slice/oomrt-5541-0.service,task=stress-ng-vm,pid=407092,uid=0",
+      "[49848.479472] Memory cgroup out of memory: Killed process 407092 (stress-ng-vm) total-vm:585072kB, anon-rss:243980kB, file-rss:640kB, shmem-rss:0kB, UID:0 pgtables:556kB oom_score_adj:1000"
+    ],
+    "run": 0
+  },
+  {
+    "tag": "stress-ng --vm 1",
+    "limit_bytes": 268435456,
+    "breach_at_s": 0.461,
+    "kill_at_s": 0.461,
+    "window_s": 0.0,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268435456,
+    "max_pct_of_limit": 100.0,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49849.416973] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-5541-1.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-5541-1.service,task_memcg=/system.slice/oomrt-5541-1.service,task=stress-ng-vm,pid=407249,uid=0",
+      "[49849.416993] Memory cgroup out of memory: Killed process 407249 (stress-ng-vm) total-vm:585072kB, anon-rss:243904kB, file-rss:896kB, shmem-rss:0kB, UID:0 pgtables:564kB oom_score_adj:1000"
+    ],
+    "run": 1
+  },
+  {
+    "tag": "stress-ng --vm 1",
+    "limit_bytes": 268435456,
+    "breach_at_s": 2.228,
+    "kill_at_s": 2.285,
+    "window_s": 0.057,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 261300224,
+    "max_pct_of_limit": 97.3,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49852.014622] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-5541-2.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-5541-2.service,task_memcg=/system.slice/oomrt-5541-2.service,task=stress-ng-vm,pid=407415,uid=0",
+      "[49852.014654] Memory cgroup out of memory: Killed process 407415 (stress-ng-vm) total-vm:585072kB, anon-rss:244004kB, file-rss:1024kB, shmem-rss:0kB, UID:0 pgtables:564kB oom_score_adj:1000"
+    ],
+    "run": 2
+  },
+  {
+    "tag": "stress-ng --vm 1",
+    "limit_bytes": 268435456,
+    "breach_at_s": 0.879,
+    "kill_at_s": 0.973,
+    "window_s": 0.094,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268435456,
+    "max_pct_of_limit": 100.0,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49853.510627] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-5541-3.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-5541-3.service,task_memcg=/system.slice/oomrt-5541-3.service,task=stress-ng-vm,pid=407681,uid=0",
+      "[49853.510796] Memory cgroup out of memory: Killed process 407681 (stress-ng-vm) total-vm:585072kB, anon-rss:243840kB, file-rss:896kB, shmem-rss:0kB, UID:0 pgtables:560kB oom_score_adj:1000"
+    ],
+    "run": 3
+  },
+  {
+    "tag": "stress-ng --vm 1",
+    "limit_bytes": 268435456,
+    "breach_at_s": 0.575,
+    "kill_at_s": 0.658,
+    "window_s": 0.083,
+    "window_is_upper_bound": false,
+    "breach_observed_at_sampling": true,
+    "exited_cleanly": false,
+    "max_bytes": 268423168,
+    "max_pct_of_limit": 100.0,
+    "oom_kill_seen": true,
+    "consecutive_breach_samples_1s": 0,
+    "operator_would_fire": false,
+    "kernel_oom_lines": [
+      "[49855.276574] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=oomrt-5541-4.service,mems_allowed=0,oom_memcg=/system.slice/oomrt-5541-4.service,task_memcg=/system.slice/oomrt-5541-4.service,task=stress-ng-vm,pid=407841,uid=0",
+      "[49855.276619] Memory cgroup out of memory: Killed process 407841 (stress-ng-vm) total-vm:585072kB, anon-rss:244108kB, file-rss:896kB, shmem-rss:0kB, UID:0 pgtables:556kB oom_score_adj:1000"
+    ],
+    "run": 4
+  }
+]

@@ -1,0 +1,180 @@
+{
+  "mixed_operators": [
+    {
+      "mode": "in-process loop + standalone CLI on the same node",
+      "lxd_restart_commands": 2,
+      "cli_operator_fires": 1,
+      "db": {
+        "health_events": 1,
+        "remediation_audits": 1,
+        "fired_counts": [
+          1
+        ]
+      },
+      "verdict": "DOUBLE-remediation",
+      "run": 0
+    },
+    {
+      "mode": "in-process loop + standalone CLI on the same node",
+      "lxd_restart_commands": 2,
+      "cli_operator_fires": 1,
+      "db": {
+        "health_events": 1,
+        "remediation_audits": 1,
+        "fired_counts": [
+          1
+        ]
+      },
+      "verdict": "DOUBLE-remediation",
+      "run": 1
+    },
+    {
+      "mode": "in-process loop + standalone CLI on the same node",
+      "lxd_restart_commands": 2,
+      "cli_operator_fires": 1,
+      "db": {
+        "health_events": 1,
+        "remediation_audits": 1,
+        "fired_counts": [
+          1
+        ]
+      },
+      "verdict": "DOUBLE-remediation",
+      "run": 2
+    },
+    {
+      "mode": "in-process loop + standalone CLI on the same node",
+      "lxd_restart_commands": 2,
+      "cli_operator_fires": 1,
+      "db": {
+        "health_events": 1,
+        "remediation_audits": 1,
+        "fired_counts": [
+          1
+        ]
+      },
+      "verdict": "DOUBLE-remediation",
+      "run": 3
+    },
+    {
+      "mode": "in-process loop + standalone CLI on the same node",
+      "lxd_restart_commands": 2,
+      "cli_operator_fires": 1,
+      "db": {
+        "health_events": 1,
+        "remediation_audits": 1,
+        "fired_counts": [
+          1
+        ]
+      },
+      "verdict": "DOUBLE-remediation",
+      "run": 4
+    },
+    {
+      "mode": "in-process loop + standalone CLI on the same node",
+      "lxd_restart_commands": 2,
+      "cli_operator_fires": 1,
+      "db": {
+        "health_events": 1,
+        "remediation_audits": 1,
+        "fired_counts": [
+          1
+        ]
+      },
+      "verdict": "DOUBLE-remediation",
+      "run": 5
+    },
+    {
+      "mode": "in-process loop + standalone CLI on the same node",
+      "lxd_restart_commands": 2,
+      "cli_operator_fires": 1,
+      "db": {
+        "health_events": 1,
+        "remediation_audits": 1,
+        "fired_counts": [
+          1
+        ]
+      },
+      "verdict": "DOUBLE-remediation",
+      "run": 6
+    },
+    {
+      "mode": "in-process loop + standalone CLI on the same node",
+      "lxd_restart_commands": 2,
+      "cli_operator_fires": 1,
+      "db": {
+        "health_events": 1,
+        "remediation_audits": 1,
+        "fired_counts": [
+          1
+        ]
+      },
+      "verdict": "DOUBLE-remediation",
+      "run": 7
+    },
+    {
+      "mode": "in-process loop + standalone CLI on the same node",
+      "lxd_restart_commands": 2,
+      "cli_operator_fires": 1,
+      "db": {
+        "health_events": 1,
+        "remediation_audits": 1,
+        "fired_counts": [
+          1
+        ]
+      },
+      "verdict": "DOUBLE-remediation",
+      "run": 8
+    },
+    {
+      "mode": "in-process loop + standalone CLI on the same node",
+      "lxd_restart_commands": 2,
+      "cli_operator_fires": 1,
+      "db": {
+        "health_events": 1,
+        "remediation_audits": 1,
+        "fired_counts": [
+          1
+        ]
+      },
+      "verdict": "DOUBLE-remediation",
+      "run": 9
+    }
+  ],
+  "restart_recovery": [
+    {
+      "mode": "SIGKILL controller mid-breach -> restart on same DB",
+      "audits_before_restart": 1,
+      "audits_after_restart": 1,
+      "lxd_restart_commands": 1,
+      "trigger_state_fired_counts": [
+        1
+      ],
+      "verdict": "state-recovers-no-refire",
+      "run": 0
+    },
+    {
+      "mode": "SIGKILL controller mid-breach -> restart on same DB",
+      "audits_before_restart": 1,
+      "audits_after_restart": 1,
+      "lxd_restart_commands": 1,
+      "trigger_state_fired_counts": [
+        1
+      ],
+      "verdict": "state-recovers-no-refire",
+      "run": 1
+    },
+    {
+      "mode": "SIGKILL controller mid-breach -> restart on same DB",
+      "audits_before_restart": 1,
+      "audits_after_restart": 1,
+      "lxd_restart_commands": 1,
+      "trigger_state_fired_counts": [
+        1
+      ],
+      "verdict": "state-recovers-no-refire",
+      "run": 2
+    }
+  ],
+  "double_remediation_runs": 10
+}

@@ -1,0 +1,10 @@
+{
+  "mode": "in-process shipped loop",
+  "operator_poll_s": 1.0,
+  "health_events": 1,
+  "remediation_audits": 1,
+  "lxd_restart_commands": 1,
+  "fired_at": "2026-10-04T11:02:50.461Z",
+  "breach_started_at": "2026-10-04T11:02:48.642Z",
+  "verdict": "LIVE-TRIGGER-OK"
+}

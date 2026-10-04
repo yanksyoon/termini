@@ -1,0 +1,50 @@
+[
+  {
+    "ramp_s": 4.0,
+    "kill_pct": "100.0",
+    "runs": 10,
+    "unsafe": 10,
+    "repro_rate": 1.0,
+    "fires": 0
+  },
+  {
+    "ramp_s": 4.0,
+    "kill_pct": "None",
+    "runs": 3,
+    "unsafe": 0,
+    "repro_rate": 0.0,
+    "fires": 3
+  },
+  {
+    "ramp_s": 8.0,
+    "kill_pct": "100.0",
+    "runs": 10,
+    "unsafe": 10,
+    "repro_rate": 1.0,
+    "fires": 0
+  },
+  {
+    "ramp_s": 8.0,
+    "kill_pct": "None",
+    "runs": 3,
+    "unsafe": 0,
+    "repro_rate": 0.0,
+    "fires": 3
+  },
+  {
+    "ramp_s": 20.0,
+    "kill_pct": "100.0",
+    "runs": 10,
+    "unsafe": 2,
+    "repro_rate": 0.2,
+    "fires": 8
+  },
+  {
+    "ramp_s": 20.0,
+    "kill_pct": "None",
+    "runs": 3,
+    "unsafe": 0,
+    "repro_rate": 0.0,
+    "fires": 3
+  }
+]
