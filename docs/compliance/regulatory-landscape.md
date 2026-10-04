@@ -181,3 +181,57 @@ Ranking method (all four factors are evidence-grounded, cited to §2 rows and `c
 - **US third** because it is the largest addressable pool but the slowest to certify into: SOC 2 Type II has a calendar-driven observation window, HIPAA requires a BAA plus a HITRUST investment, and the public-sector route (FedRAMP/StateRAMP) is a structural, revenue-gated commitment (G10/G-CERT3). Enter via healthcare/finance mid-market; defer public sector.
 
 **Runner-up, recorded so the cut is auditable:** **Switzerland** sits just outside the top three — FADP Art. 60–63 *personal* criminal liability makes in-country data unusually valuable and the finance base is dense, but it is a smaller, non-EEA market that needs its own transfer instruments (G9/G11). **UAE/KSA** have the strongest on-prem pull anywhere, but remote operator access becomes a regulated cross-border transfer/access event (G9/G13) that forces an in-country ops presence — the biggest design tension in the whole landscape — so they are deliberately excluded from the first-adopter top three.
+
+---
+
+## 8. Adversarial review note (verifier, `t_d0635046`)
+
+Independent gate of §1–§7 and `docs/compliance/certifications.md`. Method: (i) every named design control re-checked against its source in `governance.md` / `architecture.md` / `controller-api.md` / `agent-runtime.md` / `infra-decisions.md`; (ii) every regulation/certification spot-checked against its primary source (EUR-Lex, EDPB guidelines, EDÖB/FDPIC, SDAIA, ANSSI, ISO catalogue, AICPA/CSA/PCI/FedRAMP references); (iii) the transfer/adequacy reasoning and the ranked region list each red-teamed independently. Nothing below silently edits the research; this section is an additive report for the authors.
+
+### 8.1 Gate verdict
+
+| Document | Verdict |
+|---|---|
+| `regulatory-landscape.md` | **FAIL — correctable.** The transfer/adequacy *conclusion* is correct and the control mapping is internally consistent, but the document carries (1) a non-verbatim passage presented as a direct EDPB quote, (2) a mislabelled SCC transfer module, and (3) an over-broad "C0/C1 is not personal data" assertion. A decision-grade compliance document may not ship a fabricated-looking quote or a mislabelled transfer instrument. Items F1–F5 below must be corrected; none requires re-doing the analysis. |
+| `certifications.md` | **PASS — with caveats.** Its citations verified against primary sources (EU Cloud CoC Art. 40 approval 19–20 May 2021 by EDPB/Belgian DPA, Scope Europe monitor, 3 levels; SecNumCloud 3.2 sovereignty 24%/39% capital caps + immunity from extraterritorial law; ISO 27001:2022 = 93 controls/4 themes; ISO 42001:2023 published Dec 2023; the DORA/Data Act chapter ranges). Cost/time figures are self-flagged indicative ranges (G-CERT5). The only unverified item is the exact "C5 mandatory in German healthcare since 1 July 2025" date (see 8.3). |
+
+### 8.2 Miscitations and unsupported claims (F = must fix)
+
+- **F1 — Fabricated EDPB quote (§1b).** The text quotes: *"it is sufficient for making available personal data … if, for example, personal data is accessed remotely from a third country"* and attributes it verbatim to EDPB Guidelines 05/2021 "§13". This string does not appear in the guidelines. The actual passage (guidelines §2.2, the sentence carrying footnote 13) reads: *"remote access from a third country … is also considered to be a transfer, **provided that the three criteria outlined in paragraph 9 above are met**."* Two defects: (a) it is a paraphrase rendered as a direct quote; (b) "§13" is a footnote number, not a section. The dropped qualifier matters — remote access is a transfer only when the exporter makes data available to a **separate** controller/processor. Replace with the verbatim sentence and cite the correct authority: **Example 11** of the same guidelines ("Remote access to data in the EU by a third country processor acting on behalf of EU controllers") is the on-point authority for Termini's exact posture and confirms the conclusion.
+- **F2 — SCC module mislabelled (§1c).** "Module 2 (processor-to-processor)" is wrong. Commission Implementing Decision (EU) 2021/914 has four modules: **Module 2 = controller-to-processor; Module 3 = processor-to-processor**. The number is coincidentally right (customer controller → Termini processor is Module 2); the parenthetical description is not. Fix the label to "Module 2 (controller-to-processor)".
+- **F3 — AI Act GPAI range (§2).** "Art. 51–55" is off by one; the general-purpose-AI chapter is Art. 51–56 (51 classification, 52 procedure, 53 obligations, 54 authorised representatives, 55 detailed rules, 56 codes of practice). Minor, but correct it.
+- **F4 — "C0/C1 = not personal data" is over-broad (§1b, and by inheritance the EU "no transfer" rows in §2/§6).** C1 identifiers (salted/truncated hostname, IP truncated to /24, hashed MAC) are **pseudonymised** personal data, and GDPR Art. 4(1) + Recital 26 treat pseudonymised data as personal data where identification remains possible (directly or indirectly). The transfer conclusion survives — the C2-never-egresses property removes the *clearly* personal data — but the categorical claim "no personal data is 'made available'" should be downgraded to "no C2 egresses; C1 egresses only in pseudonymised form whose identifiability is reduced but not eliminated". This is exactly the kind of smoothing the citation convention (§0) promises not to do.
+- **F5 — "limited-risk, not Annex III high-risk" under-analyzed (§2 EU AI Act row, §6 `externalModelCall` row).** If Termini's operator loop manages critical digital infrastructure — the very NIS2 essential-entity buyers this document targets — it may itself be a high-risk AI system under **Annex III point 8** ("safety components in the management and operation of critical digital infrastructure"). G4 frames high-risk as the *customer's* deployment; it does not flag that Termini's *own* loop could be caught by Annex III(8). Add this as an explicit residual risk rather than asserting "not high-risk" unconditionally.
+
+### 8.3 Unverified items (explicitly listed, per acceptance criterion)
+
+- **"C5 mandatory in German healthcare since 1 July 2025"** (`certifications.md` §1): the C5-for-healthcare requirement is real (BSI C5 Type 2 as a health-sector cloud condition), but the exact effective date was not independently confirmed against a BSI/gematik primary source. Mark as "date to be confirmed".
+- **DORA "Art 30(2)" for audit/exit/data-return** (§2): approximately right, but the precise sub-paragraph for exit-strategy/data-return sits in Art. 28(7)–(8) (exit strategies / termination) with Art. 30 as the key-contractual-provisions article; the §2 pointer is loose rather than wrong. Recommend citing Art. 28(7)–(8) for the exit/return claim.
+- **Cost/time figures** in `certifications.md` §1: indicative practitioner ranges, not quotes — already self-flagged (G-CERT5); treated as unverified by design.
+- **Long-tail non-EU rows** (CCPA/CPRA §1798.100/.150, HIPAA 45 CFR §164.308–.314, GLBA 16 CFR §314, PIPEDA, Quebec Law 25, Singapore PDPA ss.24–26, Japan APPI Art. 23/27–29, Australia Privacy Act APP 8/11, UAE PDPL Art. 22–23, StateRAMP/FedRAMP NIST 800-53 baselines): article-number mapping spot-checked against regulator pages and consistent, but not each article verified word-for-word against statute text. No contradiction found; residual risk is low.
+
+### 8.4 Adversarial verdict — transfer/adequacy (red-team #2)
+
+**Verdict: the conclusion is correct; the supporting citation is not (F1).** Under EDPB 05/2021 Example 11, Termini (a separate processor in a third country) remotely accessing customer personal data is a Chapter V transfer; SCCs under Art. 46(2)(c) are the correct instrument and adequacy (Art. 45) is not a prerequisite. The "standard path effects no transfer" argument is sound *for C2* and would be strengthened (not weakened) by adopting the F4 wording on C1. The one genuinely open question the document already owns (G2/G9: break-glass operator access, no operator-geolocation policy) is correctly labelled a gap, not smoothed over. **This red-team line passes on substance once F1/F2/F4 are fixed.**
+
+### 8.5 Adversarial verdict — ranked first-adopter list (red-team #3)
+
+**Verdict: partially evidenced; two of four ranking factors are intuition dressed as analysis, and the DACH/FR sub-ranking conflicts with the document's own blockers.**
+
+- The order EU > UK > US is defensible and the top two are well-reasoned (EU's regulatory pull and certification sequencing are EU-native; UK is a near-zero-delta carry-over with one English-speaking regulator).
+- But the four-factor method is only **half evidence-grounded**: "regulatory pull" and "certification overlap" cite §2 rows and `certifications.md` §2; "on-prem willingness" and "sales-cycle length" are asserted ("High among regulated mid-market", "dense regulated finance/health base") with **no market data, survey, or source**. The single factor that most drives the ranked order is the least evidenced.
+- **Internal contradiction:** §7 ranks "EU (DACH / FR / Benelux first)", yet the same document flags SecNumCloud (FR sovereign) as a structural corporate blocker (G-SNC) and C5 (DE) as mandatory in German healthcare. Two of the three named "first" sub-regions are gated on certifications Termini cannot currently obtain. A cleaner, self-consistent sub-ranking is "Benelux/SMB first; DACH/FR contingent on the structural certs". As written, "DACH/FR first" is not supported by the evidence the document itself cites.
+- Switzerland (just outside top three) is correctly recorded as a deliberate, auditable exclusion.
+
+### 8.6 Design-benefit claims and gaps (red-team #1, #4)
+
+- Every named control in §3/§6 was re-checked and **exists as cited** (`governance.md` §3–§9/§12, `architecture.md` §4.5/§5 invariants, `controller-api.md` §7.3 terminal surfaces, `agent-runtime.md` QEMU isolation + §7.1, `infra-decisions.md` D2/D4/D6). The control→regulation→certification mapping is internally consistent — this is real work, not padding.
+- Caveat that must travel with §6/§7: these are **spec-level (frozen-contract) claims**, not audited controls. The mapping asserts what the controls *will* satisfy once implemented and tested; today the system is not a running, audited stack. That distinction is material to "decision-grade" and should be stated once at the top of §6.
+- Gap discipline is good: G1–G15, G-SNC, G-CERT1–G-CERT5 are genuine gaps, correctly labelled, with owners. Two things the doc does **not** yet label as gaps: F4 (C1 pseudonymisation) and F5 (Annex III(8) self-scope). Add both to §4/§6.1.
+
+### 8.7 Acceptance check (this task)
+
+- Every regulation/certification in the two deliverables is now either verified against a primary source or explicitly listed as unverified (§8.2/§8.3). ✓
+- Transfer/adequacy question carries an independent adversarial verdict (§8.4). ✓
+- Ranked region list carries an independent adversarial verdict (§8.5). ✓
+- Net: **regulatory-landscape.md FAIL (correctable, items F1–F5); certifications.md PASS (with caveats).**
