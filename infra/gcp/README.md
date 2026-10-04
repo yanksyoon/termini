@@ -116,10 +116,62 @@ terraform destroy                               # or: PROJECT=my-project ./teard
 - credentials with `compute.instances.*`, `compute.networks.*`, `compute.firewalls.*`,
   `compute.addresses.*`;
 - **GPU quota**: `NVIDIA_L4_GPUS` (or `GPUS_ALL_REGIONS`) ≥ 1 in the chosen region,
-  and a zone that offers L4 (`us-central1-a/b/c/f`, `us-east1-*`, …).
+  and a zone that offers L4 (`us-central1-a/b/c/f`, `us-east1-*`, …);
+- **paid billing**: GPU/accelerator attach is rejected on a Google Cloud *free-tier*
+  billing account (`Error 400: Your billing account is currently in the free tier
+  where non-TPU accelerators are not available`). Node C requires an **upgraded
+  (paid) billing account**; Nodes A/B do not.
 
 > No credentials are stored in this repo. Pass them via the standard Google auth
 > chain (ADC file, `GOOGLE_APPLICATION_CREDENTIALS`, or an attached service account).
+
+## Live deployment record (task `t_f2173236`)
+
+First real `terraform apply` against the project supplied for the Termini demo:
+
+| Item | Value |
+|------|-------|
+| Project | `termini-510609` |
+| Region / zone | **`asia-south1` / `asia-south1-a`** |
+| Underlay CIDR | `10.10.0.0/24` (VPC `termini-vpc`, subnet `termini-underlay`) |
+| Node A | `n2-standard-4` @ `10.10.0.11` — **created, SSH verified** |
+| Node B | `n2-standard-4` @ `10.10.0.12` — **created, SSH verified** |
+| Node C | `g2-standard-4` + `nvidia-l4` @ `10.10.0.13` — **BLOCKED** |
+
+**Blocker on Node C (and why 2 of 3 nodes exist).** The supplied project is on a
+Google Cloud *free-tier* billing account, so the Compute API refuses to attach any
+non-TPU accelerator:
+
+```
+Error 400: Your billing account is currently in the free tier where non-TPU
+accelerators are not available. Please upgrade to a paid billing account …
+```
+
+This is account-wide, not zonal: `NVIDIA_L4_GPUS` quota is 1 in both
+`asia-south1` and `us-central1`, and a **SPOT** `g2-standard-4` attempt failed with
+the identical error — no provisioning model or zone works around it. Node C
+therefore cannot be created until the billing account is upgraded.
+
+**State after the partial apply** (Terraform local state, 13/14 resources):
+VPC, subnetwork, all three static internal addresses, the five firewall rules and
+Nodes A/B are live. Node C and the inventory `local_file` are the only resources
+missing, and the inventory is gated on all three instances.
+
+**To finish once billing is upgraded** — the same plan resumes, creating only the
+GPU node and the inventory:
+
+```bash
+cd infra/gcp
+terraform apply                 # creates node-c + /home/ubuntu/.termini/inventory.json
+./verify.sh                     # 3 nodes, SSH, nvidia-smi on node-c
+```
+
+**To tear the partial footprint down:**
+
+```bash
+cd infra/gcp
+terraform destroy
+```
 
 ## Status / scope note
 
@@ -127,3 +179,4 @@ This module is the provisioning artifact. The exact acceptance sequence is
 `terraform apply` → `./verify.sh` (or `provision.sh` → `./verify.sh`). Both paths
 were authored to be run against a real project; see the task card for the
 verification evidence actually captured on this host.
+
