@@ -1,0 +1,81 @@
+Termini demo warm cluster - running-state evidence
+card: t_ef5ef65c   captured: 2026-10-09T05:12:39Z
+
+## 1. LXD instances (cluster members online)
+bsp-verify,RUNNING,10.14.100.221 (eth0)
+demo-node-a,RUNNING,"10.20.1.1 (lxdbr0)
+10.14.100.202 (eth0)"
+demo-node-b,RUNNING,"10.20.2.1 (lxdbr0)
+10.14.100.49 (eth0)"
+demo-node-c,RUNNING,10.14.100.11 (eth0)
+rt-net-a,RUNNING,10.14.100.22 (eth0)
+rt-net-b,RUNNING,10.14.100.67 (eth0)
+rt-net-c,RUNNING,10.14.100.242 (eth0)
+
+## 2. warm_cluster.sh (card acceptance assertion)
+PASS  controller_reachable         http://127.0.0.1:8085 answering
+PASS  controller_project           project 01J0DEM0WARM000000000000AB
+PASS  demo-node-a.running          agent VM (LXD instance) RUNNING
+PASS  demo-node-a.registered       controller sees node_id=01M439BZK778 role=compute:1 (fresh)
+PASS  demo-node-a.telemetry_cadence 25 samples, median gap 1.000s (rate 0.857Hz) at 1000ms cadence
+PASS  demo-node-a.agent_vm_image   guest image 'agent-os/w4' placed locally (offline launch)
+PASS  demo-node-b.running          agent VM (LXD instance) RUNNING
+PASS  demo-node-b.registered       controller sees node_id=01M439D1EW2C role=compute:2 (fresh)
+PASS  demo-node-b.telemetry_cadence 25 samples, median gap 1.000s (rate 0.857Hz) at 1000ms cadence
+PASS  demo-node-b.agent_vm_image   guest image 'agent-os/w4' placed locally (offline launch)
+PASS  demo-node-c.running          agent VM (LXD instance) RUNNING
+PASS  demo-node-c.registered       controller sees node_id=01M439DWP9ET role=inference:3 (fresh)
+PASS  demo-node-c.telemetry_cadence 25 samples, median gap 1.000s (rate 0.857Hz) at 1000ms cadence
+
+WARM CLUSTER: all checks green (13 checks)
+
+## 3. controller registration (per node; fresh = last_seen < 15s)
+fresh (registered, streaming now): 3
+  node_id=01M439BZK77878M7MF5JF2XQHB role=compute last_seen=2026-10-09T05:12:44Z age_s=0.0
+  node_id=01M439D1EW2CXF9VCJJ0B6PSSQ role=compute last_seen=2026-10-09T05:12:44Z age_s=0.0
+  node_id=01M439DWP9ETTCS5Y8VBK0DE7Z role=inference last_seen=2026-10-09T05:12:44Z age_s=0.0
+stale records left from earlier bring-ups (age > 30s): 8
+  node_id=01M43AWQAY45GS6AW8FY5NMHS3 role=compute last_seen=2026-10-04T11:31:19Z age_s=409285
+  node_id=01M43A5TGBQCWVFC05VJZWQV5D role=compute last_seen=2026-10-04T11:21:52Z age_s=409852
+  node_id=01M439JAWM38D607N5HM8K274S role=compute last_seen=2026-10-04T11:12:43Z age_s=410401
+
+## 4. agent VM image placement on the compute nodes (offline launch path)
+  demo-node-a: agent-os/w4 -> agent-os/w4
+  demo-node-b: agent-os/w4 -> agent-os/w4
+
+## 5. whole-layer warm_check (image/model/scratch/inference too)
+PASS  image_alias_pinned       alias 'agentic-os/w3' resolves locally
+PASS  image_immutable_tag      immutable tag 'agentic-os-w3-2026.10.0+f88ea2faea9a' resolves
+PASS  image_fingerprint        alias points at baked fingerprint f99942910bed
+PASS  controller_reachable     http://127.0.0.1:8085 answering
+PASS  controller_project       project 01J0DEM0WARM000000000000AB
+PASS  demo-node-a.running      container RUNNING
+PASS  demo-node-a.agent_online termini-bootstrap state=ONLINE
+PASS  demo-node-a.no_error     no bootstrap error
+PASS  demo-node-a.registered   controller node_id=01M439BZK778 role=compute:1s
+PASS  demo-node-a.baked_offline bake sentinel present (no boot-time fetch)
+PASS  demo-node-a.scratch      volume 'demo-scratch-a' attached at /mnt/termini-scratch and writable
+PASS  demo-node-a.telemetry    12 samples in the last 15s
+PASS  demo-node-b.running      container RUNNING
+PASS  demo-node-b.agent_online termini-bootstrap state=ONLINE
+PASS  demo-node-b.no_error     no bootstrap error
+PASS  demo-node-b.registered   controller node_id=01M439D1EW2C role=compute:2s
+PASS  demo-node-b.baked_offline bake sentinel present (no boot-time fetch)
+PASS  demo-node-b.scratch      volume 'demo-scratch-b' attached at /mnt/termini-scratch and writable
+PASS  demo-node-b.telemetry    12 samples in the last 15s
+PASS  demo-node-c.running      container RUNNING
+PASS  demo-node-c.agent_online termini-bootstrap state=ONLINE
+PASS  demo-node-c.no_error     no bootstrap error
+PASS  demo-node-c.registered   controller node_id=01M439DWP9ET role=inference:3s
+PASS  demo-node-c.baked_offline bake sentinel present (no boot-time fetch)
+PASS  demo-node-c.scratch      volume 'demo-scratch-c' attached at /mnt/termini-scratch and writable
+PASS  demo-node-c.telemetry    12 samples in the last 15s
+PASS  demo-node-c.inference_health GET http://10.14.100.11:8080/health OK
+PASS  demo-node-c.inference_models /v1/models answered
+PASS  demo-node-c.model_file   pinned GGUF present (4920736608 bytes)
+PASS  demo-node-c.model_sha_sidecar sha256 sidecar present
+PASS  demo-node-c.model_fs_local model root fs_type=ext2/ext3
+PASS  demo-node-c.model_resident llama-server RSS=6177574912 bytes (>= 3000000000)
+
+WARM: all checks green (32 checks)
+
