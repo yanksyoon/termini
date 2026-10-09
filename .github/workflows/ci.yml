@@ -25,6 +25,9 @@ jobs:
       - name: Check example identifiers are 26-char ULIDs
         run: python3 scripts/check-doc-ulids.py
 
+      - name: Check README links resolve
+        run: python3 scripts/check-readme-links.py
+
       - name: Python syntax check
         run: |
           rc=0
