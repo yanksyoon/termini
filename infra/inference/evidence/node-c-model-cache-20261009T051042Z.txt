@@ -1,0 +1,64 @@
+=== Node C GGUF + llama.cpp cache verification ===
+2026-10-09T05:11:00Z
+
+host: termini-node-c.asia-south1-a.c.termini-510609.internal
+kernel: 7.0.0-1011-gcp
+cpu: 8  mem_total_gib: 31
+
+--- pinned paths ---
+total 5896568
+drwxr-xr-x 2 root root       4096 Oct  4 11:45 .
+drwxr-xr-x 3 root root       4096 Oct  4 11:09 ..
+-rw-r--r-- 1 root root 4920736608 Oct  4 11:45 DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf
+-rw-r--r-- 1 root root        107 Oct  4 11:45 DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf.sha256
+-rw-r--r-- 1 root root 1117320736 Oct  4 11:10 qwen2.5-1.5b-instruct-q4_k_m.gguf
+-rw-r--r-- 1 root root        124 Oct  4 11:10 qwen2.5-1.5b-instruct-q4_k_m.gguf.sha256
+
+--- sha256 sidecar (weights) ---
+87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d  DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf
+
+--- live sha256: GGUF weights ---
+87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d  /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf
+
+--- live sha256: llama-server binary ---
+e3772536442b02e74cdaa0835754402995c7bfb2c3a018b46866ad994cd303e5  /opt/termini/llama.cpp/bin/llama-server
+
+--- llama-server version ---
+0.00.000.345 I srv  llama_server: initializing ...
+version: 0.5.0-dev (build 1, commit 7fe450e19)
+built with GNU 13.3.0 for Linux x86_64
+
+--- GGUF magic ---
+00000000: 4747 5546                                GGUF
+
+--- systemd unit ---
+is-enabled: enabled
+is-active: active
+ExecStart={ path=/opt/termini/llama.cpp/bin/llama-server ; argv[]=/opt/termini/llama.cpp/bin/llama-server --model /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf --alias deepseek-flash --host 0.0.0.0 --port 8080 --ctx-size 8192 --parallel 2 --reasoning-format none ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+
+--- running process ---
+pid=10930
+    PID     ELAPSED   RSS COMMAND
+  10930  4-17:21:47 9193568 /opt/termini/llama.cpp/bin/llama-server --model /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf --alias deepseek-flash --host 0.0.0.0 --port 8080 --ctx-size 8192 --parallel 2 --reasoning-format none
+
+--- lsof: process holds the LOCAL GGUF + the LOCAL binary ---
+llama-ser 10930 termini-infer  txt    REG                8,1   18000096 792211 /opt/termini/llama.cpp/bin/llama-server
+llama-ser 10930 termini-infer  mem    REG                8,1 4920736608 792404 /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf
+
+--- production :8080 /health ---
+{"status":"ok"}
+--- production :8080 /v1/models ---
+{"models":[{"name":"deepseek-flash","model":"deepseek-flash","modified_at":"","size":"","digest":"","type":"model","description":"","tags":[""],"capabilities":["completion"],"parameters":"","details":{"parent_model":"","format":"gguf","family":"","families":[""],"parameter_size":"","quantization_level":""}}],"object":"list","data":[{"id":"deepseek-flash","aliases":["deepseek-flash"],"tags":[],"object":"model","created":1791522672,"owned_by":"llamacpp","meta":{"vocab_type":2,"n_vocab":128256,"n_ctx":4096,"n_ctx_train":131072,"n_embd":4096,"n_params":8030261312,"size":4912898304,"ftype":"Q4_K - Medium"}}]}
+
+--- FRESH START proof: a second llama-server from the SAME local file on :18080 ---
+fresh instance /health ok after 7s
+health_probe_ok=1
+health={"status":"ok"}
+log_tail:
+0.05.658.553 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 2048, kv_unified = 'false'
+0.05.664.455 I srv  llama_server: model loaded
+0.05.664.464 I srv  llama_server: listening on http://127.0.0.1:18080
+fresh instance stopped
+production :8080 health after proof: {"status":"ok"}
+
+=== END ===
