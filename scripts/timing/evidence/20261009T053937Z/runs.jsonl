@@ -1,0 +1,3 @@
+{"run":1,"total_s":45.20,"status":"PASS","cold_operator":"no"}
+{"run":2,"total_s":45.28,"status":"PASS","cold_operator":"no"}
+{"run":3,"total_s":46.50,"status":"PASS","cold_operator":"yes"}

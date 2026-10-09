@@ -1,0 +1,15 @@
+{
+  "cadence_ms": 1000,
+  "duration_s": 12.0,
+  "finished_at": "2026-10-09T05:41:46.544Z",
+  "first_ts": "2026-10-09T05:41:34.544Z",
+  "hostname": "demo-fault-disk-fail",
+  "last_ts": "2026-10-09T05:41:45.544Z",
+  "mode": "disk-fail",
+  "node_id": "01M4FJWQ667DG2J9WXVV695P9M",
+  "project_id": "01J0DEM0WARM000000000000AB",
+  "role": "compute",
+  "samples_posted": 12,
+  "samples_rejected": 0,
+  "started_at": "2026-10-09T05:41:34.543Z"
+}

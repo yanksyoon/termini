@@ -1,0 +1,20 @@
+{
+  "audits": [
+    {
+      "id": "01M4FJV1CZR24C9R0T5WEJX46B",
+      "decision_id": "01M4FJV1CGGPBCQG9PM343VAQS",
+      "event_id": "01M4FJV1CF5QQ7TYQNV3NTYNRC",
+      "node_id": "01M4FJTXKZXRMVFCK8V3Q67AZS",
+      "rule_id": "oom-guard-01",
+      "action_kind": "instance.restart",
+      "result": "ok",
+      "detail": "{\"type\":\"async\",\"status\":\"Operation created\",\"status_code\":100,\"operation\":\"/1.0/operations/a5e3df1a-ab53-4386-ac4f-20b4ba977978\",\"error_code\":0,\"error\":\"\",\"metadata\":{\"id\":\"a5e3df1a-ab53-4386-ac4f-20b4ba977978\",\"class\":\"task\",\"description\":\"Restarting instance\",\"created_at\":\"2026-10-09T05:40:39.44740163Z\",\"updated_at\":\"2026-10-09T05:40:39.44740163Z\",\"status\":\"Running\",\"status_code\":103,\"resources\":{\"instances\":[\"/1.0/instances/demo-node-a\"]},\"metadata\":{},\"may_cancel\":false,\"err\":\"\",\"location\":\"none\",\"requestor\":{\"username\":\"ubuntu\",\"protocol\":\"unix\",\"address\":\"@\"}}}\n",
+      "lxd_method": "PUT",
+      "lxd_path": "/1.0/instances/demo-node-a/state",
+      "lxd_body": "{\"action\": \"restart\", \"force\": true, \"timeout\": 30}",
+      "idempotency_key": "01M4FJTXKZXRMVFCK8V3Q67AZS:oom-guard-01:instance.restart:demo-node-a:1",
+      "dry_run": 0,
+      "executed_at": "2026-10-09T05:40:39.439Z"
+    }
+  ]
+}

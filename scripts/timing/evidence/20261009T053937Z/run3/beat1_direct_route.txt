@@ -1,0 +1,7 @@
+config          : /etc/termini/network.json
+config present  : no
+active path     : direct
+mtu profile     : onprem
+inference url   : http://10.10.0.13:8080
+  direct  mtu=1500 overhead=0  interface=none     iface_mtu=n/a
+  ovn     mtu=1500 overhead=0  interface=none     iface_mtu=n/a

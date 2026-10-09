@@ -1,0 +1,71 @@
+=== runbook recovery-command self-test (2026-10-09T05:44:01Z) ===
+
+## F4 — inference route check
+$ bash infra/net/direct-route.sh status
+active path     : direct
+mtu profile     : onprem
+$ demo_probe inference --url http://10.14.100.11:8080
+/health -> 200 {"status":"ok"}
+/v1/models -> 200 {"models":[{"name":"deepseek-flash","model":"deepseek-flash","modified_at":"","size":"","digest":"","type":"model","description":"","tags":[""],"capabilities":[
+$ TERMINI_INFERENCE_PATH=ovn bash infra/net/direct-route.sh status
+active path     : ovn
+
+(note: infra/net/mtu-probe.sh --path direct targets the spec underlay 10.10.0.13,
+ not provisioned in this single-host emulation -> expect 'fail'; use the netns lab)
+
+## F2 — Scenario B chaos script dry-run (no root injected)
+$ bash scripts/chaos/scenario_b_disk.sh --target local --dry-run
+2026-10-09T05:44:01.715Z [scenario_b_disk] run_start target=local mode=error size_mb:=256 fs_image=<none> scratch_dir=/var/lib/termini-chaos mount_point=/mnt/termini-chaos dm_name=termini-chaos hold_secs:=20 dry_run:=1
+2026-10-09T05:44:01.726Z [scenario_b_disk] plan setup=truncate -s 256M /var/lib/termini-chaos/chaos-scratch.img; mkfs.ext4 -q -F /var/lib/termini-chaos/chaos-scratch.img dm=losetup --find --show $IMG; dmsetup create termini-chaos --table '0 <sectors> linear $LOOP 0'; mount /dev/mapper/termini-chaos /mnt/termini-chaos inject=dmsetup suspend termini-chaos; dmsetup load termini-chaos --table '0 <sectors> error'; dmsetup resume termini-chaos trigger=write through /mnt/termini-chaos then sync
+2026-10-09T05:44:01.732Z [scenario_b_disk] dry_run_complete would induce a logged EXT4/dm I/O error on local via termini-chaos
+{"ts":"2026-10-09T05:44:01.734Z","run_id":"scenario_b_disk-20261009T054401Z-1777944","scenario":"scenario_b_disk","dry_run":true}
+2026-10-09T05:44:01.738Z [scenario_b_disk] cleanup_step fn=teardown
+2026-10-09T05:44:01.812Z [scenario_b_disk] cleanup_ok fn=teardown
+
+## F5 — warm cluster assertion names a cold node
+$ bash infra/warm/warm_cluster.sh --hold 3
+PASS  demo-node-c.telemetry_cadence 25 samples, median gap 1.000s (rate 0.857Hz) at 1000ms cadence
+
+WARM CLUSTER: all checks green (13 checks)
+
+## start a private operator for F1/F3/F6 probes
+## F1 — re-drive the deterministic OOM ramp
+$ scripts/timing/demo_fault_injector.py ... --mode oom ...
+[inject] registered demo-fault-oom node_id=01M4FK19DA9J7YAHRJ7YZDGVGA role=compute mode=oom
+[inject] oom: posted 8 samples (rejected 0)
+{"id": "01M4FK1D6P2CT6T7JP4AVJV4DT", "decision_id": "01M4FK1D67YH3V0X7V6PVTVAYV", "event_id": "01M4FK1D662D2FCV70TXT3XVG3", "node_id": "01M4FK19DA9J7YAHRJ7YZDGVGA", "rule_id": "oom-guard-01", "action_kind": "instance.restart", "result": "ok", "detail": "{\"type\":\"async\",\"status\":\"Operation cre
+## F3/F6 — persisted triggers + control-plane probes
+$ demo_probe triggers
+{
+  "trigger_config": [
+    {
+      "rule_id": "disk-degrade-01",
+      "source": "env",
+      "updated_at": "2026-10-09T05:44:04.131Z",
+      "config": {
+        "disk_free_pct": 5.0,
+        "disk_free_clear_pct": 15.0,
+        "disk_free_consecutive": 3,
+        "disk_write_latency_ms": 50.0,
+        "disk_write_latency_clear_ms": 30.0,
+        "disk_latency_consecutive": 5,
+        "disk_free_
+$ demo_probe nodes (live shared controller)
+{
+  "nodes": [
+    {
+      "node_id": "01M439BZK77878M7MF5JF2XQHB",
+      "registration_id": "f75d543a448ac9f46cd4caf4dac3e7e5",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at"
+$ demo_probe audits
+{
+  "audits": [
+    {
+      "id": "01M4FK1D6P2CT6T7JP4AVJV4DT",
+      "decision_id": "01M4FK1D67YH3V0X7V6PVTVAYV",
+      "event_id": "01M4FK1D662D2FCV70TXT3XVG3",
+      "node_id": "01M4FK19DA9J7YAHRJ7
+
+=== end self-test ===

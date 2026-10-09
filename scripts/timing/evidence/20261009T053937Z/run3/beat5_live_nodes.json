@@ -1,0 +1,434 @@
+{
+  "nodes": [
+    {
+      "node_id": "01M439BZK77878M7MF5JF2XQHB",
+      "registration_id": "f75d543a448ac9f46cd4caf4dac3e7e5",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at": "2026-10-09T05:41:53Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 2,
+          "threads": 2
+        },
+        "memory": {
+          "total_bytes": 1073741824
+        },
+        "gpus": [],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 2,
+        "ram_gb": 1,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    },
+    {
+      "node_id": "01M439D1EW2CXF9VCJJ0B6PSSQ",
+      "registration_id": "2d227569e8d9e2a590eabe937136a1fd",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at": "2026-10-09T05:41:54Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 2,
+          "threads": 2
+        },
+        "memory": {
+          "total_bytes": 1073741824
+        },
+        "gpus": [],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 2,
+        "ram_gb": 1,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    },
+    {
+      "node_id": "01M439DWP9ETTCS5Y8VBK0DE7Z",
+      "registration_id": "b744ba1375651d59ff487ed7977c2696",
+      "role": "inference",
+      "status": "online",
+      "last_seen_at": "2026-10-09T05:41:54Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 4,
+          "threads": 4
+        },
+        "memory": {
+          "total_bytes": 8589934592
+        },
+        "gpus": [
+          {
+            "model": "NVIDIA L4",
+            "vram_bytes": 25769803776
+          }
+        ],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 4,
+        "ram_gb": 8,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    },
+    {
+      "node_id": "01M439JAWM38D607N5HM8K274S",
+      "registration_id": "fead14054b942ae51288fcdf7ef63666",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at": "2026-10-04T11:12:43Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 4,
+          "threads": 4
+        },
+        "memory": {
+          "total_bytes": 8589934592
+        },
+        "gpus": [
+          {
+            "model": "NVIDIA L4",
+            "vram_bytes": 25769803776
+          }
+        ],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 4,
+        "ram_gb": 8,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    },
+    {
+      "node_id": "01M43A5TGBQCWVFC05VJZWQV5D",
+      "registration_id": "ad59f06211333c4ced9e11147f67ff28",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at": "2026-10-04T11:21:52Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 4,
+          "threads": 4
+        },
+        "memory": {
+          "total_bytes": 8589934592
+        },
+        "gpus": [
+          {
+            "model": "NVIDIA L4",
+            "vram_bytes": 25769803776
+          }
+        ],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 4,
+        "ram_gb": 8,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    },
+    {
+      "node_id": "01M43AWQAY45GS6AW8FY5NMHS3",
+      "registration_id": "aae8ed9764e6ab44e24784a7212b913e",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at": "2026-10-04T11:31:19Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 4,
+          "threads": 4
+        },
+        "memory": {
+          "total_bytes": 8589934592
+        },
+        "gpus": [
+          {
+            "model": "NVIDIA L4",
+            "vram_bytes": 25769803776
+          }
+        ],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 4,
+        "ram_gb": 8,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    },
+    {
+      "node_id": "01M43B0EKT38WPBZ0AH4BPVH50",
+      "registration_id": "2413de0ef722f0ab383f1a21f3caa26a",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at": "2026-10-04T11:33:06Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 4,
+          "threads": 4
+        },
+        "memory": {
+          "total_bytes": 8589934592
+        },
+        "gpus": [
+          {
+            "model": "NVIDIA L4",
+            "vram_bytes": 25769803776
+          }
+        ],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 4,
+        "ram_gb": 8,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    },
+    {
+      "node_id": "01M43B2ZT1FBV9S3TZY9K1PGS5",
+      "registration_id": "af5390c2f00dcb4f0994cba94dde2940",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at": "2026-10-04T11:34:43Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 4,
+          "threads": 4
+        },
+        "memory": {
+          "total_bytes": 8589934592
+        },
+        "gpus": [
+          {
+            "model": "NVIDIA L4",
+            "vram_bytes": 25769803776
+          }
+        ],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 4,
+        "ram_gb": 8,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    },
+    {
+      "node_id": "01M43B62162SYV0EWR0KKVF5GP",
+      "registration_id": "e5dec36bfd2b7e63b5df5234ec00b28c",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at": "2026-10-04T11:36:20Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 4,
+          "threads": 4
+        },
+        "memory": {
+          "total_bytes": 8589934592
+        },
+        "gpus": [
+          {
+            "model": "NVIDIA L4",
+            "vram_bytes": 25769803776
+          }
+        ],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 4,
+        "ram_gb": 8,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    },
+    {
+      "node_id": "01M43BAE36XE1BGS6N6PM0130K",
+      "registration_id": "a24b77ae6670fed9152991a91850ebdf",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at": "2026-10-04T11:39:53Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 4,
+          "threads": 4
+        },
+        "memory": {
+          "total_bytes": 8589934592
+        },
+        "gpus": [
+          {
+            "model": "NVIDIA L4",
+            "vram_bytes": 25769803776
+          }
+        ],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 4,
+        "ram_gb": 8,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    },
+    {
+      "node_id": "01M43BTWF72TMMCC31C65P63GD",
+      "registration_id": "d42862b21f4846b27ce8a7003689632a",
+      "role": "compute",
+      "status": "online",
+      "last_seen_at": "2026-10-04T11:47:26Z",
+      "hardware": {
+        "cpu": {
+          "model": "12th Gen Intel(R) Core(TM) i7-1260P",
+          "sockets": 1,
+          "cores": 4,
+          "threads": 4
+        },
+        "memory": {
+          "total_bytes": 8589934592
+        },
+        "gpus": [
+          {
+            "model": "NVIDIA L4",
+            "vram_bytes": 25769803776
+          }
+        ],
+        "disks": [
+          {
+            "device": "/dev/root",
+            "type": "ssd",
+            "size_bytes": 1,
+            "health": "ok"
+          }
+        ]
+      },
+      "capacity": {
+        "cpu_cores": 4,
+        "ram_gb": 8,
+        "disk_gb": 0,
+        "gpu_free": 0,
+        "cpu_allocated": 0,
+        "ram_allocated_gb": 0
+      }
+    }
+  ]
+}

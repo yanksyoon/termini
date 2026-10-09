@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Termini — Operations Dashboard</title>
+<link rel="stylesheet" href="assets/styles.css" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cpath d='M8 20l8-11 8 11' stroke='%235ac8fa' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">◇</span>
+      <span class="brand-name">Termini</span>
+      <span class="brand-sub">operations dashboard</span>
+    </div>
+    <div class="topbar-right">
+      <span class="pill" id="pill-nodes" title="registered nodes"><span class="dot dot-muted"></span><span id="pill-nodes-text">nodes —</span></span>
+      <span class="pill" id="pill-backend" title="controller connectivity"><span class="dot dot-muted"></span><span id="pill-backend-text">backend —</span></span>
+      <span class="pill" id="pill-stream" title="AI log stream"><span class="dot dot-muted"></span><span id="pill-stream-text">stream —</span></span>
+      <span class="clock" id="clock" title="local time">--:--:--</span>
+      <a class="btn btn-ghost" id="link-terminal" href="/terminal/" title="Open the one-click web terminal" hidden>Web terminal</a>
+      <button class="btn btn-ghost" id="btn-settings" type="button" title="Connection settings">Settings</button>
+    </div>
+  </header>
+
+  <div id="banner-host" class="banner-host" aria-live="polite"></div>
+
+  <main class="layout">
+    <section class="panel panel-overview" aria-labelledby="h-overview">
+      <div class="panel-head">
+        <h2 id="h-overview">Node health</h2>
+        <div class="panel-tools">
+          <span class="muted" id="overview-updated">—</span>
+          <button class="btn btn-ghost" id="btn-refresh" type="button" title="Refresh now">Refresh</button>
+        </div>
+      </div>
+      <div id="overview" class="overview-grid" aria-live="polite"></div>
+    </section>
+
+    <section class="panel panel-logs" aria-labelledby="h-logs">
+      <div class="panel-head">
+        <h2 id="h-logs">Live AI-operator log</h2>
+        <div class="panel-tools log-tools">
+          <span class="stream-state" id="log-state"><span class="dot dot-muted"></span>connecting…</span>
+          <button class="btn btn-ghost" id="btn-log-pause" type="button" title="Pause auto-scroll">Pause scroll</button>
+          <button class="btn btn-ghost" id="btn-log-clear" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="filters" id="log-filters">
+        <div class="chipgroup" id="severity-filters" role="group" aria-label="severity filter"></div>
+        <label class="field">
+          <span>node</span>
+          <select id="node-filter"><option value="">all nodes</option></select>
+        </label>
+        <label class="field">
+          <span>actor</span>
+          <select id="actor-filter">
+            <option value="">any</option>
+            <option value="ai_operator">ai operator</option>
+            <option value="human">human</option>
+          </select>
+        </label>
+        <span class="muted" id="log-count">0 lines</span>
+      </div>
+      <div id="log-viewport" class="log-viewport" tabindex="0" aria-label="log stream">
+        <div id="log-empty" class="empty">Waiting for operator events…</div>
+        <ol id="log-list" class="log-list"></ol>
+      </div>
+    </section>
+
+    <section class="panel panel-metrics" aria-labelledby="h-metrics">
+      <div class="panel-head">
+        <h2 id="h-metrics">Resource utilization</h2>
+        <div class="panel-tools">
+          <label class="field">
+            <span>node</span>
+            <select id="chart-node"></select>
+          </label>
+          <div class="chipgroup" id="window-buttons" role="group" aria-label="time window"></div>
+          <label class="toggle"><input type="checkbox" id="all-metrics" /> <span>all metrics</span></label>
+        </div>
+      </div>
+      <div id="charts" class="charts-grid"></div>
+    </section>
+
+    <section class="panel panel-controls" aria-labelledby="h-controls">
+      <div class="panel-head">
+        <h2 id="h-controls">Manual intervention</h2>
+        <div class="panel-tools"><span class="muted" id="controls-target">no node selected</span></div>
+      </div>
+      <div class="controls-grid">
+        <div class="control-card">
+          <h3>Node actions</h3>
+          <p class="muted">Issued against <span id="controls-node-label">—</span>; every action is human-audited.</p>
+          <div class="btn-row">
+            <button class="btn btn-warn" id="btn-reboot" type="button">Restart node</button>
+            <button class="btn btn-warn" id="btn-drain" type="button">Drain node</button>
+          </div>
+          <div class="result" id="node-action-result"></div>
+        </div>
+
+        <div class="control-card">
+          <h3>Scale intent</h3>
+          <p class="muted">Natural-language or structured allocation intent; the controller returns a guardrail-validated plan.</p>
+          <textarea id="intent-prompt" rows="3" placeholder="e.g. Deploy 3 worker agents and 1 fast LLM model for coding tasks"></textarea>
+          <div class="btn-row">
+            <button class="btn" id="btn-intent" type="button">Validate intent</button>
+            <button class="btn btn-primary" id="btn-apply" type="button" disabled>Apply plan</button>
+          </div>
+          <div class="result" id="intent-result"></div>
+        </div>
+
+        <div class="control-card">
+          <h3>Pending AI remediation</h3>
+          <p class="muted">Commands the AI operator is holding for human approval (approval&nbsp;=&nbsp;required).</p>
+          <div id="pending-list" class="pending-list"><div class="empty small">No pending approvals.</div></div>
+          <div class="result" id="remediation-result"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toasts" class="toasts" aria-live="assertive"></div>
+
+  <dialog id="settings-dialog" class="dialog">
+    <form method="dialog" id="settings-form">
+      <h3>Connection</h3>
+      <label class="field block"><span>REST base (incl. /v1)</span>
+        <input id="set-api" type="text" placeholder="https://10.10.0.10/v1" autocomplete="off" /></label>
+      <label class="field block"><span>Project id (ULID)</span>
+        <input id="set-project" type="text" placeholder="01H4KZ…" autocomplete="off" /></label>
+      <label class="field block"><span>project_token</span>
+        <input id="set-token" type="password" placeholder="Bearer token" autocomplete="off" /></label>
+      <label class="toggle"><input type="checkbox" id="set-offline" /> <span>offline demo (bundled fixtures, no network)</span></label>
+      <p class="muted small">Values are kept in this browser only (localStorage) and sent to the configured controller.</p>
+      <div class="btn-row">
+        <button class="btn" value="cancel" type="submit">Cancel</button>
+        <button class="btn btn-primary" id="set-save" value="save" type="submit">Save &amp; reconnect</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script type="module" src="js/main.js"></script>
+  <noscript><p class="empty">This dashboard requires JavaScript.</p></noscript>
+</body>
+</html>
