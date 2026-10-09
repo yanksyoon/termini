@@ -1,0 +1,39 @@
+=== termini image residency — 2026-10-09T05:14:44Z ===
+host_alias=agentic-os/w3 agent_alias=agent-vm/2026.10.0 node_alias=agent-os/w4 want_fp=c3d039642a619e100ddf680c3d60e4d2641e568f377f5ed9ef420ad886b181e4
+
+--- node demo-node-a ---
+  PASS   host_image_baked             sentinel set, image_version=2026.10.0
+  PASS   host_image_version           image_version=2026.10.0
+  PASS   host_image_cached            agentic-os-w3-f99942910bed.tar.gz sha256=f99942910bed554c…
+  PASS   agent_image_cached           agent-vm-2026.10.0-c3d039642a61.tar.gz sha256=c3d039642a619e10…
+  PASS   agent_alias_local            agent-os alias @c3d039642a61 (local)
+  PASS   egress_blocked               off-lab TCP unreachable after block (before=true)
+  PASS   egress_after_launch          off-lab TCP still unreachable
+  PASS   zero_network_downloads       first-boot network_downloads_at_boot=0
+  PASS   verified_offline             image first-boot verified_offline=true
+  PASS   offline_launch_ok            launched from local alias in 24.6s (state=RUNNING)
+
+--- node demo-node-b ---
+  PASS   host_image_baked             sentinel set, image_version=2026.10.0
+  PASS   host_image_version           image_version=2026.10.0
+  PASS   host_image_cached            agentic-os-w3-f99942910bed.tar.gz sha256=f99942910bed554c…
+  PASS   agent_image_cached           agent-vm-2026.10.0-c3d039642a61.tar.gz sha256=c3d039642a619e10…
+  PASS   agent_alias_local            agent-os alias @c3d039642a61 (local)
+  PASS   egress_blocked               off-lab TCP unreachable after block (before=true)
+  PASS   egress_after_launch          off-lab TCP still unreachable
+  PASS   zero_network_downloads       first-boot network_downloads_at_boot=0
+  PASS   verified_offline             image first-boot verified_offline=true
+  PASS   offline_launch_ok            launched from local alias in 28.5s (state=RUNNING)
+
+--- node demo-node-c ---
+  PASS   host_image_baked             sentinel set, image_version=2026.10.0
+  PASS   host_image_version           image_version=2026.10.0
+  PASS   host_image_cached            agentic-os-w3-f99942910bed.tar.gz sha256=f99942910bed554c…
+  PASS   agent_image_cached           agent-vm-2026.10.0-c3d039642a61.tar.gz sha256=c3d039642a619e10…
+  PASS   agent_alias_local            agent-os alias @c3d039642a61 (local)
+  PASS   egress_blocked               off-lab TCP unreachable after block (before=true)
+  PASS   egress_after_launch          off-lab TCP still unreachable
+  PASS   zero_network_downloads       first-boot network_downloads_at_boot=0
+  PASS   verified_offline             image first-boot verified_offline=true
+  PASS   offline_launch_ok            launched from local alias in 29.7s (state=RUNNING)
+
