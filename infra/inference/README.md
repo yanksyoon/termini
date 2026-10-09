@@ -91,6 +91,7 @@ model already under `/var/lib/termini/models`.
 |---|---|
 | `evidence/acceptance-<ts>.txt` | full `verify-inference.sh` run: Node A → Node C `/health` 200, alias `deepseek-flash`, non-stream completion with content, 40 streaming delta chunks + `[DONE]`, first token 0.9 s, and the GPU-visibility report. `RESULT: PASS` |
 | `evidence/activation-<ts>.txt` | Node C host facts after activation: pinned model sha256, `llama-server` version/commit, the running unit `ExecStart`, the `0.0.0.0:8080` listener, and `/v1/models` |
+| `evidence/node-c-model-cache-<ts>.txt` | pre-cached model + runtime on Node C: on-node GGUF + `llama-server` sha256 (GGUF sha256 matches the `image/models.lock.json` pin), `lsof` showing the process mmaps the local GGUF, `/health {"status":"ok"}`, and a fresh second server starting from the same local file. Paths + checksums documented in [`NODE-C-MODEL-CACHE.md`](NODE-C-MODEL-CACHE.md) |
 
 ## Honest limitations
 
