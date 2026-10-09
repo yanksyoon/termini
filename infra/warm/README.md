@@ -63,6 +63,7 @@ infra/warm/bake-image.sh                 # build + publish the pre-baked image (
 infra/warm/demo-env.sh up                # controller + nodes + warm + snapshots
 infra/warm/demo-env.sh status            # node/role/state/ip
 infra/warm/warm_check.sh                 # THE assertion (exit 0 = warm)
+infra/warm/warm_cluster.sh               # cluster running state: nodes registered + streaming at cadence
 infra/warm/demo-env.sh down              # full stop (nodes + controller)
 infra/warm/demo-env.sh restart           # down + up, prints the timing
 infra/warm/demo-env.sh fresh             # snapshot-restore a fresh node, timed
@@ -101,6 +102,18 @@ script exits non-zero.
 `--json` emits a machine-readable report on stdout only (implies `--quiet`);
 `--quiet` prints only failures.
 
+### 4.1 What `warm_cluster.sh` asserts (the running state)
+
+`warm_check.sh` is the broad whole-layer gate. `warm_cluster.sh` is the focused
+assertion for the **pre-established running state** (kanban task `t_ef5ef65c`):
+the LXD cluster members are online, the compute agent VMs on Nodes A/B are
+RUNNING, each node is **registered** with the controller (`last_seen_at` inside
+15 s), each node **streams telemetry at the demo cadence** (median inter-sample
+gap within ±50 % of the configured interval — default 1000 ms), and the guest
+`agent-os/w4` image is **placed locally** on A/B so an agent VM launches with no
+registry pull. Exit 0 = warm, exit 1 = a specific cold/broken reason per failed
+check; `--json --hold SECS --cadence-ms MS` are supported.
+
 ## 5. Files
 
 ```
@@ -109,6 +122,7 @@ infra/warm/
   bake-image.sh             bake + publish the pre-baked node image
   demo-env.sh               bake | up | warm | down | restart | fresh | reset | status
   warm_check.sh             the single warm assertion
+  warm_cluster.sh           cluster running state: registered + streaming at cadence
   node/termini-bootstrap.py node agent: register + telemetry
   node/termini-llama.sh     resident llama.cpp launcher
   node/termini-model-present.sh  ExecCondition: only run where the GGUF is present
@@ -121,6 +135,8 @@ infra/warm/
 | File | Shows |
 |---|---|
 | `warm_check-after-restart.txt` | `warm_check.sh` green (32 checks) after a full `demo-env.sh restart` |
+| `warm-cluster-state.txt` | `t_ef5ef65c`: cluster members online, nodes registered + streaming at the 1000 ms cadence, agent image placed on A/B |
+| `warm-cluster.json` | machine-readable `warm_cluster.sh --json` running-state report (`ok:true`, `failed:0`) |
 | `restart-timing.txt` | the stop/start transcript + proof the `unregistered` restore point is unchanged by the restart |
 | `warm_check.json` | machine-readable warm report (`ok:true`, `failed:0`) |
 | `fresh-timing.txt` | a snapshot-restored node reaching registered + inference within the 30 s budget |

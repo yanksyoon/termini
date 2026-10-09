@@ -1,0 +1,73 @@
+{
+  "ok": true,
+  "hold_s": 8,
+  "cadence_ms": 1000,
+  "checks": [
+    {
+      "name": "controller_reachable",
+      "ok": true,
+      "detail": "http://127.0.0.1:8085 answering"
+    },
+    {
+      "name": "controller_project",
+      "ok": true,
+      "detail": "project 01J0DEM0WARM000000000000AB"
+    },
+    {
+      "name": "demo-node-a.running",
+      "ok": true,
+      "detail": "agent VM (LXD instance) RUNNING"
+    },
+    {
+      "name": "demo-node-a.registered",
+      "ok": true,
+      "detail": "controller sees node_id=01M439BZK778 role=compute:1 (fresh)"
+    },
+    {
+      "name": "demo-node-a.telemetry_cadence",
+      "ok": true,
+      "detail": "25 samples, median gap 1.000s (rate 0.857Hz) at 1000ms cadence"
+    },
+    {
+      "name": "demo-node-a.agent_vm_image",
+      "ok": true,
+      "detail": "guest image 'agent-os/w4' placed locally (offline launch)"
+    },
+    {
+      "name": "demo-node-b.running",
+      "ok": true,
+      "detail": "agent VM (LXD instance) RUNNING"
+    },
+    {
+      "name": "demo-node-b.registered",
+      "ok": true,
+      "detail": "controller sees node_id=01M439D1EW2C role=compute:2 (fresh)"
+    },
+    {
+      "name": "demo-node-b.telemetry_cadence",
+      "ok": true,
+      "detail": "25 samples, median gap 1.000s (rate 0.857Hz) at 1000ms cadence"
+    },
+    {
+      "name": "demo-node-b.agent_vm_image",
+      "ok": true,
+      "detail": "guest image 'agent-os/w4' placed locally (offline launch)"
+    },
+    {
+      "name": "demo-node-c.running",
+      "ok": true,
+      "detail": "agent VM (LXD instance) RUNNING"
+    },
+    {
+      "name": "demo-node-c.registered",
+      "ok": true,
+      "detail": "controller sees node_id=01M439DWP9ET role=inference:2 (fresh)"
+    },
+    {
+      "name": "demo-node-c.telemetry_cadence",
+      "ok": true,
+      "detail": "25 samples, median gap 1.000s (rate 0.857Hz) at 1000ms cadence"
+    }
+  ],
+  "failed": 0
+}
