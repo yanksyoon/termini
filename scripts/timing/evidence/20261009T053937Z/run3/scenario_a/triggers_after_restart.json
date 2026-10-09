@@ -1,0 +1,88 @@
+{
+  "trigger_config": [
+    {
+      "rule_id": "disk-degrade-01",
+      "source": "env",
+      "updated_at": "2026-10-09T05:41:20.973Z",
+      "config": {
+        "disk_free_pct": 5.0,
+        "disk_free_clear_pct": 15.0,
+        "disk_free_consecutive": 3,
+        "disk_write_latency_ms": 50.0,
+        "disk_write_latency_clear_ms": 30.0,
+        "disk_latency_consecutive": 5,
+        "disk_free_slope_bps": -5000000.0,
+        "disk_clear_consecutive": 3
+      }
+    },
+    {
+      "rule_id": "disk-fail-01",
+      "source": "env",
+      "updated_at": "2026-10-09T05:41:20.973Z",
+      "config": {
+        "disk_fail_consecutive": 1,
+        "disk_fail_clear_consecutive": 3
+      }
+    },
+    {
+      "rule_id": "latency-01",
+      "source": "env",
+      "updated_at": "2026-10-09T05:41:20.973Z",
+      "config": {
+        "latency_ms": 250.0,
+        "latency_clear_ms": 150.0,
+        "latency_consecutive": 3,
+        "latency_clear_consecutive": 3
+      }
+    },
+    {
+      "rule_id": "oom-guard-01",
+      "source": "env",
+      "updated_at": "2026-10-09T05:41:20.973Z",
+      "config": {
+        "oom_ram_pct": 95.0,
+        "oom_clear_pct": 90.0,
+        "oom_consecutive": 2,
+        "oom_clear_consecutive": 3
+      }
+    }
+  ],
+  "trigger_state": [
+    {
+      "node_id": "01M4FJWA2TAVNZF8DV21KP6Y7G",
+      "rule_id": "disk-degrade-01",
+      "state": "armed",
+      "last_fired_at": null,
+      "last_cleared_at": null,
+      "fired_count": 0,
+      "updated_at": "2026-10-09T05:41:33.904Z"
+    },
+    {
+      "node_id": "01M4FJWA2TAVNZF8DV21KP6Y7G",
+      "rule_id": "disk-fail-01",
+      "state": "armed",
+      "last_fired_at": null,
+      "last_cleared_at": null,
+      "fired_count": 0,
+      "updated_at": "2026-10-09T05:41:33.904Z"
+    },
+    {
+      "node_id": "01M4FJWA2TAVNZF8DV21KP6Y7G",
+      "rule_id": "latency-01",
+      "state": "armed",
+      "last_fired_at": null,
+      "last_cleared_at": null,
+      "fired_count": 0,
+      "updated_at": "2026-10-09T05:41:33.904Z"
+    },
+    {
+      "node_id": "01M4FJWA2TAVNZF8DV21KP6Y7G",
+      "rule_id": "oom-guard-01",
+      "state": "fired",
+      "last_fired_at": "2026-10-09T05:41:24.975Z",
+      "last_cleared_at": null,
+      "fired_count": 1,
+      "updated_at": "2026-10-09T05:41:33.904Z"
+    }
+  ]
+}

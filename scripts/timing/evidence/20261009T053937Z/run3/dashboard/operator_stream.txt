@@ -1,0 +1,8 @@
+id: 01M4FJWS0EQE6G9CZDF61WD54E
+event: log
+data: {"log_id": "01M4FJWS0EQE6G9CZDF61WD54E", "ts": "2026-10-09T05:41:48Z", "node_id": null, "severity": "warn", "actor": "ai_operator", "message": "log tail truncated; resuming from oldest retained line", "remediation": null, "truncated": true}
+
+id: 01M4FJWS0EQE6G9CZDF61WD54E
+event: log
+data: {"log_id": "01M4FJWS0EQE6G9CZDF61WD54E", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-09T05:41:36.397Z", "node_id": "01M4FJWQ667DG2J9WXVV695P9M", "severity": "info", "actor": "ai_operator", "message": "disk-fail-01: instance.stop demo-node-b -> ok (threshold: any disk[].mount_ro == true (EXT4 remount read-only))", "remediation_json": null, "truncated": false, "remediation": null}
+

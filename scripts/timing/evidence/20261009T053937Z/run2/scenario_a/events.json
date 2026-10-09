@@ -1,0 +1,121 @@
+{
+  "events": [
+    {
+      "id": "01M4FJV1CF5QQ7TYQNV3NTYNRC",
+      "node_id": "01M4FJTXKZXRMVFCK8V3Q67AZS",
+      "rule_id": "oom-guard-01",
+      "type": "oom",
+      "metric": "ram_used_bytes",
+      "value": 96.99999999720603,
+      "threshold": ">= 95% of ram_total_bytes for 2 consecutive samples",
+      "evidence_seq_start": 3,
+      "evidence_seq_end": 4,
+      "fired_at": "2026-10-09T05:40:39.439Z",
+      "breach_started_at": "2026-10-09T05:40:37.593Z",
+      "evidence": [
+        {
+          "seq": 3,
+          "ts": "2026-10-09T05:40:37.593Z",
+          "uptime_sec": 3603,
+          "cpu_util_pct": 95.0,
+          "cpu_core_count": 8,
+          "ram_total_bytes": 34359738368,
+          "ram_used_bytes": 33328946216,
+          "swap_used_bytes": 0,
+          "load_avg_1m": 1.45,
+          "cpu_temp_celsius": 63.76,
+          "os_name": "Ubuntu",
+          "os_version": "24.04",
+          "kernel_version": "6.8.0-142-generic",
+          "lxd_cluster_role": "member",
+          "hostname": "5f2a9c1e7b4d4a1f",
+          "ip_local": "10.0.0.0/24",
+          "mac_address": "9c1e7b4d4a1f5f2a",
+          "project_id": "01J0DEM0WARM000000000000AB",
+          "disk": [
+            {
+              "path": "/dev/sda",
+              "total_bytes": 274877906944,
+              "free_bytes": 214404767416,
+              "write_latency_ms": 3.0,
+              "mount_ro": false
+            }
+          ],
+          "net": [
+            {
+              "iface": "eth0",
+              "rx_bytes": 123300,
+              "tx_bytes": 11000,
+              "latency_ms": 0.8
+            }
+          ],
+          "services": [
+            {
+              "name": "termini-bootstrap",
+              "status": "running"
+            },
+            {
+              "name": "lxd",
+              "status": "running"
+            },
+            {
+              "name": "sshd",
+              "status": "running"
+            }
+          ]
+        },
+        {
+          "seq": 4,
+          "ts": "2026-10-09T05:40:38.593Z",
+          "uptime_sec": 3604,
+          "cpu_util_pct": 95.0,
+          "cpu_core_count": 8,
+          "ram_total_bytes": 34359738368,
+          "ram_used_bytes": 33328946216,
+          "swap_used_bytes": 0,
+          "load_avg_1m": 1.46,
+          "cpu_temp_celsius": 63.76,
+          "os_name": "Ubuntu",
+          "os_version": "24.04",
+          "kernel_version": "6.8.0-142-generic",
+          "lxd_cluster_role": "member",
+          "hostname": "5f2a9c1e7b4d4a1f",
+          "ip_local": "10.0.0.0/24",
+          "mac_address": "9c1e7b4d4a1f5f2a",
+          "project_id": "01J0DEM0WARM000000000000AB",
+          "disk": [
+            {
+              "path": "/dev/sda",
+              "total_bytes": 274877906944,
+              "free_bytes": 214404767416,
+              "write_latency_ms": 3.0,
+              "mount_ro": false
+            }
+          ],
+          "net": [
+            {
+              "iface": "eth0",
+              "rx_bytes": 123400,
+              "tx_bytes": 11000,
+              "latency_ms": 0.8
+            }
+          ],
+          "services": [
+            {
+              "name": "termini-bootstrap",
+              "status": "running"
+            },
+            {
+              "name": "lxd",
+              "status": "running"
+            },
+            {
+              "name": "sshd",
+              "status": "running"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

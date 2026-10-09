@@ -1,0 +1,15 @@
+PASS  controller_reachable         http://127.0.0.1:8085 answering
+PASS  controller_project           project 01J0DEM0WARM000000000000AB
+PASS  demo-node-a.running          agent VM (LXD instance) RUNNING
+PASS  demo-node-a.registered       controller sees node_id=01M439BZK778 role=compute:1 (fresh)
+PASS  demo-node-a.telemetry_cadence 24 samples, median gap 1.000s (rate 0.852Hz) at 1000ms cadence
+PASS  demo-node-a.agent_vm_image   guest image 'agent-os/w4' placed locally (offline launch)
+PASS  demo-node-b.running          agent VM (LXD instance) RUNNING
+PASS  demo-node-b.registered       controller sees node_id=01M439D1EW2C role=compute:6 (fresh)
+PASS  demo-node-b.telemetry_cadence 25 samples, median gap 1.000s (rate 0.857Hz) at 1000ms cadence
+PASS  demo-node-b.agent_vm_image   guest image 'agent-os/w4' placed locally (offline launch)
+PASS  demo-node-c.running          agent VM (LXD instance) RUNNING
+PASS  demo-node-c.registered       controller sees node_id=01M439DWP9ET role=inference:13 (fresh)
+PASS  demo-node-c.telemetry_cadence 25 samples, median gap 1.000s (rate 0.857Hz) at 1000ms cadence
+
+WARM CLUSTER: all checks green (13 checks)

@@ -1,0 +1,614 @@
+[
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 52.76,
+    "cpu_util_pct": 40.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.43,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 123100,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 21303038870,
+    "seq": 1,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:39:50.349Z",
+    "uptime_sec": 3601
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 58.26,
+    "cpu_util_pct": 67.5,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.44,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 123200,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 27316786433,
+    "seq": 2,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:39:51.349Z",
+    "uptime_sec": 3602
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 63.76,
+    "cpu_util_pct": 95.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.45,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 123300,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 33328946216,
+    "seq": 3,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:39:52.349Z",
+    "uptime_sec": 3603
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 63.76,
+    "cpu_util_pct": 95.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.46,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 123400,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 33328946216,
+    "seq": 4,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:39:53.350Z",
+    "uptime_sec": 3604
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 63.76,
+    "cpu_util_pct": 95.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.47,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 123500,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 33328946216,
+    "seq": 5,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:39:54.349Z",
+    "uptime_sec": 3605
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 63.76,
+    "cpu_util_pct": 95.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.48,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 123600,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 33328946216,
+    "seq": 6,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:39:55.349Z",
+    "uptime_sec": 3606
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 63.76,
+    "cpu_util_pct": 95.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.49,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 123700,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 33328946216,
+    "seq": 7,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:39:56.349Z",
+    "uptime_sec": 3607
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 63.76,
+    "cpu_util_pct": 95.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.5,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 123800,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 33328946216,
+    "seq": 8,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:39:57.349Z",
+    "uptime_sec": 3608
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 63.76,
+    "cpu_util_pct": 95.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.51,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 123900,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 33328946216,
+    "seq": 9,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:39:58.349Z",
+    "uptime_sec": 3609
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 63.76,
+    "cpu_util_pct": 95.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.52,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 124000,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 33328946216,
+    "seq": 10,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:39:59.349Z",
+    "uptime_sec": 3610
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 63.76,
+    "cpu_util_pct": 95.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.53,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 124100,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 33328946216,
+    "seq": 11,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:40:00.349Z",
+    "uptime_sec": 3611
+  },
+  {
+    "cpu_core_count": 8,
+    "cpu_temp_celsius": 63.76,
+    "cpu_util_pct": 95.0,
+    "disk": [
+      {
+        "free_bytes": 214404767416,
+        "mount_ro": false,
+        "path": "/dev/sda",
+        "total_bytes": 274877906944,
+        "write_latency_ms": 3.0
+      }
+    ],
+    "hostname": "5f2a9c1e7b4d4a1f",
+    "ip_local": "10.0.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 1.54,
+    "lxd_cluster_role": "member",
+    "mac_address": "9c1e7b4d4a1f5f2a",
+    "net": [
+      {
+        "iface": "eth0",
+        "latency_ms": 0.8,
+        "rx_bytes": 124200,
+        "tx_bytes": 11000
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "ram_total_bytes": 34359738368,
+    "ram_used_bytes": 33328946216,
+    "seq": 12,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-09T05:40:01.349Z",
+    "uptime_sec": 3612
+  }
+]

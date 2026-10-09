@@ -1,0 +1,15 @@
+{
+  "cadence_ms": 1000,
+  "duration_s": 12.0,
+  "finished_at": "2026-10-09T05:41:33.125Z",
+  "first_ts": "2026-10-09T05:41:21.124Z",
+  "hostname": "demo-fault-oom",
+  "last_ts": "2026-10-09T05:41:32.125Z",
+  "mode": "oom",
+  "node_id": "01M4FJWA2TAVNZF8DV21KP6Y7G",
+  "project_id": "01J0DEM0WARM000000000000AB",
+  "role": "compute",
+  "samples_posted": 12,
+  "samples_rejected": 0,
+  "started_at": "2026-10-09T05:41:21.124Z"
+}

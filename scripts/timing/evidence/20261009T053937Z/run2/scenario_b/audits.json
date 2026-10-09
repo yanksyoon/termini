@@ -1,0 +1,20 @@
+{
+  "audits": [
+    {
+      "id": "01M4FJVBNDRH9CXVWAZ5GCF113",
+      "decision_id": "01M4FJVBMY47CA3QGH6DQFC89C",
+      "event_id": "01M4FJVBMXM9VW8MZJ844V5NHE",
+      "node_id": "01M4FJV9V16D6V608EJN05X6R2",
+      "rule_id": "disk-fail-01",
+      "action_kind": "instance.stop",
+      "result": "ok",
+      "detail": "{\"type\":\"async\",\"status\":\"Operation created\",\"status_code\":100,\"operation\":\"/1.0/operations/fc570dbe-34c1-447f-bc2e-3e603b2b2d5d\",\"error_code\":0,\"error\":\"\",\"metadata\":{\"id\":\"fc570dbe-34c1-447f-bc2e-3e603b2b2d5d\",\"class\":\"task\",\"description\":\"Stopping instance\",\"created_at\":\"2026-10-09T05:40:49.957068357Z\",\"updated_at\":\"2026-10-09T05:40:49.957068357Z\",\"status\":\"Running\",\"status_code\":103,\"resources\":{\"instances\":[\"/1.0/instances/demo-node-b\"]},\"metadata\":{},\"may_cancel\":false,\"err\":\"\",\"location\":\"none\",\"requestor\":{\"username\":\"ubuntu\",\"protocol\":\"unix\",\"address\":\"@\"}}}\n",
+      "lxd_method": "PUT",
+      "lxd_path": "/1.0/instances/demo-node-b/state",
+      "lxd_body": "{\"action\": \"stop\", \"force\": true}",
+      "idempotency_key": "01M4FJV9V16D6V608EJN05X6R2:disk-fail-01:instance.stop:demo-node-b:1",
+      "dry_run": 0,
+      "executed_at": "2026-10-09T05:40:49.949Z"
+    }
+  ]
+}

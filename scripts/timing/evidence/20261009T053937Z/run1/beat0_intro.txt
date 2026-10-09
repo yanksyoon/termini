@@ -1,0 +1,5 @@
+Termini demo — live rehearsal.
+Three proofs on real hardware: (1) bare metal -> AI-ready fleet in <5s;
+(2) plain-English intent -> validated, clamped plan; (3) a governed
+self-healing loop where the operator finds a fault, fixes it, and data never
+leaves the premises. Scenarios run live against the pre-warmed cluster.
