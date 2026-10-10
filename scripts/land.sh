@@ -55,5 +55,22 @@ if [ "$mergeable" != "MERGEABLE" ]; then
 fi
 
 echo "==> CI green — merging PR #$pr"
-gh pr merge "$pr" --squash --delete-branch
+# Merge server-side only. `gh pr merge` also does local git work: it updates the
+# base branch and, with --delete-branch, switches to it. Both fail whenever the
+# default branch is checked out in another worktree — which is the normal layout
+# here, since every task gets its own worktree. The result was a SUCCESSFUL merge
+# reported as a non-zero exit, with the remote branch left behind, so callers saw
+# a false failure and had to clean up by hand. The API call touches no local state.
+merged="$(gh api -X PUT "repos/{owner}/{repo}/pulls/$pr/merge" \
+  -f merge_method=squash --jq '.merged')"
+if [ "$merged" != "true" ]; then
+  echo "!! merge did not report success (merged=$merged)" >&2
+  exit 1
+fi
+
+branch="$(gh pr view "$pr" --json headRefName --jq .headRefName)"
+if [ -n "$branch" ] && [ "$branch" != "main" ] && [ "$branch" != "master" ]; then
+  gh api -X DELETE "repos/{owner}/{repo}/git/refs/heads/$branch" >/dev/null 2>&1 \
+    || echo "!! remote branch '$branch' not deleted (non-fatal; delete it manually)" >&2
+fi
 echo "==> landed PR #$pr"
