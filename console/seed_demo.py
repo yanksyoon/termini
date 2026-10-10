@@ -32,6 +32,20 @@ import urllib.request
 
 L4_24GB = 24 * 1024 ** 3
 
+# Telemetry gpu[] for the GPU node (node-telemetry.md §4.5). The card reported
+# here must match the one declared in the registration hardware facts below.
+# A node whose role is `inference` but which omits `gpu[]` derives
+# `gpu_ok = false` (dashboard.md §1.3: "false if gpu[] empty") -> reason
+# `gpu_unavailable` -> a permanently degraded card, so the GPU node must report
+# it on every sample. Compute nodes have no GPU and must NOT send this array.
+GPU_TELEMETRY = [{
+    "model": "NVIDIA L4",
+    "util_pct": 38.0,
+    "vram_total_bytes": L4_24GB,
+    "vram_used_bytes": 12884901888,
+    "temp_celsius": 58.0,
+}]
+
 # Crockford base32 ULID (48-bit ms timestamp + 80-bit randomness) — the id class
 # the controller validates (`controller/app/ulid.py`). Kept local so this script
 # stays stdlib-only and independent of the controller package.
@@ -85,7 +99,8 @@ def register(base: str, boot_token: str, machine_id: str, gpus: list) -> dict:
 
 
 def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
-           disk_write_latency_ms: float, latency_ms: float, uptime_sec: int) -> dict:
+           disk_write_latency_ms: float, latency_ms: float, uptime_sec: int,
+           gpu: list | None = None) -> dict:
     s = {
         "seq": seq,
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
@@ -116,6 +131,8 @@ def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
             {"name": "sshd", "status": "running"},
         ],
     }
+    if gpu:
+        s["gpu"] = gpu
     return s
 
 
@@ -134,7 +151,8 @@ class NodeTicker(threading.Thread):
     """Push one telemetry sample per second for a node, oscillating a fault."""
 
     def __init__(self, base: str, node: dict, project_id: str,
-                 period_s: float, phase: float, high_ram: bool):
+                 period_s: float, phase: float, high_ram: bool,
+                 gpu: list | None = None):
         super().__init__(daemon=True)
         self.base = base
         self.node_id = node["node_id"]
@@ -143,6 +161,7 @@ class NodeTicker(threading.Thread):
         self.period = period_s
         self.phase = phase
         self.high_ram = high_ram
+        self.gpu = gpu or []
         self.stop = threading.Event()
         self.seq = int(time.time()) % 100000
         self.sent = 0
@@ -159,7 +178,8 @@ class NodeTicker(threading.Thread):
             self.seq += 1
             s = sample(self.node_id, self.project_id, self.seq,
                        ram_used_bytes=ram, disk_write_latency_ms=disk_lat,
-                       latency_ms=net_lat, uptime_sec=3600 + int(time.monotonic() - t0))
+                       latency_ms=net_lat, uptime_sec=3600 + int(time.monotonic() - t0),
+                       gpu=self.gpu)
             st, _ = _request(self.base, "POST", f"/v1/nodes/{self.node_id}/telemetry",
                              envelope(self.node_id, s), self.token)
             if st in (200, 202):
@@ -204,7 +224,8 @@ def main(argv=None) -> int:
 
     tickers = [
         NodeTicker(base, node_a, project_id, period_s=6.0, phase=0.0, high_ram=False),
-        NodeTicker(base, node_c, project_id, period_s=6.0, phase=3.0, high_ram=True),
+        NodeTicker(base, node_c, project_id, period_s=6.0, phase=3.0, high_ram=True,
+                   gpu=GPU_TELEMETRY),
     ]
     for t in tickers:
         t.start()
