@@ -2,6 +2,76 @@
 
 Date: 2026-10-04 (UTC) · Gate owner: verifier · Reference commit: `origin/main @ 3eebafa76d70b79ebd45c300ae23867f2e51771a`
 
+## Re-gate — 2026-10-11 (supersedes the 2026-10-04 bottom line below)
+
+Reference commit: `main @ b9d7a6b`. Gate owner: verifier.
+
+**Demo verdict: GO — with one carve-out and the accepted residuals at the end.**
+
+Read this section as the current state; the 2026-10-04 verdict below is kept as the
+historical record of that gate, not as a live statement.
+
+> **Independence caveat, stated up front.** This re-gate was produced by the same
+> agent session that then fixed several of the findings. A verdict with that
+> provenance is weaker evidence than the original independent one, and it should be
+> re-run by a separate reviewer before it is treated as final. Every claim below is
+> nonetheless backed by a re-runnable command, not by assertion.
+
+### Blocking findings from the 2026-10-04 gate
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | No timed end-to-end dry run | **CLOSED** — a timed record existed and was never read. `scripts/timing/evidence/20261009T053937Z/runs.jsonl` holds three runs, all `status: PASS`, ~45 s each. `W6.2` searched for *filenames containing "dry"* (matching only the script) and had no pass branch, so it could not pass whatever was on disk. Fixed; `W6.2` now reads the record and passes. |
+| 2 | Registration degraded path hangs silently | **CLOSED** — red-team, re-run: delay (30 s), connection-refused, DNS failure and consumed-token all reach terminal `REGISTRATION_FAILED` instead of hanging. |
+| 3 | Cold first boot breaches the 30 s demo timeout | **CLOSED** — baseline 5/5 `ONLINE`, `start_to_online` mean 4.87 s, p95 6.82 s, `within_demo_timeout=True`. |
+| 4 | Control-plane latency signal inert (hardcoded) | **CLOSED** — the daemon now *measures* RTT and disk write latency; 8 tests cover it. |
+| 5 | Bulk cross-node transfer stalls under 30 % loss | **RESCOPED, not fixed** — reproduced (1.66 MB of 64 MB in 41 s, `BrokenPipeError`) and recorded as an accepted residual with the boundary. |
+| 6 | No per-node capacity clamp | **CLOSED** — `clamp_to_node_capacity()` with committed-capacity accounting; 9 tests. |
+| 7 | Role-check rejection reasons dropped | **CLOSED** — the 422 now returns `reject_reasons`. |
+
+### Carve-out — the day-0 claim is not demonstrable on the deployed demo
+
+Re-verifying the judge-facing deck claims surfaced this, and it is **not** closed:
+
+- The deck claims a node *"registers to the controller in under 5 seconds"* with a
+  pre-baked image and no package installs.
+- **It cannot be exercised on the deployed footprint.** `infra/gcp/variables.tf`
+  defaults `image_family` to stock `ubuntu-2404-lts-amd64`; the cloud-init is
+  activation-only by design (D3) and only starts `termini-bootstrap.service`, which
+  is never baked into an image. `gcloud compute images list` contained no baked
+  image. Observed on a real VM: 3+ minutes up, cloud-init still running, `/opt`
+  empty, unit inactive, **never registered**.
+- The cloud-init even warns about it: *"termini-bootstrap.service not installed on
+  this image; node will not register (bake the daemon into the node image)"* — so
+  the gap is silent to anyone not reading runcmd output.
+- The **registration endpoint** is live and correct (a real node registration
+  returned `201 role=compute`), and the node-side half works where a baked image
+  exists — which is why the red team could measure it on the LXD image.
+- Mitigation in progress: a GCE image is now **baked and READY**
+  (`termini-node-os-1`, family `termini-node-os`) containing the daemon and unit.
+  Booting a node from it to measure `boot → registered` is the remaining step.
+
+### Other claims, re-verified against the live deployment
+
+| Claim | Result |
+|---|---|
+| Plain English → validated plan | **VERIFIED** — `200 accepted`; the fast-LLM allocation resolves `realized_as: host_service` (the inference service, not a VM); 128 vCPU/512 GB → **clamped** to 8/16 with `above_host_max` → `exceeds_node_cpu_ceiling` reasons. |
+| Model-driven OOM remediation | **VERIFIED** — model-decided remediations executing `result=ok`. |
+| Zero C2 leaves the premises | **VERIFIED in substance.** Nothing C2 reaches storage, checked three ways: unknown fields stripped, C2 in an allowlisted field rejected (`422`), untransformed C1 rejected (`422`). One wording correction: an unknown field is **stripped silently (202)** by design (§3), while `422 GOVERNANCE_REJECT` covers schema/type/C1 violations. Field-name detection is now token-based so `app_logs` is C2 exactly as `logs` is, and stripping is logged. |
+
+### Harness defects found and fixed during this re-gate
+
+Recorded because a gate is only as good as its instruments, and two of these were
+producing confident false results:
+
+- `node_ip()` returned a CSV-quoted guest-bridge address, so **the entire net
+  red-team phase measured nothing** while emitting well-formed JSON (#107).
+- `W6.2` could not pass and had never read the record it was checking for (#110).
+- `land.sh` refused green PRs on transient `UNKNOWN` mergeability — a false red in
+  the component meant to prevent false greens (#111).
+
+---
+
 ## Bottom line
 
 **Demo verdict: NO-GO.** The governance claim is **VERIFIED**, but the demo is not
