@@ -236,12 +236,35 @@ If a future change needs a second external model, it must be added here with a r
 
 The AI operator's prompt is a versioned template (`operator-prompt v{N}`) whose only dynamic placeholders are **typed C0 fields** (`{{cpu_util_pct}}`, `{{ram_used_bytes}}`, `{{disk_write_latency_ms}}`, `{{gpu_vram_used_bytes}}`, `{{net_latency_ms}}`, etc.). No free-text, log tail, or user string may be interpolated. The controller wraps every model call with `externalModelCall()` which asserts the template version and the class of every substituted field (all C0) before sending.
 
-### 7.3 Model output is advisory
+### 7.3 Model output is constrained, not free-form
 
-A model output never directly triggers an action. Every output passes through:
+The **decision step** — the step that turns a fired trigger into a remediation
+action — may be served by a model (the AI operator) or by a declarative playbook.
+Both are conforming implementations of this contract. What is normative here is the
+constraint set, not the mechanism that produces the choice.
+
+A model output never reaches execution directly. Every chosen action passes through:
 
 1. The deterministic **guardrail/clamp validator** (`docs/contracts/vm-allocation.schema.json`; controller contract t_260694d8) — clamps/rejects out-of-range specs.
-2. A **remediation command allowlist** — only pre-approved LXD/controller actions may execute; the model may select among them, never emit free-form shell.
+2. A **remediation command allowlist** — only pre-approved LXD/controller actions may execute. The model **selects among them**; it never emits free-form shell, and an action outside the allowlist has no valid encoding in the decision schema, so it is rejected before it can be applied.
+3. A **mandatory deterministic fallback** — if the model is unavailable, times out, exceeds its latency budget, or returns output that fails schema validation or the allowlist, the operator falls back to the deterministic provider and records the fallback *and its reason*. Fail-closed is never traded for availability.
+
+**Provenance is recorded, never inferred.** Every audit row for an autonomous action
+carries the decider's identity — `decision_source` (`playbook` | `model`), plus the
+provider and prompt-template version when a model was used — together with the
+`rationale` for the action (§8.2). An autonomous action whose provenance is missing or
+inconsistent is a validation failure, not a default.
+
+Unchanged by this amendment: the model never emits free-form shell; no C2 content and
+no unredacted C1 identifier may enter a prompt (§7, §4.3); no implicit external call is
+permitted (§7.1); the prompt template stays static and versioned (§7.2). "Advisory" was
+the old name for this section — the constraint set, not the word, is what is frozen.
+
+The trade this amendment makes, stated plainly: the *mechanism* of the decision is no
+longer guaranteed to be deterministic or reproducible — only its *safety envelope* is.
+Reproducibility still holds for the playbook provider, and can be approximated for a
+model provider by pinning seed/temperature, but a verifier must not assume that two
+runs of a model decider produce the same action. Assert the envelope, not the choice.
 
 ---
 

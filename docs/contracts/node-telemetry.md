@@ -304,22 +304,35 @@ This linkage is written into the guardrail audit record (`actor: ai_operator`,
 `controller-api.md` §5.4) so an auditor can reconstruct exactly which telemetry
 sample justified which autonomous change.
 
-Threshold rules (demo, frozen):
+Threshold rules (demo, frozen) — the **detection layer**:
 
-| rule_id | metric | condition | action |
-|---------|--------|-----------|--------|
-| `oom-guard-01` | `ram_used_bytes` | ≥ 95% of `ram_total_bytes` for 2 consecutive samples | `instance.restart` the heaviest workload |
-| `disk-fail-01` | `disk[].mount_ro` | any `true` | `instance.stop` the heaviest workload |
-| `disk-degrade-01` | `disk[].write_latency_ms` | ≥ 50 for 5 consecutive samples | `instance.stop` the heaviest workload |
-| `gpu-oos-01` | `inference.server_up` | `false` for 3 consecutive samples | alert user (inference down is surfaced; no autonomous action) |
+| rule_id | metric | condition | severity |
+|---------|--------|-----------|----------|
+| `oom-guard-01` | `ram_used_bytes` | ≥ 95% of `ram_total_bytes` for 2 consecutive samples | critical |
+| `disk-fail-01` | `disk[].mount_ro` | any `true` | critical |
+| `disk-degrade-01` | `disk[].write_latency_ms` | ≥ 50 for 5 consecutive samples | degraded |
+| `gpu-oos-01` | `inference.server_up` | `false` for 3 consecutive samples | degraded |
 
-The `action` column is the LXD REST remediation kind the operator executor issues
-(`controller/app/operator/executor.py`: `instance.restart`, `instance.stop`,
-`instance.delete`, `image.prune`). The oom/disk rules map to restart/stop exactly as
-the playbooks declare (`controller/playbooks/oom.yaml`, `disk-fail.yaml`,
-`disk-degrade.yaml`); there is no `vm.resize`/`node.drain` remediation in the loop.
+Firing a rule is a **wake-up signal, not a decision**. What is normative is that these
+conditions raise the trigger and that the trigger is recorded with the action (as
+above). What is *no longer* normative is that a given rule maps to a given action: the
+action is chosen by the operator's decision step, which may be a declarative playbook or
+a model (`governance.md` §7.3). Either way the chosen action must satisfy that section's
+constraint set, and the audit row records which decider chose it (`decision_source`).
+
+The action space the decision step selects from is the LXD REST remediation kinds the
+executor issues (`controller/app/operator/executor.py`: `instance.restart`,
+`instance.stop`, `instance.delete`, `image.prune`), plus surfacing the fault with no
+autonomous action. There is no `vm.resize`/`node.drain` remediation in the loop;
 `node.drain`/`node.reboot` exist only as human-initiated node actions
 (`controller-api.md` §4.2 / `dashboard.md` §4).
+
+`gpu-oos-01` is the canonical case where the right answer is *no action*: inference down
+has no safe autonomous remediation, so the decision step must surface it. Note precisely
+what enforces that — the allowlist admits `instance.restart`, so a decider proposing a
+restart here is *inside* the allowlist and outside **policy**. Nothing in the gate
+rejects it. A verifier asserting this rule must therefore check the outcome (alert
+raised, no command issued), not assume the gate caught it.
 
 ---
 

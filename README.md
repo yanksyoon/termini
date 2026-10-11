@@ -108,11 +108,14 @@ Power-on to a registered, role-assigned, cluster-joined node in under 5 seconds
 
 ### 3. Day-2 self-healing loop
 
-Telemetry crosses a threshold, a deterministic rule selects a pre-approved
-playbook action, and the remediation lands with a full audit trail — while a
+Telemetry crosses a threshold, the operator's decision step selects a
+pre-approved action, and the remediation lands with a full audit trail — while a
 non-conforming batch is rejected fail-closed at the governance gate
-([`docs/architecture.md`](docs/architecture.md) §4.3–§4.4). **There is no model
-in the loop** on this path.
+([`docs/architecture.md`](docs/architecture.md) §4.3–§4.4). The decision step is a
+seam: the reference implementation is a deterministic playbook, and the same seam
+admits a model, constrained by the command allowlist and a mandatory fail-closed
+fallback to the deterministic provider
+([`docs/contracts/governance.md`](docs/contracts/governance.md) §7.3).
 
 ```text
    telemetry (C0/C1, 1 s cadence)
@@ -125,7 +128,7 @@ in the loop** on this path.
    threshold rule fires  (e.g. oom-guard-01: ram_used ≥ 95% for 2 samples)
      │
      ▼
-   deterministic playbook action  (no model in the loop)
+   decision step: playbook (reference) or model — allowlist-constrained
    instance.restart · instance.stop · instance.delete · image.prune
      │
      ▼
@@ -240,8 +243,11 @@ What Termini does **not** claim (the honest guardrails from
 [`docs/narrative.md`](docs/narrative.md) §6):
 
 - No "zero data ever leaves" — only the bounded C0/C1 claim above.
-- No ML model proposing or selecting remediations in the live loop — the day-2
-  operator is a deterministic threshold rule over frozen playbooks.
+- No model in the live loop *today* — the shipped decider is a deterministic
+  threshold rule over frozen playbooks. The decision step is a seam that admits a
+  model ([`docs/contracts/governance.md`](docs/contracts/governance.md) §7.3); when a
+  model serves it, the choice stops being reproducible and only its safety envelope
+  is guaranteed.
 - No VM launch from natural language — the allocation path ends at a validated,
   clamped plan.
 - No hotplug resize or node drain/migration — the operator restarts the runaway
