@@ -345,7 +345,12 @@ GO/NO-GO; this document does not assert one.
 
 ## Demo & judge materials
 
-- [`deck/`](deck/README.md) — the judge-facing HTML slide deck
+- [`SUBMISSION.md`](SUBMISSION.md) — **AI Builder Cup submission pack**: category
+  specification, the mandatory-requirement → artifact map, live links, and the
+  Google-AI/GCP evidence
+- [`deck/`](deck/README.md) — the judge-facing slide deck (HTML + the PDF proposal)
+- [`docs/video-script-3min.md`](docs/video-script-3min.md) — the 3-minute video
+  script (required submission deliverable)
 - [`docs/demo-script.md`](docs/demo-script.md) — the live 6-beat narration script
 - [`docs/narrative.md`](docs/narrative.md) — positioning + the three proof points
 - [`docs/spec-answers.md`](docs/spec-answers.md) — judge-facing answers to the

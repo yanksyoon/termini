@@ -1,12 +1,15 @@
-# Termini AI-Infra — Judge Deck (Cloud-VM Demo)
+# Termini AI-Infra — Judge Deck (AI Builder Cup)
 
-A single self-contained HTML slide deck for the 5-day Cloud-VM demo slot.
+A single self-contained HTML slide deck for the AI Builder Cup submission.
 No build step, no network, no external assets — everything is inline.
+
+Theme: **Manufacturing — Intelligent Operations & Industrial Efficiency**.
 
 ## Files
 
-- `index.html` — the deck source (14 slides, 16:9).
-- `termini-demo-deck.pdf` — a rendered PDF export of the deck.
+- `index.html` — the deck source (15 slides, 16:9).
+- `termini-demo-deck.pdf` — a rendered PDF export of the deck
+  (this PDF **is** the required "deck/PPT converted into a PDF" deliverable).
 
 ## Present
 
@@ -31,6 +34,7 @@ chrome --headless --disable-gpu --no-sandbox \
 
 ## Story arc
 
-problem → insight → Termini AI-Infra → live-demo handoff → results → roadmap.
+problem → insight → Termini AI-Infra → differentiation → proof points → spec answers → live-demo handoff → **built on Google AI & Cloud** → results → roadmap.
 
-Source of truth for every claim: `docs/narrative.md` and `docs/spec-answers.md`.
+Source of truth for every claim: `docs/narrative.md`, `docs/spec-answers.md`, and
+the live deployment described in `SUBMISSION.md`.

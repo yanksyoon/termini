@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Termini AI-Infra — Judge Deck (Cloud-VM Demo)</title>
+<title>Termini AI-Infra — Judge Deck (AI Builder Cup)</title>
 <style>
   :root {
     --bg: #0b0f14;
@@ -232,7 +232,7 @@
 
   <!-- 1 · TITLE -->
   <section class="slide title">
-    <div class="brand">Termini &nbsp;·&nbsp; AI Builder Cup &nbsp;·&nbsp; 5-day Cloud-VM demo</div>
+    <div class="brand">Termini &nbsp;·&nbsp; AI Builder Cup &nbsp;·&nbsp; Manufacturing — Intelligent Operations &amp; Industrial Efficiency</div>
     <h1>Termini<br>AI-Infra</h1>
     <div class="sub">Turning bare, on-premise hardware into a <b>self-operating AI fleet</b> — a cloud control plane bootstraps it, a <b>governed AI operator</b> runs it, and <b>your data never leaves</b>.</div>
     <div class="tagline-hero">“Your hardware. Your data. Our operations.”</div>
@@ -292,13 +292,13 @@
     <div class="loop">
       <span class="step">Telemetry</span><span class="arrow">→</span>
       <span class="step">Threshold rule</span><span class="arrow">→</span>
-      <span class="step">Pre-approved playbook action</span><span class="arrow">→</span>
+      <span class="step">AI decides (Gemma) — allowlist-constrained</span><span class="arrow">→</span>
       <span class="step">Audited LXD execution</span>
     </div>
     <div class="cols two" style="margin-top:26px;">
       <div class="card">
         <h3><span class="num">+</span> We build two things</h3>
-        <p>The <b>governance boundary</b> and the <b>deterministic AI-operator control loop</b> — the moat.</p>
+        <p>The <b>governance boundary</b> and the <b>governed AI-operator control loop</b> — the moat.</p>
       </div>
       <div class="card">
         <h3><span class="num">=</span> We adopt the rest</h3>
@@ -360,7 +360,7 @@
   <section class="slide">
     <div class="kicker"><span class="n">06</span> &nbsp;Spec question 1 of 4 — resolved</div>
     <div class="q"><span class="qnum">Q1</span><span class="qtext">What operations scenarios do we showcase, and how do we simulate them?</span></div>
-    <div class="resolve"><span class="tag">Resolved</span><span class="ans">Two real failure scenarios, each with a pre-approved remediation — <b>A: out-of-memory</b> (shown live) and <b>B: disk degradation</b> (documented playbook) — simulated with off-the-shelf tools.</span></div>
+    <div class="resolve"><span class="tag">Resolved</span><span class="ans">Two real failure scenarios, each remediated autonomously — <b>A: out-of-memory</b> and <b>B: disk degradation</b> — injected with off-the-shelf tools, in both cases diagnosed and remediated by the model.</span></div>
     <div class="cols two" style="margin-top:18px;">
       <div class="card">
         <h3><span class="num">A</span> Out-of-memory</h3>
@@ -371,7 +371,7 @@
         <p>Injected <b>I/O error</b> (write latency climb / read-only mount) → operator <b>flags the drive, stops the heaviest workload, alerts</b> the user.</p>
       </div>
     </div>
-    <div class="risk"><span class="rlabel">Contested:</span> beating the kernel OOM-killer is best-effort. Resolved with <b>1000&nbsp;ms telemetry</b> + <b>no model in the loop</b> (the rule acts directly on the threshold) + a <b>deterministic chaos ramp</b> — we demonstrate the <b>detect → decide → execute → audit</b> loop <b>deterministically</b>.</div>
+    <div class="risk"><span class="rlabel">Contested:</span> beating the kernel OOM-killer is best-effort. Resolved with <b>1000&nbsp;ms telemetry</b> + a rule that fires <b>deterministically</b> (the trigger is never a model) + a <b>deterministic chaos ramp</b>, with the decision made by <b>Gemma on an L4</b> — seconds, not the 50–60&nbsp;s measured on CPU — and a <b>mandatory deterministic fallback</b>. We demonstrate the <b>detect → decide → execute → audit</b> loop end to end.</div>
     <div class="proof"><span class="plabel">How the demo proves it</span> — dashboard shows RAM crossing 95% → an <b>instance.restart</b> acks <b>succeeded</b> → the workload recovers, traceable end-to-end in the audit log.</div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">07</span></div>
   </section>
@@ -474,7 +474,7 @@
     <div class="cols three" style="margin-top:30px;">
       <div class="metric"><div class="v">&lt;5s</div><div class="k">Bare-metal registration, <b>zero package installs</b></div></div>
       <div class="metric"><div class="v">clamped</div><div class="k">Natural-language intent → <b>valid allocation</b>, from→to clamping visible</div></div>
-      <div class="metric"><div class="v">audited</div><div class="k">Deterministic OOM remediation, <b>end-to-end traceable</b></div></div>
+      <div class="metric"><div class="v">audited</div><div class="k">Gemma-chosen OOM remediation, <b>end-to-end auditable</b></div></div>
     </div>
     <div class="cols three" style="margin-top:18px;">
       <div class="metric"><div class="v good">0</div><div class="k"><b>C2 egress</b> — the boundary held on every call</div></div>
@@ -484,10 +484,37 @@
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">12</span></div>
   </section>
 
-  <!-- 13 · ROADMAP -->
+  <!-- 13 · BUILT ON GOOGLE AI + GOOGLE CLOUD -->
   <section class="slide">
-    <div class="kicker"><span class="n">12</span> &nbsp;Roadmap</div>
-    <h2>What’s next after the 5-day build</h2>
+    <div class="kicker"><span class="n">12</span> &nbsp;Built on Google AI &amp; Google Cloud</div>
+    <h2>The AI runs the operations <span class="accent">— live, on Google Cloud</span></h2>
+    <div class="lede">No playbook lookup chooses the fix. The threshold detects the fault; <b>Gemma</b> — an open-weights Google model — reasons about it and selects the remediation, which then executes against the cluster and lands in the audit trail.</div>
+    <div class="cols three" style="margin-top:22px;">
+      <div class="card">
+        <h3><span class="num">1</span> Gemma 3 4B decides</h3>
+        <p>Telemetry in, action out — the model diagnoses the fault and picks the fix. Served by <b>vLLM on Cloud Run GPU (1× NVIDIA L4)</b> in <b>asia-southeast1</b>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">2</span> Constrained, never trusted</h3>
+        <p>A <b>GBNF grammar</b> makes an off-allowlist command <b>unencodable</b> — safety is decoder-enforced, not a fail-open validator — plus param guards, a confidence gate, and a <b>mandatory deterministic fallback</b>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">3</span> Deployed, not mocked</h3>
+        <p><b>Cloud Run</b> serves the model · <b>Firebase Hosting</b> the dashboard · <b>GCE</b> the controller · <b>GCS</b> the weights. A judge can open it and watch it run.</p>
+      </div>
+    </div>
+    <div class="cols three" style="margin-top:16px;">
+      <div class="metric"><div class="v good">autonomous</div><div class="k">Faults remediated with <b>no human in the loop</b></div></div>
+      <div class="metric"><div class="v good">0</div><div class="k"><b>C2 egress</b> — the model only ever sees C0 telemetry</div></div>
+      <div class="metric"><div class="v">open</div><div class="k">Weights you can <b>self-host</b> — no closed-model lock-in</div></div>
+    </div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">13</span></div>
+  </section>
+
+  <!-- 14 · ROADMAP -->
+  <section class="slide">
+    <div class="kicker"><span class="n">13</span> &nbsp;Roadmap</div>
+    <h2>What’s next: from prototype to production</h2>
     <div class="road">
       <div class="road-item"><span class="dot"></span><div><div class="t">Learned baselines</div><div class="d">Netdata edge-ML anomaly detection replaces static thresholds.</div></div></div>
       <div class="road-item"><span class="dot"></span><div><div class="t">Scale &amp; retention</div><div class="d">VictoriaMetrics for persistence; k3s when agent scheduling moves to Kubernetes.</div></div></div>
@@ -496,10 +523,10 @@
       <div class="road-item"><span class="dot"></span><div><div class="t">Model-agnostic serving</div><div class="d">Swap DeepSeek distills for any open-weight model — the product is ops + governance, not the weights.</div></div></div>
       <div class="road-item"><span class="dot"></span><div><div class="t">Compliance alignment</div><div class="d">GDPR, EU AI Act, NIS2, DORA posture mapped to the governance boundary.</div></div></div>
     </div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">13</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">14</span></div>
   </section>
 
-  <!-- 14 · CLOSE -->
+  <!-- 15 · CLOSE -->
   <section class="slide title">
     <div class="brand">Termini &nbsp;·&nbsp; AI-Infra</div>
     <h1 style="font-size:72px;">Your hardware.<br>Your data.<br><span class="accent">Our operations.</span></h1>
