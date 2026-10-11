@@ -37,12 +37,35 @@ other workstreams consume.
 
 ### vCPU budget vs `CPUS_ALL_REGIONS`
 
-The vCPU total must fit the project's `CPUS_ALL_REGIONS` quota (this demo project
-is capped at **12** vCPU, and a quota-increase request was denied). The ideal
-`4 + 4 + 8 = 16` layout does **not** fit; the demo tfvars sets
-`compute_machine_type = n2-standard-2` so that `2 + 2 + 8 = 12` fits while keeping
-Node C at `n2-standard-8`. Restore A/B to `n2-standard-4` (and/or raise the quota)
-when the cap allows.
+The vCPU total must fit the project's `CPUS_ALL_REGIONS` quota. This demo project
+is capped at **12**, and the increase was **denied** — a quota preference for 24
+sits at `stateDetail: Quota request denied` with `grantedValue: 12`.
+
+The ideal `4 + 4 + 8 = 16` node layout does **not** fit, so the demo tfvars sets
+`compute_machine_type = n2-standard-2`, giving the nodes `2 + 2 + 8 = 12`.
+
+**Since Phase 3 the controller VM consumes quota too**, which is why `node-b` is
+`TERMINATED`:
+
+| resource | vCPU | state |
+|---|---|---|
+| `node-a` | 2 | RUNNING (`n2-standard-2`) |
+| `node-c` | 8 | RUNNING (`n2-standard-8`) |
+| `termini-controller` | 2 | RUNNING (`n2-standard-2`) |
+| `node-b` | 2 | **TERMINATED** — including it would make 14 > 12 |
+| **total** | **12 / 12** | |
+
+`node-b` was stopped purely to free its 2 vCPU for the controller. The demo does
+not need it: `console/seed_demo.py` fabricates `demo-node-a`/`demo-node-c`, and
+neither it nor the operator loop touches node-b — its LXD hosted zero containers
+when it was stopped.
+
+To run all four again, free 2 vCPU. The cheapest route is **downsizing `node-c`
+from `n2-standard-8` to `n2-standard-4`**: its 8 vCPUs were sized for CPU
+`llama.cpp` inference, and inference has since moved to Gemma on Cloud Run GPU, so
+that headroom is now unused. That gives `2 + 4 + 2 + 2 = 10 ≤ 12`. Raising the
+quota is the other route, but it has already been denied once.
+
 
 ## Ports opened (D2 port map)
 
