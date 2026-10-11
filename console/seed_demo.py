@@ -98,6 +98,27 @@ def register(base: str, boot_token: str, machine_id: str, gpus: list) -> dict:
     return r
 
 
+# Stable synthetic LXD instance id per node.
+#
+# ``lxd_instances[]`` is a contract field (node-telemetry.md 4.6) and it is the
+# ONLY source the operator's guardrail G5 has for resolving a remediation
+# target. With the list empty, no model-chosen action can ever resolve, so every
+# decision falls back with ``fallback_reason=invalid_target`` — the model is
+# consulted and then always discarded. Emitting it makes the demo exercise the
+# model-driven path for real.
+#
+# 26 chars, Crockford-safe (0-9A-F), stable across samples so the model can
+# reference the same target in consecutive decisions.
+_INSTANCE_VM_ID: dict[str, str] = {}
+
+
+def instance_vm_id(node_id: str) -> str:
+    if node_id not in _INSTANCE_VM_ID:
+        digest = hashlib.sha256(("vm:" + node_id).encode()).hexdigest().upper()
+        _INSTANCE_VM_ID[node_id] = "01M4N" + digest[:21]
+    return _INSTANCE_VM_ID[node_id]
+
+
 def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
            disk_write_latency_ms: float, latency_ms: float, uptime_sec: int,
            gpu: list | None = None) -> dict:
@@ -129,6 +150,19 @@ def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
             {"name": "termini-bootstrap", "status": "running"},
             {"name": "lxd", "status": "running"},
             {"name": "sshd", "status": "running"},
+        ],
+        # Contract field (node-telemetry.md 4.6). The operator's guardrail G5
+        # resolves a remediation target against this list (or the literal
+        # "heaviest"); with it empty, every model-chosen action is unresolvable.
+        "lxd_instances": [
+            {
+                "vm_id": instance_vm_id(node_id),
+                "state": "running",
+                "cpu_util_pct": 12.0,
+                "ram_used_bytes": max(1, ram_used_bytes // 4),
+                "ram_limit_bytes": 4294967296,
+                "disk_used_bytes": 2362232012,
+            }
         ],
     }
     if gpu:
