@@ -36,6 +36,7 @@ import os
 import re
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from . import db, errors, governance, health, inventory, registration, role, store, validate, ws as wsmod
@@ -46,6 +47,24 @@ from .operator import store as opstore
 from .operator import triggers as op_triggers
 
 log = logging.getLogger("termini.controller")
+
+
+def _stripped_sample_keys(raw_samples: Any, clean_samples: Any) -> set[str]:
+    """Top-level sample keys removed by deny-by-default stripping.
+
+    Stripping unknown fields is deliberate (governance.md §3 — it is what keeps a
+    newer node's unknown C0 field from being rejected by an older controller). But
+    a SILENT strip means a node whose redactor is broken never learns its field was
+    discarded, and no operator sees C2 attempting to egress. This lets the ingest
+    path log the drop, which is what makes the boundary observable.
+    """
+    dropped: set[str] = set()
+    if not isinstance(raw_samples, list) or not isinstance(clean_samples, list):
+        return dropped
+    for raw, clean in zip(raw_samples, clean_samples):
+        if isinstance(raw, dict) and isinstance(clean, dict):
+            dropped |= set(raw) - set(clean)
+    return dropped
 
 MAX_BODY = 1_048_576  # 1 MiB, controller-api.md §1.4
 WS_CLOSE_UNAUTHORIZED = 4401
@@ -787,6 +806,17 @@ class ControllerHandler(BaseHTTPRequestHandler):
 
         clean["node_id"] = node_id
         samples = clean["samples"]
+
+        # Make deny-by-default stripping observable: a stripped field is data the
+        # node believed it was allowed to send. Silent discard hides both a broken
+        # node-side redactor and any C2 that reached this far under a name the
+        # C2 matcher did not recognise.
+        stripped = _stripped_sample_keys(body.get("samples"), samples)
+        if stripped:
+            log.warning(
+                "telemetry: stripped non-allowlisted field(s) node=%s call_id=%s fields=%s",
+                node_id, clean.get("call_id"), sorted(stripped),
+            )
 
         now = store.now_iso()
         inserted, dropped = store.insert_samples(conn, node_id, clean["call_id"], samples)

@@ -29,6 +29,13 @@ C2_FIELD_NAMES = {
     "env", "environ", "environment", "file", "files", "token", "secret",
     "password", "credential", "ssh_key", "private_key", "serial", "asset_tag",
     "user", "username",
+    # Added: the remaining governance.md §4.3 classes that had no field-name
+    # term. Matching is token-based (see governance.is_c2_field_name), so these
+    # also catch `customer_notes`, `conversation_log`, `doc_content`, etc.
+    "conversation", "transcript", "document", "doc", "customer", "certificate",
+    # Abbreviations for the same classes: `cert_pem` is certificate material just
+    # as `certificate` is (caught by the test suite, not by inspection).
+    "cert", "pem",
 }
 
 ULID_PATTERN = "^[0-9A-HJKMNP-TV-Z]{26}$"

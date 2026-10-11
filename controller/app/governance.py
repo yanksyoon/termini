@@ -49,6 +49,10 @@ _SKIP_STRING_SCAN = _C1_FIELDS | {
     "ts", "call_id", "node_id", "vm_id", "governance_chain_tip", "config_hash",
 }
 
+# Field-name tokeniser for C2 matching (see is_c2_field_name). Splits on any
+# non-alphanumeric run, so `app_logs` -> ["app", "logs"] and `appLogs` -> same.
+_NON_ALNUM = re.compile(r"[^A-Za-z0-9]+")
+
 
 def check_c1_transforms(raw: Any) -> list[str]:
     """Return C1 transform violations (empty list = clean)."""
@@ -78,6 +82,35 @@ def check_c1_transforms(raw: Any) -> list[str]:
     return violations
 
 
+def is_c2_field_name(key: Any) -> bool:
+    """True if a field NAME denotes C2 content (governance.md §4.3).
+
+    Matching is TOKEN-based, not exact. §4.3 names whole *classes* of content —
+    "application log lines", "customer payloads", "prompts", "file contents" — so a
+    field called `app_logs` or `request_body` is C2 exactly as `logs` / `body` are.
+
+    This mattered: with exact matching, `app_logs` fell through to the
+    deny-by-default stripper and was discarded **silently** (HTTP 202), so a node
+    whose redactor was compromised never learned that C2 had been dropped, and the
+    deck's claim that a C2 field "is rejected by the governance gate" was not true
+    of that path. Token matching routes it to the same fail-closed 422 as `logs`.
+
+    False-positive safety: no key on the C0/C1 allowlist tokenises to a C2 term
+    (asserted in tests), so legitimate telemetry is unaffected.
+    """
+    if not isinstance(key, str):
+        return False
+    if key in F.C2_FIELD_NAMES:
+        return True
+    return any(tok in F.C2_FIELD_NAMES for tok in _tokens(key))
+
+
+def _tokens(key: str) -> list[str]:
+    """Split a field name into lowercase word tokens (snake_case + camelCase)."""
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", key)
+    return [t.lower() for t in _NON_ALNUM.split(spaced) if t]
+
+
 def scan_c2(raw: Any) -> list[str]:
     """Return C2 signature violations (empty list = clean). Fail-closed on any hit."""
     violations: list[str] = []
@@ -85,7 +118,7 @@ def scan_c2(raw: Any) -> list[str]:
     def walk(node: Any, path: list[str]) -> None:
         if isinstance(node, dict):
             for key, value in node.items():
-                if key in F.C2_FIELD_NAMES:
+                if is_c2_field_name(key):
                     violations.append(f"{'.'.join(path + [key])}: C2 field name")
                     continue
                 walk(value, path + [key])
