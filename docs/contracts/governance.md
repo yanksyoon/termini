@@ -250,7 +250,7 @@ A model output never reaches execution directly. Every chosen action passes thro
 3. A **mandatory deterministic fallback** — if the model is unavailable, times out, exceeds its latency budget, or returns output that fails schema validation or the allowlist, the operator falls back to the deterministic provider and records the fallback *and its reason*. Fail-closed is never traded for availability.
 
 **Provenance is recorded, never inferred.** Every audit row for an autonomous action
-carries the decider's identity — `decision_source` (`playbook` | `model`), plus the
+carries the decider's identity — `decision_source` (`deterministic` | `model` | `fallback`), plus the
 provider and prompt-template version when a model was used — together with the
 `rationale` for the action (§8.2). An autonomous action whose provenance is missing or
 inconsistent is a validation failure, not a default.
@@ -360,5 +360,5 @@ The controller MUST implement these as code, not policy prose:
 - `controller-api.md` (t_260694d8) MUST expose `governanceGate`, `externalModelCall`, and the operator audit surface `GET /v1/operator/audits` (there is no `GET /v1/governance/audit`); rejection code `GOVERNANCE_REJECT` (422) is reserved here.
 - `node-bootstrap.md` (t_134e2f24) MUST place the redactor in the daemon's egress path and provide the redactor config as a versioned artifact.
 - `agent-runtime.md` (t_1addb6fd) MUST route agent logs/payloads to on-prem inference only and must not expose an egress path for C2.
-- `vm-allocation.schema.json` (t_260694d8) is the clamp validator referenced by §7.3; model output is advisory against it.
+- `vm-allocation.schema.json` (t_260694d8) is the clamp validator referenced by §7.3; model output is constrained against it (allowlist-only, never free-form, fail-closed on any violation).
 - **Ratified invariants (G-AR-1 / G-AR-2)** — from `agent-runtime.md` §7.1: the node→controller direction **never carries C2** (only C0/C1 egress, enforced by §4/§6); the controller carries task content (C2) **only transiently** on the inbound path — it never persists, logs, or model-processes task content (external model calls are C0-only per §7). These are normative for the controller, node daemon, and agent runtime.

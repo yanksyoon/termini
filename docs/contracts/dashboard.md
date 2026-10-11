@@ -509,7 +509,7 @@ Because approval is looked up by action, a decider that selects a different acti
 fault cannot thereby escalate its own privilege — the new action's class is whatever the
 table above says it is. An action outside the allowlist is rejected before it ever
 reaches this table (`governance.md` §7.3), so this table only ever governs allowlisted
-actions. The dashboard surfaces `decision_source` (`playbook` | `model`) on each
+actions. The dashboard surfaces `decision_source` (`deterministic` | `model` | `fallback`) on each
 remediation so an operator can see which decider chose it.
 
 **Approve** — `POST /v1/projects/{project_id}/remediations/{command_id}/approve`
