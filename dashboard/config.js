@@ -2,10 +2,15 @@
  * Termini dashboard runtime configuration.
  *
  * Precedence (highest first):
- *   1. URL query params      ?api=&project=&token=&mock=
+ *   1. URL query params      ?apiBase=&projectId=&token=&window=&pollMs=&mock=
  *   2. localStorage          (set once via the Settings dialog / ?token=)
  *   3. this file             (window.TERMINI_CONFIG)
  *   4. built-in defaults
+ *
+ * NOTE: the query-param names are the CONFIG KEYS (`apiBase`, `projectId`,
+ * `token`, ...) — there are no short aliases. `?api=` and `?project=` are
+ * silently ignored and the dashboard reports "No project configured", which is
+ * an easy hour to lose. Authoritative list: `js/core/config.js` resolveConfig().
  *
  * `apiBase` is the controller REST root INCLUDING the version segment, e.g.
  *   same origin          -> ""            (dashboard served by the controller)

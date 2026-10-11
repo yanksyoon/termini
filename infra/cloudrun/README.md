@@ -89,27 +89,44 @@ private. No controller or adapter change is needed.
   80 Gi. L4 (24 Gi) is used here: it is what the project has quota for, and it
   is sufficient for a 4B bf16 model.
 
-## Known gap: model decisions currently always fall back
+## Model decisions: partial adherence, by design
 
-The model-driven path is wired and running, but in the synthetic demo every
-decision falls back deterministically. Cause is precise and not a code defect:
+The model-driven path is live and **it succeeds**. Early on it did not, and the
+cause is worth recording because it was silent.
 
-- Guardrail **G5** requires `params.instance_name` to resolve against
-  `target_resource.instances[]` / the evidence window.
-- `console/seed_demo.py` emits **no `lxd_instances`**, so that list is empty.
-- The prompt (`termini/decision/prompt.py`) therefore permits exactly one valid
-  target literal, `"heaviest"`, and Gemma 3 4B does not reliably emit it.
-- Result: `decision_source=fallback`, `fallback_reason=invalid_target`.
+Guardrail **G5** requires `params.instance_name` to resolve against
+`target_resource.instances[]` or the literal `"heaviest"`. `console/seed_demo.py`
+originally emitted **no `lxd_instances`**, so no target could ever resolve and
+*every* decision recorded `decision_source=fallback`,
+`fallback_reason=invalid_target` — the model was consulted and then always
+discarded, while the audit trail still looked plausible. Fixed by emitting the
+field (a contract field at `node-telemetry.md` §4.6 that was simply missing).
 
-Observed on the deployed controller:
+Observed on the deployed controller after the fix:
 
 ```
-by decision_source:  fallback  1
-src=fallback  action=instance.restart  conf=None  fb=invalid_target
+by decision_source:  fallback 3   model 1
+src=model     action=instance.stop  conf=0.85  fb=None
+        reason='Disk write latency is elevated and the disk is not...'
+src=fallback  fb=invalid_target     (guardrail rejected, deterministic fallback)
 ```
 
-To demonstrate a *successful* model-chosen remediation, either seed telemetry
-that includes resolvable `lxd_instances[]`, or strengthen the prompt's
-insistence on the `heaviest` literal. The guardrail behaving this way is the
-designed behaviour: a model output that cannot be resolved is rejected and the
-deterministic provider takes over.
+A model-chosen action passed the guardrail with confidence 0.85.
+
+**Adherence is not universal at 4B, and that is left visible rather than tuned
+away.** In the same run two of four decisions were still rejected as
+`invalid_target` and fell back. That is the designed behaviour — an unresolvable
+model target is rejected and the deterministic provider takes over — and showing
+both halves demonstrates the capability *and* the safety envelope. Expect a
+mixed ratio; it is not a regression.
+
+## Running the seeder on the controller VM
+
+`setup-seeder-vm.sh` installs `console/seed_demo.py` as a systemd service beside
+the controller.
+
+This matters: when the seeder ran from an operator's workstation the demo died
+whenever that process was reaped, and the dashboard showed both nodes
+**OFFLINE**. Hosting it on the VM makes the stack self-contained — nothing
+outside GCP is needed for the demo to stay live — and it talks to the controller
+over loopback, so no public round-trip is involved.
