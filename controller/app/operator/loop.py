@@ -24,8 +24,8 @@ per-(node, rule) hysteresis latch lives in `trigger_state`, so
   * a controller restart never re-fires an already-remediated fault (latch persists).
 
 Detection latency is measured and logged on every fire:
-`breach_started_at -> fired_at` (detection) and `fired_at -> executed_at`
-(remediation), both ms-precision.
+`breach_started_at -> fired_at` (detection) and chooser-start -> remediation
+completed (remediation, chooser/selection time included), both ms-precision.
 """
 from __future__ import annotations
 
@@ -204,6 +204,10 @@ class OperatorLoop(threading.Thread):
 
         opstore.insert_health_event(conn, event)
 
+        # Start the remediation clock BEFORE the chooser so chooser/selection time
+        # is included in remediation_latency_s (t_2c00b7fe). A model-driven
+        # chooser can dominate the wall-clock cost.
+        remed_start = time.monotonic()
         action = playbook.choose(
             event, self.playbooks, self.instance_names, self.default_instance_name
         )
@@ -241,8 +245,9 @@ class OperatorLoop(threading.Thread):
         opstore.insert_audit(
             conn, audit_id, decision_id, event, action, result, idem_key, now, dry_run
         )
-        # Remediation latency: trigger fire -> remediation issued.
-        remed_lat = self._latency_s(event.fired_at, now)
+        # Remediation latency: chooser start -> remediation completed (includes
+        # chooser/selection time, which the previous `fired_at -> now` calc omitted).
+        remed_lat = round(time.monotonic() - remed_start, 3)
         log.info("node %s rule %s -> %s %s: %s (remediation_latency=%ss)",
                  node_id, event.rule_id, action.kind, target, result.result, remed_lat)
         message = f"{event.rule_id}: {action.kind} {target} -> {result.result}".strip()
@@ -274,11 +279,3 @@ class OperatorLoop(threading.Thread):
             )
         except Exception:  # noqa: BLE001
             log.exception("failed to emit operator log line")
-
-    @staticmethod
-    def _latency_s(start: str | None, end: str | None) -> float | None:
-        s = triggers.parse_epoch_ms(start)
-        e = triggers.parse_epoch_ms(end)
-        if s is None or e is None:
-            return None
-        return round(e - s, 3)
