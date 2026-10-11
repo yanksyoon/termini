@@ -131,8 +131,14 @@ def run_operator(
                  and ls_body.get("owner") is True)
         if not owned:
             if not standby:
-                log(f"[operator] standby (another operator owns the lease) "
-                    f"owner_id={owner_id}")
+                # The lease response's `owner_id` is the *current* holder, i.e.
+                # the operator that actually owns the standby decision — not this
+                # CLI's own `owner_id`, which is what leaked into the message before.
+                lease_owner = (
+                    ls_body.get("owner_id") if isinstance(ls_body, dict) else None
+                )
+                log(f"[operator] standby (lease held by {lease_owner}) "
+                    f"self_id={owner_id}")
                 standby = True
             time.sleep(poll_interval_s)
             continue

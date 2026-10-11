@@ -147,7 +147,12 @@ class OperatorLoop(threading.Thread):
                 triggers.now_iso_ms(), self.lease_ttl_s,
             ):
                 if not self._standby_logged:
-                    log.info("operator loop is standby (lease held by another operator)")
+                    lease = opstore.get_lease(conn, self.project["id"])
+                    lease_owner = lease["owner_id"] if lease else None
+                    log.info(
+                        "operator loop is standby (lease held by %s) self_id=%s",
+                        lease_owner, self.owner_id,
+                    )
                     self._standby_logged = True
                 return produced
             self._standby_logged = False

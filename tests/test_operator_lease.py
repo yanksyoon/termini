@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "controller"))
@@ -175,6 +176,93 @@ class LeaseLoopTest(unittest.TestCase):
         loop2 = self._loop()
         self.assertEqual(loop1.owner_id, loop2.owner_id)
         self.assertEqual(loop2.owner_id, f"loop:{self.project_id}")
+
+    def test_loop_standby_log_names_actual_owner(self):
+        # A different operator (the CLI) holds an unexpired lease, so the loop
+        # is a standby. Its standby log line must name that holder — not itself.
+        with db.session(self.db_path) as conn:
+            self.assertTrue(opstore.acquire_lease(
+                conn, self.project_id, "cli:X", triggers.now_iso_ms(), 10.0))
+        loop = self._loop()
+        with self.assertLogs("termini.operator.loop", level="INFO") as cm:
+            produced = loop.run_once()
+        self.assertEqual(len(produced), 0)  # standby issues nothing
+        joined = "\n".join(cm.output)
+        self.assertIn("lease held by cli:X", joined)
+        self.assertIn(f"self_id=loop:{self.project_id}", joined)
+
+
+class CliStandbyLogTest(unittest.TestCase):
+    """The standalone CLI's standby line must name the actual lease holder.
+
+    Before the fix it interpolated the CLI's own `owner_id` into the line while
+    claiming "another operator owns the lease" — attributing the standby to the
+    wrong identity. The lease response's `owner_id` is the current holder.
+    """
+
+    def test_standby_log_names_actual_owner(self):
+        from app.operator import cli as cli_mod
+
+        clock = {"t": 0.0}
+
+        def fake_monotonic():
+            return clock["t"]
+
+        def fake_sleep(s):
+            clock["t"] += s
+
+        def fake_http(method, url, body=None, token=None, timeout=10.0):
+            # Another operator holds the lease; this CLI is a standby.
+            return 200, {"owner": False, "owner_id": "loop:p1"}
+
+        captured = []
+        with mock.patch.object(cli_mod.time, "monotonic", fake_monotonic), \
+             mock.patch.object(cli_mod.time, "sleep", fake_sleep), \
+             mock.patch.object(cli_mod, "_http_json", fake_http):
+            cli_mod.run_operator(
+                controller_url="http://ctl", project_token="t", node_id="n1",
+                lxd_url="http://lxd", thresholds=Thresholds(), playbooks={},
+                instance_names={}, default_instance_name="agent",
+                poll_interval_s=1.0, duration_s=2.0, dry_run=True,
+                audit_out=None, limit=10, log=captured.append,
+            )
+        standby_lines = [m for m in captured if "standby" in m]
+        self.assertEqual(len(standby_lines), 1)
+        self.assertIn("lease held by loop:p1", standby_lines[0])
+        self.assertIn("self_id=cli:", standby_lines[0])
+        self.assertNotIn("owner_id=", standby_lines[0])
+
+    def test_lease_error_fails_closed_not_owned(self):
+        # A lease request that errors (non-200 / non-dict body) must NOT be
+        # treated as ownership: the CLI stands by and issues no remediation.
+        from app.operator import cli as cli_mod
+
+        clock = {"t": 0.0}
+
+        def fake_monotonic():
+            return clock["t"]
+
+        def fake_sleep(s):
+            clock["t"] += s
+
+        def fake_http(method, url, body=None, token=None, timeout=10.0):
+            return 0, "URLError: connection refused"
+
+        captured = []
+        with mock.patch.object(cli_mod.time, "monotonic", fake_monotonic), \
+             mock.patch.object(cli_mod.time, "sleep", fake_sleep), \
+             mock.patch.object(cli_mod, "_http_json", fake_http):
+            result = cli_mod.run_operator(
+                controller_url="http://ctl", project_token="t", node_id="n1",
+                lxd_url="http://lxd", thresholds=Thresholds(), playbooks={},
+                instance_names={}, default_instance_name="agent",
+                poll_interval_s=1.0, duration_s=2.0, dry_run=True,
+                audit_out=None, limit=10, log=captured.append,
+            )
+        self.assertEqual(result["audits"], [])   # nothing remediated
+        self.assertEqual(result["fired"], [])    # no trigger ever evaluated
+        standby_lines = [m for m in captured if "standby" in m]
+        self.assertEqual(len(standby_lines), 1)
 
 
 if __name__ == "__main__":
