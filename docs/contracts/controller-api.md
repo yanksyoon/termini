@@ -839,6 +839,8 @@ fabricated success. No endpoint polls slower than 2 s during the demo.
   `governance.md`.
 - Structural allocation schema → `vm-allocation.schema.json`.
 - Telemetry field schema → `node-telemetry.md`.
+- Operator decision-step contract (model-driven decision, guardrail, fallback) →
+  `operator-decision.md`.
 
 No field in this contract is a TBD. If a value is not fixed above, the default in
 section 5.1 applies.

@@ -135,8 +135,14 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
    exact request it made (method/path/body + result).
 4. Every autonomous change writes an audit record linking the telemetry trigger
    (`actor: ai_operator`, `trigger`, rule_id) to the action and result.
-5. An **external model in the loop is day-2** (governance.md §7 governs the boundary
-   if/when it is added); the demo loop is purely deterministic.
+5. The decision step may be **model-driven** as a selectable mode
+   (`docs/contracts/operator-decision.md`): `TERMINI_OPERATOR_DECISION_MODE=model`
+   routes the threshold→action choice through the on-prem adapter
+   (`termini/decision`) and a hard guardrail (allowed-action whitelist, param
+   bounds, confidence gate), with the deterministic playbook mapping as the
+   **default and mandatory fallback**. `deterministic` (the frozen demo default)
+   makes **no model call** and is identical to the original loop; a model is only
+   ever consulted on-prem (Node C, `governance.md` §7).
 
 ### 4.5 Inference (on-prem only)
 
