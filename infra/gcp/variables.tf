@@ -232,3 +232,50 @@ variable "inventory_path" {
   type        = string
   default     = "/home/ubuntu/.termini/inventory.json"
 }
+
+# --- Control plane (controller VM) --------------------------------------------
+# Added when the controller was back-filled into IaC during the Phase 3
+# deployment; it had been created ad-hoc with `gcloud`.
+
+variable "controller_machine_type" {
+  description = "Machine type for the controller VM. It runs the REST API, the operator loop and SQLite, and needs no accelerator."
+  type        = string
+  default     = "n2-standard-2"
+}
+
+variable "controller_image_project" {
+  description = "Image project for the controller boot disk (stock Ubuntu, not the pre-baked node image)."
+  type        = string
+  default     = "ubuntu-os-cloud"
+}
+
+variable "controller_image_family" {
+  description = "Image family for the controller boot disk."
+  type        = string
+  default     = "ubuntu-2404-lts-amd64"
+}
+
+variable "controller_boot_disk_gb" {
+  description = "Controller boot disk size. The SQLite database lives here, so it must persist."
+  type        = number
+  default     = 30
+}
+
+variable "controller_boot_disk_type" {
+  description = "Controller boot disk type."
+  type        = string
+  default     = "pd-balanced"
+}
+
+variable "controller_private_ip" {
+  description = "Static underlay address for the controller, inside network_cidr. Pinned so the TLS hostname and the nodes' controller_url stay valid across rebuilds."
+  type        = string
+  default     = "10.10.0.2"
+}
+
+variable "controller_source_ranges" {
+  description = "Sources allowed to reach the controller on 22/80/443. Default is public, because the Firebase-hosted dashboard runs in a browser; tighten to your office/VPN ranges for real use."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
