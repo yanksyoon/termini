@@ -92,6 +92,37 @@ def _matches_target(cmd: dict, vm_id: str | None) -> bool:
 
 # --------------------------------------------------------------------------- #
 # scenario runner
+def controller_env(cfg: dict, port: int, db_path, base_env: dict | None = None) -> dict:
+    """Environment for the harness's controller process.
+
+    The harness owns remediation: either its bundled reference probe or an
+    external ``OPERATOR_CMD``. The controller must therefore NOT run its own
+    in-process operator, for two reasons:
+
+    * it takes the controller's single-owner operator lease (migration 0007), so
+      an external operator -- including the production loop this harness is
+      documented to drive -- becomes a permanent standby and the scenario fails
+      ``remediation_command_issued`` with count=0; and
+    * it targets the default LXD endpoint (:8443), not this run's stub, so any
+      action it does take is invisible to the run.
+
+    ``TERMINI_OPERATOR_ENABLED`` defaults to *true* in the controller, so this is
+    the only thing that disables the second operator. Keep it that way.
+    """
+    env = dict(os.environ if base_env is None else base_env)
+    env.update({
+        "TERMINI_HOST": "127.0.0.1",
+        "TERMINI_PORT": str(port),
+        "TERMINI_DB_PATH": str(db_path),
+        "TERMINI_BOOTSTRAP_TOKEN": cfg["controller"]["bootstrap_token"],
+        "TERMINI_PROJECT_TOKEN": cfg["controller"]["project_token"],
+        "TERMINI_MIN_REDACTOR_VERSION": "3",
+        "PYTHONUNBUFFERED": "1",
+        "TERMINI_OPERATOR_ENABLED": "false",
+    })
+    return env
+
+
 # --------------------------------------------------------------------------- #
 def run_scenario(
     name: str,
@@ -136,16 +167,7 @@ def run_scenario(
     try:
         # --- controller ----------------------------------------------------- #
         controller_port = _free_port()
-        ctrl_env = dict(os.environ)
-        ctrl_env.update({
-            "TERMINI_HOST": "127.0.0.1",
-            "TERMINI_PORT": str(controller_port),
-            "TERMINI_DB_PATH": str(tmp / "controller.db"),
-            "TERMINI_BOOTSTRAP_TOKEN": cfg["controller"]["bootstrap_token"],
-            "TERMINI_PROJECT_TOKEN": cfg["controller"]["project_token"],
-            "TERMINI_MIN_REDACTOR_VERSION": "3",
-            "PYTHONUNBUFFERED": "1",
-        })
+        ctrl_env = controller_env(cfg, controller_port, tmp / "controller.db")
         controller = _popen([sys.executable, "-m", "app.main"], tmp / "controller.log", env=ctrl_env,
                             cwd=CONTROLLER_DIR)
         ctrl_url = f"http://127.0.0.1:{controller_port}"

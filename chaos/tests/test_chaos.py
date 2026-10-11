@@ -10,7 +10,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from chaos import common, config, lxd_stub, node_sim, reference_operator  # noqa: E402
+from chaos import common, config, lxd_stub, node_sim, reference_operator, run  # noqa: E402
 
 NODE = {
     "hostname": "node-chaos",
@@ -59,6 +59,35 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(cfg["node"]["cadence_ms"], 1500)
         self.assertEqual(cfg["scenarios"]["oom"]["duration_s"], 5)
         self.assertEqual(config.controller_url(cfg), "http://10.0.0.9:9999")
+
+
+class TestControllerEnv(unittest.TestCase):
+    """The harness controller must not run a second operator.
+
+    Regression: TERMINI_OPERATOR_ENABLED defaults to *true* in the controller, so
+    a controller that leaves it unset runs its own in-process operator, which
+    takes the single-owner lease. Any external OPERATOR_CMD operator then stands
+    by forever and the scenario fails `remediation_command_issued` with count=0
+    -- the signature of "the documented workflow is broken".
+    """
+
+    def test_in_process_operator_is_disabled(self):
+        env = run.controller_env(config.load(), 1234, "/tmp/x.db", base_env={})
+        self.assertEqual(env["TERMINI_OPERATOR_ENABLED"], "false")
+
+    def test_caller_env_is_preserved_and_not_mutated(self):
+        base = {"TERMINI_OPERATOR_ENABLED": "true", "UNRELATED": "keep"}
+        env = run.controller_env(config.load(), 1234, "/tmp/x.db", base_env=base)
+        self.assertEqual(env["TERMINI_OPERATOR_ENABLED"], "false")  # overridden
+        self.assertEqual(env["UNRELATED"], "keep")                  # inherited
+        self.assertEqual(base["TERMINI_OPERATOR_ENABLED"], "true")  # caller untouched
+
+    def test_expected_keys_are_set(self):
+        env = run.controller_env(config.load(), 4321, "/tmp/y.db", base_env={})
+        self.assertEqual(env["TERMINI_HOST"], "127.0.0.1")
+        self.assertEqual(env["TERMINI_PORT"], "4321")
+        self.assertEqual(env["TERMINI_DB_PATH"], "/tmp/y.db")
+        self.assertEqual(env["TERMINI_MIN_REDACTOR_VERSION"], "3")
 
 
 class TestSeriesRules(unittest.TestCase):
