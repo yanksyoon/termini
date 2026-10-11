@@ -95,6 +95,24 @@ Evidence: `t_23a76b8a` (governance-verdict-memo + evidence-telemetry-body).
 - **`network_downloads_at_boot` is a hardcoded literal** (`t_74e496a2`) — fix PR #72
   was auto-reverted by ci-watchdog; until re-landed, the "zero-network boot" measurement
   is self-reported rather than measured.
+- **Bulk cross-node transfer collapses under heavy packet loss (finding G2/5) —
+  RESCOPED, not fixed.** Measured with the W7 net harness (`scenario_loss`, `tc netem
+  loss 30%` on node A's underlay, re-run against a fixed `node_ip()`):
+
+  | | baseline | 30 % loss |
+  |---|---|---|
+  | 64 MB A→C TCP transfer | 64 MB in 0.022 s | **1.66 MB in 41 s (2.5 %)**, then `BrokenPipeError` |
+  | inference calls | 20/20 ok, 2.32 s mean | **15/15 ok**, 2.23 s mean |
+
+  Accepted rather than engineered because **the demo does not depend on bulk
+  transfer**: small traffic is unaffected (15/15 inference calls under the same
+  loss, latency indistinguishable from baseline), and no product or deck claim
+  asserts bulk-transfer resilience. What *does* use bulk transfer is **LXD image
+  pre-warm** (`infra/images/prewarm-images.sh` — an `lxc image import` over the
+  underlay), so this is the boundary to revisit before claiming degraded-network
+  pre-warm. 30 % sustained loss is a tail case on wired underlay; the realistic
+  trigger is the MTU mismatch named in `project.md`, which produces exactly this
+  small-passes / bulk-fails signature.
 
 ## Owners key
 
