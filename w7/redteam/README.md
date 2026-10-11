@@ -79,3 +79,19 @@ host CPU to run the resident `llama.cpp` (as the emulated demo does).
   not corrupt a run.
 - Every `tc` qdisc is removed in a `finally` block; every ephemeral LXD copy is
   deleted after its run.
+- **`net_chaos.py` defaults to `CONTROLLER = http://127.0.0.1:8085`, and that port
+  is often held by a LEAKED controller process from an earlier run.** Such a
+  process can be days old and therefore running code that predates routes the
+  harness calls — e.g. `/v1/telemetry/recent` returns **404** against a stale
+  controller and **200** against a current one. The failure looks like a product
+  bug and is not. Before trusting a net run, confirm the port's process age
+  (`ps -eo pid,etime,cmd | grep app.main`) and prefer passing `--env` with a
+  controller this run started. The boot phase is immune: it starts its own
+  controller on a dedicated port.
+- **`node_ip()` must strip LXD's CSV quoting.** `lxc list --format csv -c 4`
+  returns every IPv4 a container holds and quotes the field when there is more
+  than one, so a node carrying a guest bridge yields
+  `"10.20.3.1 (eth0), 10.14.100.11 (eth0)"`. A naive whitespace split returns
+  `"10.20.3.1` — quote included and the wrong subnet — which becomes a hostname and
+  fails DNS. The harness reports that inside well-formed JSON, so a broken run looks
+  like a measurement rather than an error. Select the `10.14.100.0/24` underlay.

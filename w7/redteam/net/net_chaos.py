@@ -48,11 +48,26 @@ def lxexec(node: str, args: list[str], timeout: int = 120) -> subprocess.Complet
 
 
 def node_ip(name: str) -> str:
+    """Return the node's UNDERLAY address, not whichever address LXD lists first.
+
+    `lxc list --format csv -c 4` returns every IPv4 a container holds, and
+    LXD QUOTES the field when there is more than one — so a node that also
+    carries a guest-bridge address (e.g. Node C on 10.20.3.1/24) yields a
+    field like `"10.20.3.1 (eth0), 10.14.100.11 (eth0)"`. The previous
+    whitespace-split returned `"10.20.3.1`, quote included, which then became
+    a hostname: every net-redteam probe died with `Name or service not known`
+    and the whole packet-loss/latency phase produced no valid measurement.
+
+    Strip the CSV quoting, and prefer the underlay subnet: the harness routes
+    A->C over it (D2), so the guest-bridge address is never the right target.
+    """
     p = sh(["lxc", "list", name, "--format", "csv", "-c", "4"])
-    for tok in p.stdout.replace(",", " ").split():
-        if tok.count(".") == 3:
-            return tok
-    return ""
+    cleaned = p.stdout.replace(",", " ").replace('"', " ")
+    ips = [t for t in cleaned.split() if t.count(".") == 3]
+    for ip in ips:
+        if ip.startswith("10.14.100."):      # the shared underlay (D2)
+            return ip
+    return ips[0] if ips else ""
 
 
 def push(local: pathlib.Path, node: str, dest: str) -> None:
