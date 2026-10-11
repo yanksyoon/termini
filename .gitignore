@@ -57,3 +57,27 @@ terraform.tfvars
 crash.log
 infra/gcp/inventory.json
 
+# --- local toolchain installs (this repo root is a home directory) ---
+# An operator-installed gcloud/CLI tree lives here and is hundreds of MB; it must
+# never be staged. Any cloud SDK installed into $HOME lands in the repo.
+google-cloud-sdk/
+.gcloudignore
+
+# --- demo / harness run artifacts ---
+# chaos/acceptance/seeder output. `*.log` already covers the plain logs, but the
+# JSONL audit dumps and summaries are not .log files.
+chaos-logs/
+scripts/timing/evidence/
+*.tfplan
+tfplan
+
+# --- shell / network runtime state ---
+# Accumulated by tooling (GPG agent sockets, NSS cert DBs, snap). Runtime state,
+# never source.
+.gnupg/
+.pki/
+snap/
+.bashrc.backup
+.bashrc.*.bak
+
+
