@@ -491,16 +491,26 @@ to any execution path in the demo — future/day-2):
 | `node.reboot` | `required` |
 | `agent.dispatch_task`, `agent.cancel_task` (future) | `auto` |
 
-**Frozen threshold-rule → action mapping** (from `node-telemetry.md` §5; the AI
-operator's executor issues these LXD REST actions directly — they are **not** `vm.*`
-command verbs):
+**Approval is keyed to the action, not to a fixed rule → action table.**
 
-| rule_id | action | LXD action | approval |
-|---------|--------|------------|----------|
-| `oom-guard-01` | restart heaviest workload | `instance.restart` | `auto` (executor) |
-| `disk-fail-01` | stop heaviest workload | `instance.stop` | `auto` (executor) |
-| `disk-degrade-01` | stop heaviest workload | `instance.stop` | `auto` (executor) |
-| `gpu-oos-01` | alert only (surfaced, no autonomous action) | (none) | — |
+The table below is the *policy* the demo expects the decision step to produce — the
+mapping the reference deterministic provider implements, and therefore the outcome a
+verifier asserts. It is no longer a contract on the mechanism: the decision step may be
+a declarative playbook or a model (`governance.md` §7.3), so what is frozen is the
+**approval class of each action**, looked up by action rather than by rule.
+
+| action | LXD action | approval | demo policy (reference provider) |
+|--------|------------|----------|----------------------------------|
+| restart heaviest workload | `instance.restart` | `auto` (executor) | `oom-guard-01` |
+| stop heaviest workload | `instance.stop` | `auto` (executor) | `disk-fail-01`, `disk-degrade-01` |
+| surface only, no autonomous action | (none) | — | `gpu-oos-01` |
+
+Because approval is looked up by action, a decider that selects a different action for a
+fault cannot thereby escalate its own privilege — the new action's class is whatever the
+table above says it is. An action outside the allowlist is rejected before it ever
+reaches this table (`governance.md` §7.3), so this table only ever governs allowlisted
+actions. The dashboard surfaces `decision_source` (`playbook` | `model`) on each
+remediation so an operator can see which decider chose it.
 
 **Approve** — `POST /v1/projects/{project_id}/remediations/{command_id}/approve`
 
