@@ -40,7 +40,7 @@ answers — lives there.
 ### 1. System overview
 
 A GCP control plane (controller VM) and the customer premises (Nodes A/B compute +
-Node C GPU inference) are joined by a single **outbound-only mTLS control
+Node C CPU inference) are joined by a single **outbound-only mTLS control
 channel**; the controller's **governance gate** sits on the ingest path.
 
 ```text
@@ -112,10 +112,15 @@ Telemetry crosses a threshold, the operator's decision step selects a
 pre-approved action, and the remediation lands with a full audit trail — while a
 non-conforming batch is rejected fail-closed at the governance gate
 ([`docs/architecture.md`](docs/architecture.md) §4.3–§4.4). The decision step is a
-seam: the reference implementation is a deterministic playbook, and the same seam
-admits a model, constrained by the command allowlist and a mandatory fail-closed
-fallback to the deterministic provider
-([`docs/contracts/governance.md`](docs/contracts/governance.md) §7.3).
+seam, and **the shipped demo runs it model-driven**: `oom-guard-01` and
+`disk-degrade-01` route through open-weights Gemma on Cloud Run GPU, which picks
+the action under a hard constraint stack — a GBNF grammar that makes an
+out-of-allowlist command unencodable, a param/guardrail validator, and a
+confidence gate — with a **mandatory deterministic fallback** that records the
+fallback and its reason. The deterministic playbook provider remains the default
+and the fallback; which decider chose a given action is recorded per-decision in
+`decision_source` ([`docs/contracts/governance.md`](docs/contracts/governance.md) §7.3,
+[`docs/contracts/operator-decision.md`](docs/contracts/operator-decision.md)).
 
 ```text
    telemetry (C0/C1, 1 s cadence)
@@ -197,6 +202,50 @@ make chaos SCENARIO=oom
 
 Details and environment knobs: [console/README.md](console/README.md),
 [controller/README.md](controller/README.md), [chaos/README.md](chaos/README.md).
+
+---
+
+## Deployed stack (live on GCP)
+
+The demo also runs **deployed**, not only composed locally. Everything below is
+live in project `termini-510609` and serves the same contracts as the local
+compose — same controller, same decision step, same audit trail.
+
+| Component | Where | Endpoint |
+|---|---|---|
+| Dashboard | Firebase Hosting | `https://termini-510609.web.app` |
+| Decision model | Cloud Run GPU — 1× NVIDIA L4, `asia-southeast1` | `https://termini-gemma-tylgzp65ma-as.a.run.app` (authenticated) |
+| Controller | GCE VM `termini-controller` — `n2-standard-2`, `asia-south1-a` | `https://34-93-190-64.sslip.io` |
+| Telemetry seeder | systemd on the controller VM | — (fabricates `demo-node-a` / `demo-node-c`) |
+| Model weights | GCS | `gs://termini-510609-models/gemma-3-4b-it/` (8.64 GB) |
+
+The operator's decision step runs **model-driven** there
+(`TERMINI_OPERATOR_DECISION_MODE=model`): a fired threshold is diagnosed and
+remediated by open-weights **Gemma 3 4B** served by vLLM on an L4. The model
+chooses the action, the guardrail stack constrains it, and the deterministic
+provider remains the mandatory fallback — which decider acted is recorded
+per-decision in `decision_source`.
+
+Two deliberate departures from the "everything on the customer's metal" shape,
+both recorded rather than implied:
+
+- **The model is an external GCP call, not on-prem.** Node C is CPU-only
+  (`n2-standard-8`, no accelerator), where a decision costs a measured 50–60 s;
+  an L4 brings it to seconds. This is the governed **`Egress B`** path of
+  [`docs/contracts/governance.md`](docs/contracts/governance.md) §7.1 — the
+  operator loop only, over C0 telemetry, under the static versioned prompt
+  template of §7.2. **C2 never egresses**, which is the property that matters.
+- **The controller is a GCE VM, not Cloud Run** — it persists to SQLite, and
+  Cloud Run's filesystem is ephemeral and per-instance, which would break the
+  single-owner operator lease and leave audit provenance unverifiable across
+  restarts. Issue #96 (closed) records the reasoning and what a migration would
+  require.
+
+Compute Engine is still GCP, so the deployment requirement (Cloud Run / GCP /
+Firebase) is met without a closed-model API.
+
+Deploy scripts and the full runbook: [`infra/cloudrun/README.md`](infra/cloudrun/README.md).
+The vCPU budget that constrains the fleet: [`infra/gcp/README.md`](infra/gcp/README.md).
 
 ---
 
