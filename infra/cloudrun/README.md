@@ -24,6 +24,41 @@ design.
 4. `setup-tls.sh` — Caddy + Let's Encrypt in front of the controller.
 5. `setup-operator-model.sh` — `inference-proxy.py` plus a systemd drop-in that
    flips the operator to model-driven decisions.
+6. `setup-lxd-stub.sh` — give the operator a reachable LXD target so
+   remediations actually execute. **Without this step the demo decides
+   correctly and then fails at the last hop.** See below.
+7. `setup-seeder-vm.sh` — run the demo seeder beside the controller so the demo
+   does not depend on an operator's workstation staying up.
+
+## The operator needs a reachable LXD target
+
+Every step of the loop worked while nothing was actually remediating:
+
+```
+remediation_audits: result='error'
+                    detail='URLError: <urlopen error [Errno 111] Connection refused>'
+```
+
+The rule fired, the decision was made, the guardrail validated it, and the
+executor tried to `PUT /1.0/instances/<name>/state` — against an endpoint that
+did not exist. On a real cluster the nodes serve LXD on `10.10.0.11-13:8443`;
+`setup-lxd-stub.sh` points the operator at the repo's own `chaos/lxd_stub.py`,
+which records each call as JSONL so the demo has evidence of what was asked:
+
+```
+PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state
+body: {"action": "restart", "force": true, "timeout": 30}
+```
+
+Two things bite here:
+
+- **Ship the whole `chaos/` package, not just `lxd_stub.py`.** The stub imports
+  `from chaos import common`; a lone copy dies with
+  `ModuleNotFoundError: No module named 'chaos'` and the unit restarts forever
+  without ever binding its port (a `systemctl is-active` of `activating` with a
+  refused probe is the signature).
+- Point `TERMINI_LXD_BASE_URL` at the stub **and restart the controller**; the
+  loop reads it at startup.
 
 ## Why weights are staged instead of pulled at startup
 
