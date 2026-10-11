@@ -62,6 +62,18 @@ def _require_nonempty(name: str) -> str:
     return raw.strip()
 
 
+def _decision_mode() -> str:
+    """Operator decision mode (operator-decision.md §12/§13): deterministic | model."""
+    raw = os.environ.get("TERMINI_OPERATOR_DECISION_MODE", "deterministic").strip()
+    mode = raw or "deterministic"
+    if mode not in ("deterministic", "model"):
+        raise RuntimeError(
+            f"TERMINI_OPERATOR_DECISION_MODE must be 'deterministic' or 'model', "
+            f"got {raw!r}"
+        )
+    return mode
+
+
 @dataclass(frozen=True)
 class Config:
     host: str
@@ -107,6 +119,12 @@ class Config:
     cadence_report_s: float
     operator_lease_ttl_s: float      # single-owner lease TTL (migration 0007)
     playbooks_dir: str
+    # Model-driven decision step (operator-decision.md §13).
+    operator_decision_mode: str      # deterministic (default) | model
+    operator_decision_timeout_s: float
+    operator_decision_min_confidence: float
+    operator_decision_max_fallbacks: int
+    operator_decision_fallback_cooldown_s: float
     # Detection thresholds (config, not code — task requirement).
     oom_ram_pct: float
     oom_clear_pct: float
@@ -210,6 +228,11 @@ class Config:
             cadence_report_s=_float_env("TERMINI_OPERATOR_CADENCE_REPORT_S", 30.0),
             operator_lease_ttl_s=_float_env("TERMINI_OPERATOR_LEASE_TTL_S", 10.0),
             playbooks_dir=playbooks_dir,
+            operator_decision_mode=_decision_mode(),
+            operator_decision_timeout_s=_float_env("TERMINI_OPERATOR_DECISION_TIMEOUT_S", 30.0),
+            operator_decision_min_confidence=_float_env("TERMINI_OPERATOR_DECISION_MIN_CONFIDENCE", 0.5),
+            operator_decision_max_fallbacks=_int_env("TERMINI_OPERATOR_DECISION_MAX_FALLBACKS", 3),
+            operator_decision_fallback_cooldown_s=_float_env("TERMINI_OPERATOR_DECISION_FALLBACK_COOLDOWN_S", 300.0),
             oom_ram_pct=_float_env("TERMINI_OOM_RAM_PCT", 95.0),
             oom_clear_pct=_float_env("TERMINI_OOM_CLEAR_PCT", 90.0),
             oom_consecutive=_int_env("TERMINI_OOM_CONSECUTIVE", 2),

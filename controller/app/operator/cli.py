@@ -41,7 +41,7 @@ if str(_CONTROLLER_DIR) not in sys.path:
     sys.path.insert(0, str(_CONTROLLER_DIR))
 
 from app import ulid  # noqa: E402
-from app.operator import detect, executor, playbook, triggers  # noqa: E402
+from app.operator import decision, detect, executor, playbook, triggers  # noqa: E402
 
 
 def _http_json(method: str, url: str, body=None, token: str | None = None,
@@ -104,6 +104,7 @@ def run_operator(
     audit_out: str | None,
     limit: int,
     state_file: str | None = None,
+    decision_mode: str = "deterministic",
     log=print,
 ) -> dict:
     recent_url = f"{controller_url.rstrip('/')}/v1/telemetry/recent?node={node_id}&limit={limit}"
@@ -117,6 +118,19 @@ def run_operator(
     started = time.monotonic()
     polls = 0
     standby = False
+
+    # Decision seam (§2/§14.1): deterministic by default; `model` opts into the
+    # model provider with the mandatory deterministic fallback.
+    det_provider = decision.DeterministicDecisionProvider(
+        playbooks=playbooks, instance_names=instance_names,
+        default_instance_name=default_instance_name,
+    )
+    provider = det_provider
+    if decision_mode == "model":
+        provider = decision.ModelDecisionProvider(
+            deterministic=det_provider, instance_names=instance_names,
+            default_instance_name=default_instance_name,
+        )
 
     while time.monotonic() - started < duration_s:
         polls += 1
@@ -163,7 +177,18 @@ def run_operator(
             # chooser/selection step is where the wall-clock cost actually goes,
             # so remediation_latency_s must span chooser + execute (t_2c00b7fe).
             t_start = time.monotonic()
-            action = playbook.choose(event, playbooks, instance_names, default_instance_name)
+            ctx = decision.DecisionContext(
+                event=event,
+                state=dict(samples[-1]) if samples else {},
+                evidence=list(samples[-20:]) if samples else [],
+                instances=(samples[-1].get("lxd_instances", []) if samples else []),
+                instance_names=instance_names,
+                default_instance_name=default_instance_name,
+                allowed_actions=list(decision.ACTION_IDS),
+                project_id="",
+            )
+            decision_result = provider.decide(event, ctx)
+            action = decision_result.action
             if action is None:
                 log(f"[operator] {event.rule_id} fired but no playbook action")
                 continue
@@ -186,6 +211,8 @@ def run_operator(
                 "action": action.kind,
                 "action_params": action.params,
                 "reason": action.reason,
+                "decision_source": decision_result.source,
+                "fallback_reason": decision_result.fallback_reason,
                 "dry_run": dry_run,
                 "result": result.result,
                 "lxd_method": result.method,
@@ -226,6 +253,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--audit-out", default=None, help="append audit records (JSONL) here")
     ap.add_argument("--state-file", default=None,
                     help="persist trigger latch state (JSON) across restarts")
+    ap.add_argument("--decision-mode", default="deterministic",
+                    choices=["deterministic", "model"],
+                    help="decision provider: deterministic (default) | model (with deterministic fallback)")
     args = ap.parse_args(argv)
 
     try:
@@ -262,6 +292,7 @@ def main(argv: list[str] | None = None) -> int:
         audit_out=args.audit_out,
         limit=args.limit,
         state_file=args.state_file,
+        decision_mode=args.decision_mode,
     )
     return 0
 

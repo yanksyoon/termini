@@ -11,9 +11,23 @@ Submodules:
   loop      the in-process orchestrating thread (poll -> detect -> choose -> execute -> audit)
   cli       standalone operator process (poll /v1/telemetry/recent, execute, audit JSONL)
 """
+from .decision import (  # noqa: F401
+    DecisionContext,
+    DecisionProvider,
+    DecisionResult,
+    DeterministicDecisionProvider,
+    Guardrail,
+    ModelDecisionProvider,
+    build_decision_provider,
+)
 from .detect import Thresholds
 from .executor import LxdExecutor
 from .loop import OperatorLoop
 from .triggers import TriggerEngine
 
-__all__ = ["Thresholds", "LxdExecutor", "OperatorLoop", "TriggerEngine"]
+__all__ = [
+    "Thresholds", "LxdExecutor", "OperatorLoop", "TriggerEngine",
+    "DecisionContext", "DecisionProvider", "DecisionResult",
+    "DeterministicDecisionProvider", "ModelDecisionProvider",
+    "Guardrail", "build_decision_provider",
+]

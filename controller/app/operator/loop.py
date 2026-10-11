@@ -34,7 +34,7 @@ import threading
 import time
 
 from .. import db, store, ulid
-from . import detect, executor, playbook, triggers
+from . import decision, detect, executor, triggers
 from . import store as opstore
 from .models import ExecResult, RemediationAction
 
@@ -53,6 +53,7 @@ class OperatorLoop(threading.Thread):
         default_instance_name: str = "agent",
         lxd: executor.LxdExecutor | None = None,
         logs=None,  # OperatorLogs sink: the dashboard's live AI-operator stream (see below)
+        provider: decision.DecisionProvider | None = None,  # decision seam (§2)
     ):
         super().__init__(name="operator-loop", daemon=True)
         self.cfg = cfg
@@ -85,6 +86,28 @@ class OperatorLoop(threading.Thread):
         self.owner_id = f"loop:{project['id']}"
         self.lease_ttl_s = max(1.0, float(getattr(cfg, "operator_lease_ttl_s", 10.0)))
         self._standby_logged = False
+
+        # Decision step (operator-decision.md §2/§8/§10/§12). The loop no longer
+        # calls playbook.choose directly; it calls provider.decide(event, ctx).
+        self._deterministic = decision.DeterministicDecisionProvider(
+            playbooks=playbooks, instance_names=self.instance_names,
+            default_instance_name=self.default_instance_name,
+        )
+        self.decision_mode = (getattr(cfg, "operator_decision_mode", "deterministic")
+                              or "deterministic")
+        self.decision_max_fallbacks = int(getattr(
+            cfg, "operator_decision_max_fallbacks", 3))
+        self.decision_fallback_cooldown_s = float(getattr(
+            cfg, "operator_decision_fallback_cooldown_s", 300.0))
+        self.allowed_actions = list(getattr(cfg, "operator_decision_allowed_actions",
+                                            None) or list(decision.ACTION_IDS))
+        self.provider = provider or self._deterministic
+        # Inject the deterministic fallback into a model provider so a fallback
+        # always produces the exact playbook action (never an empty playbook).
+        if isinstance(self.provider, decision.ModelDecisionProvider) \
+                and self.provider.deterministic is None:
+            self.provider.deterministic = self._deterministic
+
         self._stop = threading.Event()
         self._polls = 0
         self._max_lag_s = 0.0
@@ -185,12 +208,13 @@ class OperatorLoop(threading.Thread):
 
         produced: list[dict] = []
         for event in events:
-            audit = self._handle_event(conn, node_id, event, now)
+            ctx = self._build_context(event, samples_asc)
+            audit = self._handle_event(conn, node_id, event, now, ctx)
             if audit is not None:
                 produced.append(audit)
         return produced
 
-    def _handle_event(self, conn, node_id: str, event, now: str) -> dict | None:
+    def _handle_event(self, conn, node_id: str, event, now: str, ctx: decision.DecisionContext) -> dict | None:
         # Detection latency: fault-onset (first breaching sample) -> trigger fire.
         detect_lat = triggers.detection_latency_s(event)
         log.info("node %s rule %s FIRED: detection_latency=%ss (breach=%s -> fired=%s)",
@@ -208,9 +232,8 @@ class OperatorLoop(threading.Thread):
         # is included in remediation_latency_s (t_2c00b7fe). A model-driven
         # chooser can dominate the wall-clock cost.
         remed_start = time.monotonic()
-        action = playbook.choose(
-            event, self.playbooks, self.instance_names, self.default_instance_name
-        )
+        result = self._decide(conn, node_id, event, ctx, now)
+        action = result.action
         if action is None:
             log.info("event %s (%s) has no playbook action; recorded only",
                      event.rule_id, node_id)
@@ -218,7 +241,11 @@ class OperatorLoop(threading.Thread):
             return None
 
         decision_id = ulid.new_ulid()
-        opstore.insert_decision(conn, decision_id, event, action, now)
+        opstore.insert_decision(
+            conn, decision_id, event, action, now,
+            source=result.source, confidence=result.confidence,
+            fallback_reason=result.fallback_reason,
+        )
 
         target = action.params.get("instance_name", "")
         idem_key = opstore.idempotency_key_for(
@@ -262,7 +289,76 @@ class OperatorLoop(threading.Thread):
             "detection_latency_s": detect_lat, "remediation_latency_s": remed_lat,
         }
 
-    def _emit_log(self, conn, node_id: str, message: str) -> None:
+    # ---------------------------------------------------------------- decision
+    def _build_context(self, event, samples_asc: list[dict]) -> decision.DecisionContext:
+        """Assemble the C0 decision context from the event + latest telemetry."""
+        evidence = samples_asc[-opstore.EVIDENCE_SAMPLE_CAP:]
+        latest = samples_asc[-1] if samples_asc else {}
+        instances = latest.get("lxd_instances", []) if isinstance(latest, dict) else []
+        return decision.DecisionContext(
+            event=event,
+            state=dict(latest) if isinstance(latest, dict) else {},
+            evidence=list(evidence),
+            instances=list(instances) if isinstance(instances, list) else [],
+            instance_names=self.instance_names,
+            default_instance_name=self.default_instance_name,
+            allowed_actions=self.allowed_actions,
+            project_id=self.project["id"],
+        )
+
+    def _decide(self, conn, node_id: str, event, ctx: decision.DecisionContext,
+                now: str) -> decision.DecisionResult:
+        """Run the decision step, applying the fallback-streak cap (§10.2)."""
+        # Deterministic mode: never construct a model request (§12).
+        if self.decision_mode != "model":
+            return self._deterministic.decide(event, ctx)
+
+        state = opstore.load_decision_fallback_state(conn, node_id, event.rule_id)
+        # Forced-deterministic cooldown: skip the model path entirely for this
+        # (node, rule), emit one warn line at entry, and use deterministic.
+        if decision.in_forced_cooldown(state, now):
+            log.warning("node %s rule %s: forced deterministic (fallback cooldown)",
+                        node_id, event.rule_id)
+            self._emit_log(conn, node_id,
+                           f"{event.rule_id}: forced deterministic (fallback cooldown)",
+                           severity="warn")
+            return self._deterministic.decide(event, ctx)
+
+        result = self.provider.decide(event, ctx)
+
+        if result.source == "model":
+            new_state, _ = decision.transition_fallback_state(
+                state, "success", now, self.decision_max_fallbacks,
+                self.decision_fallback_cooldown_s,
+            )
+            opstore.save_decision_fallback_state(
+                conn, node_id, event.rule_id, new_state["fallback_streak"],
+                new_state["forced_until"], now,
+            )
+        elif result.source == "fallback":
+            new_state, forced = decision.transition_fallback_state(
+                state, "fallback", now, self.decision_max_fallbacks,
+                self.decision_fallback_cooldown_s,
+            )
+            opstore.save_decision_fallback_state(
+                conn, node_id, event.rule_id, new_state["fallback_streak"],
+                new_state["forced_until"], now,
+            )
+            log.warning("node %s rule %s: model decision fell back (reason=%s)",
+                        node_id, event.rule_id, result.fallback_reason)
+            self._emit_log(conn, node_id,
+                           f"{event.rule_id}: fallback ({result.fallback_reason}) -> deterministic",
+                           severity="warn")
+            if forced:
+                self._emit_log(
+                    conn, node_id,
+                    f"{event.rule_id}: fallback cap reached; forcing deterministic for "
+                    f"{self.decision_fallback_cooldown_s:.0f}s",
+                    severity="warn",
+                )
+        return result
+
+    def _emit_log(self, conn, node_id: str, message: str, severity: str = "info") -> None:
         """Publish one AI-operator line to the dashboard stream (dashboard.md §2).
 
         No-op when the loop was constructed without a sink (unit tests / CLI).
@@ -274,7 +370,7 @@ class OperatorLoop(threading.Thread):
         try:
             self.logs.append(
                 conn, self.project["id"],
-                node_id=node_id, severity="info", actor="ai_operator",
+                node_id=node_id, severity=severity, actor="ai_operator",
                 message=message, remediation=None,
             )
         except Exception:  # noqa: BLE001
