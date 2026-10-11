@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 
 from . import CheckContext, result, run
 
@@ -55,25 +56,52 @@ def check_w6_1(ctx: CheckContext) -> dict:
 
 def check_w6_2(ctx: CheckContext) -> dict:
     criterion = "the timed dry run passes end-to-end"
-    method = "look for a committed timed dry-run artifact; independently report its absence (dry run is a scheduled, not-yet-run task)"
-    root = ctx.repo_root
+    method = ("read the committed timed dry-run record "
+              "(scripts/timing/evidence/<ts>/runs.jsonl) and report its per-run verdict")
 
-    # Search for a dry-run artifact anywhere plausible in the repo.
-    candidates = []
-    for dirpath, _dirs, files in os.walk(root):
-        if ".git" in dirpath or ".hermes" in dirpath:
+    # The record is `runs.jsonl`: one JSON object per timed run
+    # ({"run": n, "total_s": s, "status": "PASS"|"FAIL", "cold_operator": ...}).
+    #
+    # This check previously searched for FILES WHOSE NAME CONTAINS "dry", which
+    # only ever matched the dry-run SCRIPT (scripts/timing/demo-dry-run.py) and
+    # never the record. That made it structurally unable to pass: any 'dry'-named
+    # file present -> "fail", none -> "skipped". It reported an open blocker that
+    # did not exist, while three PASSing timed runs sat on disk unread.
+    root = pathlib.Path(ctx.repo_root)
+    ev = root / "scripts" / "timing" / "evidence"
+    records = sorted(ev.glob("*/runs.jsonl")) if ev.is_dir() else []
+
+    runs: list[dict] = []
+    used_name = ""
+    for p in reversed(records):                      # newest evidence dir first
+        try:
+            parsed = [json.loads(line) for line in
+                      p.read_text(encoding="utf-8").splitlines() if line.strip()]
+        except Exception:                            # noqa: BLE001 — try the next
             continue
-        for f in files:
-            if "dry" in f.lower() or "dry-run" in f.lower() or "dryrun" in f.lower():
-                candidates.append(os.path.join(dirpath, f))
+        if parsed:
+            runs, used_name = parsed, p.parent.name
+            break
 
-    raw = json.dumps({"dry_run_artifacts": candidates}, indent=2)
-    art = ctx.ev.record("W6.2", "W6.2 timed dry run", "search repo for dry-run artifact", raw)
+    raw = json.dumps({
+        "record_files": [str(p.relative_to(root)) for p in records],
+        "used": used_name or None,
+        "runs": runs,
+    }, indent=2)
+    art = ctx.ev.record("W6.2", "W6.2 timed dry run record",
+                        "read scripts/timing/evidence/*/runs.jsonl", raw)
 
-    if candidates:
-        return result("W6.2", WS, criterion, method, "fail",
-                      f"dry-run artifacts found but no pass/fail run record: {candidates}",
-                      art, reason="a dry-run artifact exists but no executed pass/fail record was found")
-    return result("W6.2", WS, criterion, method, "skipped",
-                  "no timed dry-run artifact present in the repo",
-                  art, reason="timed end-to-end dry run not yet executed (t_3bb56d97 'Run and time the full end-to-end demo dry run' is todo)")
+    if not runs:
+        return result("W6.2", WS, criterion, method, "skipped",
+                      "no timed dry-run record found under scripts/timing/evidence/",
+                      art, reason="timed end-to-end dry run not yet executed (t_3bb56d97)")
+
+    statuses = [str(r.get("status", "")).upper() for r in runs]
+    totals = [r["total_s"] for r in runs if isinstance(r.get("total_s"), (int, float))]
+    summary = (f"{len(runs)} timed run(s) from {used_name}: statuses={statuses}"
+               + (f", total_s min={min(totals):.1f} max={max(totals):.1f}" if totals else ""))
+
+    if all(s == "PASS" for s in statuses):
+        return result("W6.2", WS, criterion, method, "pass", summary, art)
+    return result("W6.2", WS, criterion, method, "fail", summary, art,
+                  reason=f"timed dry-run record contains non-PASS run(s): {statuses}")
