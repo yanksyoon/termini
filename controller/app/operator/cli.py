@@ -153,13 +153,16 @@ def run_operator(
         for event in events:
             fired.add(event.rule_id)
             detect_lat = triggers.detection_latency_s(event)
+            # Start the remediation clock BEFORE the chooser: a model-driven
+            # chooser/selection step is where the wall-clock cost actually goes,
+            # so remediation_latency_s must span chooser + execute (t_2c00b7fe).
+            t_start = time.monotonic()
             action = playbook.choose(event, playbooks, instance_names, default_instance_name)
             if action is None:
                 log(f"[operator] {event.rule_id} fired but no playbook action")
                 continue
-            t_fire = time.monotonic()
             result = lxd.execute(action)
-            remed_lat = round(time.monotonic() - t_fire, 3)
+            remed_lat = round(time.monotonic() - t_start, 3)
             entry = {
                 "ts": now,
                 "node_id": node_id,

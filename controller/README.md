@@ -215,7 +215,8 @@ Detection is **stateful and persisted**, not an in-memory threshold check:
 - **Detection latency is measured and logged.** Every fire records
   `breach_started_at` (the first breaching sample's timestamp) and `fired_at`
   (ms precision), and every remediation logs `detection_latency_s`
-  (`breach → fire`) and `remediation_latency_s` (`fire → LXD command`). The
+  (`breach → fire`) and `remediation_latency_s` (`chooser start → remediation
+  completed`, including chooser/selection time). The
   standalone CLI writes both to its `--audit-out` JSONL.
 
 The same engine runs in-process (`app/operator/loop.py`, SQLite-backed) and
