@@ -5,7 +5,7 @@
 - Status: **FROZEN** for the 5-day build. Changes require a comment on the task and a matching update to `docs/architecture.md` §4.4.
 - Date: 2026-10-11
 - Audience: controller engineers, inference/adapter engineers, verifier.
-- Related: `controller-api.md` (§2 governance hooks, §5 guardrail, §6 command channel, §8 deterministic fast-path), `agent-runtime.md` (§8 inference service, §14.1 intent extraction), `governance.md` (§7.2 static prompt template, §7.3 model-output-is-advisory, §9 hooks), `node-telemetry.md` (§4 telemetry schema, §5 trigger linkage), `architecture.md` §4.4.
+- Related: `controller-api.md` (§2 governance hooks, §5 guardrail, §6 command channel, §8 deterministic fast-path), `agent-runtime.md` (§8 inference service, §14.1 intent extraction), `governance.md` (§7.2 static prompt template, §7.3 model output is constrained, not free-form, §9 hooks), `node-telemetry.md` (§4 telemetry schema, §5 trigger linkage), `architecture.md` §4.4.
 
 This document is the authoritative interface spec for making the operator's
 **decision step** (telemetry trigger → remediation action) optionally

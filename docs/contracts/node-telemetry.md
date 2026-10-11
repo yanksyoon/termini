@@ -334,6 +334,14 @@ restart here is *inside* the allowlist and outside **policy**. Nothing in the ga
 rejects it. A verifier asserting this rule must therefore check the outcome (alert
 raised, no command issued), not assume the gate caught it.
 
+Detection of `gpu-oos-01` is currently realised outside the operator loop: the
+`inference.server_up` fault is surfaced by the controller's health layer
+(`controller/app/health.py`), and `detect.py` `RULE_IDS` implements only
+`oom-guard-01`, `disk-fail-01`, `disk-degrade-01`, `latency-01`. Wiring `gpu-oos-01`
+as a first-class operator trigger — firing the wake-up signal and recording a
+*surface only, no autonomous action* decision — is a day-2 item, not part of the
+frozen build.
+
 ---
 
 ## 6. Egress boundary (summary)
