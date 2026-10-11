@@ -469,10 +469,14 @@ dashboard's live AI-operator panel therefore shows the decision source inline.
 
 ## 12. Versioning & compatibility (deterministic remains selectable)
 
-- New config `TERMINI_OPERATOR_DECISION_MODE` ∈ `deterministic` (default) | `model`.
+- New config `TERMINI_OPERATOR_DECISION_MODE` ∈ `deterministic` (the code default) | `model`.
   - `deterministic`: the loop uses `DeterministicDecisionProvider` only; **no model
-    call is ever made**. This is today's behavior and the frozen demo default.
+    call is ever made**. Byte-identical to the pre-amendment loop, and what the
+    operator falls back to.
   - `model`: `ModelDecisionProvider` with the mandatory deterministic fallback.
+    **This is what the shipped demo sets** (`TERMINI_OPERATOR_DECISION_MODE=model`
+    on the controller); the code default remains `deterministic` so an unconfigured
+    controller never makes an external call by accident.
 - `schema_version: 1` on both payloads. Additive field additions do not bump it;
   removal, renaming, or type-change bumps to `2` (`controller-api.md` §1.2 convention).
 - The deterministic provider's output must be **byte-identical** to today's

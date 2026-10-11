@@ -46,9 +46,12 @@ change is recorded in a `guardrail_audit` record that links the exact telemetry 
 **The contested area — OOM race conditions.** The honest risk is that the kernel's
 OOM-killer terminates `stress-ng` inside the VM before a slow poll ever notices. We
 resolve this with three concrete mechanisms, not a promise: (1) telemetry cadence is
-**1000 ms** during the demo (D8), so the window is one second, not 10–15; (2) `oom-guard-01`
-acts directly on the threshold — there is no model in the loop, so
-remediation latency is not model latency; (3) the **chaos harness's deterministic ramp**
+**1000 ms** during the demo (D8), so the window is one second, not 10–15; (2) a
+**deterministic local fast-path** exists for `oom-guard-01` (threshold →
+`instance.restart` of the heaviest workload, no model call), so remediation is never
+gated on model latency — and when the model is consulted instead, that call runs on
+Cloud Run GPU (`1× NVIDIA L4`), where decision latency is seconds, not the
+50–60 s measured for CPU-only inference; (3) the **chaos harness's deterministic ramp**
 drives the metric across the threshold on cue, so the rule fires deterministically even if `stress-ng --vm-bytes 85%`
 never quite reaches 95%×2 (`architecture.md` R24). We state plainly that beating the
 kernel OOM-killer is best-effort; what we demonstrate deterministically is the

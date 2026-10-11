@@ -128,30 +128,42 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 ### 4.4 Remediation (AI operator reconcile loop)
 
 1. Threshold rule fires on a telemetry sample (e.g. `oom-guard-01`).
-2. The operator maps the rule to a fixed playbook action — `instance.restart` /
-   `instance.stop` / `instance.delete` / `image.prune` — deterministically, with no
-   model call in the loop.
+2. The decision step maps the rule to an action from the allowlisted set —
+   `instance.restart` / `instance.stop` / `instance.delete` / `image.prune`. The
+   deterministic provider does this with no model call; in model mode the choice is
+   made by the model (step 5), which can only ever emit an action from this same set.
 3. The action executes against the node's LXD REST API; the executor reports the
    exact request it made (method/path/body + result).
 4. Every autonomous change writes an audit record linking the telemetry trigger
    (`actor: ai_operator`, `trigger`, rule_id) to the action and result.
-5. The decision step may be **model-driven** as a selectable mode
-   (`docs/contracts/operator-decision.md`): `TERMINI_OPERATOR_DECISION_MODE=model`
-   routes the threshold→action choice through the on-prem adapter
-   (`termini/decision`) and a hard guardrail (allowed-action whitelist, param
-   bounds, confidence gate), with the deterministic playbook mapping as the
-   **default and mandatory fallback**. `deterministic` (the frozen demo default)
-   makes **no model call** and is identical to the original loop; a model is only
-   ever consulted on-prem (Node C, `governance.md` §7).
+5. The decision step is **model-driven in the shipped demo** (a selectable mode,
+   `docs/contracts/operator-decision.md`): `TERMINI_OPERATOR_DECISION_MODE=model`
+   routes the threshold→action choice through the `termini/decision` adapter to an
+   **external GCP model** — open-weights Gemma on Cloud Run GPU — under a hard
+   guardrail (allowed-action whitelist, param bounds, confidence gate), with the
+   deterministic playbook mapping as the **default and mandatory fallback**.
+   `deterministic` makes **no model call** and is identical to the original loop.
+   Per `governance.md` §7.1 the external model is used *only* for the operator loop
+   over C0 telemetry, with the static versioned prompt template of §7.2 (only typed
+   C0 substitutions); customer payloads stay on-prem (`deepseek-flash` on Node C).
+   Which decider chose a given action is recorded per-decision in `decision_source`.
 
-### 4.5 Inference (on-prem only)
+### 4.5 Inference (two paths)
+
+**On-prem path — customer payloads (never egresses):**
 
 1. `termini-agent` (in the VM) → on-node broker (`10.20.<n>.1:7071`) for tasks.
-2. All LLM calls go to `http://10.10.0.13:8080` (OpenAI-compatible router) with a bearer token and
+2. LLM calls go to `http://10.10.0.13:8080` (OpenAI-compatible router) with a bearer token and
    `X-Termini-*` attribution headers.
 3. Router routes the `model` alias explicitly (`deepseek-flash` resident / `deepseek-v4-pro` lazy);
    no silent substitution except opt-in `X-Termini-Allow-Degrade`.
 4. Results (C2) stay on-prem; only the C0 result summary egresses via the node daemon.
+
+**External path — the operator loop only.** The Day-2 decision step calls an
+external GCP model (open-weights Gemma on Cloud Run GPU) over C0 telemetry, under
+the static versioned template of `governance.md` §7.2. It is **not** a
+customer-payload path: C2 never reaches it, and the controller asserts the class of
+every substituted field before sending (§7.1, `externalModelCall()`).
 
 ---
 
@@ -163,7 +175,7 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 | Agent VM → inference | Bearer token + underlay-scoped `:8080` only. | Router auth + Node C firewall |
 | Node → Controller (egress) | **C0/C1 hardware/OS telemetry only.** C2 never egresses; fail-closed. | On-node redactor + controller `governanceGate` |
 | Controller → Node (inbound) | Typed commands only; task envelope may carry C2 **transiently** (never persisted/model-processed). | `commandAllowlist()` + inbound shape check |
-| Controller → external model | **Not in the demo loop** (the operator is deterministic). Day-2 only: C0 telemetry + static versioned template. | `governance.md` §7 (future) |
+| Controller → external model | **In the demo loop** — the operator's decision step. C0 telemetry + the static versioned template only; C2 never reaches it. | `governance.md` §7.1/§7.2, `externalModelCall()` |
 | User SSH | Controller-held SSH CA signing short-lived (≤8 h), principal-bound user certs from browser-local keys; surfaced as a one-click web terminal + `ssh` string (`auth_model: ssh_ca`). | Controller-held CA (D4) |
 
 ---
@@ -428,8 +440,10 @@ control path per node.
 `instance.restart` of the heaviest workload, no model call) so remediation is not gated on model
 latency, plus a **deterministic chaos ramp** (the chaos harness drives the metric across the
 threshold on cue) so the demo fires even when `stress-ng --vm-bytes 85%` never reaches 95%×2. The
-kernel-OOM race is stated honestly as best-effort. **Rationale:** there is no model in the loop;
-the demo must deterministically demonstrate a real remediation.
+kernel-OOM race is stated honestly as best-effort. **Rationale:** the *trigger* is deterministic in
+every mode — a threshold rule fires, never a model — so the demo demonstrates a real remediation
+with or without the model, and in model mode the decision is bounded by the deterministic fallback
+rather than left gated on model latency.
 
 ---
 
