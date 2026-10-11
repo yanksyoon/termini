@@ -49,15 +49,18 @@ def decision_exists(conn, event_id: str) -> bool:
     return row is not None
 
 
-def insert_decision(conn, decision_id: str, event, action, now_iso: str) -> None:
+def insert_decision(conn, decision_id: str, event, action, now_iso: str,
+                    *, source: str = "deterministic", confidence: float | None = None,
+                    fallback_reason: str | None = None) -> None:
     conn.execute(
         "INSERT INTO remediation_decisions (id, event_id, node_id, rule_id, playbook,"
-        " action_kind, action_params, reason, decided_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " action_kind, action_params, reason, decision_source, confidence,"
+        " fallback_reason, decided_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             decision_id, event.event_id, event.node_id, event.rule_id,
             action.playbook, action.kind, json.dumps(action.params), action.reason,
-            now_iso,
+            source, confidence, fallback_reason, now_iso,
         ),
     )
 
@@ -312,3 +315,31 @@ def get_lease(conn, project_id: str) -> dict | None:
         " FROM operator_lease WHERE project_id = ?", (project_id,)
     ).fetchone()
     return dict(row) if row else None
+
+
+# ------------------------------------------------------------------ fallback
+# Per-(node, rule) model-decision fallback state (migration 0009). The loop
+# tracks a fallback streak and a forced-deterministic cooldown window so a
+# stuck model fault can never starve the deterministic fast-path
+# (operator-decision.md §10.2).
+
+def load_decision_fallback_state(conn, node_id: str, rule_id: str) -> dict | None:
+    row = conn.execute(
+        "SELECT node_id, rule_id, fallback_streak, forced_until, updated_at"
+        " FROM decision_fallback_state WHERE node_id = ? AND rule_id = ?",
+        (node_id, rule_id),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def save_decision_fallback_state(conn, node_id: str, rule_id: str,
+                                 fallback_streak: int, forced_until: str | None,
+                                 now: str) -> None:
+    conn.execute(
+        "INSERT INTO decision_fallback_state (node_id, rule_id, fallback_streak,"
+        " forced_until, updated_at) VALUES (?, ?, ?, ?, ?)"
+        " ON CONFLICT(node_id, rule_id) DO UPDATE SET"
+        " fallback_streak=excluded.fallback_streak,"
+        " forced_until=excluded.forced_until, updated_at=excluded.updated_at",
+        (node_id, rule_id, int(fallback_streak), forced_until, now),
+    )

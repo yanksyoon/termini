@@ -14,6 +14,7 @@ import time
 
 from . import config, db, events, inventory, logs, server, sshca, store, terminal
 from .operator import Thresholds, OperatorLoop
+from .operator import decision as op_decision
 from .operator import playbook as op_playbook
 
 log = logging.getLogger("termini.controller")
@@ -118,11 +119,17 @@ def main(argv: list[str] | None = None) -> int:
                           cfg.playbooks_dir)
             playbooks = {}
         if playbooks:
+            provider = op_decision.build_decision_provider(
+                cfg, playbooks=playbooks,
+                instance_names=cfg.lxd_instance_names,
+                default_instance_name=cfg.lxd_default_instance_name,
+            )
             loop = OperatorLoop(
                 cfg, project, thresholds, playbooks,
                 instance_names=cfg.lxd_instance_names,
                 default_instance_name=cfg.lxd_default_instance_name,
                 logs=operator_logs,
+                provider=provider,
             )
             loop.start()
         else:
