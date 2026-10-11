@@ -48,7 +48,19 @@ if ! printf '%s\n' "$checks" | grep -qiE '\bpass\b'; then
   exit 1
 fi
 
-mergeable="$(gh pr view "$pr" --json mergeable --jq .mergeable)"
+mergeable=""
+for _try in 1 2 3 4 5 6 7 8 9 10; do
+  mergeable="$(gh pr view "$pr" --json mergeable --jq .mergeable)"
+  [ "$mergeable" = "MERGEABLE" ] && break
+  # UNKNOWN is TRANSIENT, not a verdict: GitHub recomputes mergeability
+  # asynchronously after a push or a base-branch change, and `gh pr view` returns
+  # UNKNOWN in that window. Treating it as "not mergeable" refused green, clean
+  # PRs at random — a false red in the gate that is supposed to prevent false
+  # greens. Only CONFLICTING is a real refusal, so retry UNKNOWN and let the
+  # other states fall through to the check below.
+  [ "$mergeable" = "UNKNOWN" ] || break
+  sleep 5
+done
 if [ "$mergeable" != "MERGEABLE" ]; then
   echo "!! PR #$pr is not mergeable (state=$mergeable) — resolve first" >&2
   exit 1
