@@ -134,11 +134,24 @@ def compact_json(payload: Any) -> str:
 
 # Few-shot examples: one canonical OOM restart (the §3/§4 demo case) and one
 # disk-degrade stop. Assistant turns are the exact JSON the model must produce.
+#
+# IMPORTANT: never put a concrete instance id in these examples.
+#
+# These messages ship in EVERY prompt, so any id written here is a literal the
+# model can copy that can never exist in the caller's `target_resource.instances`.
+# A concrete name in the examples caused every live decision to fail: Gemma 3 4B
+# copied `agent-01H4KZ9Q` out of the example verbatim (6/6 calls) instead of
+# reading the real instance list, and guardrail G5 correctly rejected it as
+# `invalid_target` — which silently slid into the deterministic fallback and then
+# the §10.2 forced-deterministic circuit breaker.
+#
+# The only target safe to demonstrate is `"heaviest"`, which resolves no matter
+# what the caller's instance list contains (see _resolve_instance).
 FEW_SHOT: List[Dict[str, str]] = [
     {
         "user": (
             "An \"oom\" event fired on node 01M4349RPTT29RNTC6VBCXQ0RC: host RAM "
-            "is at 94.7% and one instance (agent-01H4KZ9Q) holds 29% of RAM. "
+            "is at 94.7% of total and one instance holds 29% of RAM. "
             "Choose a remediation."
         ),
         "assistant": compact_json(
@@ -147,7 +160,7 @@ FEW_SHOT: List[Dict[str, str]] = [
                 "request_id": "01M4349RQ09HMAX6RC9YPYQH4W",
                 "action_id": "instance.restart",
                 "params": {
-                    "instance_name": "agent-01H4KZ9Q",
+                    "instance_name": "heaviest",
                     "force": True,
                     "timeout_s": 30,
                 },
