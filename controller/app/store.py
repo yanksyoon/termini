@@ -126,9 +126,19 @@ def upsert_node(
     """Insert or update a node. Returns (node_id, created)."""
     existing = find_node_by_dedup(conn, project_id, reg["registration_id"], reg["machine_id"])
     if existing:
+        # node_token_hash and status MUST be updated here too. The controller mints a
+        # fresh node token on every registration (server.py) and returns it to the
+        # node, so re-registration has to persist its hash — otherwise the token the
+        # controller just handed out can never authenticate, and every re-registering
+        # node is 403'd on telemetry. `status='online'` for the same reason: a node
+        # that just contacted us is online, and leaving the stale value made a
+        # re-registered node keep showing OFFLINE on the dashboard.
+        # This is why setup-seeder-vm.sh deletes the DB to "resume": only the INSERT
+        # path persisted the token, so re-running against a populated DB could not work.
         conn.execute(
             "UPDATE nodes SET hardware_json=?, os_json=?, lxd_json=?, installer_version=?,"
-            " hostname_hash=?, role_hint=?, last_seen_at=?, source_ip=? WHERE id=?",
+            " hostname_hash=?, role_hint=?, last_seen_at=?, source_ip=?,"
+            " node_token_hash=?, status='online' WHERE id=?",
             (
                 json.dumps(reg["hardware_json"]),
                 json.dumps(reg["os"]) if reg["os"] is not None else None,
@@ -138,6 +148,7 @@ def upsert_node(
                 reg["role_hint"],
                 now,
                 source_ip,
+                node_token_hash,
                 existing["id"],
             ),
         )
