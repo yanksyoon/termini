@@ -102,13 +102,22 @@ class _CapsHandler:
 class _FakeExecutor:
     def __init__(self):
         self.created: list[str] = []
+        self.started: list[str] = []
         self.deleted: list[str] = []
 
     def create_instance(self, name, **kw):
         self.created.append(name)
         return ExecResult(result="ok", method="POST", path="/1.0/instances")
 
-    def delete_instance(self, name):
+    def start_instance(self, name, **kw):
+        # Same contract as LxdExecutor.start_instance: a created instance is
+        # STOPPED, so `_apply_plan` follows the create with a start and folds a
+        # start of an already-running instance to `already_applied`.
+        self.started.append(name)
+        return ExecResult(result="ok", method="PUT",
+                          path=f"/1.0/instances/{name}/state")
+
+    def delete_instance(self, name, **kw):
         self.deleted.append(name)
         return ExecResult(result="ok", method="DELETE", path=f"/1.0/instances/{name}")
 
