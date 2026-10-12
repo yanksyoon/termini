@@ -92,8 +92,11 @@ def project_token_hash(conn) -> str:
 
 
 def count_inference_nodes(conn, project_id: str) -> int:
+    # Decommissioned nodes do not count against the inference cap: a retired node
+    # must not keep occupying the (single, in the demo) inference slot.
     row = conn.execute(
-        "SELECT COUNT(*) AS n FROM nodes WHERE project_id = ? AND role = 'inference'",
+        "SELECT COUNT(*) AS n FROM nodes WHERE project_id = ? AND role = 'inference'"
+        " AND decommissioned_at IS NULL",
         (project_id,),
     ).fetchone()
     return row["n"]
@@ -155,7 +158,7 @@ def upsert_node(
             "UPDATE nodes SET hardware_json=?, os_json=?, lxd_json=?, installer_version=?,"
             " hostname_hash=?, role_hint=?, last_seen_at=?, source_ip=?,"
             " node_token_hash=?, synthetic=?, lxd_endpoint=COALESCE(?, lxd_endpoint),"
-            " status='online'"
+            " status='online', decommissioned_at=NULL, decommission_reason=NULL"
             " WHERE id=?",
             (
                 json.dumps(reg["hardware_json"]),
@@ -202,8 +205,17 @@ def get_node_by_token_hash(conn, token_hash: str) -> dict | None:
 
 
 def list_nodes(conn, project_id: str) -> list[dict]:
+    """Live fleet nodes only: a decommissioned node is retired from the listing.
+
+    The row itself survives (telemetry/audit still resolve it), but so the
+    dashboard's fleet cannot contradict the deck, a retired node is excluded here
+    — this is the ONLY reader that hides them, and every placement/capacity path
+    (``_resolve_target``, ``_host_caps``) goes through it, so a retired node is
+    never auto-selected or counted again.
+    """
     rows = conn.execute(
-        "SELECT * FROM nodes WHERE project_id = ? ORDER BY registered_at", (project_id,)
+        "SELECT * FROM nodes WHERE project_id = ? AND decommissioned_at IS NULL"
+        " ORDER BY registered_at", (project_id,)
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -509,12 +521,18 @@ def trim_logs(conn, project_id: str, ring_size: int) -> None:
 # ---------------------------------------------------------------------------
 
 def allocated_capacity(conn, node_id: str) -> dict:
-    """Committed `agent_vm` capacity for one node, summed across plans."""
+    """Committed `agent_vm` capacity for one node, summed across LIVE plans.
+
+    Only rows whose instances are still claimed count: a released allocation
+    (`released_at` set) has given its capacity back to the pool, so a node whose
+    stale plans were released reports the smaller committed total. This is the
+    subtraction the §5.2 step 6 clamp reads (controller-api.md §5.2 step 7).
+    """
     row = conn.execute(
         "SELECT COALESCE(SUM(cpu_allocated), 0) AS cpu,"
         " COALESCE(SUM(ram_allocated_gb), 0) AS ram,"
         " COALESCE(SUM(disk_allocated_gb), 0) AS disk"
-        " FROM vm_allocations WHERE node_id = ?",
+        " FROM vm_allocations WHERE node_id = ? AND released_at IS NULL",
         (node_id,),
     ).fetchone()
     return {
@@ -527,7 +545,13 @@ def allocated_capacity(conn, node_id: str) -> dict:
 def commit_allocation(conn, project_id: str, plan_id: str, node_id: str,
                       cpu_allocated: int, ram_allocated_gb: int,
                       disk_allocated_gb: int, now: str) -> None:
-    """Persist one accepted/clamped `agent_vm` class's committed capacity."""
+    """Persist one accepted/clamped `agent_vm` class's committed capacity.
+
+    The row starts LIVE (`released_at IS NULL`) with no recorded instances: the
+    commit is a reservation, not a materialisation. `_apply_plan` records the
+    instances it creates (`set_allocation_instances`) and releases the reservation
+    if it cannot create them (`release_allocation`).
+    """
     conn.execute(
         "INSERT INTO vm_allocations (id, project_id, plan_id, node_id,"
         " cpu_allocated, ram_allocated_gb, disk_allocated_gb, created_at)"
@@ -539,31 +563,40 @@ def commit_allocation(conn, project_id: str, plan_id: str, node_id: str,
 
 def release_allocation(conn, project_id: str, plan_id: str, node_id: str,
                        cpu_allocated: int, ram_allocated_gb: int,
-                       disk_allocated_gb: int) -> bool:
+                       disk_allocated_gb: int, now: str | None = None) -> bool:
     """Release the committed capacity of one plan class on a node.
 
     Failure semantics for apply-plan materialisation: a create that fails or times
     out must not leave committed capacity claiming an instance that does not
-    exist, so the failing class's commit is undone here.
+    exist, so the failing class's commit is decremented here.
 
     `vm_allocations` holds ONE row per (project, plan, node) whose columns are the
     SUM across that plan's classes on that node (see `_build_plan`), so this
-    decrements the row by the class's own delta and deletes it when nothing is
-    left. Returns True when a committed row was found and adjusted.
+    decrements the row by the class's own delta. When nothing is left the row is
+    SOFT-released (`released_at` set) rather than deleted — the commit and the
+    reason stay auditable, and the row no longer counts against capacity. Returns
+    True when a LIVE committed row was found and adjusted.
     """
     rows = conn.execute(
         "SELECT id, cpu_allocated, ram_allocated_gb, disk_allocated_gb"
-        " FROM vm_allocations WHERE project_id = ? AND plan_id = ? AND node_id = ?",
+        " FROM vm_allocations WHERE project_id = ? AND plan_id = ? AND node_id = ?"
+        " AND released_at IS NULL",
         (project_id, plan_id, node_id),
     ).fetchall()
     if not rows:
         return False
+    at = now or now_iso()
     for row in rows:
         cpu = int(row["cpu_allocated"]) - max(0, int(cpu_allocated))
         ram = int(row["ram_allocated_gb"]) - max(0, int(ram_allocated_gb))
         disk = int(row["disk_allocated_gb"]) - max(0, int(disk_allocated_gb))
         if cpu <= 0 and ram <= 0 and disk <= 0:
-            conn.execute("DELETE FROM vm_allocations WHERE id = ?", (row["id"],))
+            conn.execute(
+                "UPDATE vm_allocations SET released_at = ?,"
+                " release_reason = COALESCE(release_reason, 'materialisation_failed')"
+                " WHERE id = ?",
+                (at, row["id"]),
+            )
         else:
             conn.execute(
                 "UPDATE vm_allocations SET cpu_allocated = ?, ram_allocated_gb = ?,"
@@ -571,3 +604,129 @@ def release_allocation(conn, project_id: str, plan_id: str, node_id: str,
                 (max(0, cpu), max(0, ram), max(0, disk), row["id"]),
             )
     return True
+
+
+def set_allocation_instances(conn, project_id: str, plan_id: str, node_id: str,
+                             vm_ids: list[str]) -> bool:
+    """Record the LXD instance names a plan's commit materialised on a node.
+
+    Reconciliation may only release a commit whose instances were materialised and
+    are now absent, so the success path of `_apply_plan` records them here. A NULL
+    `vm_ids_json` (never applied) is never reconciled — its reservation stands.
+    """
+    cur = conn.execute(
+        "UPDATE vm_allocations SET vm_ids_json = ?"
+        " WHERE project_id = ? AND plan_id = ? AND node_id = ? AND released_at IS NULL",
+        (json.dumps(list(vm_ids)), project_id, plan_id, node_id),
+    )
+    return cur.rowcount > 0
+
+
+def live_allocations(conn, project_id: str) -> list[dict]:
+    """Committed-capacity rows still claiming an instance (`released_at` NULL).
+
+    `vm_ids` is the parsed instance-name list recorded at apply time (empty when
+    the plan committed but was never materialised).
+    """
+    rows = conn.execute(
+        "SELECT * FROM vm_allocations WHERE project_id = ? AND released_at IS NULL"
+        " ORDER BY created_at",
+        (project_id,),
+    ).fetchall()
+    out: list[dict] = []
+    for r in rows:
+        d = dict(r)
+        raw = d.pop("vm_ids_json", None)
+        d["vm_ids"] = json.loads(raw) if raw else []
+        out.append(d)
+    return out
+
+
+def release_allocations(conn, project_id: str, *, plan_id: str | None = None,
+                        node_id: str | None = None, reason: str | None = None,
+                        now: str | None = None) -> dict:
+    """Release LIVE committed capacity matching `plan_id` and/or `node_id`.
+
+    Soft-releases each matching LIVE row (marks `released_at`/`release_reason`;
+    the row and its audit trail survive) and reports what went back to the pool.
+    Idempotent: releasing again finds no LIVE row and reports
+    `already_released` — never a double decrement and never an error. `had_commit`
+    distinguishes "was once committed" (a repeat release) from "never committed"
+    (an unknown plan/node), which the HTTP layer turns into a clean 404.
+    """
+    if plan_id is None and node_id is None:
+        raise ValueError("release_allocations requires plan_id and/or node_id")
+    where = ["project_id = ?"]
+    args: list[Any] = [project_id]
+    if plan_id is not None:
+        where.append("plan_id = ?")
+        args.append(plan_id)
+    if node_id is not None:
+        where.append("node_id = ?")
+        args.append(node_id)
+    where_sql = " AND ".join(where)
+
+    live = conn.execute(
+        f"SELECT id, plan_id, node_id, cpu_allocated, ram_allocated_gb, disk_allocated_gb"
+        f" FROM vm_allocations WHERE {where_sql} AND released_at IS NULL", args
+    ).fetchall()
+    ever = conn.execute(
+        f"SELECT COUNT(*) AS n FROM vm_allocations WHERE {where_sql}", args
+    ).fetchone()["n"]
+
+    at = now or now_iso()
+    total = {"cpu_allocated": 0, "ram_allocated_gb": 0, "disk_allocated_gb": 0}
+    plans: list[str] = []
+    for row in live:
+        total["cpu_allocated"] += int(row["cpu_allocated"])
+        total["ram_allocated_gb"] += int(row["ram_allocated_gb"])
+        total["disk_allocated_gb"] += int(row["disk_allocated_gb"])
+        if row["plan_id"] not in plans:
+            plans.append(row["plan_id"])
+        conn.execute(
+            "UPDATE vm_allocations SET released_at = ?, release_reason = ? WHERE id = ?",
+            (at, reason, row["id"]),
+        )
+    return {
+        "released": total,
+        "rows_released": len(live),
+        "plans": plans,
+        "had_commit": ever > 0,
+        "already_released": ever > 0 and not live,
+        "released_at": at if live else None,
+    }
+
+
+def decommission_node(conn, project_id: str, node_id: str,
+                      reason: str | None = None, now: str | None = None) -> dict | None:
+    """Retire a node: release its LIVE committed capacity and drop it from the fleet.
+
+    Idempotent — a node already retired is reported `already_decommissioned`
+    without touching it again. Returns ``None`` when no such node exists in the
+    project (the HTTP layer turns that into a 404). The node row is kept (soft
+    retire) so its telemetry and audit history still resolve.
+    """
+    row = conn.execute(
+        "SELECT id, decommissioned_at FROM nodes WHERE id = ? AND project_id = ?",
+        (node_id, project_id),
+    ).fetchone()
+    if row is None:
+        return None
+    if row["decommissioned_at"] is not None:
+        released = release_allocations(conn, project_id, node_id=node_id)
+        return {
+            "node_id": node_id, "status": "already_decommissioned",
+            "decommissioned_at": row["decommissioned_at"],
+            "released": released["released"], "rows_released": released["rows_released"],
+        }
+    at = now or now_iso()
+    conn.execute(
+        "UPDATE nodes SET decommissioned_at = ?, decommission_reason = ? WHERE id = ?",
+        (at, reason, node_id),
+    )
+    released = release_allocations(
+        conn, project_id, node_id=node_id, reason="node_decommissioned", now=at)
+    return {
+        "node_id": node_id, "status": "decommissioned", "decommissioned_at": at,
+        "released": released["released"], "rows_released": released["rows_released"],
+    }

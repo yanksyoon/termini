@@ -113,6 +113,9 @@ REST (all under `/v1`):
 | POST | `/v1/projects/{pid}/nodes/{nid}/actions/drain` | project token | `202 {command_id,type,state}` |
 | POST | `/v1/projects/{pid}/intents` | project token | `200` plan / `422` guardrail-rejected |
 | POST | `/v1/projects/{pid}/vms/apply` | project token | `202 {job_id,state:ready\|failed,vm_ids}` (materialises) |
+| POST | `/v1/projects/{pid}/vms/release` | project token | `200 {status:released\|already_released,released}` (idempotent) / `404` |
+| POST | `/v1/projects/{pid}/vms/reconcile` | project token | `200` self-heal: release commits whose VMs are gone |
+| POST | `/v1/projects/{pid}/nodes/{nid}/decommission` | project token | `200 {status:decommissioned\|already_decommissioned,released}` / `404` |
 | POST | `/v1/projects/{pid}/remediations/{cid}/approve` | project token | `200 {command_id,state:approved}` |
 | POST | `/v1/projects/{pid}/remediations/{cid}/deny` | project token | `200 {command_id,state:denied}` |
 | POST | `/v1/nodes/{nid}/telemetry` | node token | `202 {accepted, rejected, backpressure}` |

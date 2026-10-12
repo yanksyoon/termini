@@ -38,6 +38,25 @@ def _approval_sweeper(srv: server.ControllerServer, interval_s: int = 15) -> Non
             log.exception("approval sweeper error")
 
 
+def _reconcile_allocations_once(srv: server.ControllerServer) -> None:
+    """One startup reconciliation pass (self-heal) — never blocks or kills boot.
+
+    A restarted demo must not come up already saturated by commits whose VMs are
+    gone (the defect: stale allocations filled a node and permanently 422'd the
+    headline intent). Runs in a daemon thread so a slow/unreachable node cannot
+    delay serving; an unreachable node is skipped, never released.
+    """
+    try:
+        with db.session(srv.cfg.db_path) as conn:
+            result = server.reconcile_allocations(conn, srv.cfg, srv.project["id"])
+        if result["released_count"]:
+            log.info("startup reconcile released %d stale allocation(s): %s",
+                     result["released_count"],
+                     ", ".join(f"{r['plan_id']}({r['reason']})" for r in result["released"]))
+    except Exception:  # noqa: BLE001 — self-heal must never take the controller down
+        log.exception("startup allocation reconcile failed")
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
@@ -133,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         log.info("SSH CA not configured (POST /ssh-key and the SSH terminal backend disabled)")
 
     threading.Thread(target=_approval_sweeper, args=(srv,), daemon=True).start()
+    threading.Thread(target=_reconcile_allocations_once, args=(srv,), daemon=True).start()
 
     log.info("controller listening on %s:%s (db=%s)", cfg.host, cfg.port, cfg.db_path)
 
