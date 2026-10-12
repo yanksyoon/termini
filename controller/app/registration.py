@@ -100,6 +100,27 @@ def _require_obj(d: dict, key: str, ctx: str) -> dict:
     return v
 
 
+def _synthetic_flag(raw: dict) -> bool:
+    """Optional registration provenance: was this row fabricated by the demo seeder?
+
+    The seeder registers through this same public endpoint with the same
+    single-use bootstrap tokens a node uses (node-bootstrap.md §5.2), so without an
+    explicit marker a fabricated row cannot be told apart from real hardware. Real
+    nodes never send this field; the seeder sets `"synthetic": true`.
+
+    Accepts the boolean `synthetic` field, or the alias
+    `"registration_source": "seeder"`. Anything else (absent, wrong type, a bogus
+    value) reads as `False`, i.e. *"treat it as real hardware"* — the safe reading
+    is never "assume synthetic", because that would let a real node's row be
+    quietly deprioritised by a typo in an unrelated field.
+    """
+    v = raw.get("synthetic")
+    if isinstance(v, bool):
+        return v
+    src = raw.get("registration_source")
+    return isinstance(src, str) and src.strip().lower() == "seeder"
+
+
 def parse_registration(raw: Any) -> dict:
     """Parse either registration shape into a normalized registration dict.
 
@@ -160,6 +181,7 @@ def _parse_canonical(raw: dict) -> dict:
     registration_id = machine_id or hostname or "node"
     return {
         "shape": "canonical",
+        "synthetic": _synthetic_flag(raw),
         "registration_id": registration_id,
         "machine_id": machine_id,
         "hostname": hostname,
@@ -220,6 +242,7 @@ def _parse_legacy(raw: dict) -> dict:
 
     return {
         "shape": "legacy",
+        "synthetic": _synthetic_flag(raw),
         "registration_id": registration_id,
         "machine_id": None,
         "hostname": registration_id,

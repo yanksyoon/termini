@@ -130,8 +130,16 @@ def upsert_node(
     COALESCE semantics on the UPDATE branch: a re-registration that omits the
     endpoint keeps the previously recorded one rather than clearing it (an older
     node must not silently drop a fleet node back to the global fallback).
+
+    `reg["synthetic"]` (optional, default False) records provenance: True only for
+    rows fabricated by the demo seeder (`console/seed_demo.py`), which registers
+    through this same endpoint. It is persisted on BOTH branches and is always
+    written from the request — a re-registration that stops declaring itself
+    synthetic (a real node taking over the record) must clear the flag, otherwise a
+    deprioritised row could never come back as real hardware.
     """
     endpoint = reg.get("lxd_endpoint")
+    synthetic = 1 if reg.get("synthetic") else 0
     existing = find_node_by_dedup(conn, project_id, reg["registration_id"], reg["machine_id"])
     if existing:
         # node_token_hash and status MUST be updated here too. The controller mints a
@@ -146,7 +154,8 @@ def upsert_node(
         conn.execute(
             "UPDATE nodes SET hardware_json=?, os_json=?, lxd_json=?, installer_version=?,"
             " hostname_hash=?, role_hint=?, last_seen_at=?, source_ip=?,"
-            " node_token_hash=?, lxd_endpoint=COALESCE(?, lxd_endpoint), status='online'"
+            " node_token_hash=?, synthetic=?, lxd_endpoint=COALESCE(?, lxd_endpoint),"
+            " status='online'"
             " WHERE id=?",
             (
                 json.dumps(reg["hardware_json"]),
@@ -158,6 +167,7 @@ def upsert_node(
                 now,
                 source_ip,
                 node_token_hash,
+                synthetic,
                 endpoint,
                 existing["id"],
             ),
@@ -168,14 +178,14 @@ def upsert_node(
     conn.execute(
         "INSERT INTO nodes (id, project_id, registration_id, machine_id, hostname_hash, role,"
         " node_token_hash, hardware_json, os_json, lxd_json, role_hint, installer_version,"
-        " lxd_endpoint, status, last_seen_at, registered_at, source_ip)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', ?, ?, ?)",
+        " lxd_endpoint, synthetic, status, last_seen_at, registered_at, source_ip)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', ?, ?, ?)",
         (
             node_id, project_id, reg["registration_id"], reg["machine_id"], reg["hostname"],
             role, node_token_hash, json.dumps(reg["hardware_json"]),
             json.dumps(reg["os"]) if reg["os"] is not None else None,
             json.dumps(reg["lxd"]) if reg["lxd"] is not None else None,
-            reg["role_hint"], reg["installer_version"], endpoint, now, now, source_ip,
+            reg["role_hint"], reg["installer_version"], endpoint, synthetic, now, now, source_ip,
         ),
     )
     return node_id, True

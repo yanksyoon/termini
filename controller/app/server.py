@@ -724,8 +724,22 @@ class ControllerHandler(BaseHTTPRequestHandler):
                      "vm_ids": vm_ids, "allocations": alloc_results}
 
     def _host_caps(self, conn, default_caps: dict) -> dict:
-        """Per-role host maxima for the clamp validator, from registered nodes."""
-        nodes = store.list_nodes(conn, self.server.project["id"])
+        """Per-role host maxima for the clamp validator, from REGISTERED nodes.
+
+        Real nodes are authoritative: when any real node is registered the maxima
+        are derived from those alone, so a seeder-fabricated row's inflated facts
+        (its declared 64 GiB) can never widen the coarse ceiling a real node's
+        request has to fit. Fabricated rows are used only in a seeder-only demo,
+        mirroring `_resolve_target`'s fallback.
+
+        The merge is a MAX with the frozen default rather than a last-writer-wins
+        assignment: it is order-independent (the old loop let whichever node
+        happened to be registered last decide), and the pre-filter never tightens
+        below the frozen demo default — the authoritative ceiling for a real
+        allocation is the resolved node's own capacity clamp (§5.2 step 6), which
+        reads that node's real hardware.
+        """
+        nodes = _selection_pool(store.list_nodes(conn, self.server.project["id"]))
         caps = {
             "agent_vm": dict(default_caps["agent_vm"]),
             "inference_vm": dict(default_caps["inference_vm"]),
@@ -735,12 +749,15 @@ class ControllerHandler(BaseHTTPRequestHandler):
             cap = health.capacity_of(hw)
             if n["role"] == "inference":
                 if cap["ram_gb"]:
-                    caps["inference_vm"]["ram_gb"] = max(0, cap["ram_gb"] - 2)
+                    caps["inference_vm"]["ram_gb"] = max(
+                        caps["inference_vm"]["ram_gb"], max(0, cap["ram_gb"] - 2))
             else:
                 if cap["cpu_cores"]:
-                    caps["agent_vm"]["vcpus"] = max(1, cap["cpu_cores"] * 2)
+                    caps["agent_vm"]["vcpus"] = max(
+                        caps["agent_vm"]["vcpus"], max(1, cap["cpu_cores"] * 2))
                 if cap["ram_gb"]:
-                    caps["agent_vm"]["ram_gb"] = max(1, cap["ram_gb"] - 2)
+                    caps["agent_vm"]["ram_gb"] = max(
+                        caps["agent_vm"]["ram_gb"], max(1, cap["ram_gb"] - 2))
         return caps
 
     def _build_plan(self, conn, project_id: str, result, raw_allocations) -> dict:
@@ -880,26 +897,42 @@ class ControllerHandler(BaseHTTPRequestHandler):
         return plan
 
     def _resolve_target(self, spec, nodes: list[dict]) -> dict | None:
+        """Resolve an allocation's target node (controller-api.md §5.2 steps 3/5).
+
+        Placement provenance rule: a SEEDER-FABRICATED node is never preferred over
+        a real registered one, and is never chosen at all while a real node is
+        registered — for `auto` *or* for an explicit `target_node`. The seeder
+        registers through the same endpoint as hardware, so before this rule the
+        only signal was reported capacity, which the seeder inflates: `auto` put
+        agents on a node that does not exist.
+        """
         if not nodes:
             return None
         target = spec.target_node
         if target and target != "auto":
             for n in nodes:
                 if n["id"] == target:
+                    # Naming a fabricated node is still a placement, so the same
+                    # rule applies. Returning None lets the caller surface the
+                    # frozen `invalid_target_node[_type]` rejection rather than
+                    # silently redirecting the allocation to a different node.
+                    if n.get("synthetic") and _real_nodes(nodes):
+                        return None
                     return n
             return None
+        candidates = _selection_pool(nodes)
         if spec.type == "inference_vm":
             # Reference-class resolution (controller-api.md §5.2 step 3): `auto`
             # resolves to the (single) inference node hosting the always-on
             # service; no inference node registered -> None -> REJECT upstream.
-            for n in nodes:
+            for n in candidates:
                 if n["role"] == "inference":
                     return n
             return None
         # auto (agent_vm): node with the most free allocatable RAM (tie-break: lowest node_id)
         best = None
         best_ram = -1
-        for n in nodes:
+        for n in candidates:
             hw = json.loads(n["hardware_json"]) if n["hardware_json"] else {}
             cap = health.capacity_of(hw)
             if cap["ram_gb"] > best_ram or (cap["ram_gb"] == best_ram and best is not None and n["id"] < best["id"]):
@@ -1061,6 +1094,10 @@ class ControllerHandler(BaseHTTPRequestHandler):
             "node_id": n["id"],
             "registration_id": n["registration_id"],
             "role": n["role"],
+            # Provenance: True for a row fabricated by the demo seeder. Surfaced so
+            # the dashboard can label it and an operator can tell a real node from a
+            # fabricated one (the placement rule already ignores it for `auto`).
+            "synthetic": bool(n.get("synthetic")),
             "status": status,
             "last_seen_at": n["last_seen_at"],
             "uptime_sec": health.uptime_sec(sample),
@@ -1336,6 +1373,34 @@ class ControllerHandler(BaseHTTPRequestHandler):
 
 def _const_eq(a: str, b: str) -> bool:
     return hmac.compare_digest(a, b)
+
+
+# ------------------------------------------------------------------ node provenance
+
+def _real_nodes(nodes: list[dict]) -> list[dict]:
+    """Nodes registered by real hardware (not seeder-fabricated).
+
+    `synthetic` is set on the registration wire by the demo seeder
+    (`console/seed_demo.py`); real hardware never sends it, and every
+    pre-existing row defaults to real (migration 0011). `nodes` may also be a
+    plain list of dicts that predate the column (tests, older callers), hence
+    `.get()`.
+    """
+    return [n for n in nodes if not n.get("synthetic")]
+
+
+def _selection_pool(nodes: list[dict]) -> list[dict]:
+    """Candidate nodes for *auto* placement and for host-capacity derivation.
+
+    Real registered nodes ALWAYS win: a seeder-fabricated row is a candidate only
+    when NO real node is registered, which is the seeder-only demo (otherwise its
+    dashboard would go empty). This is the rule that stops `auto` from resolving to
+    a node that does not exist: before it, resolution was a pure capacity
+    comparison and the seeder's inflated facts (64 GiB vs a real node's real
+    1-8 GiB) won every time.
+    """
+    real = _real_nodes(nodes)
+    return real or list(nodes)
 
 
 def _parse_rfc3339(s: str) -> float:

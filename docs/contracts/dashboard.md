@@ -40,6 +40,7 @@ List endpoint. `project_token` auth. Response:
       "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
       "registration_id": "termini-node-a",
       "role": "compute",
+      "synthetic": false,
       "status": "online",
       "last_seen_at": "2026-10-04T07:49:00Z",
       "uptime_sec": 3600,
@@ -53,6 +54,7 @@ List endpoint. `project_token` auth. Response:
         "cpu_cores": 16,
         "ram_gb": 32,
         "disk_gb": 256,
+        "disk_known": true,
         "gpu_free": 0,
         "cpu_allocated": 6,
         "ram_allocated_gb": 12
@@ -82,11 +84,12 @@ Field contract:
 | `node_id` | string (ULID) | controller-issued |
 | `registration_id` | string | stable bootstrap label (1..64 chars) |
 | `role` | enum | `compute \| inference` |
+| `synthetic` | boolean | `true` only for a row fabricated by the demo seeder (`console/seed_demo.py`); `false` for real hardware. Placement never uses a `true` row while any real node is registered (`controller-api.md` §5.2 step 5); the dashboard labels it (e.g. "demo") so a viewer can tell them apart. |
 | `status` | enum | `online \| degraded \| offline` (derivation below) |
 | `last_seen_at` | RFC3339 | last heartbeat/telemetry contact |
 | `uptime_sec` | integer | from the latest telemetry sample (`uptime_sec`) |
 | `hardware` | object | registered hardware facts (from registration) |
-| `capacity` | object | allocatable bookkeeping (registered − reserve − allocated) |
+| `capacity` | object | allocatable bookkeeping (registered − reserve − allocated), plus `disk_known`: `false` when the node reported no plausible disk size, so its disk accounting is **unknown**, not zero |
 | `health` | object | derived from the latest telemetry sample (§1.3) |
 
 `status` derivation (evaluated on every view, frozen):
