@@ -32,7 +32,7 @@ Termini's wedge is the missing middle: the controller bootstraps the hardware on
 
 **Where Termini wins:** Datadog is SaaS-architected — telemetry, traces, and logs ship to *its* cloud, and it has **no self-hosted / air-gapped AI offering** (FedRAMP customers are excluded from AI Credits; an entire market of "on-prem Datadog alternatives" exists for exactly this reason). Datadog also assumes the infrastructure *already exists*: no hardware bootstrapping, no VM provisioning, no day-0 story. And its remediation runs in its cloud, not on the customer's metal.
 
-Termini inverts the data direction: *same* delegation of operations, *opposite* data flow. Where Datadog exfiltrates telemetry to a SaaS, Termini runs a **self-hosted remediation loop** — telemetry → threshold rule → pre-approved playbook action → audited LXD execution — with intent extraction on the customer's own GPU and only C0 hardware/OS telemetry ever leaving. Never say "we replace Datadog"; say: *"Datadog proved ops can be delegated — but it does it by moving your telemetry to their cloud. We do the same job for people who can't send anything off-prem."*
+Termini inverts the data direction: *same* delegation of operations, *opposite* data flow. Where Datadog exfiltrates telemetry to a SaaS, Termini runs a **self-hosted remediation loop** — telemetry → threshold rule → model-chosen action → audited LXD execution — with intent extraction on the customer's own hardware and only C0 hardware/OS telemetry ever leaving. Never say "we replace Datadog"; say: *"Datadog proved ops can be delegated — but it does it by moving your telemetry to their cloud. We do the same job for people who can't send anything off-prem."*
 
 ### vs Samsung × Mistral (on-site AI)
 
@@ -50,7 +50,7 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 
 **2. Natural-language intent, guardrail-enforced.** The presenter types *"deploy 3 worker agents for coding — plus a fast LLM."* An on-prem model extracts a structured allocation (three `agent_vm`s and one `inference_vm`, which resolves to the always-on Node C inference service rather than a launched VM); the deterministic guardrail clamps any impossible spec (`vcpus: 128` → host ceiling) and returns a validated, clamped plan — field by field, visible in the audit record.
 
-**3. Governed self-healing with a data boundary.** OOM a VM live. Telemetry crosses a threshold, a deterministic rule selects a pre-approved playbook action (`restart` the runaway workload), and the action lands with a full audit trail — while a C2 field injected into the stream is rejected by the controller-side governance gate **before any byte is stored or forwarded.**
+**3. Governed self-healing with a data boundary.** OOM a VM live. Telemetry crosses a threshold, the model selects the action from the allowlist (`restart` the runaway workload), and the action lands with a full audit trail — while a C2 field injected into the stream is rejected by the controller-side governance gate **before any byte is stored or forwarded.**
 
 ---
 
