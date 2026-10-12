@@ -21,15 +21,65 @@ historical record of that gate, not as a live statement.
 > re-run by a separate reviewer before it is treated as final. Every claim below is
 > nonetheless backed by a re-runnable command, not by assertion.
 
+### Re-verification 2026-10-12 — independent and adversarial
+
+The caveat above was acted on. **Four fresh-context agents** — no part in producing
+this document, no access to the reasoning behind it — were dispatched against a clean
+stack built from `main @ 88d6102` with instructions to **falsify** these claims, not
+confirm them. They found real defects, every one of which was then re-checked against
+the committed artifacts before being accepted. That re-check is what produced the
+corrections in the tables above.
+
+**Numbers that matched no artifact** — corrected above. Finding 3 said `4.87 / 6.82`;
+the committed evidence (`boot/baseline-fixed/runs.json`) says **`4.03 / 5.22`**. All
+five figures in the Finding 5 table were also wrong (`0.022 s`, `1.66 MB in 41 s`,
+`2.5 %`, `2.32 s`, `2.23 s`), and it named a `BrokenPipeError` that appears **nowhere**
+in the evidence — the transfer stalls, it does not fail fast. Recomputing from the raw
+JSON is what caught this; the prose was internally consistent and read as measured.
+
+**A disposition that was overstated** — Finding 2's 30 s-delay case was never re-run.
+Only the pre-fix `delay/` evidence exists, and it shows `last_state=REGISTERING`.
+
+**The day-0 figure is unarchived** — see the provenance note in that section. The
+claim is corroborated by committed evidence at `register_ms=100 / 124`; the specific
+`291` is not.
+
+**The measuring instrument was itself defective.** This is the most serious result,
+because it degrades evidence that was *not* reviewed here. In `w7/acceptance`:
+
+- `W3.1` passed on a **failed** registration — its condition is `latency < 5000` and
+  it never inspects the HTTP status. Observed: `status=401`, `latency=2.6 ms` → **pass**.
+- `W4.1` and `W6.1` have **no pass branch at all**: both return `skipped`
+  unconditionally, so two workstreams' criteria can never be evaluated.
+- `run.py` turns any check exception into `skipped`, and exits non-zero only on `fail`
+  — so **a stack broken enough that every check crashes exits 0**. Two live crashes
+  (W2.3, W5.3) were masked exactly this way.
+- `W2.2` passes on the **presence of table names**, never on remediation occurring: a
+  pass was reproduced with zero telemetry injected.
+- `W5.2` shows the terminal opens a shell, not that the shell is on the requested node
+  — an SSH-to-self satisfies it.
+- The harness's default controller (`:8085`) and DB path point at a **different system**
+  than the one under test.
+
+Fixed in `w7/acceptance` in the same change that carries this section. Until then,
+**every "pass" this harness emitted was weaker evidence than it appeared — and that
+applies to runs recorded before this date, including those this verdict rests on.**
+
+**A governance bypass, reported separately** (controller, not harness): the envelope
+fields `_redaction.config_hash` and `governance_chain_tip` are classed `C0`, carry no
+format constraint, are excluded from the signature scan, and are **persisted** — so
+content placed there is stored unscanned. Until that fix lands, the strong form of the
+C2 claim ("a C2 field is rejected before any byte is stored") does not hold.
+
 ### Blocking findings from the 2026-10-04 gate
 
 | # | Finding | Disposition |
 |---|---|---|
 | 1 | No timed end-to-end dry run | **CLOSED** — a timed record existed and was never read. `scripts/timing/evidence/20261009T053937Z/runs.jsonl` holds three runs, all `status: PASS`, ~45 s each. `W6.2` searched for *filenames containing "dry"* (matching only the script) and had no pass branch, so it could not pass whatever was on disk. Fixed; `W6.2` now reads the record and passes. |
-| 2 | Registration degraded path hangs silently | **CLOSED** — red-team, re-run: delay (30 s), connection-refused, DNS failure and consumed-token all reach terminal `REGISTRATION_FAILED` instead of hanging. |
-| 3 | Cold first boot breaches the 30 s demo timeout | **CLOSED** — baseline 5/5 `ONLINE`, `start_to_online` mean 4.87 s, p95 6.82 s, `within_demo_timeout=True`. |
+| 2 | Registration degraded path hangs silently | **CLOSED for the connection-refused, DNS-failure and consumed-token cases** — re-run; each reaches terminal `REGISTRATION_FAILED` in the **journal text**, not merely in the summary JSON. **The 30 s-delay case was NOT re-run**: the only committed `delay/` evidence predates the fix and shows `last_state=REGISTERING`. Recorded as an open gap, not as closed. |
+| 3 | Cold first boot breaches the 30 s demo timeout | **CLOSED** — baseline-fixed 5/5 `ONLINE`, `start_to_online` mean **4.03 s**, p95 **5.22 s**, `within_demo_timeout=True` (recomputed from `w7/redteam/evidence/boot/baseline-fixed/runs.json`; an earlier draft of this table said 4.87 / 6.82, which matched no committed artifact). |
 | 4 | Control-plane latency signal inert (hardcoded) | **CLOSED** — the daemon now *measures* RTT and disk write latency; 8 tests cover it. |
-| 5 | Bulk cross-node transfer stalls under 30 % loss | **RESCOPED, not fixed** — reproduced (1.66 MB of 64 MB in 41 s, `BrokenPipeError`) and recorded as an accepted residual with the boundary. |
+| 5 | Bulk cross-node transfer stalls under 30 % loss | **RESCOPED, not fixed** — reproduced: the transfer **stalls** (~2.0 MB of 64 MB delivered, client timed out after 70 s) and is recorded as an accepted residual with the boundary. |
 | 6 | No per-node capacity clamp | **CLOSED** — `clamp_to_node_capacity()` with committed-capacity accounting; 9 tests. |
 | 7 | Role-check rejection reasons dropped | **CLOSED** — the 422 now returns `reject_reasons`. |
 
@@ -60,6 +110,18 @@ timing line:
 |---|---|---|
 | `register_ms` | **291 ms** | daemon start → controller acknowledgement. **This is the deck's "<5 s" claim, met with ~17× margin.** |
 | `boot_to_registered_ms` | **18.56 s** | VM power-on → registered — dominated by firmware/OS/cloud-init, not by registration. |
+
+> **Provenance — read this before quoting the 291.** The measurement was taken
+> during a manual run on the deployed footprint on 2026-10-11 and **no log of that
+> run was committed to the repo**, so the exact pair `291 / 18560` cannot be
+> re-derived from the committed tree. It is asserted here, and repeated in
+> `README.md`, `SUBMISSION.md`, `infra/gcp/README.md` and the video script.
+>
+> What the committed evidence *does* corroborate is the **claim**: the baked-node
+> runs under `infra/bootstrap/evidence/` record `register_ms=100` and
+> `register_ms=124` — both comfortably inside the 5 s budget, independently of the
+> GCE run. So the claim stands on archived evidence; the specific figure 291 ms does
+> not. Treat it as an unarchived measurement, and commit the GCE run log to close it.
 
 Corroborated independently: the node appears in the controller's fleet as
 `status=online role=compute`; `cloud-init status: done`; the daemon binary is
@@ -192,12 +254,22 @@ Evidence: `t_23a76b8a` (governance-verdict-memo + evidence-telemetry-body).
 
   | | baseline | 30 % loss |
   |---|---|---|
-  | 64 MB A→C TCP transfer | 64 MB in 0.022 s | **1.66 MB in 41 s (2.5 %)**, then `BrokenPipeError` |
-  | inference calls | 20/20 ok, 2.32 s mean | **15/15 ok**, 2.23 s mean |
+  | 64 MB A→C TCP transfer | 64 MB in 0.033 s | **stalled — 2.0 MB of 64 MB delivered (3.0 %); client timed out after 70 s** |
+  | inference calls | 20/20 ok, 5.51 s mean | **15/15 ok**, 8.52 s mean |
+
+  These are the values in the committed evidence (`net/baseline/tcp-baseline.json`,
+  `net/baseline/chat-baseline.json`, `net/loss/summary.json`), read back and
+  recomputed — not transcribed. An earlier draft of this table carried figures that
+  match **no** artifact (`0.022 s`, `1.66 MB in 41 s`, `2.5 %`, `2.32 s`, `2.23 s`)
+  and named a `BrokenPipeError` that appears **nowhere** in the evidence: the
+  transfer does not fail fast, it *stalls* and the client gives up. See
+  §Re-verification 2026-10-12.
 
   Accepted rather than engineered because **the demo does not depend on bulk
-  transfer**: small traffic is unaffected (15/15 inference calls under the same
-  loss, latency indistinguishable from baseline), and no product or deck claim
+  transfer**: all 15 inference calls still complete under the same loss, so nothing
+  on the demo's path needs bulk throughput. They are **not** latency-free, though —
+  mean call latency rises 5.51 s → 8.52 s (≈1.55×) — so this is "still completes",
+  not "unaffected". No product or deck claim
   asserts bulk-transfer resilience. What *does* use bulk transfer is **LXD image
   pre-warm** (`infra/images/prewarm-images.sh` — an `lxc image import` over the
   underlay), so this is the boundary to revisit before claiming degraded-network

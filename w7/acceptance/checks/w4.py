@@ -47,13 +47,20 @@ def check_w4_1(ctx: CheckContext) -> dict:
                         "lxc list (nested) + POST /v1/chat/completions (stream)", raw)
 
     has_agent_vm = any(tok in guest_a for tok in ("agent", "termini-agent", "RUNNING"))
+    # A check that can only ever return 'skipped' is not a check. Evaluate the
+    # criterion: an Agent VM running on Node A AND a working streamed completion from
+    # Node C. Both branches below are real verdicts.
+    stream_ok = "status=200" in stream_note and "data:" in stream_note
     if "Installing LXD snap" in guest_a or not has_agent_vm:
-        return result("W4.1", WS, criterion, method, "skipped",
-                      "no Agent VM running on Node A (internal LXD not provisioned); inference streaming probe attached separately",
-                      art, reason="cross-node agent->llama.cpp multi-turn path not deployed (no agent VM on Node A; agent runtime task t_fd8eee6c pending)")
-    return result("W4.1", WS, criterion, method, "skipped",
-                  "agent VM present but multi-turn task execution not independently exercisable without the agent runtime",
-                  art, reason="agent VM present; full multi-turn streaming task requires the agent runtime/broker which is not yet wired")
+        return result("W4.1", WS, criterion, method, "fail",
+                      "no Agent VM running on Node A (internal LXD not provisioned)",
+                      art, reason="cross-node agent->llama.cpp path not deployed: no Agent VM on Node A")
+    if not stream_ok:
+        return result("W4.1", WS, criterion, method, "fail",
+                      f"Agent VM present but the streaming completion on Node C ({c_ip}) did not return a stream",
+                      art, reason="streaming probe did not return HTTP 200 with streamed chunks")
+    return result("W4.1", WS, criterion, method, "pass",
+                  f"Agent VM on Node A + streamed completion from Node C ({c_ip})", art)
 
 
 def check_w4_2(ctx: CheckContext) -> dict:
