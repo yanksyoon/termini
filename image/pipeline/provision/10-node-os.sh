@@ -84,16 +84,20 @@ if ! curl -sk --max-time 2 https://127.0.0.1:8443/1.0 >/dev/null 2>&1; then
   echo "[provision:10-node-os] WARNING: LXD API is not answering on :8443 after init" >&2
 fi
 
-# Preload workload image tarballs into the local LXD image store.
-install -d -m 0755 /var/lib/termini/images
-if [ -d "$IMAGE_STAGE" ]; then
-  for tarball in "$IMAGE_STAGE"/*.tar.gz "$IMAGE_STAGE"/*.tar; do
-    [ -e "$tarball" ] || continue
-    alias_name="$(basename "$tarball")"
-    alias_name="${alias_name%.tar.gz}"
-    alias_name="${alias_name%.tar}"
-    lxc image import "$tarball" --alias "$alias_name"
-  done
+# Preload the workload image(s) into the local LXD image store (D3). The import
+# is delegated to provision/import-staged-images.sh so one loud, manifest-driven
+# implementation runs here (bake), in the distrobuilder variant, and against a
+# live node. The stage is populated by tools/stage_workload_image.sh; the import
+# FAILS rather than importing zero images — an image with no workload image has
+# nothing for the controller to launch (the silent-success bug this replaces).
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IMPORT_HELPER="${TERMINI_IMPORT_HELPER:-$HERE/import-staged-images.sh}"
+if [ ! -f "$IMPORT_HELPER" ]; then
+  echo "[provision:10-node-os] FATAL: workload-image import helper not found: $IMPORT_HELPER" >&2
+  echo "[provision:10-node-os]        (set TERMINI_IMPORT_HELPER to its uploaded path)" >&2
+  exit 1
 fi
+install -d -m 0755 /var/lib/termini/images
+IMAGE_STAGE="$IMAGE_STAGE" bash "$IMPORT_HELPER"
 
 echo "[provision:10-node-os] lxd channel=${LXD_CHANNEL} revision=${lxd_rev}"

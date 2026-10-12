@@ -60,6 +60,14 @@ files:
     source: ../../../infra/bootstrap/node/termini-bootstrap.service
   - path: /tmp/60-node-bootstrap.sh
     source: ../provision/60-node-bootstrap.sh
+  # Loud, manifest-driven workload-image import (same script the Packer/VM recipe
+  # and a live node run). The stage itself must be supplied to the container
+  # build: preload it under /var/lib/termini/images-staged (tarball + images.json,
+  # written by tools/stage_workload_image.sh) — e.g. by adding a `files:` entry
+  # for the tarball+manifest, or by extending this recipe. Without a stage the
+  # import step FAILS rather than shipping an image with nothing to launch.
+  - path: /tmp/import-staged-images.sh
+    source: ../provision/import-staged-images.sh
 
 run:
   # The provisioners are the *safe* subset for a container: no CUDA driver and no
@@ -79,6 +87,15 @@ run:
       install -Dm0755 /usr/local/src/llama.cpp/build/bin/llama-cli /opt/termini/llama.cpp/bin/llama-cli
       # model weights (sha256-verified by 40-models.sh)
       bash /opt/termini/provision/40-models.sh || true
+
+  - command: |
+      set -euo pipefail
+      # Import the pre-staged workload image into the container's local LXD store
+      # (D3). Same loud, manifest-driven import the VM recipe runs; it fails
+      # rather than shipping a node image with no launchable workload image.
+      install -d -m 0755 /var/lib/termini/images
+      IMAGE_STAGE="${IMAGE_STAGE:-/var/lib/termini/images-staged}" \
+        bash /tmp/import-staged-images.sh
 
   - command: |
       set -euo pipefail
