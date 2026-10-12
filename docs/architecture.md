@@ -56,11 +56,11 @@ governance boundary and the governed AI-operator control loop.
   ┌───────────────────────────────▼─────────────────────────────────────────────┐
   │                          customer premises (underlay 10.10.0.0/24)           │
   │                                                                              │
-  │  ┌───────────── Node A (seed) ─────────────┐   ┌──────── Node C (GPU) ──────┐ │
+  │  ┌───────────── Node A (seed) ─────────────┐   ┌──────── Node C (CPU) ──────┐ │
   │  │ 10.10.0.11   LXD member (seed) :8443    │   │ 10.10.0.13                │ │
-  │  │ termini-bootstrap ──► termini-agent-    │   │ termini-infer-router :8080 │ │
-  │  │                    │      broker :7071  │   │   ├ llama-cpp@flash :8081  │ │
-  │  │                    ▼                     │   │   └ llama-cpp@pro   :8082  │ │
+  │  │ termini-bootstrap ──► termini-agent-    │   │ termini-llama-server :8080 │ │
+  │  │                    │      broker :7071  │   │  llama.cpp / deepseek-flash│ │
+  │  │                    ▼                     │   │  (CPU-only; no L4 in demo) │ │
   │  │   agent VM (10.20.1.x) ──► 10.10.0.13:8080 (inference)                   │ │
   │  └──────────────────────────────────────────┘   └───────────────────────────┘ │
   │  ┌───────────── Node B (compute) ──────────┐   lxdbr0 10.20.2.0/24           │
@@ -70,9 +70,10 @@ governance boundary and the governed AI-operator control loop.
   └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Roles: Node A = LXD cluster seed + compute; Node B = compute; Node C = GPU node hosting the
-host-exposed inference router (`:8080`). Agent VMs run only on A/B. There is **no LXD overlay
-network** in the demo — cross-node traffic routes over the underlay (D2).
+Roles: Node A = LXD cluster seed + compute; Node B = compute; Node C = **CPU-only** node hosting the
+host-exposed llama.cpp service (`:8080`, single model aliased `deepseek-flash`; `/:8081`,`/:8082` per-alias
+workers are the reference design, not the shipped single-model deployment). Agent VMs run only on A/B.
+There is **no LXD overlay network** in the demo — cross-node traffic routes over the underlay (D2).
 
 ---
 
@@ -84,7 +85,7 @@ network** in the demo — cross-node traffic routes over the underlay (D2).
 | Controller | `10.10.0.10:443` | Public HTTPS; also reachable from nodes as outbound target |
 | Node A (seed) | `10.10.0.11:8443` | LXD cluster seed; controller addresses the cluster here |
 | Node B | `10.10.0.12` | LXD cluster member |
-| Node C (GPU) | `10.10.0.13:8080` | Host-exposed inference router (D5) |
+| Node C (CPU) | `10.10.0.13:8080` | Host-exposed llama.cpp inference service (D5), CPU-only |
 | Guest bridges | `10.20.1.0/24`, `10.20.2.0/24`, `10.20.3.0/24` | Per-node NAT bridges (`lxdbr0`) |
 
 Ports: `443` controller (public + node outbound); `8443` LXD API (peers + controller);
@@ -140,15 +141,23 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
    (`actor: ai_operator`, `trigger`, rule_id) to the action and result.
 5. The decision step is **model-driven in the shipped demo** (a selectable mode,
    `docs/contracts/operator-decision.md`): `TERMINI_OPERATOR_DECISION_MODE=model`
-   routes the threshold→action choice through the `termini/decision` adapter to an
-   **external GCP model** — open-weights Gemma on Cloud Run GPU — under a hard
-   guardrail (allowed-action whitelist, param bounds, confidence gate), with the
-   deterministic playbook mapping as the **default and mandatory fallback**.
-   `deterministic` makes **no model call** and is identical to the original loop.
-   Per `governance.md` §7.1 the external model is used *only* for the operator loop
-   over C0 telemetry, with the static versioned prompt template of §7.2 (only typed
-   C0 substitutions); customer payloads stay on-prem (`deepseek-flash` on Node C).
-   Which decider chose a given action is recorded per-decision in `decision_source`.
+   routes the threshold→action choice through the `termini/decision` adapter to the
+   **llama.cpp service on Node C** (`http://10.10.0.13:8080`, CPU-only, alias
+   `deepseek-flash`) over the underlay — the model is on-prem, not an external
+   call. A hard guardrail (allowed-action whitelist, param bounds, confidence gate)
+   applies and the deterministic playbook mapping is the **default and mandatory
+   fallback**. `deterministic` makes **no model call** and is identical to the
+   original loop. Per `governance.md` §7.1 the model is used *only* for the operator
+   loop over C0 telemetry, with the static versioned prompt template of §7.2 (only
+   typed C0 substitutions); customer payloads stay on-prem on the same Node C
+   service. Which decider chose a given action is recorded per-decision in
+   `decision_source`.
+   **Measured latency (Node C, CPU-only): a decision is minutes, not seconds** —
+   ≈156 s with a one-sample evidence window and ≈9–10 min with the real 20-sample
+   window (prefill ≈15.7 tok/s, generation ≈4.1 tok/s, `n2-standard-8`, 8 threads).
+   The interactive on-screen moment is therefore served by the **deterministic
+   fast-path** (`R24`), not by the model; the model-driven path is wired and real
+   but is not interactive.
 
 ### 4.5 Inference (two paths)
 
@@ -161,11 +170,16 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
    no silent substitution except opt-in `X-Termini-Allow-Degrade`.
 4. Results (C2) stay on-prem; only the C0 result summary egresses via the node daemon.
 
-**External path — the operator loop only.** The Day-2 decision step calls an
-external GCP model (open-weights Gemma on Cloud Run GPU) over C0 telemetry, under
-the static versioned template of `governance.md` §7.2. It is **not** a
-customer-payload path: C2 never reaches it, and the controller asserts the class of
-every substituted field before sending (§7.1, `externalModelCall()`).
+**Operator-loop path (Node C, on-prem — no egress).** The Day-2 decision step calls
+the llama.cpp service on **Node C** (`http://10.10.0.13:8080`, CPU-only, alias
+`deepseek-flash`) over the underlay, under the static versioned template of
+`governance.md` §7.2. It is **not** a customer-payload path: C2 never reaches it, and
+the controller wraps the call in `externalModelCall()`, which asserts the template
+version and the class of every substituted field (C0 / transformed C1) before
+sending and audits before/after (§7.1, §9.3; `controller/app/operator/external_call.py`).
+Because the model is on-prem there is no external egress on this path at all — a
+strictly stronger data-residency position than an off-prem decision model, at the
+cost of CPU latency (see §4.4 step 5).
 
 ---
 
@@ -177,7 +191,7 @@ every substituted field before sending (§7.1, `externalModelCall()`).
 | Agent VM → inference | Bearer token + underlay-scoped `:8080` only. | Router auth + Node C firewall |
 | Node → Controller (egress) | **C0/C1 hardware/OS telemetry only.** C2 never egresses; fail-closed. | On-node redactor + controller `governanceGate` |
 | Controller → Node (inbound) | Typed commands only; task envelope may carry C2 **transiently** (never persisted/model-processed). | `commandAllowlist()` + inbound shape check |
-| Controller → external model | **In the demo loop** — the operator's decision step. C0 telemetry + the static versioned template only; C2 never reaches it. | `governance.md` §7.1/§7.2, `externalModelCall()` |
+| Controller → model (Node C, on-prem) | **In the demo loop** — the operator's decision step. C0 telemetry + transformed C1 + the static versioned template only; C2 never reaches it. No external egress. | `governance.md` §7.1/§7.2, `externalModelCall()` (`controller/app/operator/external_call.py`) |
 | User SSH | Controller-held SSH CA signing short-lived (≤8 h), principal-bound user certs from browser-local keys; surfaced as a one-click web terminal + `ssh` string (`auth_model: ssh_ca`). | Controller-held CA (D4) |
 
 ---

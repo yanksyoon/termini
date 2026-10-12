@@ -70,5 +70,16 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 - We do **not** claim an on-node redactor that drops C2 fields. The governance gate is **controller-side**: a non-conforming telemetry batch is rejected fail-closed (422), not field-dropped.
 - We do **not** claim Datadog "can't" monitor on-prem — it does, via its agent. We claim it is SaaS-architected with no self-hosted/air-gapped AI offering.
 - We do **not** claim the Samsung × Mistral deal "failed" or "proves ops is unsolved." We claim only: *maintenance and operations remain open and under-served*, and the deal is bespoke, not productized.
-- We do **not** claim GPU-accelerated inference in the live demo. The demo runs CPU-only inference (`llama.cpp --n-gpu-layers 0` on Node C); GPU acceleration is a config knob for paid/bare-metal accounts, not shown live.
+- We do **not** claim GPU-accelerated inference. The model **runs on Node C**, CPU-only
+  (`llama.cpp`, no `guest_accelerator` on the instance — `gpu_accelerator_count = 0`); GPU
+  acceleration is a config knob for paid/bare-metal accounts, not shipped live.
+- We do **not** claim the model-driven decision is *interactive*. Measured on Node C
+  (`n2-standard-8`, pinned `deepseek-flash` = DeepSeek-R1-Distill-Llama-8B Q4_K_M, 8 threads):
+  a decision over the operator's real prompt takes **~156 s with a one-sample evidence window
+  and ~9–10 min with the real 20-sample window** (prefill ≈15.7 tok/s, generation ≈4.1 tok/s);
+  the real 20-sample request (**8,973 prompt tokens**) is in fact *rejected outright* by the
+  shipped server context (`--ctx-size 8192 --parallel 2` ⇒ 4,096 tokens/slot). The on-screen
+  demo moment is therefore covered by the **deterministic fast-path** (`architecture.md` R24),
+  which fires in milliseconds; the model-driven path is real and wired to Node C, but it is
+  minutes-per-decision, not seconds.
 - We do **not** hide the `inference` role assignment. Node C runs the model CPU-only, but the demo harness reports a synthetic 24 GiB VRAM footprint from config (`gpu_bytes` → `gpu_vram_bytes`) so the real role rule (≥12 GiB VRAM → `inference`) is exercised end-to-end. The synthetic report drives role selection only; it does not claim a physical GPU is present on the build host.

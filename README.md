@@ -115,7 +115,8 @@ pre-approved action, and the remediation lands with a full audit trail — while
 non-conforming batch is rejected fail-closed at the governance gate
 ([`docs/architecture.md`](docs/architecture.md) §4.3–§4.4). The decision step is a
 seam, and **the shipped demo runs it model-driven**: `oom-guard-01` and
-`disk-degrade-01` route through open-weights Gemma on Cloud Run GPU, which picks
+`disk-degrade-01` route through **`llama.cpp` on Node C** (CPU-only, alias
+`deepseek-flash`), which picks
 the action under a hard constraint stack — a GBNF grammar that makes an
 out-of-allowlist command unencodable, a param/guardrail validator, and a
 confidence gate — with a **mandatory deterministic fallback** that records the
@@ -223,7 +224,7 @@ compose — same controller, same decision step, same audit trail.
 | Component | Where | Endpoint |
 |---|---|---|
 | Dashboard | Firebase Hosting | `https://termini-510609.web.app` |
-| Decision model | Cloud Run GPU — 1× NVIDIA L4, `asia-southeast1` | `https://termini-gemma-tylgzp65ma-as.a.run.app` (authenticated) |
+| Decision model | **Node C** (GCE VM `termini-node-c`) — CPU-only, `n2-standard-8`, `asia-south1-a` | `http://10.10.0.13:8080` (underlay only) — `llama.cpp`, alias `deepseek-flash` |
 | Controller | GCE VM `termini-controller` — `n2-standard-2`, `asia-south1-a` | `https://34-93-190-64.sslip.io` |
 | Telemetry seeder | systemd on the controller VM | — (fabricates `demo-node-a` / `demo-node-c`) |
 | Model weights | GCS | `gs://termini-510609-models/gemma-3-4b-it/` (8.64 GB) |
@@ -231,20 +232,35 @@ compose — same controller, same decision step, same audit trail.
 
 The operator's decision step runs **model-driven** there
 (`TERMINI_OPERATOR_DECISION_MODE=model`): a fired threshold is diagnosed and
-remediated by open-weights **Gemma 3 4B** served by vLLM on an L4. The model
-chooses the action, the guardrail stack constrains it, and the deterministic
-provider remains the mandatory fallback — which decider acted is recorded
-per-decision in `decision_source`.
+remediated by **`llama.cpp` on Node C** (`n2-standard-8`, CPU-only, pinned
+`deepseek-flash` = DeepSeek-R1-Distill-Llama-8B Q4_K_M), reached over the underlay
+at `http://10.10.0.13:8080`. The model chooses the action, the guardrail stack
+constrains it, the `externalModelCall()` guard asserts every substituted field is
+C0 / transformed-C1 before sending, and the deterministic provider remains the
+mandatory fallback — which decider acted is recorded per-decision in
+`decision_source`.
+
+**Measured on Node C: a decision is minutes, not seconds.** A decision over the
+operator's real prompt takes **≈156 s at a one-sample evidence window and ≈9–10 min
+at the real 20-sample window** (prefill ≈15.7 tok/s, generation ≈4.1 tok/s); the real
+20-sample request is **8,973 prompt tokens** and is *rejected outright* by the shipped
+server context (`--ctx-size 8192 --parallel 2` ⇒ 4,096 tokens/slot). The interactive
+on-screen moment is therefore served by the **deterministic fast-path**, not by the
+model.
 
 Two deliberate departures from the "everything on the customer's metal" shape,
 both recorded rather than implied:
 
-- **The model is an external GCP call, not on-prem.** Node C is CPU-only
-  (`n2-standard-8`, no accelerator), where a decision costs a measured 50–60 s;
-  an L4 brings it to seconds. This is the governed **`Egress B`** path of
-  [`docs/contracts/governance.md`](docs/contracts/governance.md) §7.1 — the
-  operator loop only, over C0 telemetry, under the static versioned prompt
-  template of §7.2. **C2 never egresses**, which is the property that matters.
+- **The model runs on-prem on Node C, CPU-only — and the latency is the trade.**
+  Node C has no accelerator (`n2-standard-8`), so a decision costs minutes, not
+  seconds; an L4 would bring it to seconds but is deferred (the project's free-tier
+  billing account rejects every non-TPU accelerator). Running the decision model
+  on-prem means the operator loop makes **no external egress at all** — a strictly
+  stronger data-residency position than the governed `Egress B` path it replaces
+  ([`docs/contracts/governance.md`](docs/contracts/governance.md) §7.1/§7.2). The
+  boundary hook `externalModelCall()` is enforced on the on-prem call too; hosting
+  the model on-prem narrows the blast radius of a mis-classified field but does not
+  repeal the boundary.
 - **The controller is a GCE VM, not Cloud Run** — it persists to SQLite, and
   Cloud Run's filesystem is ephemeral and per-instance, which would break the
   single-owner operator lease and leave audit provenance unverifiable across

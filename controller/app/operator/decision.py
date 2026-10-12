@@ -538,10 +538,14 @@ class ModelDecisionProvider:
                  min_confidence: float = DEFAULT_DECISION_MIN_CONFIDENCE,
                  allowed_actions: Iterable[str] | None = None,
                  instance_names: dict | None = None,
-                 default_instance_name: str = "agent"):
+                 default_instance_name: str = "agent",
+                 audit_sink=None):
         self.deterministic = deterministic
         self.decide_fn = decide_fn
         self.timeout_s = timeout_s
+        # Optional sink for the `externalModelCall()` before/after audit records
+        # (governance.md §9.3). None = audit to the log only.
+        self.audit_sink = audit_sink
         self.guardrail = guardrail or Guardrail(
             min_confidence=min_confidence, allowed_actions=allowed_actions,
             instance_names=instance_names, default_instance_name=default_instance_name,
@@ -591,7 +595,29 @@ class ModelDecisionProvider:
                 "inference_unavailable", f"decision adapter unavailable: {exc}"
             )
         config = DecisionModelConfig.from_env().with_timeout(self.timeout_s)
-        return adapter_decide(decision_input, config=config)
+        # governance.md §7.2/§9.3 (controller-api.md §117): every model call is
+        # wrapped by `externalModelCall()`, which asserts the frozen template
+        # version and the C-class of every substituted field BEFORE the call. A
+        # non-conforming payload is never sent — it becomes a `schema_violation`
+        # and the loop falls back deterministically (fail-closed).
+        #
+        # Destination-agnostic on purpose: the guard applies identically to the
+        # external Cloud Run model and to llama.cpp on node C. Hosting the model
+        # on-prem narrows the blast radius of an egress; it does not repeal the
+        # boundary (governance.md §7 makes no exception for an on-prem endpoint).
+        from . import external_call
+
+        try:
+            return external_call.external_model_call(
+                decision_input,
+                send=lambda: adapter_decide(decision_input, config=config),
+                destination=config.base_url,
+                request_id=decision_input.request_id,
+                audit_sink=self.audit_sink,
+            )
+        except external_call.ExternalCallViolation as exc:
+            log.warning("externalModelCall rejected the decision payload: %s", exc)
+            return DecisionError("schema_violation", str(exc))
 
     # --------------------------------------------------------------- fallback
     def _fallback(self, context: DecisionContext, reason: str, detail: str,

@@ -228,13 +228,15 @@ Explicitly prohibited as external-model input:
 
 - On-prem inference (llama.cpp, node C): **deepseek-flash** and **deepseek-v4-pro** — these are the only model aliases wired to on-prem inference. They handle customer payloads, agent workloads, and on-prem intent extraction. Nothing these models touch leaves the premises.
 - The aliases are **distills**, not the DeepSeek-V4 MoE family (pinned by BQ-1, `docs/architecture.md` §8 R11): `deepseek-flash` = DeepSeek-R1-Distill-Llama-8B Q4_K_M (~6 GiB), `deepseek-v4-pro` = DeepSeek-R1-Distill-Qwen-14B Q4_K_M (~18 GiB). Target GPU NVIDIA L4 24 GiB; T4 16 GiB → `deepseek-v4-pro` unavailable (flash-only).
-- External model (GCP): used only for the AI operator loop over C0 telemetry. Its prompt template is static and versioned; see 7.2.
+- External model (GCP): the boundary below is defined for any **off-prem** model call. In the shipped demo the operator's decision model is the **on-prem llama.cpp service on Node C** (`http://10.10.0.13:8080`, CPU-only), so the operator loop makes **no external call at all** — a strictly stronger position than an off-prem decision model. The prompt template is static and versioned; see 7.2. Any future off-prem model call must be added here with a rationale.
 
 If a future change needs a second external model, it must be added here with a rationale; no implicit external call is allowed.
 
 ### 7.2 Static prompt template rule
 
 The AI operator's prompt is a versioned template (`operator-prompt v{N}`) whose only dynamic placeholders are **typed C0 fields** (`{{cpu_util_pct}}`, `{{ram_used_bytes}}`, `{{disk_write_latency_ms}}`, `{{gpu_vram_used_bytes}}`, `{{net_latency_ms}}`, etc.). No free-text, log tail, or user string may be interpolated. The controller wraps every model call with `externalModelCall()` which asserts the template version and the class of every substituted field (all C0) before sending.
+
+`externalModelCall()` is implemented as `controller/app/operator/external_call.py::external_model_call()`, invoked from `controller/app/operator/decision.py::ModelDecisionProvider._call_model` so it wraps **every** decision call. It reuses the same taxonomy as the inbound gate (`fields.py` allowlist, `governance.scan_c2`, `governance.check_c1_transforms`) and is **deny-by-default**: a field that is not on the C0/C1 allowlist is a violation, not a pass, because "not on the allowlist" is not the same as "known to be C0". A violation raises before `send()` is called, so the payload is **never transmitted**; the decision loop maps it onto the deterministic fallback (`schema_violation`), fail-closed per §6. The guard is **destination-agnostic** — it applies to the on-prem Node C endpoint exactly as it would to an off-prem one, because hosting the model on-prem narrows the blast radius of a mis-classified field but does not repeal the boundary.
 
 ### 7.3 Model output is constrained, not free-form
 
@@ -326,7 +328,7 @@ The controller MUST implement these as code, not policy prose:
 
 1. `governanceGate` middleware wraps every inbound endpoint (`/register`, `/telemetry`, `/intent`, `/heartbeat`). It runs the same allowlist + caps + C2 scan + C1-transform-check as the node and rejects on any discrepancy with HTTP 422 `GOVERNANCE_REJECT`.
 2. `assertRedactorVersion(min)` — reject payloads whose `_redaction.version` is below the minimum.
-3. `externalModelCall()` wrapper — asserts static template version, all-C0 field classes, and writes the audit record before and after the call.
+3. `externalModelCall()` wrapper — asserts static template version, all-C0 field classes, and writes the audit record before and after the call. Implemented: `controller/app/operator/external_call.py` (wired into `ModelDecisionProvider._call_model`; see §7.2).
 4. Model output → `guardrailClamp()` → `commandAllowlist()` before any action; free-form model output is never executed.
 5. Any `governance_violation: true` event fires an operator alert and is retained in a separate violation ledger, never silently dropped.
 

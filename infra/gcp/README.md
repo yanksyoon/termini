@@ -60,11 +60,14 @@ not need it: `console/seed_demo.py` fabricates `demo-node-a`/`demo-node-c`, and
 neither it nor the operator loop touches node-b — its LXD hosted zero containers
 when it was stopped.
 
-To run all four again, free 2 vCPU. The cheapest route is **downsizing `node-c`
-from `n2-standard-8` to `n2-standard-4`**: its 8 vCPUs were sized for CPU
-`llama.cpp` inference, and inference has since moved to Gemma on Cloud Run GPU, so
-that headroom is now unused. That gives `2 + 4 + 2 + 2 = 10 ≤ 12`. Raising the
-quota is the other route, but it has already been denied once.
+To run all four again, free 2 vCPU. **`node-c`'s 8 vCPUs are in use**: they host the
+`llama.cpp` inference service (`termini-llama-server`, `:8080`) that the operator's
+decision calls reach over the underlay, so downsizing `node-c` would remove the model
+host, not reclaim idle headroom. The routes are: keep `node-c` at `n2-standard-8` and
+leave `node-b` terminated (`2 + 8 + 2 = 12`), or raise `CPUS_ALL_REGIONS` — which has
+already been denied once. (An off-prem decision model on Cloud Run GPU would free the
+headroom, but the project's free-tier billing account rejects every non-TPU accelerator,
+so that route is not available here.)
 
 
 ## Ports opened (D2 port map)

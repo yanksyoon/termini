@@ -5,7 +5,8 @@ The three deploy targets, and why each sits where it does.
 | component | host | why there |
 |---|---|---|
 | **dashboard** | Firebase Hosting | static site; `firebase deploy --only hosting` |
-| **model (Gemma)** | Cloud Run GPU, `asia-southeast1` | Google's own open-weights model on a named GCP product, via a Model Garden image; scale-to-zero |
+| **model (decision step)** | **Node C** — `llama.cpp`, CPU-only, `10.10.0.13:8080` | the operator's decision calls stay on-prem; see "Where the decision model runs" below |
+| **model (managed reference)** | Cloud Run GPU, `asia-southeast1` | Google's own open-weights Gemma on a named GCP product, via a Model Garden image; scale-to-zero. Deployed, but the shipped operator does not point at it |
 | **controller** | Compute Engine VM, `asia-south1-a` | it persists to **SQLite** — Cloud Run's filesystem is ephemeral (issue #96) |
 
 All three are GCP, so "deployed on Cloud Run/GCP/Firebase" holds. The controller
@@ -67,6 +68,33 @@ Two things bite here:
   refused probe is the signature).
 - Point `TERMINI_LXD_BASE_URL` at the stub **and restart the controller**; the
   loop reads it at startup.
+
+## Where the decision model runs — and the measured latency
+
+The operator's decision step is served by **`llama.cpp` on Node C** (CPU-only,
+`n2-standard-8`, alias `deepseek-flash`), reached over the underlay at
+`http://10.10.0.13:8080`. `setup-operator-node-c.sh` applies that wiring (the
+on-prem counterpart of `setup-operator-model.sh`, which points the same seam at
+the managed Cloud Run model); set `TERMINI_INFERENCE_BASE_URL` to Node C and the
+`termini/decision` adapter's call goes to Node C.
+
+**Raw measurement on Node C** (`n2-standard-8`, 8 threads, the pinned
+`deepseek-flash` GGUF = DeepSeek-R1-Distill-Llama-8B Q4_K_M):
+
+| request | prompt tokens | generation | wall clock |
+|---|---|---|---|
+| operator decision, 1-sample evidence window | 1,983 | 125 tok @ 4.1 tok/s | **156.2 s** |
+| operator decision, real 20-sample evidence window | 8,973 | — | **≈9–10 min** (prefill 13.9–16.6 tok/s) |
+
+The real 20-sample request **exceeds the shipped server context**
+(`--ctx-size 8192 --parallel 2` ⇒ 4,096 tokens/slot) and is rejected with HTTP 400
+before any token is generated. So the model-driven path is real and on-prem, but it
+is **minutes-per-decision, not interactive**; the on-screen demo moment is carried by
+the deterministic fast-path (`architecture.md` R24). Two further consequences worth
+knowing: the operator loop holds its SQLite transaction for the whole call, so
+telemetry ingest stalls while a decision is in flight; and a fast, external decision
+model would free Node C's 8 vCPUs, but this project's free-tier billing account
+rejects every non-TPU accelerator, so the GPU route is not available here.
 
 ## Why weights are staged instead of pulled at startup
 

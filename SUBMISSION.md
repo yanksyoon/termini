@@ -139,19 +139,27 @@ The threshold rule is the **detector**, the model is the **decider**. A rule fir
 is a wake-up signal, never a decision:
 
 ```
-telemetry (C0/C1)  →  threshold rule fires  →  GEMMA decides the action  →  guardrails  →  LXD executes  →  audit
+telemetry (C0/C1)  →  threshold rule fires  →  llama.cpp on Node C decides  →  guardrails  →  LXD executes  →  audit
 ```
 
-The model's choice is constrained three ways — a **GBNF grammar** under which an
-off-allowlist command has no valid encoding, a **param/guardrail validator**, and a
-**confidence gate** — with a **mandatory deterministic fallback** that records both
-the fallback and its reason. Which decider acted is recorded per-decision in
+The model runs **on-prem, on Node C** (`llama.cpp`, CPU-only, alias `deepseek-flash`), so the
+operator loop makes **no external call at all** — a strictly stronger data-residency position
+than an off-prem decision model. The model's choice is constrained three ways — a **GBNF
+grammar** under which an off-allowlist command has no valid encoding, a **param/guardrail
+validator**, and a **confidence gate** — with a **mandatory deterministic fallback** that
+records both the fallback and its reason. Which decider acted is recorded per-decision in
 `decision_source`, so "the AI did it" is auditable rather than asserted.
 
-Governance holds throughout: the model is an **external call permitted only for the
-operator loop over C0 telemetry**, under a static versioned prompt template —
-`docs/contracts/governance.md` §7.1/§7.2. **C2 (application logs, payloads, prompts,
-credentials) never egresses.**
+Governance holds throughout: the call is wrapped by `externalModelCall()`
+(`governance.md` §7.2/§9.3), which asserts the static template version and the C-class of
+every substituted field before sending, and audits before/after.
+**C2 (application logs, payloads, prompts, credentials) never reaches the model.**
+**Note on latency:** on CPU a decision is *minutes*, not seconds (measured: ≈156 s at a
+one-sample evidence window, ≈9–10 min at the real 20-sample window; the real request is
+8,973 prompt tokens and exceeds the shipped server context). The on-screen demo moment is
+therefore carried by the deterministic fast-path, not the model. The Gemma-on-Cloud-Run-GPU
+service (`termini-gemma`) remains deployed as the reference managed path, but the shipped
+operator does not point at it.
 
 ---
 
