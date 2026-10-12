@@ -42,9 +42,14 @@ _B64 = re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")
 
 _C1_FIELDS = {"hostname", "ip_local", "mac_address", "project_id"}
 
-# Structurally-validated, non-smuggling fields skipped by the C2 string scan:
-# timestamps, ULID identifiers, and hashes can legitimately contain colon/dot
-# digits and are never a PII vector.
+# Fields exempted from the C2 string scan. Every member MUST be structurally
+# validated by the schema, because an exempted field is never signature-scanned for
+# PII — so the exemption is only safe if the format makes prose impossible.
+# `governance_chain_tip` is a ULID (validate.py) and `config_hash` a hex digest
+# (fields.REDACTION_FIELDS). Both were previously weaker than that — "non-empty
+# string" and a bare `str` — while being persisted, which made either one a storage
+# path for unscanned customer content. The schema now enforces the formats the
+# exemption assumes; do not add a member here without the same guarantee.
 _SKIP_STRING_SCAN = _C1_FIELDS | {
     "ts", "call_id", "node_id", "vm_id", "governance_chain_tip", "config_hash",
 }

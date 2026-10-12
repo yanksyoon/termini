@@ -150,7 +150,7 @@ ALL_SAMPLE_KEYS = set(SAMPLE_FIELDS) | set(SAMPLE_CONTAINERS)
 # ---------------------------------------------------------------------------
 REDACTION_FIELDS: dict[str, dict] = {
     "version": {"kind": "str", "unit": None, "cclass": "C0"},
-    "config_hash": {"kind": "str", "unit": None, "cclass": "C0"},
+    "config_hash": {"kind": "str", "unit": None, "cclass": "C0", "pattern": "^[0-9a-fA-F]{4,128}$"},
     "result": {"kind": "str", "unit": None, "cclass": "C0", "enum": ["ok"]},
 }
 
