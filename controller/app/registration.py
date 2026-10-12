@@ -7,11 +7,58 @@ to one internal representation and one capabilities summary for role allocation.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from . import errors
 
 GiB = 1024 ** 3
+
+# Node-reported LXD endpoint: `host:port` or `scheme://host:port`. IPv4/hostname
+# or a bracketed IPv6 literal is accepted; a port is required because the address
+# is what the apply-plan materialiser dials.
+_ENDPOINT_RE = re.compile(
+    r"^(?:(?P<scheme>[a-z][a-z0-9+.\-]*)://)?"
+    r"(?P<host>\[[0-9A-Fa-f:]+\]|[A-Za-z0-9.\-]+)"
+    r":(?P<port>\d{1,5})$"
+)
+
+
+def _lxd_endpoint(raw: Any, ctx: str) -> str | None:
+    """Validate an optional node LXD endpoint. Returns it or None.
+
+    Absent (`None`/empty) is fine — that is exactly the older node the global
+    fallback exists for. A *present* malformed value is a 422 rather than a silent
+    drop: ignoring it would fall the node back to the global LXD URL and
+    materialise VMs on the wrong host, which is worse than failing loudly.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise errors.invalid_argument(
+            f"{ctx}: expected string, got {type(raw).__name__}",
+            [{"field": ctx, "reason": "type"}],
+        )
+    value = raw.strip()
+    if not value:
+        return None
+    m = _ENDPOINT_RE.match(value)
+    if not m or not (1 <= int(m.group("port")) <= 65535):
+        raise errors.invalid_argument(
+            f"{ctx}: expected host:port or scheme://host:port, got {value!r}",
+            [{"field": ctx, "reason": "format"}],
+        )
+    return value
+
+
+def _endpoint_from(d: dict, *, nested: str, ctx: str) -> str | None:
+    """Prefer `<nested>` (e.g. `machine.lxd.endpoint`), else the flat key."""
+    obj = d.get(nested)
+    flat = d.get("lxd_endpoint")
+    if isinstance(obj, dict):
+        return _lxd_endpoint(obj.get("endpoint"), f"{ctx}.{nested}.endpoint")
+    return _lxd_endpoint(flat, f"{ctx}.lxd_endpoint")
+
 
 
 def _require_str(d: dict, key: str, ctx: str, optional: bool = False) -> str | None:
@@ -124,6 +171,7 @@ def _parse_canonical(raw: dict) -> dict:
         "gpu_count": len(gpu_norm),
         "os": machine.get("os") if isinstance(machine.get("os"), dict) else None,
         "lxd": machine.get("lxd") if isinstance(machine.get("lxd"), dict) else None,
+        "lxd_endpoint": _endpoint_from(machine, nested="lxd", ctx="machine"),
         "installer_version": machine.get("image_version")
         if isinstance(machine.get("image_version"), str)
         else None,
@@ -183,6 +231,7 @@ def _parse_legacy(raw: dict) -> dict:
         "gpu_count": len(gpu_norm),
         "os": raw.get("os") if isinstance(raw.get("os"), dict) else None,
         "lxd": raw.get("lxd") if isinstance(raw.get("lxd"), dict) else None,
+        "lxd_endpoint": _endpoint_from(raw, nested="lxd", ctx="registration"),
         "installer_version": raw.get("installer_version")
         if isinstance(raw.get("installer_version"), str)
         else None,
