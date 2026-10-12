@@ -369,6 +369,28 @@ class LxdExecutor:
         """
         return self._request("GET", "/1.0/instances")
 
+    def list_instance_names(self) -> tuple[bool, list[str]]:
+        """Names of the instances that exist on the node, for reconciliation.
+
+        Returns `(reachable, names)`. `reachable` is False when the node could not
+        be read (untrusted, unreachable, timeout, non-JSON): the caller must treat
+        that as "absence not proven" and keep the reservation, never as an empty
+        node — an unreachable node that silently released every plan's capacity
+        would be worse than the bug this repairs.
+        """
+        r, meta = self._read_json("/1.0/instances?recursion=1")
+        if r.result != "ok":
+            return False, []
+        items = meta.get("metadata") if isinstance(meta, dict) else meta
+        names: list[str] = []
+        if isinstance(items, list):
+            for it in items:
+                if isinstance(it, dict) and isinstance(it.get("name"), str):
+                    names.append(it["name"])
+                elif isinstance(it, str):  # recursion=0 URL-list shape
+                    names.append(it.rstrip("/").split("/")[-1])
+        return True, names
+
     def trust_client(self, secret: str, *, name: str = "termini-controller") -> ExecResult:
         """Add THIS client's certificate to the node's LXD trust store.
 

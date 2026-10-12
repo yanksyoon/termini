@@ -411,6 +411,90 @@ each node at its **own** LXD endpoint (reported at registration, see
 The image alias is `TERMINI_LXD_WORKLOAD_IMAGE` (default `agent-vm`) — an image
 preloaded on the node, never a registry pull (D3).
 
+#### POST /v1/projects/{project_id}/vms/release
+
+Release a plan's **committed capacity** back to its node's pool. This is the
+inverse of the §5.2 step 7 commit. Body:
+
+```json
+{ "plan_id": "01M4349RQ2P5DPC7K59W4WJCR", "reason": "stale_demo_state" }
+```
+
+Response `200 OK`:
+
+```json
+{ "plan_id": "01M4349RQ2P5DPC7K59W4WJCR",
+  "status": "released",
+  "released": { "cpu_allocated": 6, "ram_allocated_gb": 12, "disk_allocated_gb": 24 },
+  "rows_released": 1,
+  "released_at": "2026-10-12T15:32:00Z" }
+```
+
+Without this route, committed capacity was permanent: nothing decremented a
+`vm_allocations` row once its instances were gone, so a node eventually had no
+allocatable capacity left and every subsequent plan was rejected `422`
+`exceeds_node_ram_ceiling` — recoverable only by wiping the DB, which destroys the
+audit trail. `reason` is optional (≤200 chars); the default is `released_by_user`.
+
+- **Idempotent.** The commit row is *soft-released* (marked `released_at`), never
+  deleted, so the audit trail survives. Releasing the same plan again finds no
+  live commitment and returns `200` with `"status": "already_released"` and a zero
+  `released` object — never a double decrement, never an error. The node's
+  `capacity.*_free` (and the §5.2 step 6 clamp) immediately reflect the returned
+  capacity.
+- A `plan_id` that never committed anything is `404 NOT_FOUND`; a missing or
+  malformed `plan_id` is `422 INVALID_ARGUMENT`. Neither crashes.
+- A plan committed but never applied may be released with this route; the *automatic*
+  path (§ `vms/reconcile`) deliberately leaves such a reservation standing.
+
+#### POST /v1/projects/{project_id}/vms/reconcile
+
+Self-heal: release every live commit whose **materialised instances no longer
+exist** on its node. Body `{}`. Response `200 OK`:
+
+```json
+{ "nodes_checked": 1,
+  "released": [ { "plan_id": "01M4349RQ2P5DPC7K59W4WJCR",
+                  "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
+                  "reason": "instances_gone",
+                  "vm_ids": ["termini-01m4349rq2p5dp-0-0"] } ],
+  "released_count": 1 }
+```
+
+A successful `vms/apply` records the LXD instance names it created on the plan's
+commit (`vm_allocations.vm_ids_json`); reconciliation asks each node's LXD whether
+any of those names still exist and releases the commit when none do. The controller
+also runs this pass **once at startup**, so a restarted demo self-heals before a
+plan can be refused.
+
+Two deliberate conservatisms (absence must be *proven*, not assumed):
+
+- a commit with **no recorded instances** (committed but never applied) is never
+  reconciled — it has materialised nothing, so no reservation is released;
+- a node that **cannot be reached** (untrusted, unreachable, timeout, non-JSON) is
+  skipped, never treated as empty — an unreachable node must not release every
+  plan's capacity.
+
+#### POST /v1/projects/{project_id}/nodes/{node_id}/decommission
+
+Retire a node from the fleet. Body `{ "reason": "throwaway test node" }` (optional,
+≤200 chars). Response `200 OK`:
+
+```json
+{ "node_id": "01M4349RPTT29RNTC6VBCXQ0RC", "status": "decommissioned",
+  "decommissioned_at": "2026-10-12T15:32:00Z",
+  "released": { "cpu_allocated": 6, "ram_allocated_gb": 12, "disk_allocated_gb": 24 },
+  "rows_released": 1 }
+```
+
+The node is dropped from `GET /v1/projects/{project_id}/nodes` (soft retire — the
+row survives, so its telemetry and audit history still resolve) and its live
+committed capacity is released. This is what stops phantom `OFFLINE` entries
+accumulating until the dashboard's fleet contradicts the deck. Idempotent: a
+second call returns `200` with `"status": "already_decommissioned"`; an unknown
+`node_id` is `404 NOT_FOUND`. A decommissioned node that re-registers with a valid
+bootstrap token is revived (`status: online`, decommission cleared).
+
 #### GET /v1/projects/{project_id}/nodes
 
 ```json
@@ -480,6 +564,7 @@ Response `202 Accepted` with the queued `command_id`. Any action while the VM is
 `provisioning` or `migrating` returns `409 CONFLICT`.
 
 Node-level human actions (`POST /v1/projects/{project_id}/nodes/{node_id}/actions/{reboot,drain}`),
+node retirement (`POST /v1/projects/{project_id}/nodes/{node_id}/decommission`),
 remediation approve/deny (`POST /v1/projects/{project_id}/remediations/{command_id}/{approve,deny}`),
 and the node SSH access string (`GET /v1/projects/{project_id}/nodes/{node_id}/ssh`)
 are frozen in `dashboard.md` §3.2/§4 and are the frontend's manual-intervention surface.
@@ -694,7 +779,11 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
    preference derives the coarse per-role host maxima used by step 4.
 7. **Commit**: allocate capacity for accepted/clamped `agent_vm` classes (the
    `inference_vm` reference class reserves no GPU/VM capacity), append the
-   `guardrail_audit` record, and return the `AllocationPlan`.
+   `guardrail_audit` record, and return the `AllocationPlan`. A committed class
+   releases its capacity when its materialisation fails, when the plan is released
+   (`POST …/vms/release`), when its node is decommissioned, or automatically when
+   its materialised instances are gone (`POST …/vms/reconcile`); the commit row is
+   soft-released, so the audit trail survives.
 
 ### 5.3 Reject vs clamp — reference table
 

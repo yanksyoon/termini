@@ -198,6 +198,11 @@ class StubLxd:
                     self._send(200, {"type": "sync", "status_code": 200,
                                      "metadata": {"status": state,
                                                   "status_code": 103 if state == "Running" else 102}})
+                elif self.path.startswith("/1.0/instances"):
+                    # Existence probe for reconciliation: the names currently
+                    # materialised on this node (recursion=1 object list shape).
+                    self._send(200, {"type": "sync", "status_code": 200,
+                                     "metadata": [{"name": n} for n in stub.instances]})
                 else:
                     self._send(200, {"type": "sync", "status_code": 200, "metadata": {}})
 

@@ -12,6 +12,9 @@ and dashboard.md §1–§4):
     POST /v1/projects/{pid}/nodes/{nid}/actions/{reboot,drain}       -> 202
     POST /v1/projects/{pid}/intents               (project_token)    -> 200/422
     POST /v1/projects/{pid}/vms/apply             (project_token)    -> 202
+    POST /v1/projects/{pid}/vms/release           (project_token)    -> 200/404
+    POST /v1/projects/{pid}/vms/reconcile         (project_token)    -> 200
+    POST /v1/projects/{pid}/nodes/{nid}/decommission (project_token) -> 200/404
     POST /v1/projects/{pid}/remediations/{cid}/{approve,deny}        -> 200
     POST /v1/nodes/{nid}/telemetry                (node_token)       -> 202
     GET  /v1/nodes/{nid}/telemetry/recent         (node_token)       -> 200
@@ -223,6 +226,13 @@ class ControllerHandler(BaseHTTPRequestHandler):
             return self._intents(conn, segs[2])
         if method == "POST" and len(segs) == 5 and segs[:2] == ["v1", "projects"] and segs[3] == "vms" and segs[4] == "apply":
             return self._apply_plan(conn, segs[2])
+        if method == "POST" and len(segs) == 5 and segs[:2] == ["v1", "projects"] and segs[3] == "vms" and segs[4] == "release":
+            return self._release_plan(conn, segs[2])
+        if method == "POST" and len(segs) == 5 and segs[:2] == ["v1", "projects"] and segs[3] == "vms" and segs[4] == "reconcile":
+            return self._reconcile(conn, segs[2])
+        if (method == "POST" and len(segs) == 6 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "nodes" and segs[5] == "decommission"):
+            return self._decommission_node(conn, segs[2], segs[4])
         if (method == "POST" and len(segs) == 6 and segs[:2] == ["v1", "projects"]
                 and segs[3] == "remediations" and segs[5] in ("approve", "deny")):
             return self._remediation_decision(conn, segs[2], segs[4], segs[5])
@@ -620,6 +630,10 @@ class ControllerHandler(BaseHTTPRequestHandler):
         node_cache: dict[str, dict | None] = {}
         alloc_results: list[dict] = []
         vm_ids: list[str] = []
+        # Instances actually materialised, grouped by node. Recorded onto the
+        # plan's commit after the loop so reconciliation can later tell "these
+        # instances were created and are now gone" from "committed, never applied".
+        instances_by_node: dict[str, list[str]] = {}
         any_failed = False
 
         for alloc in plan["allocations"]:
@@ -695,6 +709,8 @@ class ControllerHandler(BaseHTTPRequestHandler):
             if failure is None:
                 alloc["vm_ids"] = created           # record the real ids on the plan
                 vm_ids.extend(created)
+                if created and node_id:
+                    instances_by_node.setdefault(node_id, []).extend(created)
                 alloc_results.append({
                     "index": index, "status": "ready", "node_id": node_id,
                     "realized_as": alloc.get("realized_as", "vm"), "vm_ids": created,
@@ -722,6 +738,14 @@ class ControllerHandler(BaseHTTPRequestHandler):
             })
 
         state = "failed" if any_failed else "ready"
+
+        # Record the instances this plan actually materialised on each node so
+        # reconciliation can later release a commit whose VMs are gone (a commit
+        # with no recorded instances is never reconciled — see
+        # `store.set_allocation_instances` / `reconcile_allocations`).
+        for node_id, names in instances_by_node.items():
+            store.set_allocation_instances(conn, project_id, plan_id, node_id, names)
+
         event = {
             "job_id": job_id, "plan_id": plan_id, "state": state,
             "vm_ids": vm_ids, "allocations": alloc_results,
@@ -742,6 +766,95 @@ class ControllerHandler(BaseHTTPRequestHandler):
 
         return 202, {"job_id": job_id, "plan_id": plan_id, "state": state,
                      "vm_ids": vm_ids, "allocations": alloc_results}
+
+    def _release_plan(self, conn, project_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/vms/release — release a plan's committed capacity.
+
+        The inverse of the §5.2 step 7 commit: it returns to the node's pool the
+        capacity a plan reserved, so a later plan can use it (the demo's headline
+        prompt is exactly the request that a saturated node refuses). Idempotent —
+        a repeat release finds no live commitment and reports `already_released`,
+        never a double decrement — while a plan that never committed is a clean
+        `404` (as is a malformed `plan_id` a `422`), never a crash. The commit row
+        is soft-released, so the audit trail survives (this is why release, not a
+        DB wipe, is the recovery path).
+        """
+        self._require_project(conn, project_id)
+        body = self._read_body()
+        plan_id = body.get("plan_id")
+        if not isinstance(plan_id, str) or not plan_id.strip():
+            raise errors.invalid_argument("plan_id is required")
+        plan_id = plan_id.strip()
+        if not ulid.is_valid_ulid(plan_id):
+            raise errors.invalid_argument("plan_id must be a ULID")
+        reason = body.get("reason")
+        if reason is not None and (not isinstance(reason, str) or len(reason) > 200):
+            raise errors.invalid_argument("reason must be a string of at most 200 chars")
+
+        result = store.release_allocations(
+            conn, project_id, plan_id=plan_id, reason=reason or "released_by_user")
+        if not result["had_commit"]:
+            raise errors.not_found(f"no committed capacity for plan {plan_id}")
+
+        logs = getattr(self.server, "operator_logs", None)
+        if logs is not None and result["rows_released"]:
+            r = result["released"]
+            logs.append(
+                conn, project_id, severity="info", actor="human",
+                message=(f"released plan {plan_id}: {r['ram_allocated_gb']} GiB RAM, "
+                         f"{r['cpu_allocated']} vCPU returned to the pool"),
+                remediation={"plan_id": plan_id, "released": r,
+                             "reason": reason or "released_by_user"},
+            )
+        return 200, {
+            "plan_id": plan_id,
+            "status": "released" if result["rows_released"] else "already_released",
+            "released": result["released"],
+            "rows_released": result["rows_released"],
+            "released_at": result["released_at"],
+        }
+
+    def _decommission_node(self, conn, project_id: str, node_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/nodes/{node_id}/decommission — retire a node.
+
+        Retires a node from the fleet: it is dropped from `GET /nodes` (so the
+        dashboard cannot show phantom OFFLINE entries that contradict the deck)
+        and its live committed capacity is released so a dead node does not keep a
+        share of some pool. Idempotent — a repeat call reports
+        `already_decommissioned`; an unknown node is a clean `404`. The node row,
+        its telemetry and its audit history survive (soft retire).
+        """
+        self._require_project(conn, project_id)
+        body = self._read_body()
+        reason = body.get("reason")
+        if reason is not None and (not isinstance(reason, str) or len(reason) > 200):
+            raise errors.invalid_argument("reason must be a string of at most 200 chars")
+
+        result = store.decommission_node(conn, project_id, node_id, reason=reason or "retired")
+        if result is None:
+            raise errors.not_found(f"node {node_id} not found")
+
+        logs = getattr(self.server, "operator_logs", None)
+        if logs is not None and result["status"] == "decommissioned":
+            logs.append(
+                conn, project_id, severity="info", actor="human", node_id=node_id,
+                message=(f"decommissioned node {node_id}: released "
+                         f"{result['released']['ram_allocated_gb']} GiB RAM, "
+                         f"{result['released']['cpu_allocated']} vCPU"),
+                remediation={"node_id": node_id, "released": result["released"],
+                             "reason": reason or "retired"},
+            )
+        return 200, result
+
+    def _reconcile(self, conn, project_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/vms/reconcile — release capacity for gone VMs.
+
+        On-demand form of the self-heal the controller also runs once at startup:
+        release every live commit whose materialised instances no longer exist on
+        its node.
+        """
+        self._require_project(conn, project_id)
+        return 200, reconcile_allocations(conn, self.server.cfg, project_id)
 
     def _host_caps(self, conn, default_caps: dict) -> dict:
         """Per-role host maxima for the clamp validator, from REGISTERED nodes.
@@ -1390,6 +1503,53 @@ class ControllerHandler(BaseHTTPRequestHandler):
 
 
 # ------------------------------------------------------------------ module helpers
+
+def reconcile_allocations(conn, cfg, project_id: str, *, executor_factory=None) -> dict:
+    """Release committed capacity whose materialised instances are gone (self-heal).
+
+    The success path of `_apply_plan` records the LXD instance names it created on
+    the plan's commit (`store.set_allocation_instances`). For every LIVE commit
+    that recorded instances, ask the node's LXD whether any of them still exist and
+    release the commit when none do. This is what stops capacity accumulating
+    permanently: a node that rebooted, an operator who deleted the instances, or a
+    restarted demo no longer leaves a plan claiming VMs that are gone — so the
+    headline intent cannot be permanently 422'd by stale state.
+
+    A commit with no recorded instances (committed but never applied) is left
+    alone: it has materialised nothing, so no absence can be proven. A node that
+    cannot be reached is also SKIPPED, never released — absence must be *proven*,
+    not assumed (an unreachable node is not an empty node).
+
+    Returns `{"nodes_checked", "released": [...], "released_count"}`.
+    """
+    factory = executor_factory or (lambda c, node: op_target.executor_for_node(c, node))
+    nodes_checked = 0
+    released: list[dict] = []
+    for row in store.live_allocations(conn, project_id):
+        vm_ids = row.get("vm_ids") or []
+        if not vm_ids:
+            continue  # committed but never materialised -> not ours to release
+        node = store.get_node(conn, row["node_id"])
+        if node is None or node.get("decommissioned_at"):
+            store.release_allocations(
+                conn, project_id, plan_id=row["plan_id"], node_id=row["node_id"],
+                reason="node_gone")
+            released.append({"plan_id": row["plan_id"], "node_id": row["node_id"],
+                             "reason": "node_gone", "vm_ids": vm_ids})
+            continue
+        nodes_checked += 1
+        ok, live_names = factory(cfg, node).list_instance_names()
+        if not ok:
+            continue
+        if not (set(vm_ids) & set(live_names)):
+            store.release_allocations(
+                conn, project_id, plan_id=row["plan_id"], node_id=row["node_id"],
+                reason="instances_gone")
+            released.append({"plan_id": row["plan_id"], "node_id": row["node_id"],
+                             "reason": "instances_gone", "vm_ids": vm_ids})
+    return {"nodes_checked": nodes_checked, "released": released,
+            "released_count": len(released)}
+
 
 def _const_eq(a: str, b: str) -> bool:
     return hmac.compare_digest(a, b)
