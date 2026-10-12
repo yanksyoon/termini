@@ -29,9 +29,23 @@ snap refresh --hold lxd || true
 # requires an initialised LXD, so the previous ordering silently had nothing to
 # import into.
 # ---------------------------------------------------------------------------
+# Wait for the daemon to answer.
+#
+# `lxc info` returns 0 on a daemon that is RUNNING BUT NOT INITIALISED: a freshly
+# started LXD snap has a database and a device-less `default` profile, and no
+# storage pool. So `lxc info` is NOT a usable "is initialised" probe, and the
+# preseed below used to be skipped on exactly that basis — the image then shipped
+# a hypervisor on which nothing could be launched. Measured on a node booted from
+# such an image: `lxc storage list` empty, `lxc profile show default` -> devices {},
+# and `lxc launch agent-os/w4 x` -> "Failed getting root disk: No root device could
+# be found". The controller's `instance.create` sends `profiles: ["default"]` with
+# no devices (controller/app/operator/executor.py), so it fails the same way.
+#
+# The probe is therefore the postcondition (a storage pool), and the ensure block
+# after the preseed makes the postcondition hold whichever path was taken.
 for _ in $(seq 1 30); do lxc info >/dev/null 2>&1 && break; sleep 2; done
 
-if ! lxc info >/dev/null 2>&1; then
+if ! lxc storage show default >/dev/null 2>&1; then
   cat <<'PRESEED' | lxd init --preseed
 config: {}
 networks:
@@ -61,6 +75,34 @@ profiles:
   name: default
 PRESEED
 fi
+
+# --- ensure the hypervisor is actually USABLE (idempotent) ------------------
+# Belt and braces for the probe above: a storage pool, the guest bridge, and a
+# `default` profile carrying one root disk + one NIC. Mirrors
+# infra/agent-vm/place-agent-image.sh's ensure_node_lxd(). Without the profile
+# devices nothing can be launched on this node.
+if ! lxc storage show default >/dev/null 2>&1; then
+  lxc storage create default dir
+fi
+if ! lxc network show lxdbr0 >/dev/null 2>&1; then
+  lxc network create lxdbr0 ipv4.address=auto ipv4.nat=true ipv6.address=none
+fi
+if ! lxc profile device show default 2>/dev/null | grep -q '^root:'; then
+  lxc profile device add default root disk path=/ pool=default
+fi
+if ! lxc profile device show default 2>/dev/null | grep -q '^eth0:'; then
+  lxc profile device add default eth0 nic name=eth0 network=lxdbr0
+fi
+
+# Assert the postconditions, loudly. An image without these is unusable: the
+# controller's instance.create sends `profiles: ["default"]` with no devices, so
+# a device-less default profile fails with "No root device could be found".
+lxc storage show default >/dev/null 2>&1 \
+  || { echo "[provision:10-node-os] FATAL: no storage pool 'default' after init" >&2; exit 1; }
+lxc profile device show default 2>/dev/null | grep -q '^root:' \
+  || { echo "[provision:10-node-os] FATAL: 'default' profile has no root disk — instances cannot be created" >&2; exit 1; }
+lxc network show lxdbr0 >/dev/null 2>&1 \
+  || { echo "[provision:10-node-os] FATAL: guest bridge lxdbr0 is missing" >&2; exit 1; }
 
 # Serve the LXD API on the underlay. 8443 is the port the node contract and the
 # GCP firewall rule expect (infra/gcp/README.md), and the port the remediation
