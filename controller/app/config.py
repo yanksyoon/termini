@@ -74,6 +74,21 @@ def _decision_mode() -> str:
     return mode
 
 
+def _lxd_node_scheme() -> str:
+    """Scheme assumed for a node LXD endpoint reported as a bare `host:port`.
+
+    Real fleet nodes serve LXD over HTTPS with mTLS (infra-decisions.md D2/D6); the
+    stub demo never reports an endpoint, so it keeps using the global
+    TERMINI_LXD_BASE_URL (an http:// URL) untouched.
+    """
+    raw = os.environ.get("TERMINI_LXD_NODE_SCHEME", "").strip().lower() or "https"
+    if raw not in ("http", "https"):
+        raise RuntimeError(
+            f"TERMINI_LXD_NODE_SCHEME must be 'http' or 'https', got {raw!r}"
+        )
+    return raw
+
+
 @dataclass(frozen=True)
 class Config:
     host: str
@@ -161,6 +176,10 @@ class Config:
     lxd_request_timeout_s: float
     lxd_retry_max: int
     lxd_retry_backoff_s: float
+    # Apply-plan materialisation (per-node LXD targeting).
+    lxd_workload_image: str       # preloaded LXD image alias (D3: no registry at boot)
+    lxd_node_scheme: str          # scheme assumed for a node endpoint given as host:port
+    lxd_create_timeout_s: float   # ceiling on waiting for the create operation
 
     @classmethod
     def load(cls) -> "Config":
@@ -284,6 +303,10 @@ class Config:
             lxd_request_timeout_s=_float_env("TERMINI_LXD_TIMEOUT_S", 10.0),
             lxd_retry_max=_int_env("TERMINI_LXD_RETRY_MAX", 3),
             lxd_retry_backoff_s=_float_env("TERMINI_LXD_RETRY_BACKOFF_S", 0.5),
+            lxd_workload_image=os.environ.get("TERMINI_LXD_WORKLOAD_IMAGE", "").strip()
+            or "agent-vm",
+            lxd_node_scheme=_lxd_node_scheme(),
+            lxd_create_timeout_s=_float_env("TERMINI_LXD_CREATE_TIMEOUT_S", 120.0),
         )
 
     @staticmethod

@@ -123,7 +123,15 @@ def upsert_node(
     source_ip: str | None,
     now: str,
 ) -> tuple[str, bool]:
-    """Insert or update a node. Returns (node_id, created)."""
+    """Insert or update a node. Returns (node_id, created).
+
+    `reg["lxd_endpoint"]` (optional) is the node's own LXD REST address (host:port
+    or a full URL), used by the per-node executor resolver. It is written with
+    COALESCE semantics on the UPDATE branch: a re-registration that omits the
+    endpoint keeps the previously recorded one rather than clearing it (an older
+    node must not silently drop a fleet node back to the global fallback).
+    """
+    endpoint = reg.get("lxd_endpoint")
     existing = find_node_by_dedup(conn, project_id, reg["registration_id"], reg["machine_id"])
     if existing:
         # node_token_hash and status MUST be updated here too. The controller mints a
@@ -138,7 +146,8 @@ def upsert_node(
         conn.execute(
             "UPDATE nodes SET hardware_json=?, os_json=?, lxd_json=?, installer_version=?,"
             " hostname_hash=?, role_hint=?, last_seen_at=?, source_ip=?,"
-            " node_token_hash=?, status='online' WHERE id=?",
+            " node_token_hash=?, lxd_endpoint=COALESCE(?, lxd_endpoint), status='online'"
+            " WHERE id=?",
             (
                 json.dumps(reg["hardware_json"]),
                 json.dumps(reg["os"]) if reg["os"] is not None else None,
@@ -149,6 +158,7 @@ def upsert_node(
                 now,
                 source_ip,
                 node_token_hash,
+                endpoint,
                 existing["id"],
             ),
         )
@@ -158,14 +168,14 @@ def upsert_node(
     conn.execute(
         "INSERT INTO nodes (id, project_id, registration_id, machine_id, hostname_hash, role,"
         " node_token_hash, hardware_json, os_json, lxd_json, role_hint, installer_version,"
-        " status, last_seen_at, registered_at, source_ip)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', ?, ?, ?)",
+        " lxd_endpoint, status, last_seen_at, registered_at, source_ip)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', ?, ?, ?)",
         (
             node_id, project_id, reg["registration_id"], reg["machine_id"], reg["hostname"],
             role, node_token_hash, json.dumps(reg["hardware_json"]),
             json.dumps(reg["os"]) if reg["os"] is not None else None,
             json.dumps(reg["lxd"]) if reg["lxd"] is not None else None,
-            reg["role_hint"], reg["installer_version"], now, now, source_ip,
+            reg["role_hint"], reg["installer_version"], endpoint, now, now, source_ip,
         ),
     )
     return node_id, True
@@ -515,3 +525,39 @@ def commit_allocation(conn, project_id: str, plan_id: str, node_id: str,
         (ulid.new_ulid(), project_id, plan_id, node_id,
          cpu_allocated, ram_allocated_gb, disk_allocated_gb, now),
     )
+
+
+def release_allocation(conn, project_id: str, plan_id: str, node_id: str,
+                       cpu_allocated: int, ram_allocated_gb: int,
+                       disk_allocated_gb: int) -> bool:
+    """Release the committed capacity of one plan class on a node.
+
+    Failure semantics for apply-plan materialisation: a create that fails or times
+    out must not leave committed capacity claiming an instance that does not
+    exist, so the failing class's commit is undone here.
+
+    `vm_allocations` holds ONE row per (project, plan, node) whose columns are the
+    SUM across that plan's classes on that node (see `_build_plan`), so this
+    decrements the row by the class's own delta and deletes it when nothing is
+    left. Returns True when a committed row was found and adjusted.
+    """
+    rows = conn.execute(
+        "SELECT id, cpu_allocated, ram_allocated_gb, disk_allocated_gb"
+        " FROM vm_allocations WHERE project_id = ? AND plan_id = ? AND node_id = ?",
+        (project_id, plan_id, node_id),
+    ).fetchall()
+    if not rows:
+        return False
+    for row in rows:
+        cpu = int(row["cpu_allocated"]) - max(0, int(cpu_allocated))
+        ram = int(row["ram_allocated_gb"]) - max(0, int(ram_allocated_gb))
+        disk = int(row["disk_allocated_gb"]) - max(0, int(disk_allocated_gb))
+        if cpu <= 0 and ram <= 0 and disk <= 0:
+            conn.execute("DELETE FROM vm_allocations WHERE id = ?", (row["id"],))
+        else:
+            conn.execute(
+                "UPDATE vm_allocations SET cpu_allocated = ?, ram_allocated_gb = ?,"
+                " disk_allocated_gb = ? WHERE id = ?",
+                (max(0, cpu), max(0, ram), max(0, disk), row["id"]),
+            )
+    return True

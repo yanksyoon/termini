@@ -110,13 +110,15 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 1. Frontend `POST /v1/projects/{id}/intents` (NL prompt or structured `spec`).
 2. NL prompt → on-prem `deepseek-flash` extraction (`json_object` response format) → `AllocationRequest`.
 3. Guardrail validator → `AllocationPlan` (all-or-nothing; clamp numeric, reject structural).
-4. Frontend `POST /v1/projects/{id}/vms/apply` → controller accepts the plan, publishes
-   `vm.provisioned` with `vm_ids: []`. There is **no `vm.launch` fan-out in the demo**:
-   LXD materialization is the node command-channel / LXD task's scope and is not wired
-   in the committed controller (`controller/app/server.py _apply_plan`).
-5. (Future) node daemon calls its local LXD API (`POST /1.0/instances?target=<member>`),
-   boots the preloaded `agent-vm/<version>` image, acks `running`. Target **< 10 s** to
-   task-ready.
+4. Frontend `POST /v1/projects/{id}/vms/apply` → controller **materialises** the plan:
+   for each accepted `agent_vm` allocation it creates the instances on that
+   allocation's resolved node by driving the node's LXD REST API
+   (`POST /1.0/instances`) at the node's own registered endpoint, and returns a
+   terminal `state` (`ready`/`failed`) with the real `vm_ids` (the LXD instance
+   names). A failed create is rolled back and its committed capacity released, so
+   the plan never claims an instance that does not exist (`controller-api.md` §4.2).
+5. The node daemon boots the preloaded `agent-vm/<version>` image (D3, no registry
+   pull). Target **< 10 s** to task-ready.
 
 ### 4.3 Telemetry
 
@@ -266,10 +268,12 @@ upgrade, and `/node/v1` joins `/stream/v1` and `/terminal/v1` as a WebSocket roo
 The broader `commandAllowlist()` set declared in `controller/app/commands.py`
 (`vm.resize`, `vm.migrate`, `vm.stop`, `vm.start`, `vm.destroy`, `agent.dispatch_task`,
 `agent.cancel_task`) is **declared but not wired to any execution path in the demo** — marked
-future/day-2. `vm.launch` is **not** in the allowlist and there is **no launch path**
-(`_apply_plan` returns `vm_ids: []`); VM materialization is the node command-channel / LXD
-task's scope. **Rationale:** the doc now matches the committed controller; the `vm.*`/`agent.*`
-verbs are honest about being future work, not shipped behavior.
+future/day-2. `vm.launch` is **not** in the allowlist and there is **no `vm.launch`
+fan-out**: agent-VM placement is apply-plan materialisation, which drives the
+resolved node's LXD REST API directly from the controller (`_apply_plan` creates
+the instances and returns their real ids). **Rationale:** the doc now matches the
+committed controller; the `vm.*`/`agent.*` verbs are honest about being future
+work, not shipped behavior.
 
 ### R6 — Error codes
 
@@ -427,12 +431,14 @@ unambiguous mapping for frontend/controller devs.
 
 ### R23 — Controller launch path (W1-review N2)
 
-**Answer:** the controller does **not** drive LXD placement, and in the demo there is **no launch
-path at all** — `_apply_plan` accepts the plan and returns `vm_ids: []`. The controller mints
-join tokens at registration (seed `8443`, cluster admin only). VM placement via a typed
-`vm.launch` command to the node daemon (which calls its **local** LXD API, AR-2) is the
-day-2 / wired-out path. **Rationale:** matches D6's outbound-only topology and keeps exactly one
-control path per node.
+**Answer:** the controller does **not** mint join tokens for placement, but it **does**
+materialise plans: `_apply_plan` creates the instances by driving each allocation's
+resolved node's LXD REST API at that node's own registered endpoint
+(`TERMINI_LXD_BASE_URL` is the fallback for a node that reports none) and returns the
+real instance ids. There is no typed `vm.launch` fan-out to the node daemon
+(AR-2's node-side gate is not used for placement). The controller mints
+join tokens at registration (seed `8443`, cluster admin only). **Rationale:** direct
+per-node placement keeps one addressing path and matches the committed controller.
 
 ### R24 — OOM remediation determinism (W1-review N3)
 

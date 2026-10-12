@@ -26,8 +26,10 @@ import urllib.request
 REPO = pathlib.Path(__file__).resolve().parent.parent
 CONTROLLER = REPO / "controller"
 sys.path.insert(0, str(CONTROLLER))
+sys.path.insert(0, str(REPO / "tests"))
 
 from app import commands, db as appdb, health, store, ulid  # noqa: E402
+from stub_lxd import StubLxd  # noqa: E402
 
 L4_24GB = 24 * 1024 ** 3
 PORT = int(os.environ.get("TERMINI_DASH_TEST_PORT", "18081"))
@@ -476,6 +478,10 @@ class DashboardIntegrationTest(unittest.TestCase):
                 ],
             }, f)
 
+        # Local LXD stub: the global fallback target for apply-plan materialisation.
+        cls.lxd = StubLxd()
+        cls.lxd.start()
+
         env = dict(os.environ)
         env.update({
             "TERMINI_HOST": "127.0.0.1",
@@ -487,6 +493,12 @@ class DashboardIntegrationTest(unittest.TestCase):
             "TERMINI_MIN_REDACTOR_VERSION": "3",
             "TERMINI_INVENTORY_PATH": cls.inventory_path,
             "TERMINI_TERMINAL_BACKEND": "local",
+            # Probe LXD for apply-plan materialisation: neither node reports its own
+            # endpoint, so the controller must fall back to this global URL (the
+            # stub-demo path). A local stub stands in for the node's LXD API.
+            "TERMINI_LXD_BASE_URL": cls.lxd.base_url,
+            "TERMINI_LXD_RETRY_MAX": "1",
+            "TERMINI_LXD_RETRY_BACKOFF_S": "0",
             # Keep the integration server hermetic: the background operator loop
             # polls the telemetry store every second (and can shell out to LXD on
             # a breach). Nothing in these dashboard-surface tests depends on it,
@@ -535,6 +547,7 @@ class DashboardIntegrationTest(unittest.TestCase):
             cls.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             cls.proc.kill()
+        cls.lxd.stop()
 
     def _telemetry(self, node_id, token, sample):
         return http("POST", f"/v1/nodes/{node_id}/telemetry",
@@ -666,8 +679,19 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertEqual(st, 200)
         st, r = http("POST", f"/v1/projects/{self.project_id}/vms/apply",
                      {"plan_id": plan["plan_id"]}, token="dash-project-token", port=PORT)
-        self.assertEqual(st, 202)
-        self.assertEqual(r["state"], "provisioning")
+        self.assertEqual(st, 202, r)
+        # Apply materialises now: a terminal state and a real LXD instance id, not
+        # the old fire-and-forget `provisioning` + `vm_ids: []`.
+        self.assertEqual(r["state"], "ready", r)
+        self.assertEqual(len(r["vm_ids"]), 1)
+        vm_id = r["vm_ids"][0]
+        self.assertTrue(vm_id.startswith("termini-"), vm_id)
+        # The node reported no endpoint, so the global fallback was used: the stub
+        # LXD whose URL is TERMINI_LXD_BASE_URL actually received the create.
+        self.assertIn(vm_id, self.lxd.instances)
+        created = self.lxd.instances[vm_id]
+        self.assertEqual(created["config"]["limits.cpu"], "2")
+        self.assertEqual(created["config"]["limits.memory"], "4GiB")
 
     def test_log_stream_delivers_fresh_event_over_sse(self):
         sse = SseReader(PORT, f"/v1/projects/{self.project_id}/logs?token=dash-project-token")

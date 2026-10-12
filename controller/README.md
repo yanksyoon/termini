@@ -112,7 +112,7 @@ REST (all under `/v1`):
 | POST | `/v1/projects/{pid}/nodes/{nid}/actions/reboot` | project token | `202 {command_id,type,state}` |
 | POST | `/v1/projects/{pid}/nodes/{nid}/actions/drain` | project token | `202 {command_id,type,state}` |
 | POST | `/v1/projects/{pid}/intents` | project token | `200` plan / `422` guardrail-rejected |
-| POST | `/v1/projects/{pid}/vms/apply` | project token | `202 {job_id,state,vm_ids}` |
+| POST | `/v1/projects/{pid}/vms/apply` | project token | `202 {job_id,state:ready\|failed,vm_ids}` (materialises) |
 | POST | `/v1/projects/{pid}/remediations/{cid}/approve` | project token | `200 {command_id,state:approved}` |
 | POST | `/v1/projects/{pid}/remediations/{cid}/deny` | project token | `200 {command_id,state:denied}` |
 | POST | `/v1/nodes/{nid}/telemetry` | node token | `202 {accepted, rejected, backpressure}` |
@@ -303,9 +303,13 @@ Or automate it: set `TERMINI_LXD_TRUST_NODES=https://10.10.0.11:8443` plus
 ## Not in scope (other W1 cards)
 
 Node-side command execution (the node command channel / ack delivery that turns a
-queued `node.reboot`/`node.drain` into an executed action), LXD VM fan-out behind
-`/vms/apply`, and the LXD *cluster* join tokens / controller-issued node certs of
-`node-bootstrap.md` §5. The controller queues commands with the frozen guardrails
-and exposes the streaming/terminal surfaces those components consume. (The
-controller's own LXD **client** certificate + node-trust installation *are*
-implemented — see "LXD mutual-TLS trust" above.)
+queued `node.reboot`/`node.drain` into an executed action), the AI-operator
+remediation loop (threshold-rule → command issuance), and the LXD *cluster* join
+tokens / controller-issued node certs of `node-bootstrap.md` §5. `/vms/apply` **is**
+wired: it materialises the plan by driving each allocation's resolved node's LXD
+REST API at that node's own registered endpoint
+(`controller/app/operator/target.py`), returning real instance ids and a terminal
+state. The controller's own LXD **client** certificate + node-trust installation
+*are* implemented — see "LXD mutual-TLS trust" above. The controller queues commands
+with the frozen guardrails and exposes the streaming/terminal surfaces those
+components consume.

@@ -44,6 +44,7 @@ from . import commands as cmd_mod
 from . import ulid
 from . import sshca as sshca_mod
 from .operator import store as opstore
+from .operator import target as op_target
 from .operator import triggers as op_triggers
 
 log = logging.getLogger("termini.controller")
@@ -572,6 +573,29 @@ class ControllerHandler(BaseHTTPRequestHandler):
         return 200, plan
 
     def _apply_plan(self, conn, project_id: str) -> tuple[int, dict]:
+        """Materialise an accepted plan: one LXD instance per committed VM.
+
+        This used to be a no-op that published `state: "provisioning"` forever. It
+        now drives each allocation's resolved node's LXD REST API (per-node endpoint
+        via `operator.target`, global fallback for an older node) and returns a
+        TERMINAL state.
+
+        The `vm_id` collected here is the LXD **instance name** — the deterministic,
+        node-local identity of the created workload (`termini-<plan>-<index>-<slot>`).
+        It is deliberately not a freshly minted ULID: a stable name derived from the
+        plan is what makes a replayed apply idempotent (LXD rejects the duplicate
+        name, which `create_instance` maps to `already_applied`), and it is the id an
+        operator can actually find on the node. (This diverges from the ULID-typed
+        `vm_ids` item in vm-allocation.schema.json; the plan-level contract text is
+        updated to match.)
+
+        Failure semantics — capacity must never claim an instance that does not
+        exist. If any create of an allocation fails or times out, that allocation's
+        partially-created instances are rolled back and its committed capacity is
+        released (`store.release_allocation`), the allocation is reported `failed`
+        with the error, and the job state is terminal `failed`. A create that
+        succeeds (or is a duplicate = `already_applied`) keeps its commit.
+        """
         self._require_project(conn, project_id)
         body = self._read_body()
         plan_id = body.get("plan_id")
@@ -582,15 +606,122 @@ class ControllerHandler(BaseHTTPRequestHandler):
             raise errors.not_found(f"plan {plan_id} not found")
         if plan["outcome"] != "accepted":
             raise errors.err(409, "CONFLICT", "plan is not accepted")
+
+        cfg = self.server.cfg
+        image_alias = cfg.lxd_workload_image
         job_id = ulid.new_ulid()
-        # Materialization (LXD fan-out via the node command channel) is the node
-        # channel / LXD task's scope; this returns the accepted job handle.
-        self.server.broker.publish(
-            "vm.provisioned",
-            {"job_id": job_id, "plan_id": plan_id, "state": "provisioning", "vm_ids": []},
-            project_id,
-        )
-        return 202, {"job_id": job_id, "state": "provisioning", "vm_ids": []}
+        node_cache: dict[str, dict | None] = {}
+        alloc_results: list[dict] = []
+        vm_ids: list[str] = []
+        any_failed = False
+
+        for alloc in plan["allocations"]:
+            index = alloc.get("index")
+            status = alloc.get("status")
+            if status not in ("accepted", "clamped"):
+                # The plan is all-or-nothing at validation time, so an accepted
+                # plan has no rejected classes; keep this defensive anyway.
+                alloc_results.append({
+                    "index": index, "status": "skipped", "node_id": alloc.get("node_id"),
+                    "vm_ids": [], "detail": f"allocation status {status!r}",
+                })
+                continue
+            if alloc.get("realized_as") == "host_service":
+                # inference_vm is a REFERENCE to the node's always-on host inference
+                # service (D5): recorded, never launched, so no VM and no vm_id.
+                alloc_results.append({
+                    "index": index, "status": "ready", "node_id": alloc.get("node_id"),
+                    "realized_as": "host_service", "vm_ids": [],
+                    "detail": "host_service reference; no VM materialised",
+                })
+                continue
+
+            resolved = alloc.get("resolved") or {}
+            node_id = alloc.get("node_id")
+            count = max(0, int(resolved.get("count") or 0))
+            vcpus = int(resolved.get("vcpus") or 0)
+            ram_gb = int(resolved.get("ram_gb") or 0)
+            disk_gb = int(resolved.get("disk_gb") or 0)
+
+            if node_id not in node_cache:
+                node_cache[node_id] = store.get_node(conn, node_id) if node_id else None
+            node = node_cache[node_id]
+            if node is None:
+                any_failed = True
+                alloc_results.append({
+                    "index": index, "status": "failed", "node_id": node_id, "vm_ids": [],
+                    "detail": "resolved node not found; nothing committed to release",
+                })
+                continue
+
+            executor = op_target.executor_for_node(cfg, node)
+            created: list[str] = []
+            failure: str | None = None
+            already = 0
+            for slot in range(count):
+                name = op_target.instance_name(plan_id, index, slot)
+                r = executor.create_instance(
+                    name, image_alias=image_alias,
+                    cpu=vcpus or None,
+                    memory=f"{ram_gb}GiB" if ram_gb else None,
+                    timeout_s=cfg.lxd_create_timeout_s,
+                )
+                if r.result == "ok":
+                    created.append(name)
+                elif r.result == "already_applied":
+                    already += 1
+                    created.append(name)
+                else:
+                    failure = f"create {name} failed: {r.detail}"
+                    break
+
+            if failure is None:
+                alloc["vm_ids"] = created           # record the real ids on the plan
+                vm_ids.extend(created)
+                alloc_results.append({
+                    "index": index, "status": "ready", "node_id": node_id,
+                    "realized_as": alloc.get("realized_as", "vm"), "vm_ids": created,
+                    "created": len(created) - already, "already_applied": already,
+                })
+                continue
+
+            # Roll back this allocation: delete any instance we did create, then
+            # release the class's committed capacity. The plan must not keep
+            # capacity (or a vm_id) for an instance that does not exist.
+            any_failed = True
+            for name in created:
+                executor.delete_instance(name)
+            released = store.release_allocation(
+                conn, project_id, plan_id, node_id,
+                count * vcpus, count * ram_gb, count * disk_gb,
+            )
+            alloc_results.append({
+                "index": index, "status": "failed", "node_id": node_id,
+                "realized_as": alloc.get("realized_as", "vm"), "vm_ids": [],
+                "detail": failure, "rolled_back": len(created), "capacity_released": released,
+            })
+
+        state = "failed" if any_failed else "ready"
+        event = {
+            "job_id": job_id, "plan_id": plan_id, "state": state,
+            "vm_ids": vm_ids, "allocations": alloc_results,
+        }
+        self.server.broker.publish("vm.provisioned", event, project_id)
+
+        # Audit trail in the operator log stream (dashboard.md §2) so a failed or
+        # partial apply is observable, not just a broker frame a late subscriber
+        # missed.
+        logs = getattr(self.server, "operator_logs", None)
+        if logs is not None:
+            logs.append(
+                conn, project_id, severity=("error" if any_failed else "info"),
+                actor="human",
+                message=f"apply plan {plan_id}: {state} ({len(vm_ids)} vm(s))",
+                remediation=event,
+            )
+
+        return 202, {"job_id": job_id, "plan_id": plan_id, "state": state,
+                     "vm_ids": vm_ids, "allocations": alloc_results}
 
     def _host_caps(self, conn, default_caps: dict) -> dict:
         """Per-role host maxima for the clamp validator, from registered nodes."""

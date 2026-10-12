@@ -693,7 +693,11 @@ def registration_body(cfg: dict, node_name: str) -> dict:
             "hostname": node_name,
             "image_version": cfg.get("image_version", "2026.10.0"),
             "os": {"name": "ubuntu", "version": "24.04"},
-            "lxd": {"version": "5.21.8", "snap_revision": "40958"},
+            "lxd": {"version": "5.21.8", "snap_revision": "40958",
+                    # The node's own LXD REST address. The controller cannot place a
+                    # VM without it (a single global URL cannot name one node among a
+                    # fleet); an older node omits it and the controller falls back.
+                    "endpoint": f"{ip}:{cfg.get('lxd_port', 8443)}"},
             "cpu": cpu_facts(),
             "memory": {"total_bytes": mem_total_bytes()},
             "disks": [{"device": "/dev/root", "type": "ssd", "size_bytes": 1, "health": "ok"}],

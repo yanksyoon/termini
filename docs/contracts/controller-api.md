@@ -363,23 +363,53 @@ Response `200 OK` (plan), or `422` if the plan outcome is rejected:
 The plan is accepted or rejected; a rejected plan returns HTTP 422 with
 `code: GUARDRAIL_REJECTED` and the same `allocations` array explaining per-class
 rejections. Accepted plans are NOT executed by this endpoint — the caller invokes
-`POST /v1/projects/{project_id}/vms/apply` (below) to materialize a plan.
+`POST /v1/projects/{project_id}/vms/apply` (below) to materialize a plan, at which
+point each allocation's `vm_ids` is filled with the real LXD instance ids.
 
 #### POST /v1/projects/{project_id}/vms/apply
 
-Accept an already-validated plan. Body:
+Accept an already-validated plan and **materialise it**. Body:
 ```json
-{ "plan_id": "01M4349RQ2P5DPC7K59R0WFJCR" }
+{ "plan_id": "01M4349RQ2P5DPC7K59W4WJCR" }
 ```
 Response `202 Accepted`:
 ```json
 { "job_id": "01M4349RQ3BM21NNW2A68CT3SQ",
-  "state": "provisioning", "vm_ids": [] }
+  "plan_id": "01M4349RQ2P5DPC7K59W4WJCR",
+  "state": "ready",
+  "vm_ids": ["termini-01m4349rq2p5dp...-0-0"],
+  "allocations": [
+    { "index": 0, "status": "ready", "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
+      "realized_as": "vm", "vm_ids": ["termini-01m4349rq2p5dp...-0-0"],
+      "created": 1, "already_applied": 0 } ] }
 ```
-The committed controller **does not launch VMs**: it publishes `vm.provisioned` with
-`vm_ids: []` and returns the accepted job handle. LXD instance materialization is the
-node command-channel / LXD task's scope (not wired in the demo); the frontend tracks
-progress via the event stream (section 7).
+
+For each accepted/clamped `agent_vm` allocation, the controller creates `count`
+LXD instances on the allocation's resolved node by driving that node's LXD REST
+API (`POST /1.0/instances`) and waiting on the returned operation. It addresses
+each node at its **own** LXD endpoint (reported at registration, see
+`node-bootstrap.md` §5.2) and falls back to the single global
+`TERMINI_LXD_BASE_URL` only for a node that reported no endpoint.
+
+- **`state` is terminal**: `ready` (every allocation materialised) or `failed`
+  (at least one allocation did not). It is never left at `provisioning`.
+- **`vm_ids` are the LXD instance names** of the created workloads, not minted
+  ULIDs: the name is deterministic (`termini-<plan_id>-<index>-<slot>`), which is
+  what makes a replayed apply idempotent (LXD rejects the duplicate name and the
+  executor maps that to an idempotent no-op), and it is the identity an operator
+  finds on the node. This supersedes the ULID-typed `vm_ids` item sketched in
+  `vm-allocation.schema.json`.
+- **Failure semantics:** a create that fails or times out is never reported as
+  success. That allocation's partially-created instances are deleted, its
+  committed capacity is released (so the plan never claims an instance that does
+  not exist), the allocation is reported `failed` with the error, and the job
+  `state` is `failed`. `allocations[]` carries the per-class evidence, mirrored as
+  a `vm.provisioned` event (section 7) and an operator log line.
+- `inference_vm` is a reference to the node's host inference service (D5) and
+  creates no VM (`realized_as: "host_service"`, `vm_ids: []`).
+
+The image alias is `TERMINI_LXD_WORKLOAD_IMAGE` (default `agent-vm`) — an image
+preloaded on the node, never a registry pull (D3).
 
 #### GET /v1/projects/{project_id}/nodes
 
@@ -697,8 +727,9 @@ Command envelope (the queued-command store, `controller/app/commands.py`):
 The broader `commandAllowlist()` set (`vm.resize`, `vm.migrate`, `vm.stop`, `vm.start`,
 `vm.destroy`, `agent.dispatch_task`, `agent.cancel_task`) is **declared in
 `controller/app/commands.py` but not wired to any execution path in the demo** — marked
-future/day-2. `vm.launch` is **not** in the allowlist and there is no launch path
-(`_apply_plan` returns `vm_ids: []`). The retired `ssh.inject_key` verb is removed
+future/day-2. `vm.launch` is **not** in the allowlist and there is no launch path —
+apply-plan materialisation instead drives the resolved node's LXD REST API directly
+from the controller (`_apply_plan` creates the instances and returns their ids). The retired `ssh.inject_key` verb is removed
 everywhere; user SSH access is the controller-held CA signing short-lived certs,
 surfaced as a web terminal + `ssh` string (§4.3), never an `authorized_keys` write on a node.
 

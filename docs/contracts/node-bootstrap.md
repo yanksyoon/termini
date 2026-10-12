@@ -199,7 +199,7 @@ Step 1 uses the enrollment token because the node has no cert yet. TLS certifica
     "hostname": "node-b",
     "image_version": "2026.10.01-abc1234",
     "os": { "name": "ubuntu", "version": "24.04.1" },
-    "lxd": { "version": "5.21.3", "snap_revision": "31234" },
+    "lxd": { "version": "5.21.3", "snap_revision": "31234", "endpoint": "10.10.0.12:8443" },
     "cpu": { "model": "Intel Xeon ...", "sockets": 1, "cores": 8, "threads": 16 },
     "memory": { "total_bytes": 68719476736 },
     "disks": [
@@ -224,6 +224,12 @@ Step 1 uses the enrollment token because the node has no cert yet. TLS certifica
 ```
 
 `machine.gpus` is `[]` on compute nodes and on Node C when the driver/GPU is unavailable (the node still registers; see §9).
+
+`machine.lxd.endpoint` is the node's **own LXD REST address** (`host:port`, or a
+full `scheme://host:port`). The controller needs it to place agent VMs on the
+right node — a single controller-wide URL cannot name one node among a fleet
+(`infra-decisions.md` D2). It is optional: an older node that omits it still
+registers, and the controller falls back to its global `TERMINI_LXD_BASE_URL`.
 
 ### 5.3 Response — `201 Created` `NodeRegistrationResponse`
 
@@ -359,15 +365,18 @@ After `lxd init --preseed` succeeds, the daemon verifies membership via `GET /1.
 
 ### 6.3 Controller's cluster view
 
-The controller does **not** drive LXD placement directly. It mints cluster join
-tokens at registration (seed API `POST /1.0/cluster/members` on
-`https://10.10.0.11:8443` with an LXD trust client cert) — cluster administration
-only. VM placement via a typed `vm.launch` command to the resolved node's daemon
-(which calls its **local** LXD API, `POST /1.0/instances?target=<member>`) is
-**day-2 — not wired in the demo** (`_apply_plan` returns `vm_ids: []`) —
-consistent with AR-2 (`agent-runtime.md` §4.1). The seed `8443` trust cert is
-therefore restricted to cluster-admin/join-token duties, never controller-driven
-placement. Member health is folded into node telemetry.
+The controller mints cluster join tokens at registration (seed API
+`POST /1.0/cluster/members` on `https://10.10.0.11:8443` with an LXD trust client
+cert) — cluster administration only. **Agent-VM placement is separate:** apply-plan
+materialisation (`controller-api.md` §4.2) drives each allocation's resolved node's
+LXD REST API (`POST /1.0/instances`) over that node's **own registered endpoint**
+(`machine.lxd.endpoint`, §5.2); the controller uses the global
+`TERMINI_LXD_BASE_URL` only for a node that reported no endpoint. This is a
+deliberate divergence from AR-2 (`agent-runtime.md` §4.1, a node-daemon-mediated
+`vm.launch`): the demo places work straight from the controller, so a node must
+advertise the address placement should use. The seed's `8443` cluster-admin trust
+cert is distinct from this per-node placement path. Member health is folded into
+node telemetry.
 
 ---
 
@@ -465,7 +474,7 @@ invisible to the demo operator. The boot path now fails fast to
 ## 11. Security and governance constraints (node side)
 
 - The bootstrap daemon is the **sole egress path** for platform data; it emits **hardware/OS telemetry only**.
-- Controller commands are a **fixed typed verb set** — the `commandAllowlist()` from `controller-api.md` §6. The verbs actually wired in the demo are the human node actions `node.reboot`/`node.drain` plus the AI-operator's LXD REST actions (`instance.restart`, `instance.stop`, `instance.delete`, `image.prune`); the broader `vm.resize`/`vm.migrate`/`vm.stop`/`vm.start`/`vm.destroy`/`agent.dispatch_task`/`agent.cancel_task` set is declared in `controller/app/commands.py` but not wired (future/day-2), and `vm.launch` has no launch path (`_apply_plan` returns `vm_ids: []`). The daemon validates and executes known verbs only; it never `eval`s controller strings. Telemetry cadence is set via the registration response (not a command); health probes are folded into telemetry.
+- Controller commands are a **fixed typed verb set** — the `commandAllowlist()` from `controller-api.md` §6. The verbs actually wired in the demo are the human node actions `node.reboot`/`node.drain` plus the AI-operator's LXD REST actions (`instance.restart`, `instance.stop`, `instance.delete`, `image.prune`); the broader `vm.resize`/`vm.migrate`/`vm.stop`/`vm.start`/`vm.destroy`/`agent.dispatch_task`/`agent.cancel_task` set is declared in `controller/app/commands.py` but not wired (future/day-2), and `vm.launch` has no launch path — apply-plan materialisation instead drives the resolved node's LXD REST API directly from the controller (`_apply_plan` creates the instances and returns their ids; `controller-api.md` §4.2). The daemon validates and executes known verbs only; it never `eval`s controller strings. Telemetry cadence is set via the registration response (not a command); health probes are folded into telemetry.
 - Enrollment tokens are single-use and short-TTL; the enrollment endpoint is the only unauthenticated (token-auth) controller call a node makes.
 - No private keys transit the controller (user keys stay in the browser; node keys stay on the node — only CSR/public keys move).
 - The break-glass SSH key is removed after registration (§7); standing SSH is the controller-held CA signing short-lived (≤8 h) principal-bound user certs, surfaced as a web terminal + `ssh` string (D4).
@@ -516,6 +525,7 @@ underlay_ip: 10.10.0.12/24                            # required
 underlay_gw: 10.10.0.1                                # required
 bootstrap_seed_ip: 10.10.0.11                         # required for joiners
 role_hint: auto                                       # auto|compute|inference
+lxd_port: 8443                                        # LXD REST port reported as machine.lxd.endpoint
 telemetry_interval_ms: 1000                           # overridden by registration response
 enrollment_token_file: /var/lib/termini/enrollment.token
 identity_dir: /var/lib/termini/identity
