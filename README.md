@@ -218,6 +218,7 @@ compose — same controller, same decision step, same audit trail.
 | Controller | GCE VM `termini-controller` — `n2-standard-2`, `asia-south1-a` | `https://34-93-190-64.sslip.io` |
 | Telemetry seeder | systemd on the controller VM | — (fabricates `demo-node-a` / `demo-node-c`) |
 | Model weights | GCS | `gs://termini-510609-models/gemma-3-4b-it/` (8.64 GB) |
+| Node image (pre-baked) | GCE image, family `termini-node-os` | carries the bootstrap daemon — a node registers with **no installs at boot** (measured `register_ms=291`) |
 
 The operator's decision step runs **model-driven** there
 (`TERMINI_OPERATOR_DECISION_MODE=model`): a fired threshold is diagnosed and

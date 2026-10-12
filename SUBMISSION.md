@@ -61,6 +61,20 @@ Everything below is deployed and serving now. No local install is required.
 
 **https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token**
 
+> **The demo is paused by default**, so it does not bill GPU time while nobody is
+> looking at it: the seeder is stopped and the node VMs are terminated. In that
+> state the dashboard loads but shows **offline nodes and an empty operator log**.
+>
+> **Resume it for a judging session** (~30 s to come back):
+>
+> ```bash
+> gcloud compute ssh termini-controller --zone asia-south1-a \
+>   --command "sudo systemctl start termini-seeder"
+> ```
+>
+> Pause again with `sudo systemctl stop termini-seeder`. The Cloud Run GPU scales to
+> zero on its own once traffic stops, so the pause costs nothing to maintain.
+
 The query parameters are required (the app reads `apiBase`, `projectId`, `token`).
 What to look for:
 
@@ -100,6 +114,18 @@ gcloud run services proxy termini-gemma --region asia-southeast1 --project termi
 | **Deployed on Cloud Run** | the model service `termini-gemma` | `https://termini-gemma-tylgzp65ma-as.a.run.app` |
 | **Deployed on Firebase** | the operator dashboard | Firebase Hosting — `https://termini-510609.web.app` |
 | **Deployed on GCP** | controller on Compute Engine, weights on Cloud Storage | `termini-controller` (`n2-standard-2`, `asia-south1-a`); `gs://termini-510609-models/gemma-3-4b-it/` |
+| **Pre-baked node image** | `termini-node-os-1` (family `termini-node-os`) — carries the bootstrap daemon, so a node registers with **no installs at boot** | GCE image in project `termini-510609` |
+
+### Claims we measured, not asserted
+
+| Claim | Measured |
+|---|---|
+| A node from the pre-baked image registers in under 5 s | **`register_ms=291`** — ~17× margin. Corroborated: the node shows `online role=compute` at the controller, `cloud-init: done`, the daemon binary timestamped at **bake** time, and the `.baked-offline` sentinel present. |
+| Plain English → a validated, clamped plan | `200 accepted`; the fast-LLM allocation resolves `realized_as: host_service` (the inference service, not a VM); a 128 vCPU / 512 GB request is **clamped** to 8/16 with auditable reasons. |
+| A C2 field is rejected before any byte is stored | Nothing C2 reaches storage, checked three ways: unknown fields stripped, C2 in an allowlisted field → `422`, untransformed C1 → `422`. C2-class field *names* now fail closed (`422`) rather than being silently discarded. |
+| Faults are remediated autonomously | Model-decided remediations executing `result=ok`, recorded in the audit trail. |
+
+The independent gate verdict is [`w7/verdict.md`](w7/verdict.md): **GO**, with its accepted residuals listed and one caveat stated inside the document (the re-gate was authored by the same session that fixed several findings, so a separate reviewer should re-run it before treating it as final).
 
 Full deployment detail, including the governing constraints and the two deliberate
 departures from an all-on-premise shape, is in
