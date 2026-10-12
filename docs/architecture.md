@@ -29,7 +29,7 @@ to match (all such updates are applied in the same change set that added this fi
 
 **Net moat (from `tech-landscape.md` §2):** adopt the substrate (LXD + Ubuntu), the connectivity
 (underlay + controller-held SSH CA), and the model (llama.cpp + GGUF Q4_K_M); build only two things — the
-governance boundary and the deterministic AI-operator control loop.
+governance boundary and the governed AI-operator control loop.
 
 ---
 
@@ -46,7 +46,7 @@ governance boundary and the deterministic AI-operator control loop.
                           │       │ governanceGate          │                   │
                           │  ┌────▼─────────────────────────▼───────────────┐   │
                           │  │        AI operator loop (reconcile)           │   │
-                          │  │  telemetry → threshold rule → playbook action │   │
+                          │  │telemetry → threshold rule → AI-decided action │   │
                           │  │  → LXD REST (audited) → command/ack           │   │
                           │  └───────────────────────────────────────────────┘   │
                           └──────────────────────────────────────────────────────┘

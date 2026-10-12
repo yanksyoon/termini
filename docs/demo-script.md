@@ -47,7 +47,7 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
 | Beat | What it proves | Planned | Running |
 |------|----------------|---------|---------|
 | 0 | Handoff from the deck — set expectations | 0:35 | 0:35 |
-| 1 | Proof 1: bare metal → AI-ready fleet (< 5 s register) | 0:40 | 1:15 |
+| 1 | Proof 1: bare metal → AI-ready fleet (registers in 291 ms; budget 5 s) | 0:40 | 1:15 |
 | 2 | Proof 2: NL intent + guardrail clamp + validated plan | 1:05 | 2:20 |
 | 3 | Cross-node inference, no tunnel on this leg | 0:40 | 3:00 |
 | 4 | Proof 3: governed self-healing (OOM) + C2 gate | 1:15 | 4:15 |
@@ -160,10 +160,12 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
   one-second samples, not the usual fifteen."
 - `[CLICK]` show `ram_used_bytes` climbing past 95%.
 - `[TALK]` "Ninety-five percent, two consecutive samples — a frozen threshold
-  rule fires. It selects a pre-approved playbook action: restart the heaviest workload."
+  rule fires. The model reads that telemetry and picks the action: restart the heaviest workload."
 - `[CLICK]` show operator log: `oom-guard-01` → `instance.restart`.
-- `[TALK]` "No model in this loop — the rule acts directly on the threshold,
-  then the playbook action executes against LXD."
+- `[TALK]` "The rule only *detects* — the decision is made by Gemma, Google's
+  open-weights model, on an L4. It can only choose from our allowlist: a command
+  outside it has no valid encoding, so the model *cannot* emit it. Then the action
+  executes against LXD and lands in the audit trail."
 - `[CLICK]` show `instance.restart` acked `succeeded`; the workload recovers.
 - `[TALK]` "Restarted, restored, and every step is in the audit log."
 - `[CLICK]` inject a C2 field into the outbound telemetry stream.

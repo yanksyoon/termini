@@ -52,7 +52,7 @@ channel**; the controller's **governance gate** sits on the ingest path.
    │    /stream/v1        │                                       │
    │    /terminal/v1      ▼                                       │
    │                 AI operator loop (reconcile)                 │
-   │                 telemetry → threshold rule → playbook action │
+   │               telemetry → threshold rule → AI-decided action │
    │                 → LXD REST (audited) → command / ack         │
    │                                                              │
    │        ▲ governance gate (fail-closed, C2 → 422 reject)      │
@@ -76,8 +76,10 @@ there is no LXD overlay in the demo — cross-node traffic routes over the under
 
 ### 2. Day-0 bootstrap flow
 
-Power-on to a registered, role-assigned, cluster-joined node in under 5 seconds
-([`docs/architecture.md`](docs/architecture.md) §4.1).
+Power-on to a registered, role-assigned, cluster-joined node — measured at
+**291 ms** from daemon start to controller acknowledgement, against the 5-second
+budget ([`docs/architecture.md`](docs/architecture.md) §4.1). From VM power-on the
+whole boot-to-registered path is ~18.6 s, dominated by firmware/OS/cloud-init.
 
 ```text
    power-on
