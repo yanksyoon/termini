@@ -187,6 +187,46 @@ at `examples/inventory.example.json`.
 
 Read it with `jq`, e.g. `jq -r '.nodes[] | "\(.name) \(.public_ip)"' ~/.termini/inventory.json`.
 
+## Adopting the baked node image (GCE)
+
+A GCE node image now exists that carries the bootstrap daemon, so a node can boot
+**pre-baked** and register with **no installs at boot** (D3):
+
+| | |
+|---|---|
+| image | `termini-node-os-1`, family `termini-node-os`, 20 GB |
+| contains | `/usr/local/bin/termini-bootstrap`, `termini-bootstrap.service` (enabled), `/var/lib/termini/.baked-offline` |
+
+**Why this matters:** the deploy still defaults to stock `ubuntu-2404-lts-amd64`, on
+which the activation-only cloud-init finds no `termini-bootstrap.service` and the
+node **never registers**. It does say so, in the cloud-init runcmd output:
+
+> `termini-bootstrap.service not installed on this image; node will not register
+> (bake the daemon into the node image)`
+
+so the failure is diagnosable, but it is silent to anyone not reading that log.
+
+Measured on a node created from the baked family, from the daemon's own timing line:
+
+```
+[termini-bootstrap] REGISTERED role=compute register_ms=291 boot_to_registered_ms=18560
+```
+
+`register_ms` is the contract's `< 5 s` budget (daemon start → controller ack), met
+with ~17× margin. `boot_to_registered_ms` is from VM power-on and is dominated by
+firmware/OS/cloud-init.
+
+To adopt it, in `terraform.tfvars`:
+
+```hcl
+image_project = "termini-510609"     # default is the generic ubuntu-os-cloud
+image_family  = "termini-node-os"
+```
+
+**This recreates the node VMs.** `image_family` is a boot-disk property, so
+`terraform plan` will show `termini-node-a/b/c` being **replaced** — schedule it as a
+migration, not as a side effect of an unrelated apply.
+
 ## Usage — Terraform
 
 ```bash
