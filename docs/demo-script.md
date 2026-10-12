@@ -47,7 +47,7 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
 | Beat | What it proves | Planned | Running |
 |------|----------------|---------|---------|
 | 0 | Handoff from the deck — set expectations | 0:35 | 0:35 |
-| 1 | Proof 1: bare metal → AI-ready fleet (registers in 291 ms; budget 5 s) | 0:40 | 1:15 |
+| 1 | Proof 1: bare metal → AI-ready fleet (registers in 150 ms; budget 5 s) | 0:40 | 1:15 |
 | 2 | Proof 2: NL intent + guardrail clamp + validated plan | 1:05 | 2:20 |
 | 3 | Cross-node inference, no tunnel on this leg | 0:40 | 3:00 |
 | 4 | Proof 3: governed self-healing (OOM) + C2 gate | 1:15 | 4:15 |

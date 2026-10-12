@@ -342,7 +342,7 @@
     <div class="cols three">
       <div class="card">
         <h3><span class="num">1</span> Bare metal → AI-ready fleet</h3>
-        <p>A node booted from the <b>pre-baked image</b> registers to the controller in <b>291&nbsp;ms</b> — measured, against the 5-second budget — and joins the cluster with its role assigned. <b>No SRE, no manual config, and nothing installed at boot.</b></p>
+        <p>A node booted from the <b>pre-baked image</b> registers to the controller in <b>150&nbsp;ms</b> — measured, against the 5-second budget — and joins the cluster with its role assigned. <b>No SRE, no manual config, and nothing installed at boot.</b></p>
       </div>
       <div class="card">
         <h3><span class="num">2</span> NL intent, guardrail-enforced</h3>
@@ -428,7 +428,7 @@
   <section class="slide">
     <div class="kicker"><span class="n">09</span> &nbsp;Spec question 4 of 4 — resolved</div>
     <div class="q"><span class="qnum">Q4</span><span class="qtext">How do we serve the pre-baked agentic OS — what’s pre-installed, and how do we hand it over AI-ready (SSH-able)?</span></div>
-    <div class="resolve"><span class="tag">Resolved</span><span class="ans"><b>Immutable pre-baked images</b> — nothing downloads at boot. cloud-init only <b>activates &amp; registers</b>: <b>291&nbsp;ms</b> measured against a <b>5&nbsp;s</b> budget. Access is <b>browser-first</b>.</span></div>
+    <div class="resolve"><span class="tag">Resolved</span><span class="ans"><b>Immutable pre-baked images</b> — nothing downloads at boot. cloud-init only <b>activates &amp; registers</b>: <b>150&nbsp;ms</b> measured against a <b>5&nbsp;s</b> budget. Access is <b>browser-first</b>.</span></div>
     <div class="cols two" style="margin-top:18px;">
       <div class="card">
         <h3><span class="num">◈</span> Access without passwords</h3>
@@ -448,7 +448,7 @@
         </ul>
       </div>
     </div>
-    <div class="proof"><span class="plabel">How the demo proves it</span> — power on → <b>registered in 291 ms</b> with zero installs; open the terminal for a <b>passwordless shell</b>; inject a C2 field and watch the gate <b>reject the batch</b>; pull the operator audit and see every action traceable by its <b>call_id</b>.</div>
+    <div class="proof"><span class="plabel">How the demo proves it</span> — power on → <b>registered in 150 ms</b> with zero installs; open the terminal for a <b>passwordless shell</b>; inject a C2 field and watch the gate <b>reject the batch</b>; pull the operator audit and see every action traceable by its <b>call_id</b>.</div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">10</span></div>
   </section>
 
@@ -458,7 +458,7 @@
     <h2>What you are about to see</h2>
     <div class="lede">A live cluster on cloud VMs standing in for on-premise bare hardware. Four moments, in order:</div>
     <div class="see-list">
-      <div class="see-item"><span class="idx">1</span><div><div class="t">Node powers on → registered in 291&nbsp;ms</div><div class="d">Pre-baked image activates, joins the cluster, role assigned. No package installs.</div></div></div>
+      <div class="see-item"><span class="idx">1</span><div><div class="t">Node powers on → registered in 150&nbsp;ms</div><div class="d">Pre-baked image activates, joins the cluster, role assigned. No package installs.</div></div></div>
       <div class="see-item"><span class="idx">2</span><div><div class="t">Plain English → validated plan</div><div class="d">“Deploy 3 worker agents for coding, plus a fast LLM.” Spec extracted on-prem — the fast-LLM reference resolves to the Node C inference service — clamped, validated.</div></div></div>
       <div class="see-item"><span class="idx">3</span><div><div class="t">OOM a VM — live</div><div class="d">The operator detects, decides, executes the fix, and writes the audit trail.</div></div></div>
       <div class="see-item"><span class="idx">4</span><div><div class="t">Zero C2 data leaves</div><div class="d">Watch the governance gate reject a C2 batch fail-closed.</div></div></div>
@@ -472,7 +472,7 @@
     <div class="kicker"><span class="n">11</span> &nbsp;Results</div>
     <h2>What we just demonstrated</h2>
     <div class="cols three" style="margin-top:30px;">
-      <div class="metric"><div class="v">291&nbsp;ms</div><div class="k">Node registration from the pre-baked image — <b>zero installs at boot</b></div></div>
+      <div class="metric"><div class="v">150&nbsp;ms</div><div class="k">Node registration from the pre-baked image — <b>zero installs at boot</b></div></div>
       <div class="metric"><div class="v">clamped</div><div class="k">Natural-language intent → <b>valid allocation</b>, from→to clamping visible</div></div>
       <div class="metric"><div class="v">audited</div><div class="k">Gemma-chosen OOM remediation, <b>end-to-end auditable</b></div></div>
     </div>

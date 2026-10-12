@@ -9,7 +9,8 @@ Reference commit: `main @ b9d7a6b`. Gate owner: verifier.
 **Demo verdict: GO.** All seven blocking findings from the 2026-10-04 gate are closed
 or rescoped, **and the one carve-out raised while re-verifying the judge-facing
 claims — the day-0 registration claim — is now demonstrated on the deployed
-footprint** (`register_ms=291`, against a `<5 s` claim). Accepted residuals are
+footprint** (`register_ms=150`, against a `<5 s` claim, archived under
+`infra/gcp/evidence/`). Accepted residuals are
 listed at the end.
 
 Read this section as the current state; the 2026-10-04 verdict below is kept as the
@@ -40,9 +41,12 @@ JSON is what caught this; the prose was internally consistent and read as measur
 **A disposition that was overstated** — Finding 2's 30 s-delay case was never re-run.
 Only the pre-fix `delay/` evidence exists, and it shows `last_state=REGISTERING`.
 
-**The day-0 figure is unarchived** — see the provenance note in that section. The
-claim is corroborated by committed evidence at `register_ms=100 / 124`; the specific
-`291` is not.
+**The day-0 figure was unarchived — now it is archived.** `register_ms` was asserted
+with no committed log. A node was booted from the baked image on the deployed
+footprint and its raw journal committed to
+`infra/gcp/evidence/baked-node-registration-2026-10-12.md` (`register_ms=150`, and the
+controller's own DB recorded the same registration independently). Every document that
+quoted the unarchived `291` now cites the archived `150`.
 
 **The measuring instrument was itself defective.** This is the most serious result,
 because it degrades evidence that was *not* reviewed here. In `w7/acceptance`:
@@ -99,29 +103,35 @@ registered). It is now **built and measured**.
 (D3): write `/etc/termini/config.yaml` + the enrollment token, start the unit.
 
 **Measured** on a node created from that image family, from the daemon's own
-timing line:
+timing line — **and now ARCHIVED**, which it was not before:
 
 ```
-[termini-bootstrap] REGISTERED node_id=01M4Q1MQJ1C0Y26F6MGT745DTT role=compute
-                    register_ms=291  boot_to_registered_ms=18560
+[termini-bootstrap] REGISTERED node_id=01M4R11VHGEG8N3JB59F90X7T3 role=compute
+                    register_ms=150  boot_to_registered_ms=22840
 ```
 
 | Metric | Value | Meaning |
 |---|---|---|
-| `register_ms` | **291 ms** | daemon start → controller acknowledgement. **This is the deck's "<5 s" claim, met with ~17× margin.** |
-| `boot_to_registered_ms` | **18.56 s** | VM power-on → registered — dominated by firmware/OS/cloud-init, not by registration. |
+| `register_ms` | **150 ms** | daemon start → controller acknowledgement. **This is the deck's "<5 s" claim, met with ~33× margin.** |
+| `boot_to_registered_ms` | **22.84 s** | VM power-on → registered — dominated by firmware/OS/cloud-init, not by registration. |
 
-> **Provenance — read this before quoting the 291.** The measurement was taken
-> during a manual run on the deployed footprint on 2026-10-11 and **no log of that
-> run was committed to the repo**, so the exact pair `291 / 18560` cannot be
-> re-derived from the committed tree. It is asserted here, and repeated in
-> `README.md`, `SUBMISSION.md`, `infra/gcp/README.md` and the video script.
+> **This figure is now backed by a committed artifact.**
+> `infra/gcp/evidence/baked-node-registration-2026-10-12.md` contains the raw
+> `journalctl` output from a node booted from `termini-node-os-1` on the deployed
+> footprint, plus the provenance (image, instance, controller, cost) and an
+> independent corroboration: the deployed controller's own database recorded that
+> node `online / role=compute / registered_at=2026-10-12T12:22:58Z`, matching the
+> journal to the second.
 >
-> What the committed evidence *does* corroborate is the **claim**: the baked-node
-> runs under `infra/bootstrap/evidence/` record `register_ms=100` and
-> `register_ms=124` — both comfortably inside the 5 s budget, independently of the
-> GCE run. So the claim stands on archived evidence; the specific figure 291 ms does
-> not. Treat it as an unarchived measurement, and commit the GCE run log to close it.
+> This closes the second finding of the 2026-10-12 re-verification. The earlier
+> figure of **291 ms** was observed during a manual run whose log was **never
+> committed**, so it could not be re-derived from the tree — an independent agent
+> correctly called that out, and every doc that quoted it has been repointed at the
+> archived 150 ms. The two are consistent: both are far inside the 5 s budget, and
+> this one is reproducible from the repo.
+>
+> Independently of either GCE run, the baked-node runs under
+> `infra/bootstrap/evidence/` record `register_ms=100` and `register_ms=124`.
 
 Corroborated independently: the node appears in the controller's fleet as
 `status=online role=compute`; `cloud-init status: done`; the daemon binary is

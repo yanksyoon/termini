@@ -209,7 +209,7 @@ so the failure is diagnosable, but it is silent to anyone not reading that log.
 Measured on a node created from the baked family, from the daemon's own timing line:
 
 ```
-[termini-bootstrap] REGISTERED role=compute register_ms=291 boot_to_registered_ms=18560
+[termini-bootstrap] REGISTERED role=compute register_ms=150 boot_to_registered_ms=22840
 ```
 
 `register_ms` is the contract's `< 5 s` budget (daemon start → controller ack), met
