@@ -118,13 +118,7 @@ def check_w5_2(ctx: CheckContext) -> dict:
              "$( [ -n \"$SSH_CONNECTION\" ] && echo ssh || echo local )_END\n")
     out_re = re.compile(r"W5OUT_([A-Za-z0-9._-]+)_(ssh|local)_END")
 
-    # Derive the WS scheme from the controller URL: the deployed controller is
-    # served over https, and a plaintext upgrade written into its :443 listener
-    # is answered with `HTTP/1.0 400 Bad Request` (which reads like a rejected
-    # WebSocket, not a missing TLS handshake). See lib/ws.py.
-    ws_scheme = "wss" if ctx.controller_url.lower().startswith("https") else "ws"
-    ws_url = f"{ws_scheme}://{ctx.controller_url.split('://', 1)[-1].rstrip('/')}/terminal/v1/nodes/{node_id}?token={ctx.project_token}"
-
+    ws_url = f"ws://{ctx.controller_url.split('://', 1)[-1].rstrip('/')}/terminal/v1/nodes/{node_id}?token={ctx.project_token}"
     output = ""
     decoded = ""
     err_code = None

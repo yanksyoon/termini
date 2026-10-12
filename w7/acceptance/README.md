@@ -66,30 +66,6 @@ Optional env:
 Checks that need credentials they were not given are marked `skipped` with an
 explicit reason rather than guessing.
 
-## Probing the streaming endpoints (`ws://` and `wss://`)
-
-The live log panel has two transports: the SSE endpoint the browser subscribes
-to (`/v1/projects/{id}/logs`) and the WebSocket mirror (`/stream/v1`). Both can
-be probed directly — against the loopback demo or the deployed TLS controller:
-
-```bash
-# deployed controller (real Let's Encrypt certificate)
-python3 w7/acceptance/probe_stream_ws.py \
-  --url "wss://34-93-190-64.sslip.io/stream/v1?token=demo-project-token" \
-  --sse --project 01J0DEM0WARM000000000000AB
-```
-
-**A `wss://` URL must perform a TLS handshake.** A cleartext upgrade written
-into a TLS listener is answered by the proxy (Caddy / Go `net/http`) with
-`HTTP/1.0 400 Bad Request` — which *looks* exactly like a rejected WebSocket
-handshake but actually means "an HTTP request arrived on an HTTPS port". That
-is a probe bug, not a server bug. `lib/ws.py` performs TLS for `wss://`
-(verification on by default; `--insecure` or `TERMINI_WS_CA_FILE` for a
-self-signed front) and names the signature in the error, and
-`probe_stream_ws.py --reproduce-cleartext-400` reproduces the misleading 400 on
-purpose so the two outcomes can be compared. The W5 terminal check derives
-`ws`/`wss` from the controller URL for the same reason.
-
 ## Output
 
 `run.py` emits `summary.json` with one row per criterion:
