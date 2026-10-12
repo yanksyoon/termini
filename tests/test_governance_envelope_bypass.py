@@ -126,8 +126,56 @@ class SkipScanMembersMustBeStructurallyValidated(unittest.TestCase):
     def test_config_hash_spec_is_constrained(self):
         spec = F.REDACTION_FIELDS["config_hash"]
         self.assertIn("pattern", spec,
-                      "config_hash is exempt from the C2 scan, so it MUST carry a "
-                      "format constraint (it was a bare str while being persisted)")
+                      "config_hash must carry a format constraint (it was a bare str "
+                      "while being persisted)")
+
+
+class CardShapedConfigHashIsRejected(unittest.TestCase):
+    """Found end-to-end, not by reading code: a card number is ALSO valid hex.
+
+    `4111111111111111` satisfies a plain hex pattern, so with one it passed the
+    schema and was STORED on a live controller. The constraint therefore has to
+    exclude card-length all-digit strings.
+
+    The obvious alternative — removing the scan exemption so `_CARD` applied — was
+    tried and REJECTED because it false-positived a legitimate digest:
+    `0123456789ab` trips `_PHONE` (any bare 10-15 digit run). Both directions are
+    asserted here, which is the point: the fix must not trade one for the other.
+    """
+
+    def test_card_number_rejected_by_schema(self):
+        errs = _errors(_envelope(
+            _redaction={"version": "redactor-config v3",
+                        "config_hash": "4111111111111111", "result": "ok"}))
+        self.assertTrue([e for e in errs if "config_hash" in e],
+                        "a 16-digit card number in config_hash must be rejected")
+
+    def test_13_and_16_digit_runs_rejected(self):
+        for n in (13, 14, 15, 16):
+            with self.subTest(digits=n):
+                errs = _errors(_envelope(
+                    _redaction={"version": "redactor-config v3",
+                                "config_hash": "4" * n, "result": "ok"}))
+                self.assertTrue([e for e in errs if "config_hash" in e],
+                                f"{n}-digit all-numeric value must be rejected")
+
+    def test_legit_digests_still_accepted(self):
+        """The false-positive direction — including the case the scan approach broke."""
+        for good in ("3f2a1b", "deadbeef", "0123456789ab", "a" * 40, "4" * 12, "4" * 17):
+            with self.subTest(good=good):
+                errs = _errors(_envelope(
+                    _redaction={"version": "redactor-config v3",
+                                "config_hash": good, "result": "ok"}))
+                self.assertEqual([e for e in errs if "config_hash" in e], [],
+                                 f"legitimate digest {good!r} must be accepted")
+
+    def test_scan_does_not_false_positive_on_a_digest(self):
+        """Guard against 'fixing' this by removing the exemption again."""
+        for good in ("3f2a1b", "0123456789ab", "deadbeef"):
+            with self.subTest(good=good):
+                v = G.scan_c2({"_redaction": {"version": "redactor-config v3",
+                                              "config_hash": good, "result": "ok"}})
+                self.assertEqual(v, [], f"{good!r} must not be flagged by the scan")
 
 
 class PiiStillScanRejectedWhereScanned(unittest.TestCase):

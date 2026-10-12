@@ -45,11 +45,17 @@ _C1_FIELDS = {"hostname", "ip_local", "mac_address", "project_id"}
 # Fields exempted from the C2 string scan. Every member MUST be structurally
 # validated by the schema, because an exempted field is never signature-scanned for
 # PII — so the exemption is only safe if the format makes prose impossible.
-# `governance_chain_tip` is a ULID (validate.py) and `config_hash` a hex digest
-# (fields.REDACTION_FIELDS). Both were previously weaker than that — "non-empty
-# string" and a bare `str` — while being persisted, which made either one a storage
-# path for unscanned customer content. The schema now enforces the formats the
-# exemption assumes; do not add a member here without the same guarantee.
+#
+# `config_hash` stays exempt, and its schema `pattern` is what carries the weight: it
+# is a hex digest, but an all-digit string of card length (13-16) is rejected by the
+# pattern because such a value is indistinguishable from a PAN. Two approaches were
+# tried and rejected before this one:
+#   * a plain hex pattern — let `4111111111111111` through, and it was STORED;
+#   * removing the exemption so the signature scan applied — false-positived a
+#     legitimate digest, because `_PHONE` matches any bare 10-15 digit run, so
+#     `0123456789ab` was flagged as a phone number.
+# Enforcing the format in the schema avoids both: no false positive on a real digest,
+# no storage of a card-shaped one.
 _SKIP_STRING_SCAN = _C1_FIELDS | {
     "ts", "call_id", "node_id", "vm_id", "governance_chain_tip", "config_hash",
 }

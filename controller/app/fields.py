@@ -150,7 +150,16 @@ ALL_SAMPLE_KEYS = set(SAMPLE_FIELDS) | set(SAMPLE_CONTAINERS)
 # ---------------------------------------------------------------------------
 REDACTION_FIELDS: dict[str, dict] = {
     "version": {"kind": "str", "unit": None, "cclass": "C0"},
-    "config_hash": {"kind": "str", "unit": None, "cclass": "C0", "pattern": "^[0-9a-fA-F]{4,128}$"},
+    # A redactor config digest. Hex, but an all-digit string of 13-16 characters is
+    # rejected: that is exactly a card-number (PAN) shape, and it is indistinguishable
+    # from a digest. Found by testing rather than reading — a plain hex pattern let
+    # `4111111111111111` through and it was STORED on a live controller. The scan
+    # cannot cover this field (it is exempt, and scanning it false-positives real
+    # digests as phone numbers), so the constraint has to live in the format.
+    "config_hash": {
+        "kind": "str", "unit": None, "cclass": "C0",
+        "pattern": r"^(?![0-9]{13,16}$)[0-9a-fA-F]{4,128}$",
+    },
     "result": {"kind": "str", "unit": None, "cclass": "C0", "enum": ["ok"]},
 }
 
