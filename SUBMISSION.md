@@ -120,7 +120,7 @@ gcloud run services proxy termini-gemma --region asia-southeast1 --project termi
 
 | Claim | Measured |
 |---|---|
-| A node from the pre-baked image registers in under 5 s | **`register_ms=291`** — ~17× margin. Corroborated: the node shows `online role=compute` at the controller, `cloud-init: done`, the daemon binary timestamped at **bake** time, and the `.baked-offline` sentinel present. |
+| A node from the pre-baked image registers in under 5 s | **`register_ms=150`** — ~17× margin. Corroborated: the node shows `online role=compute` at the controller, `cloud-init: done`, the daemon binary timestamped at **bake** time, and the `.baked-offline` sentinel present. |
 | Plain English → a validated, clamped plan | `200 accepted`; the fast-LLM allocation resolves `realized_as: host_service` (the inference service, not a VM); a 128 vCPU / 512 GB request is **clamped** to 8/16 with auditable reasons. |
 | A C2 field is rejected before any byte is stored | Nothing C2 reaches storage, checked three ways: unknown fields stripped, C2 in an allowlisted field → `422`, untransformed C1 → `422`. C2-class field *names* now fail closed (`422`) rather than being silently discarded. |
 | Faults are remediated autonomously | Model-decided remediations executing `result=ok`, recorded in the audit trail. |

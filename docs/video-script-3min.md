@@ -129,8 +129,8 @@ is to show the AI acting, not to assert. If you ad-lib, keep to these:
   while a merely *unknown* field is **stripped** (deny-by-default, §3 — that is what
   keeps forward-compatibility). Both prevent storage; only the first is a rejection.
 - ✅ Gemma is **Google's open-weights model**; the closed API (Gemini) is not used.
-- ✅ A node from the pre-baked image registers in **291 ms** (measured against a 5 s
-  budget). Say "291 ms"; do not round it down to "instant".
+- ✅ A node from the pre-baked image registers in **150 ms** (measured against a 5 s
+  budget). Say "150 ms"; do not round it down to "instant".
 - ❌ Do not quote a live decision count — it changes every minute.
 
 ## Optional: showing day-0 in the video
@@ -143,7 +143,7 @@ screen, it costs ~2 minutes and replaces the fleet shot in Beat 3:
 2. Create a node from the baked image and `journalctl -u termini-bootstrap | tail`:
 
    ```
-   [termini-bootstrap] REGISTERED role=compute register_ms=291 boot_to_registered_ms=18560
+   [termini-bootstrap] REGISTERED role=compute register_ms=150 boot_to_registered_ms=22840
    ```
 
    The `.baked-offline` sentinel appearing **before** the boot timestamp is what

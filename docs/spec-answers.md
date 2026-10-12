@@ -140,7 +140,7 @@ downloaded or installed at boot. The host image ("Termini Node OS") is Ubuntu 24
 LXD, time-sync, a default-deny firewall, and SSH already on
 disk; the guest image ("agent-vm") carries Python/Node and the agent runtime; and the
 llama.cpp binary plus model weights are pre-warmed on Node C. At demo time cloud-init only
-registers the node — under 5 seconds (measured: **291 ms** from daemon start to
+registers the node — under 5 seconds (measured: **150 ms** from daemon start to
 controller acknowledgement). Access is browser-first:
 the operator generates a keypair locally in the browser, uploads only the public half, and
 the controller signs it into a short-lived (≤8 h), principal-bound OpenSSH certificate. The

@@ -77,7 +77,7 @@ there is no LXD overlay in the demo — cross-node traffic routes over the under
 ### 2. Day-0 bootstrap flow
 
 Power-on to a registered, role-assigned, cluster-joined node — measured at
-**291 ms** from daemon start to controller acknowledgement, against the 5-second
+**150 ms** from daemon start to controller acknowledgement, against the 5-second
 budget ([`docs/architecture.md`](docs/architecture.md) §4.1). From VM power-on the
 whole boot-to-registered path is ~18.6 s, dominated by firmware/OS/cloud-init.
 
@@ -227,7 +227,7 @@ compose — same controller, same decision step, same audit trail.
 | Controller | GCE VM `termini-controller` — `n2-standard-2`, `asia-south1-a` | `https://34-93-190-64.sslip.io` |
 | Telemetry seeder | systemd on the controller VM | — (fabricates `demo-node-a` / `demo-node-c`) |
 | Model weights | GCS | `gs://termini-510609-models/gemma-3-4b-it/` (8.64 GB) |
-| Node image (pre-baked) | GCE image, family `termini-node-os` | carries the bootstrap daemon — a node registers with **no installs at boot** (measured `register_ms=291`) |
+| Node image (pre-baked) | GCE image, family `termini-node-os` | carries the bootstrap daemon — a node registers with **no installs at boot** (measured `register_ms=150`) |
 
 The operator's decision step runs **model-driven** there
 (`TERMINI_OPERATOR_DECISION_MODE=model`): a fired threshold is diagnosed and
