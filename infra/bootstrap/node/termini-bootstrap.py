@@ -683,6 +683,33 @@ def set_state(**kw) -> None:
 
 
 # --------------------------------------------------------------------------- core
+def root_disk_bytes() -> int:
+    """Root filesystem size in bytes from ``statvfs``; 0 when it cannot be measured."""
+    try:
+        st = os.statvfs("/")
+    except OSError:
+        return 0
+    return st.f_blocks * st.f_frsize
+
+
+def registration_disk_facts() -> list:
+    """Registered disk facts (`machine.disks[]`, contract §5.2), from the real device.
+
+    This used to be a hardcoded ``size_bytes: 1`` placeholder. Every real node
+    therefore registered a 1-byte root disk, which the controller reads as 0 GiB of
+    disk (``1 // GiB == 0``): the per-node disk ceiling was silently never enforced
+    and the node looked disk-less. The size is measured here instead; when it cannot
+    be measured the key is OMITTED, which the controller reads as "disk not
+    reported" (``health.capacity_of`` -> ``disk_known = False``) rather than as a
+    fabricated number.
+    """
+    total = root_disk_bytes()
+    disk: dict = {"device": "/dev/root", "type": "ssd", "health": "ok"}
+    if total > 0:
+        disk["size_bytes"] = total
+    return [disk]
+
+
 def registration_body(cfg: dict, node_name: str) -> dict:
     ip = primary_ipv4()
     ifname = cfg.get("iface", "eth0")
@@ -700,7 +727,7 @@ def registration_body(cfg: dict, node_name: str) -> dict:
                     "endpoint": f"{ip}:{cfg.get('lxd_port', 8443)}"},
             "cpu": cpu_facts(),
             "memory": {"total_bytes": mem_total_bytes()},
-            "disks": [{"device": "/dev/root", "type": "ssd", "size_bytes": 1, "health": "ok"}],
+            "disks": registration_disk_facts(),
             "nics": [{"name": ifname, "mac": mac_of(ifname),
                       "addresses": [transformed_ipv4(ip)], "role": "underlay"}],
             "gpus": gpu_facts(cfg),

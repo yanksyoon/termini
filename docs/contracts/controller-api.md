@@ -415,14 +415,20 @@ preloaded on the node, never a registry pull (D3).
 
 ```json
 { "nodes": [ { "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
-  "registration_id": "termini-node-a", "role": "compute", "status": "online",
+  "registration_id": "termini-node-a", "role": "compute", "synthetic": false,
+  "status": "online",
   "last_seen_at": "...",
-  "hardware": { "cpu": {...}, "ram_gb": 32, "gpu": [...] },
-  "capacity": { "cpu_cores": 16, "ram_gb": 32, "disk_gb": 256, "gpu_free": 0,
+  "hardware": { "cpu": {...}, "memory": { "total_bytes": 34359738368 }, "gpus": [] },
+  "capacity": { "cpu_cores": 8, "ram_gb": 32, "disk_gb": 256, "disk_known": true,
+                "gpu_free": 0,
                 "cpu_allocated": 6, "ram_allocated_gb": 12 } } ] }
 ```
 `status` ∈ `online | degraded | offline`. `capacity` is allocatable bookkeeping
-(registered minus reserve minus allocated).
+(registered minus reserve minus allocated); `disk_known` is false when the node
+reported no plausible disk size (its disk accounting is unknown, not zero).
+`synthetic` is `true` for a row fabricated by the demo seeder and `false` for real
+hardware — selection never places work on a `true` row while any real node is
+registered (§5.2 step 5), and the dashboard labels it.
 
 #### GET /v1/projects/{project_id}/nodes/{node_id}
 
@@ -646,7 +652,10 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
    explicit `target_node` that is not the inference node, or an `auto` that cannot
    resolve to one (no inference node registered), → `REJECT`
    (`invalid_target_node_type`). The plan records `realized_as: "host_service"`
-   and `vm_ids: []`; no VM is created and no GPU is allocated.
+   and `vm_ids: []`; no VM is created and no GPU is allocated. Provenance applies
+   here too (§5.2 step 5): while any real node is registered, `auto` resolves
+   `inference_vm` only to a **real** inference node — a seeder-fabricated row is not
+   the host inference service.
 4. **Per-field range clamp**: clamp each numeric field into its type range
    (table above). Record `decision: clamped` with `from`/`to`. Below-min and
    above-max both clamp to the nearest bound; never reject a pure range overflow.
@@ -654,6 +663,18 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
    the most free allocatable RAM (deterministic tie-break: lowest `node_id`). An
    explicit `target_node` that is not a valid compute node → `REJECT`
    (`invalid_target_node_type`).
+   **Provenance rule (normative).** A row fabricated by the demo seeder
+   (`nodes.synthetic = true`; declared on the registration wire, `node-bootstrap.md`
+   §5.2) is never preferred over a real registered node, and is not resolvable at
+   all while any real node is registered: `auto` considers real nodes only, and an
+   explicit `target_node` that names a fabricated row resolves to nothing — which
+   surfaces as the frozen `invalid_target_node` (`agent_vm`) /
+   `invalid_target_node_type` (`inference_vm`) rejection, never a silent
+   redirection to a different node. Fabricated rows are candidates only when NO
+   real node is registered (a seeder-only demo). Before this rule, resolution was
+   a pure capacity comparison and the seeder's inflated facts — 64 GiB against a
+   real node's real 1-8 GiB — won every time, so `auto` placed agents on a node
+   that does not exist.
 6. **Per-node capacity clamp** (`agent_vm` only): using allocatable capacity
    (`registered − reserve − already_allocated`), clamp in this order:
    - `ram_gb` → min(requested, free RAM). If result < type min → `REJECT`
@@ -662,6 +683,15 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
      If < 1 → `REJECT` (`exceeds_node_cpu_ceiling`).
    - `disk_gb` → min(requested, free disk). If < type min → `REJECT`
      (`exceeds_node_disk_ceiling`).
+
+   The ceiling is the **resolved node's own registered capacity**, so once step 5
+   resolves to a real node, that node's facts are authoritative (a fabricated row
+   can neither win the placement nor widen the ceiling). `disk_gb` is clamped only
+   when the node registered a *plausible* disk (`capacity.disk_known`): a node
+   whose every registered device is below 1 GiB — including the `size_bytes: 1`
+   placeholder older node builds sent — has **unknown** disk and the disk step is
+   skipped, rather than being driven by a nonsense number. The same real-node
+   preference derives the coarse per-role host maxima used by step 4.
 7. **Commit**: allocate capacity for accepted/clamped `agent_vm` classes (the
    `inference_vm` reference class reserves no GPU/VM capacity), append the
    `guardrail_audit` record, and return the `AllocationPlan`.

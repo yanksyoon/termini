@@ -9,14 +9,23 @@ node, disk-write latency on the compute node) so the operator emits a steady
 stream of log lines — exactly what the dashboard's *live AI-operator log* panel
 and the ``/logs`` SSE surface consume.
 
-Runs until interrupted (or ``--duration`` seconds), so start it next to the
+Run until interrupted (or ``--duration`` seconds), so start it next to the
 controller and the composed console:
 
     python3 console/seed_demo.py --controller http://127.0.0.1:8085 \\
         --token <project_token> --bootstrap demo-boot-a,demo-boot-c
 
+**These nodes are fabricated.** They are registered through the same public
+endpoint, with the same single-use bootstrap tokens, as real hardware — so every
+registration body here declares ``"synthetic": true``. That flag is what lets the
+controller (a) refuse to place an allocation on these rows while any real node is
+registered, and (b) label them on the dashboard. Without it a fabricated row is
+indistinguishable from a real node and `auto` placement lands agents on a node
+that does not exist.
+
 It is deliberately stdlib-only. Nothing here is required for acceptance — it is
-the "make the demo look alive" helper.
+the "make the demo look alive" helper, and a dashboard fallback for a demo with
+no real node registered.
 """
 from __future__ import annotations
 
@@ -80,9 +89,22 @@ def _request(base: str, method: str, path: str, body=None, token: str | None = N
             return e.code, raw.decode(errors="replace")
 
 
-def register(base: str, boot_token: str, machine_id: str, gpus: list) -> dict:
-    body = {
+def registration_body(machine_id: str, gpus: list) -> dict:
+    """The seeder's registration body.
+
+    `"synthetic": true` is the ONLY thing that distinguishes these rows from real
+    hardware, and it is mandatory here: the seeder registers through the same
+    public `POST /v1/nodes/register` endpoint with the same single-use bootstrap
+    tokens a node uses, so without the marker the controller cannot tell a
+    fabricated node from a real one — and `auto` target-node resolution, having
+    only reported capacity to go on, picked this node's inflated 64 GiB facts over
+    the real GCE node's real ones and allocated agents onto a node that does not
+    exist. The controller now prefers / requires real nodes whenever any real node
+    is registered (controller-api.md §5.2 step 5).
+    """
+    return {
         "schema_version": "1.0",
+        "synthetic": True,
         "machine": {
             "machine_id": machine_id,
             "hostname": machine_id,
@@ -92,6 +114,10 @@ def register(base: str, boot_token: str, machine_id: str, gpus: list) -> dict:
             "gpus": gpus,
         },
     }
+
+
+def register(base: str, boot_token: str, machine_id: str, gpus: list) -> dict:
+    body = registration_body(machine_id, gpus)
     st, r = _request(base, "POST", "/v1/nodes/register", body, boot_token)
     if st not in (200, 201) or not isinstance(r, dict):
         raise SystemExit(f"register {machine_id} failed: {st} {r}")

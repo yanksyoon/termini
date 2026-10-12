@@ -231,6 +231,29 @@ right node — a single controller-wide URL cannot name one node among a fleet
 (`infra-decisions.md` D2). It is optional: an older node that omits it still
 registers, and the controller falls back to its global `TERMINI_LXD_BASE_URL`.
 
+`machine.disks[].size_bytes` is the **measured** size of the device. Report the
+real value, or OMIT the field when it cannot be measured: the controller then
+records that node's disk as *unknown* (`disk_known = false`) rather than as zero
+disk. A node build previously sent a hardcoded `size_bytes: 1`, which reads as
+0 GiB, so the per-node disk ceiling was silently never enforced for any real node.
+
+**Amendment (demo provenance — companion to `controller-api.md` §5.2 step 5).**
+`POST /v1/nodes/register` also accepts an **optional top-level boolean
+`synthetic`** (alias `registration_source: "seeder"`). Real hardware never sends
+it. The demo seeder (`console/seed_demo.py`, systemd unit `termini-seeder`) sets
+`"synthetic": true` on every registration it makes, because it registers through
+this same endpoint with the same single-use bootstrap tokens a node uses — so
+without the marker a fabricated row is indistinguishable from real hardware, and
+`auto` target-node resolution, having only reported capacity to go on, picked the
+seeder's inflated facts (64 GiB) over the real node's real ones (1-8 GiB) and
+allocated agents onto a node that does not exist. The controller stores the flag
+(`nodes.synthetic`, migration `0011`), never places an allocation on a fabricated
+row while any real node is registered, and surfaces it in the node view
+(`controller-api.md` §4.2). An absent, wrong-typed, or unrecognised value reads as
+*real* — the safe direction.
+
+---
+
 ### 5.3 Response — `201 Created` `NodeRegistrationResponse`
 
 Canonical response (agreed with `controller-api.md` §4.1; the controller adds the

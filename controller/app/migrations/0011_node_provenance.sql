@@ -1,0 +1,23 @@
+-- 0011_node_provenance — mark SEEDER-FABRICATED node rows as synthetic.
+--
+-- The demo seeder (`console/seed_demo.py`, systemd unit `termini-seeder`)
+-- registers its fabricated nodes through the SAME `POST /v1/nodes/register`
+-- endpoint, with the same single-use bootstrap tokens, as real hardware. Before
+-- this column a seeded row was therefore indistinguishable from a registered
+-- node: same table, same columns, no provenance of any kind.
+--
+-- That is the root cause of the live defect: `auto` target-node resolution
+-- (`controller/app/server.py::_resolve_target`) is a capacity comparison, and the
+-- only capacity signal it had was the node's own reported facts — which the
+-- seeder inflates (64 GiB RAM vs the real GCE node's real 1-8 GiB). So `auto`
+-- deterministically resolved to the fabricated node and allocated agents onto a
+-- node that does not exist.
+--
+-- 0 = registered by real hardware (the default: every real node and every row
+--     that already exists).
+-- 1 = fabricated by the demo seeder (declared on the registration wire as
+--     `synthetic: true`; see node-bootstrap.md §5.2 amendment).
+--
+-- Selection prefers 0 and falls back to 1 only when nothing real is registered,
+-- and the dashboard surfaces the flag so a viewer can tell the rows apart.
+ALTER TABLE nodes ADD COLUMN synthetic INTEGER NOT NULL DEFAULT 0;

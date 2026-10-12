@@ -40,6 +40,20 @@ AGENT_VM_MIN_RAM_GB = 1
 AGENT_VM_MIN_VCPUS = 1
 AGENT_VM_MIN_DISK_GB = 4
 
+# A node-reported disk below this cannot host a workload (the agent_vm disk floor
+# is 4 GiB, and the smallest real root device is far larger), so a value under it
+# is treated as "disk NOT reported" rather than as a real disk of that size.
+#
+# This exists because a real node used to register a placeholder
+# `disks[].size_bytes = 1` (infra/bootstrap/node/termini-bootstrap.py, fixed in the
+# same change): `1 // GiB == 0`, so every real node looked disk-less and
+# `clamp_to_node_capacity` silently skipped the disk ceiling for all of them —
+# a nonsense number deciding that there was no disk to account for. Reporting is
+# fixed at the source; this floor keeps any *other* under-reporting registration
+# from being read as real 0 GiB capacity, and makes the "unknown" case explicit
+# (`disk_known`) instead of inferring it from a zero.
+MIN_PLAUSIBLE_DISK_BYTES = 1 * GiB
+
 
 def _first(arr: Any) -> dict:
     return arr[0] if isinstance(arr, list) and arr and isinstance(arr[0], dict) else {}
@@ -189,6 +203,12 @@ def capacity_of(hw: dict, cpu_allocated: int = 0, ram_allocated_gb: int = 0,
     are the amounts already committed by prior accepted plans
     (controller-api.md §5.2 step 7). The returned ``*_free`` fields are the
     true allocatable headroom the per-node capacity clamp (step 6) consumes.
+
+    Disk is reported as ``disk_known``: a node whose every registered disk is
+    below :data:`MIN_PLAUSIBLE_DISK_BYTES` (an older node's ``size_bytes: 1``
+    placeholder, or a registration that omitted sizes) has UNKNOWN disk, not 0 GiB
+    of disk. Callers must branch on ``disk_known`` rather than on ``disk_gb > 0``
+    so a nonsense size never silently becomes a real ceiling (or its absence).
     """
     hw = hw or {}
     cpu = hw.get("cpu") if isinstance(hw.get("cpu"), dict) else {}
@@ -205,13 +225,16 @@ def capacity_of(hw: dict, cpu_allocated: int = 0, ram_allocated_gb: int = 0,
     if ram_total is None and isinstance(mem.get("ram_gb"), (int, float)):
         ram_total = int(mem["ram_gb"]) * GiB
     disk_total = 0
+    disk_known = False
     for d in disks:
         if isinstance(d, dict):
             b = d.get("size_bytes")
             if b is None and isinstance(d.get("size_gb"), (int, float)):
                 b = int(d["size_gb"]) * GiB
-            if isinstance(b, (int, float)) and not isinstance(b, bool):
+            if (isinstance(b, (int, float)) and not isinstance(b, bool)
+                    and int(b) >= MIN_PLAUSIBLE_DISK_BYTES):
                 disk_total += int(b)
+                disk_known = True
 
     ram_gb = int(ram_total) // GiB if isinstance(ram_total, (int, float)) and not isinstance(ram_total, bool) else 0
     disk_gb = disk_total // GiB
@@ -235,6 +258,7 @@ def capacity_of(hw: dict, cpu_allocated: int = 0, ram_allocated_gb: int = 0,
         "cpu_cores": cpu_cores,
         "ram_gb": ram_gb,
         "disk_gb": disk_gb,
+        "disk_known": disk_known,
         "gpu_free": len(gpus),  # none allocated in the demo (inference_vm is a reference)
         "cpu_allocated": cpu_allocated,
         "ram_allocated_gb": ram_allocated_gb,
@@ -279,6 +303,10 @@ def clamp_to_node_capacity(
     free_ram = capacity.get("ram_free_gb", 0)
     cpu_free = capacity.get("cpu_free", 0)
     free_disk = capacity.get("disk_free_gb", 0)
+    # Disk is unknown when the node registered no *plausible* device size (see
+    # health.capacity_of / MIN_PLAUSIBLE_DISK_BYTES). The fallback keeps callers
+    # that hand-build a capacity dict working.
+    disk_known = bool(capacity.get("disk_known", capacity.get("disk_gb", 0) > 0))
 
     # RAM → min(requested, free RAM per VM). Reject if < type min (1 GiB).
     per_vm_ram = free_ram // count if count > 0 else 0
@@ -299,13 +327,13 @@ def clamp_to_node_capacity(
         return resolved, decisions, "exceeds_node_cpu_ceiling"
 
     # disk → min(requested, free disk per VM). Reject if < type min (4 GiB).
-    # Skipped when the node registered no disk (capacity unknown), so a
+    # Skipped when the node registered no plausible disk (capacity unknown), so a
     # disk-less registration cannot spuriously reject a disk request.
     per_vm_disk = free_disk // count if count > 0 else 0
-    if capacity.get("disk_gb", 0) > 0 and disk_gb > per_vm_disk:
+    if disk_known and disk_gb > per_vm_disk:
         decisions.append(_cap_decision(index, "disk_gb", disk_gb, per_vm_disk, "exceeds_node_disk_ceiling"))
         disk_gb = per_vm_disk
-    if capacity.get("disk_gb", 0) > 0 and disk_gb < AGENT_VM_MIN_DISK_GB:
+    if disk_known and disk_gb < AGENT_VM_MIN_DISK_GB:
         resolved["disk_gb"] = disk_gb
         return resolved, decisions, "exceeds_node_disk_ceiling"
 
