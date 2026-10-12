@@ -32,6 +32,24 @@ log = logging.getLogger("termini.operator.executor")
 _TRANSIENT_MIN = 500  # retry on 5xx; 4xx is terminal
 
 
+def _operation_url(raw: str) -> str:
+    """Extract the operation URL from an LXD write response body.
+
+    LXD answers a write with 202 and a body of the form
+    `{"type": "async", "operation": "/1.0/operations/<uuid>", ...}`. Returns ""
+    when the body is not that shape (e.g. a synchronous response), in which case
+    the caller has nothing to wait on.
+    """
+    try:
+        meta = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    if not isinstance(meta, dict):
+        return ""
+    op = meta.get("operation")
+    return op if isinstance(op, str) else ""
+
+
 class LxdExecutor:
     def __init__(
         self,
@@ -129,6 +147,102 @@ class LxdExecutor:
             r.detail = f"instance {name} already absent (404) — idempotent no-op"
         return r
 
+    def create_instance(
+        self,
+        name: str,
+        *,
+        image_alias: str | None = None,
+        image_fingerprint: str | None = None,
+        profile: str = "default",
+        cpu: int | None = None,
+        memory: str | None = None,
+        ephemeral: bool = False,
+        wait: bool = True,
+        timeout_s: float = 120.0,
+    ) -> ExecResult:
+        """Materialise an instance from a preloaded image (POST /1.0/instances).
+
+        This is the primitive that turns an accepted plan's allocations into real
+        instances on a node. The image must already be in the node's local store:
+        first boot never contacts a registry (D3), so the alias refers to an image
+        baked into the node image rather than one to be pulled.
+
+        Safe to re-run: LXD rejects a duplicate name, and that is mapped to
+        `already_applied` (the same idempotency rule `delete_instance` applies to a
+        404), so a retried or replayed materialisation is a no-op rather than an
+        error.
+        """
+        if not image_alias and not image_fingerprint:
+            raise ValueError("create_instance needs image_alias or image_fingerprint")
+        source: dict = {"type": "image"}
+        if image_fingerprint:
+            source["fingerprint"] = image_fingerprint
+        else:
+            source["alias"] = image_alias
+        config: dict = {}
+        if cpu:
+            config["limits.cpu"] = str(int(cpu))
+        if memory:
+            config["limits.memory"] = str(memory)
+        body = {
+            "name": name,
+            "source": source,
+            "profiles": [profile],
+            "config": config,
+            "ephemeral": bool(ephemeral),
+        }
+
+        r = self._request("POST", "/1.0/instances", body)
+        if r.result == "error" and "exist" in (r.detail or "").lower():
+            r.result = "already_applied"
+            r.detail = f"instance {name} already exists — idempotent no-op"
+            return r
+        if r.result != "ok" or not wait:
+            return r
+
+        # LXD answers a write with 202 + an operation URL. "The POST returned" does
+        # NOT mean "the instance exists", so materialisation waits on the operation
+        # before reporting success — otherwise the plan would commit capacity for an
+        # instance that is still being created.
+        op = _operation_url(r.detail)
+        if not op:
+            return r
+        r.operation = op
+        return self.wait_operation(op, timeout_s=timeout_s)
+
+    def wait_operation(self, operation_url: str, *, timeout_s: float = 120.0,
+                       poll_s: float = 1.0) -> ExecResult:
+        """Poll an LXD operation to a terminal state."""
+        path = operation_url
+        if path.startswith("http"):
+            path = path[len(self.base_url):] if path.startswith(self.base_url) else path
+        r = ExecResult(result="error", method="GET", path=path,
+                       detail=f"operation {operation_url} did not complete")
+        deadline = time.monotonic() + timeout_s
+        while True:
+            r, meta = self._read_json(path)
+            if r.result != "ok":
+                return r
+            status = ""
+            if isinstance(meta, dict):
+                status = (meta.get("metadata") or {}).get("status") or ""
+            if status == "Success":
+                r.result = "ok"
+                r.operation = path
+                r.detail = f"operation Success: {path}"
+                return r
+            if status in ("Failure", "Cancelled"):
+                r.result = "error"
+                r.operation = path
+                r.detail = f"operation {status}: {path}"
+                return r
+            if time.monotonic() >= deadline:
+                r.result = "error"
+                r.operation = path
+                r.detail = f"operation still {status or 'pending'} after {timeout_s}s: {path}"
+                return r
+            time.sleep(poll_s)
+
     def prune_images(self) -> ExecResult:
         """Delete unused/cached images to reclaim disk (pure REST, no shell)."""
         if self.dry_run:
@@ -178,6 +292,16 @@ class LxdExecutor:
     def execute(self, action: RemediationAction) -> ExecResult:
         kind = action.kind
         p = action.params or {}
+        if kind == "instance.create":
+            return self.create_instance(
+                p.get("instance_name") or p.get("name") or "agent",
+                image_alias=p.get("image_alias"),
+                image_fingerprint=p.get("image_fingerprint"),
+                profile=p.get("profile", "default"),
+                cpu=p.get("vcpus"),
+                memory=p.get("memory"),
+                ephemeral=bool(p.get("ephemeral", False)),
+            )
         if kind == "instance.restart":
             return self.restart_instance(
                 p.get("instance_name") or p.get("name") or "agent",
