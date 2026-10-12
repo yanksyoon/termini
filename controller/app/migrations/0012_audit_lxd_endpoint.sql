@@ -1,0 +1,11 @@
+-- 0012_audit_lxd_endpoint — record WHICH LXD endpoint a remediation was issued to.
+--
+-- The audit row is the evidence that the operator loop closed against real
+-- hardware. Until now it recorded node_id + method/path/body, which identified
+-- the node but not the endpoint the call actually reached: the stub demo and a
+-- real node's LXD both produced a row that looked the same, so "the remediation
+-- ran against real LXD" could not be read back from GET /v1/operator/audits.
+-- The endpoint (the executor's base URL) is now stored alongside the result, so
+-- a stub-era row (`http://127.0.0.1:18443`) is distinguishable from a real one
+-- (`https://10.10.0.7:8443`).
+ALTER TABLE remediation_audits ADD COLUMN lxd_endpoint TEXT;

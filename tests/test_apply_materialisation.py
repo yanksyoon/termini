@@ -526,7 +526,7 @@ class ApplyPlanHttpTest(unittest.TestCase):
         self.assertEqual(starts[0][1], f"/1.0/instances/{vm_id}/state")
         self.assertEqual((starts[0][2] or {}).get("action"), "start")
         # ... and the instance is RUNNING, not merely created (STOPPED).
-        self.assertEqual(self.lxd_b.instance_state.get(vm_id), "running")
+        self.assertEqual(self.lxd_b.state_of(vm_id), "Running")
         self.assertEqual(self.lxd_b.running_instances(), [vm_id])
         # node A was never touched
         self.assertEqual(self.lxd_a.requests, [])
@@ -544,7 +544,7 @@ class ApplyPlanHttpTest(unittest.TestCase):
         _, second = self._apply(plan, cfg)
         self.assertEqual(second["state"], "ready")
         self.assertEqual(second["vm_ids"], [vm_id])
-        self.assertEqual(self.lxd_b.instance_state.get(vm_id), "running")
+        self.assertEqual(self.lxd_b.state_of(vm_id), "Running")
         # the replay DID attempt the start (LXD answered "already running")
         self.assertEqual(len(self.lxd_b.start_requests()), starts_before + 1)
         self.assertEqual([p for (m, p, _) in self.lxd_b.requests if m == "DELETE"], [])
