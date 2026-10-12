@@ -70,7 +70,13 @@ is hardcoded.
 | `TERMINI_LXD_BASE_URL` | `http://127.0.0.1:8443` | LXD REST endpoint (executor) |
 | `TERMINI_LXD_INSTANCE_NAMES` | `{}` | JSON `{vm_id: lxd_name}` mapping |
 | `TERMINI_LXD_DEFAULT_INSTANCE_NAME` | `agent` | fallback instance name |
-| `TERMINI_LXD_CLIENT_CERT` / `TERMINI_LXD_CLIENT_KEY` | unset | mTLS cert/key for a real LXD |
+| `TERMINI_LXD_CLIENT_CERT` / `TERMINI_LXD_CLIENT_KEY` | unset | explicit mTLS cert/key for a real LXD (else minted — see below) |
+| `TERMINI_LXD_CLIENT_DIR` | `<db_dir>/lxd-client` | where the controller mints/reuses its LXD client cert + key |
+| `TERMINI_LXD_AUTO_PROVISION` | `true` | mint the client cert at startup when absent (reused thereafter) |
+| `TERMINI_LXD_TRUST_NAME` | `termini-controller` | LXD trust-store entry name / cert CN |
+| `TERMINI_LXD_TRUST_TOKEN` / `TERMINI_LXD_TRUST_PASSWORD` | (none) | secret to install the cert into a node's trust store |
+| `TERMINI_LXD_TRUST_NODES` | (none) | comma-separated node LXD base URLs to auto-trust at startup |
+| `TERMINI_LXD_SERVER_CA` | (none) | pin the node's server cert (else server verification is skipped) |
 | `TERMINI_LXD_TIMEOUT_S` | `10.0` | per-request timeout |
 | `TERMINI_LXD_RETRY_MAX` / `TERMINI_LXD_RETRY_BACKOFF_S` | `3` / `0.5` | retry with exponential backoff |
 | `TERMINI_INVENTORY_PATH` | (auto) | infra inventory.json (public_ip / ssh user+port) |
@@ -254,11 +260,52 @@ exercised by the unit suite (`tests/test_operator_executor.py`,
 surfaces (health/status derivation, SSH string, restart/drain, approve/deny,
 intent guardrail, SSE + WS log stream, and the WS terminal).
 
+## LXD mutual-TLS trust (client certificate)
+
+The operator drives each node's LXD over HTTPS. LXD authenticates the caller by
+the **TLS client certificate** it presents against the node's trust store; an
+untrusted client gets `GET /1.0` → 200 but `GET /1.0/instances` → **403
+Forbidden**. `app/lxdtrust.py` closes that gap end to end:
+
+1. **Identity** — at startup the controller mints a self-signed EC client
+   certificate + key once (`<db_dir>/lxd-client/`, `0600` key) and **reuses it on
+   every restart** so its LXD identity never rotates. Generation shells out to
+   `openssl` (Python's stdlib cannot sign X.509; the controller stays
+   third-party-free). `TERMINI_LXD_CLIENT_CERT`/`_KEY` override with a
+   pre-provisioned pair. The resolved paths are handed to the operator loop's
+   `LxdExecutor`, which presents them on every request.
+2. **Trust** — the certificate is installed into a node's trust store over the
+   network with `POST /1.0/certificates` (client cert in the TLS handshake, the
+   secret in the `password` field). The secret is either an LXD
+   **certificate-add trust token** (`termini-bootstrap mint-trust-token` on the
+   node, contract `node-bootstrap.md` §5) or the node's `core.trust_password`.
+   It is **idempotent**: a pre-probe skips a node that already trusts us, and an
+   LXD "already present"/409 reply folds to success.
+3. **Verify** — an authenticated `GET /1.0/instances` returning **200** (trusted)
+   vs **403** (not trusted) is the observable signal, surfaced by the CLI.
+
+```bash
+# mint/reuse the controller identity and print its fingerprint
+python3 -m app.lxdtrust cert
+# add it to a node's trust store and prove it (rc 0 trusted / 3 untrusted / 2 unreachable)
+python3 -m app.lxdtrust trust  --node https://10.10.0.11:8443 --token "$TOKEN"
+python3 -m app.lxdtrust verify --node https://10.10.0.11:8443
+```
+
+Or automate it: set `TERMINI_LXD_TRUST_NODES=https://10.10.0.11:8443` plus
+`TERMINI_LXD_TRUST_TOKEN` and the controller installs trust at startup.
+
+> **TLS server verification:** LXD serves a self-signed server certificate, so by
+> default the executor presents its client cert without verifying the server
+> (matching the demo's `curl -k`) and logs a warning. Set
+> `TERMINI_LXD_SERVER_CA` to a node PEM to pin it.
+
 ## Not in scope (other W1 cards)
 
 Node-side command execution (the node command channel / ack delivery that turns a
-queued `node.reboot`/`node.drain` into an executed action), the AI-operator
-remediation loop (threshold-rule → command issuance), LXD VM fan-out behind
-`/vms/apply`, and full mTLS PKI / LXD join tokens. The controller queues commands
-with the frozen guardrails and exposes the streaming/terminal surfaces those
-components consume.
+queued `node.reboot`/`node.drain` into an executed action), LXD VM fan-out behind
+`/vms/apply`, and the LXD *cluster* join tokens / controller-issued node certs of
+`node-bootstrap.md` §5. The controller queues commands with the frozen guardrails
+and exposes the streaming/terminal surfaces those components consume. (The
+controller's own LXD **client** certificate + node-trust installation *are*
+implemented — see "LXD mutual-TLS trust" above.)

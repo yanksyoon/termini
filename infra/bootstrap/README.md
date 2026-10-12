@@ -167,6 +167,15 @@ PORT=18099 NODE=bsp-verify infra/bootstrap/verify-bootstrap.sh | tee evidence/bo
   therefore runs over plain HTTP on the demo underlay and does not perform the LXD
   cluster join or mTLS channel (contract §5/§6); those are the controller
   workstream's surface. Registration + telemetry are exercised for real.
+* **LXD trust token.** `termini-bootstrap mint-trust-token [--name N] [--out P]`
+  mints a one-time LXD *certificate-add trust token* over the local unix socket
+  and writes it 0600 to `/var/lib/termini/lxd-trust-token`. It is the node half of
+  the controller's LXD mTLS trust wiring (contract §5/§6.3): the controller
+  consumes the token (`TERMINI_LXD_TRUST_TOKEN`, or `python3 -m app.lxdtrust trust
+  --token`) to add its client certificate to this node's trust store. It needs a
+  running, initialised LXD on the node; the command itself is unit-tested with a
+  faked `subprocess` (`tests/test_bootstrap_trust_token.py`) and needs a live node
+  to exercise for real.
 * **Referenced alias.** The cloud-init template and `provision-node.sh` default to
   the image task's alias `agentic-os/w3` (`image/`, version `2026.10.0`).
 

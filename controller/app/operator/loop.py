@@ -74,6 +74,7 @@ class OperatorLoop(threading.Thread):
             backoff_s=cfg.lxd_retry_backoff_s,
             client_cert=cfg.lxd_client_cert,
             client_key=cfg.lxd_client_key,
+            server_ca=getattr(cfg, "lxd_server_ca", None),
         )
         self.poll_interval_s = max(0.1, cfg.operator_poll_interval_s)
         self.cooldown_s = cfg.operator_cooldown_s

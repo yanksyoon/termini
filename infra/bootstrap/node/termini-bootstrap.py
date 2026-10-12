@@ -30,7 +30,10 @@ this repo returns `identity: null` / `cluster: null`, which is why this agent
 runs over plain HTTP on the demo underlay — see infra/bootstrap/README.md.
 
 Runs as a systemd unit (`termini-bootstrap.service`). `termini-bootstrap status`
-prints the persisted state as JSON.
+prints the persisted state as JSON. `termini-bootstrap mint-trust-token` mints a
+one-time LXD certificate-add trust token (contract §5/§6.3) so the controller can
+add its client certificate to this node's LXD trust store; see
+`controller/app/lxdtrust.py` for the controller half.
 """
 from __future__ import annotations
 
@@ -493,6 +496,87 @@ def http_json(method: str, url: str, body=None, token: str | None = None,
             return e.code, raw.decode(errors="replace")
 
 
+# --------------------------------------------------------------------------- LXD trust token
+# The controller authenticates to this node's LXD with a TLS client certificate
+# and needs it in the node's trust store (docs/contracts/node-bootstrap.md §5/§6.3,
+# controller/app/lxdtrust.py). The node half of that handshake is minting a
+# one-time LXD *certificate-add trust token* (`lxc config trust add` with no
+# certificate) which the controller consumes over the network. Minting runs over
+# the local LXD unix socket (root / lxd group); it is a provisioning step, not an
+# interactive shell on the node.
+#
+# `termini-bootstrap mint-trust-token` prints the token and writes it 0600 to
+# /var/lib/termini/lxd-trust-token, from where it is handed to the controller
+# (TERMINI_LXD_TRUST_TOKEN, or `python3 -m app.lxdtrust trust --token`).
+_TRUST_TOKEN_PATH = os.environ.get(
+    "TERMINI_LXD_TRUST_TOKEN_PATH", "/var/lib/termini/lxd-trust-token"
+)
+# A CertificateAddToken is base64 of a JSON blob — one long base64 run.
+_TRUST_TOKEN_RE = re.compile(r"[A-Za-z0-9+/=]{40,}")
+
+
+def extract_trust_token(text: str) -> str | None:
+    """Pull the base64 CertificateAddToken out of `lxc config trust add` output."""
+    matches = _TRUST_TOKEN_RE.findall(text or "")
+    return max(matches, key=len) if matches else None
+
+
+def mint_lxd_trust_token(name: str = "termini-controller",
+                         *, timeout: float = 30.0) -> str | None:
+    """Mint a one-time LXD trust token on this node; return it (None on failure).
+
+    Requires LXD to be initialised on the node and the caller to have local
+    admin access (root or the `lxd` group). Any failure is logged and returned
+    as None — a node that cannot mint a token still registers and reports.
+    """
+    try:
+        proc = subprocess.run(
+            ["lxc", "config", "trust", "add", "--force-local", "--name", name],
+            capture_output=True, text=True, timeout=timeout, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        log(f"cannot mint LXD trust token: {e}")
+        return None
+    if proc.returncode != 0:
+        log("cannot mint LXD trust token: "
+            + (proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"))
+        return None
+    token = extract_trust_token(proc.stdout)
+    if not token:
+        log("cannot mint LXD trust token: no token in output: "
+            + proc.stdout.strip()[:200])
+    return token
+
+
+def cmd_mint_trust_token(argv: list[str]) -> int:
+    name = "termini-controller"
+    out = _TRUST_TOKEN_PATH
+    args = argv[2:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--name" and i + 1 < len(args):
+            name, i = args[i + 1], i + 2
+        elif args[i] == "--out" and i + 1 < len(args):
+            out, i = args[i + 1], i + 2
+        else:
+            i += 1
+    token = mint_lxd_trust_token(name)
+    if not token:
+        return 1
+    try:
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+        tmp = out + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(token + "\n")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, out)
+    except OSError as e:
+        log(f"minted token but could not write {out}: {e}")
+    print(token)
+    log(f"minted LXD trust token name={name} -> {out}")
+    return 0
+
+
 # --------------------------------------------------------------------------- registration failure policy
 # Bounded, classified registration retry policy (node-bootstrap.md §9).
 #
@@ -899,6 +983,8 @@ def cmd_status() -> int:
 def main(argv: list[str]) -> int:
     if len(argv) > 1 and argv[1] == "status":
         return cmd_status()
+    if len(argv) > 1 and argv[1] == "mint-trust-token":
+        return cmd_mint_trust_token(argv)
     cfg = parse_simple_yaml(CONFIG_PATH)
     if not cfg.get("controller_url"):
         die_msg = f"missing controller_url in {CONFIG_PATH}"
