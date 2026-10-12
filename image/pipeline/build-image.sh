@@ -18,6 +18,14 @@ SCHEMA="$IMAGE_DIR/manifests/image-manifest.schema.json"
 PROVISION_DIR="$SELF_DIR/provision"
 PACKER_DIR="$SELF_DIR/packer"
 VERIFY_MANIFEST="$SELF_DIR/tools/verify_manifest.py"
+STAGE_TOOL="$SELF_DIR/tools/stage_workload_image.sh"
+STAGE_CHECK="$SELF_DIR/tools/check_image_stage.py"
+IMPORT_HELPER="$PROVISION_DIR/import-staged-images.sh"
+
+# The workload image the node must ship (D3). `agent-vm/<version>` is the alias
+# the controller launches (docs/contracts/agent-runtime.md §3.1/§4.2); the demo's
+# warm/placement layer launches the same image per-node as `agent-os/w4`.
+WORKLOAD_IMAGE_ALIAS_BASE="agent-vm"
 
 # --- frozen build inputs (bump deliberately) ---------------------------------
 BASE_NAME="ubuntu-24.04-server-cloudimg-amd64"
@@ -76,6 +84,7 @@ check_recipe() {
     "$SELF_DIR/first-boot-preflight.sh" "$SELF_DIR/publish-image.sh"
     "$SELF_DIR/verify-gpu.sh" "$SELF_DIR/tools/gpu_check.py"
     "$SELF_DIR/tools/rehearse_gpu.py"
+    "$IMPORT_HELPER" "$STAGE_TOOL" "$STAGE_CHECK"
     "$PACKER_DIR/termini-node.pkr.hcl" "$VERIFY_MANIFEST"
     "$SELF_DIR/distrobuilder/termini-node.yaml"
   )
@@ -112,6 +121,35 @@ check_recipe() {
     echo "== shellcheck: not installed, skipped"
   fi
 
+  echo "== workload image stage wiring (D3: the node must ship a launchable image)"
+  # Guards the bug class where the bake imports ZERO workload images and still
+  # reports success: assert the stage is produced, consumed under the declared
+  # aliases, and that the provisioner + import step agree on the contract.
+  if grep -q 'import-staged-images.sh' "$PROVISION_DIR/10-node-os.sh"; then
+    echo "  ok   10-node-os.sh imports the staged workload image"
+  else
+    echo "  FAIL 10-node-os.sh does not invoke $(basename "$IMPORT_HELPER")"; rc=1
+  fi
+  if grep -q 'TERMINI_ALLOW_MISSING_WORKLOAD_IMAGE' "$IMPORT_HELPER"; then
+    echo "  ok   import helper fails loudly on a missing/empty stage"
+  else
+    echo "  FAIL import helper has no loud empty-stage failure"; rc=1
+  fi
+  if grep -q "WORKLOAD_IMAGE_ALIAS_BASE=\"$WORKLOAD_IMAGE_ALIAS_BASE\"" "$STAGE_TOOL"; then
+    echo "  ok   stage tool default alias base is '$WORKLOAD_IMAGE_ALIAS_BASE' (contract §3.1)"
+  else
+    echo "  FAIL stage tool alias base does not match '$WORKLOAD_IMAGE_ALIAS_BASE'"; rc=1
+  fi
+  for f in "$PACKER_DIR/termini-node.pkr.hcl" "$SELF_DIR/distrobuilder/termini-node.yaml"; do
+    if grep -q 'images-staged' "$f"; then
+      echo "  ok   $(basename "$f") wires the stage path"
+    else
+      echo "  FAIL $(basename "$f") does not reference the stage path"; rc=1
+    fi
+  done
+  echo "== stage validator self-test (fixtures: good passes, empty/corrupt fails)"
+  python3 "$STAGE_CHECK" --selftest || rc=1
+
   if [ "$rc" -eq 0 ]; then
     echo "RECIPE OK (alias=$ALIAS variant=$VARIANT version=$VERSION)"
   else
@@ -128,6 +166,25 @@ bake() {
   install -d -m 0755 "$OUT_DIR"
   artifact=""
 
+  # Stage the workload image the node must ship (D3). It is exported from THIS
+  # host's local LXD store under the contract alias and imported into the built
+  # image's LXD store by provision/10-node-os.sh. Without it the node boots with
+  # nothing for the controller to launch — the import step now fails loudly, and
+  # we populate the stage here so the normal bake path just works.
+  STAGE_DIR="$OUT_DIR/images-staged"
+  if ! command -v lxc >/dev/null 2>&1; then
+    echo "FATAL: lxc not found on the build host: cannot stage the workload image." >&2
+    echo "       Build it first (image/agent-vm/build-agent-image.sh), or set" >&2
+    echo "       TERMINI_ALLOW_MISSING_WORKLOAD_IMAGE=1 for a deliberate non-demo bake." >&2
+    exit 6
+  fi
+  echo "[build] staging workload image -> $STAGE_DIR"
+  TERMINI_STAGE_DIR="$STAGE_DIR" TERMINI_IMAGE_VERSION="$VERSION" \
+    bash "$STAGE_TOOL" || { echo "FATAL: workload image staging failed (see above)" >&2; exit 6; }
+  python3 "$STAGE_CHECK" --stage "$STAGE_DIR" \
+    --require-alias "${WORKLOAD_IMAGE_ALIAS_BASE}/${VERSION}" \
+    || { echo "FATAL: staged workload image did not validate" >&2; exit 7; }
+
   if command -v packer >/dev/null 2>&1; then
     echo "[build] packer build variant=$VARIANT version=$VERSION"
     packer init "$PACKER_DIR"
@@ -138,6 +195,7 @@ bake() {
       -var "base_sha256=$BASE_SHA256" \
       -var "llamacpp_commit=$LLAMACPP_COMMIT" \
       -var "out_dir=$OUT_DIR" \
+      -var "stage_dir=$STAGE_DIR" \
       "$PACKER_DIR"
     artifact="$OUT_DIR/${BASE_NAME}-${VARIANT}-${VERSION}.qcow2"
   elif command -v distrobuilder >/dev/null 2>&1; then

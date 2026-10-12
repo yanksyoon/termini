@@ -196,6 +196,13 @@ A GCE node image now exists that carries the bootstrap daemon, so a node can boo
 |---|---|
 | image | `termini-node-os-1`, family `termini-node-os`, 20 GB |
 | contains | `/usr/local/bin/termini-bootstrap`, `termini-bootstrap.service` (enabled), `/var/lib/termini/.baked-offline` |
+| hypervisor | LXD (snap `5.21/stable`, revision held), **initialised** — `lxd init --preseed` ran at bake time, so a `default` dir pool + `lxdbr0` bridge + `default` profile exist and the API listens on `:8443` (the port the node contract and the GCP firewall rule expect). Without this a booted node has the `lxc` binary but no daemon and no pool |
+| workload image | the guest the controller launches (`agent-vm/2026.10.0`, per-node `agent-os/w4`) is preloaded into the image's **local LXD image store** under both aliases (`image/pipeline`, D3) — so the operator's `instance.create` has a launch target at boot |
+
+> The LXD init and the workload-image preload are the two things that make a
+> booted node actually *usable* rather than merely *registered*. Both are wired
+> in `image/pipeline` and asserted by `build-image.sh --check`; confirming them on
+> a real node (`lxc image list` shows the workload image) needs a fresh bake.
 
 **Why this matters:** the deploy still defaults to stock `ubuntu-2404-lts-amd64`, on
 which the activation-only cloud-init finds no `termini-bootstrap.service` and the

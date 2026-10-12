@@ -41,13 +41,13 @@ The "~4 GiB GGUF" the task called for is the `deepseek-flash` weight (4.58 GiB);
 | Layer | Contents |
 |-------|----------|
 | Base | Ubuntu Server 24.04 LTS, `chrony`, `nftables`, `openssh-server`, python3/ruby, cmake/gcc/git |
-| Hypervisor | LXD snap, channel `5.21/stable`, revision recorded to `/etc/termini/lxd-snap.txt`, `snap refresh --hold` so boot never refreshes |
+| Hypervisor | LXD snap, channel `5.21/stable`, revision recorded to `/etc/termini/lxd-snap.txt`, `snap refresh --hold` so boot never refreshes. **Initialised at bake time** (`lxd init --preseed` → `default` dir pool + `lxdbr0` bridge + `default` profile; API on `:8443`), so a booted node has a daemon to launch against |
 | Inference runtime | `llama.cpp` @ commit `7fe450e19305b828c199d602c23a8337aaa1f03b` (release `v0.5.0`) built to `/opt/termini/llama.cpp/bin/{llama-server,llama-cli}`; `llama-cpp@<alias>.service` template |
 | GPU (gpu variant) | NVIDIA driver stack (`cuda-drivers-550` + `nvidia-smi`, step `15-nvidia-driver.sh`) + CUDA runtime 12.4 (`cudart`, `cublas`, `nvrtc`) + cuDNN 9. Nouveau is blacklisted and `nvidia`/`nvidia_uvm` load at boot; nothing is installed at boot. |
 | Weights | `deepseek-flash` + `deepseek-v4-pro` GGUF under `/var/lib/termini/models/`, sha256-pinned |
 | Agent deps | `/opt/termini/venv` (openai, httpx, pydantic, tenacity, structlog, langchain-core, langgraph), Node.js 20, ruby gems |
 | Offline proof | `/var/lib/termini/.baked-offline` sentinel + `/etc/termini/image-version` + `termini-firstboot-preflight.service` |
-| Workload images | guest `agent-vm/<version>` tarballs preloaded into the local LXD image store (no registry pull at boot) |
+| Workload images | the guest `agent-vm/<version>` the controller launches (per-node `agent-os/w4`) is preloaded into the local LXD image store **at bake time**, under both aliases, from an on-disk stage — no registry pull at boot (see `image/pipeline/README.md`) |
 
 **Never installed at boot:** any `apt`/snap/registry fetch, any model download.
 The first-boot unit actively forbids it (see §4).

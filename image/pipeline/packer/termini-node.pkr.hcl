@@ -28,6 +28,10 @@ variable "disk_size" { type = string, default = "80G" }
 variable "ssh_username" { type = string, default = "ubuntu" }
 variable "ssh_private_key_file" { type = string, default = "~/.ssh/packer_id_ed25519" }
 variable "ssh_public_key" { type = string, default = "" }
+# Directory holding the workload-image stage (the tarball + images.json manifest
+# written by tools/stage_workload_image.sh). Empty = upload no stage (only valid
+# with TERMINI_ALLOW_MISSING_WORKLOAD_IMAGE=1 for a deliberate non-demo bake).
+variable "stage_dir" { type = string, default = "" }
 
 locals {
   provisioners = [
@@ -91,6 +95,28 @@ build {
     destination = "/tmp/termini-bootstrap.service"
   }
 
+  # The workload-image stage (D3). The workload image the node must ship — the
+  # guest the controller launches as `agent-vm/<version>` (and the demo launches
+  # per-node as `agent-os/w4`) — plus the images.json manifest that names its
+  # aliases. build-image.sh populates this on the build host
+  # (tools/stage_workload_image.sh); provision/10-node-os.sh imports it into the
+  # image's local LXD store so first boot never contacts a registry.
+  provisioner "file" {
+    source      = "${path.root}/../provision/import-staged-images.sh"
+    destination = "/tmp/termini-import-staged-images.sh"
+  }
+  provisioner "shell" {
+    inline = ["mkdir -p /tmp/termini-images-staged"]
+  }
+  dynamic "provisioner" {
+    for_each = var.stage_dir == "" ? [] : [var.stage_dir]
+    labels   = ["file"]
+    content {
+      source      = provisioner.value
+      destination = "/tmp/termini-images-staged"
+    }
+  }
+
   # The numbered provisioners, in order. Overlay-mounted so they run as root.
   dynamic "provisioner" {
     for_each = local.provisioners
@@ -101,6 +127,8 @@ build {
         "TERMINI_VARIANT=${var.variant}",
         "LLAMACPP_COMMIT=${var.llamacpp_commit}",
         "DEBIAN_FRONTEND=noninteractive",
+        "IMAGE_STAGE=/tmp/termini-images-staged",
+        "TERMINI_IMPORT_HELPER=/tmp/termini-import-staged-images.sh",
       ]
       execute_command = "echo 'packer' | {{ .Vars }} sudo -E -S bash '{{ .Path }}'"
     }

@@ -50,6 +50,14 @@ PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state
 body: {"action": "restart", "force": true, "timeout": 30}
 ```
 
+> **On a real node the stub is not needed.** A node booted from the baked image
+> (`image/pipeline`, D3) **initialises LXD itself** (`lxd init --preseed`, API on
+> `:8443`) and **preloads the workload image the operator launches**
+> (`agent-vm/2026.10.0`, per-node `agent-os/w4`) into its local image store — so
+> `instance.create` has a real target with nothing to install at boot. The stub
+> exists only for the single-host demo, where the "nodes" are LXD containers and
+> the controller runs on a Cloud Run VM with no route to a node's `:8443`.
+
 Two things bite here:
 
 - **Ship the whole `chaos/` package, not just `lxd_stub.py`.** The stub imports
