@@ -25,7 +25,7 @@ three points no single vendor has productized
    checkable — not a slogan in the deck.
 
 Termini's wedge is the missing middle: the controller bootstraps the hardware on
-day 0, a deterministic AI operator remediates it on day 2, and the whole loop is
+day 0, a model-driven AI operator remediates it on day 2, and the whole loop is
 gated by a fail-closed governance boundary that makes data residency *verifiable*.
 
 ---
@@ -213,6 +213,13 @@ The demo also runs **deployed**, not only composed locally. Everything below is
 live in project `termini-510609` and serves the same contracts as the local
 compose — same controller, same decision step, same audit trail.
 
+> **This deployment is normally PAUSED** (the seeder is stopped and the node VMs are
+> terminated) so it does not bill GPU time while nobody is watching. In that state the
+> dashboard still loads but shows **offline nodes and an empty operator log** — it
+> looks broken. Resume it with
+> `gcloud compute ssh termini-controller --zone asia-south1-a --command "sudo systemctl start termini-seeder"`
+> (~30 s); the GPU scales to zero on its own once traffic stops.
+
 | Component | Where | Endpoint |
 |---|---|---|
 | Dashboard | Firebase Hosting | `https://termini-510609.web.app` |
@@ -295,11 +302,13 @@ What Termini does **not** claim (the honest guardrails from
 [`docs/narrative.md`](docs/narrative.md) §6):
 
 - No "zero data ever leaves" — only the bounded C0/C1 claim above.
-- No model in the live loop *today* — the shipped decider is a deterministic
-  threshold rule over frozen playbooks. The decision step is a seam that admits a
-  model ([`docs/contracts/governance.md`](docs/contracts/governance.md) §7.3); when a
-  model serves it, the choice stops being reproducible and only its safety envelope
-  is guaranteed.
+- No claim that the model's *choice* is reproducible. The deployed demo runs the
+  decider **model-driven** (`TERMINI_OPERATOR_DECISION_MODE=model`): a threshold rule
+  only *detects*; the model selects the action from an allowlist that
+  grammar-constrained decoding makes physically unbreachable, with a deterministic
+  provider as the mandatory fallback
+  ([`docs/contracts/governance.md`](docs/contracts/governance.md) §7.3). What is
+  guaranteed is the **safety envelope**, not the specific choice.
 - No VM launch from natural language — the allocation path ends at a validated,
   clamped plan.
 - No hotplug resize or node drain/migration — the operator restarts the runaway

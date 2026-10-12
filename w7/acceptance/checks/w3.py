@@ -36,10 +36,22 @@ def check_w3_1(ctx: CheckContext) -> dict:
     art = ctx.ev.record("W3.1", "W3.1 fresh-node registration latency",
                         "POST /v1/nodes/register (timed)", raw)
     ok = latency < 5000.0
+    status = fresh.get("status")
+    # A fast failure is not a registration. Gating on latency alone reported PASS for
+    # a registration that never happened: observed status=401 (bootstrap token already
+    # consumed) with latency=2.6ms -> "pass". Require the registration to have
+    # actually succeeded before timing it means anything.
+    succeeded = status in (200, 201) and bool(fresh.get("role"))
+    ok = ok and succeeded
+    if not ok and not succeeded:
+        reason = (f"registration did not succeed (status={status!r}, role={fresh.get('role')!r}) — "
+                  f"latency={latency:.0f}ms measures a failed call, not a registration")
+    else:
+        reason = None if ok else f"registration took {latency:.0f}ms >= 5s"
     return result("W3.1", WS, criterion, method,
                   "pass" if ok else "fail",
-                  f"registration latency={latency:.0f}ms (budget 5000ms)",
-                  art, reason=None if ok else f"registration took {latency:.0f}ms >= 5s")
+                  f"registration status={status!r} role={fresh.get('role')!r} latency={latency:.0f}ms (budget 5000ms)",
+                  art, reason=reason)
 
 
 def check_w3_2(ctx: CheckContext) -> dict:

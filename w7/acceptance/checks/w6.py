@@ -48,10 +48,14 @@ def check_w6_1(ctx: CheckContext) -> dict:
     )
 
     return result("W6.1", WS, criterion, method,
-                  "skipped",
+                  "error",
                   f"mechanism present: chaos={chaos_files} operator={operator_files} playbooks={playbook_files}",
                   art,
-                  reason="chaos/remediation mechanism exists, but a live 'lands in time' trigger is exercised by the SRE red-team (t_3dc57f17 OOM, t_8d243ee1 cloud-init/fan-network), not yet run in this environment")
+                  reason="NO PASS BRANCH IS IMPLEMENTED for this criterion — it returns a verdict "
+                         "without evaluating 'lands in time', so it can never confirm or refute it. "
+                         "Reported as 'error' rather than 'skipped' so it cannot be mistaken for an "
+                         "inapplicable check. The live trigger is exercised by the SRE red-team "
+                         "(t_3dc57f17 OOM, t_8d243ee1 cloud-init/fan-network).")
 
 
 def check_w6_2(ctx: CheckContext) -> dict:

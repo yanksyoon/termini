@@ -76,12 +76,18 @@ def main() -> int:
         try:
             row = fn(ctx)
         except Exception as exc:  # noqa: BLE001
+            # An exception is NOT a benign skip. Reporting it as 'skipped' made a
+            # crashed check indistinguishable from an inapplicable one, and because
+            # the exit code only counted 'fail', a stack broken enough that every
+            # check crashed exited 0 (observed: W2.3 and W5.3 raised TimeoutError and
+            # were silently downgraded). Crashes are recorded as 'error' and fail
+            # closed in the exit code below.
             row = {
                 "id": getattr(fn, "__name__", "?"),
                 "workstream": "?",
                 "criterion": "?",
                 "test_method": "?",
-                "status": "skipped",
+                "status": "error",
                 "detail": f"check raised {type(exc).__name__}: {exc}",
                 "artifact": None,
                 "reason": f"check crashed: {type(exc).__name__}: {exc}",
@@ -92,7 +98,7 @@ def main() -> int:
         results.append(row)
         print(f"  [{row['status']:7}] {row['id']}  {row['detail'][:90]}")
 
-    counts = {"pass": 0, "fail": 0, "skipped": 0}
+    counts = {"pass": 0, "fail": 0, "skipped": 0, "error": 0}
     for r in results:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
 
@@ -109,8 +115,10 @@ def main() -> int:
     print(f"totals: {counts}")
     print(f"summary written to {out}")
 
-    # Exit non-zero if any criterion is a hard fail, so CI can gate on it.
-    return 0 if counts["fail"] == 0 else 1
+    # Exit non-zero if any criterion hard-fails OR any check errored, so CI can gate
+    # on it. Failing closed on 'error' matters: a harness that reports a clean run
+    # when it could not observe the system is worse than one that reports nothing.
+    return 0 if (counts["fail"] == 0 and counts["error"] == 0) else 1
 
 
 if __name__ == "__main__":
