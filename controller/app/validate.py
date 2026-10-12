@@ -80,6 +80,15 @@ def _check_scalar(name: str, spec: dict, value: Any) -> str | None:
                 return f"{name}: invalid RFC3339 timestamp {value!r}"
         if spec.get("ulid") and not ulid.is_valid_ulid(value):
             return f"{name}: {value!r} is not a valid ULID"
+        if spec.get("pattern"):
+            # `pattern` was declared in the schema but NEVER enforced here, so every
+            # field carrying one was unconstrained in practice — including
+            # `_redaction.config_hash`, which is exempt from the C2 signature scan and
+            # is persisted. An inert constraint is worse than no constraint, because it
+            # reads as enforced. (Real values were checked before enabling this:
+            # hostname/mac_address on the live fleet are 16-hex and still pass.)
+            if not re.fullmatch(spec["pattern"], value):
+                return f"{name}: {value!r} does not match {spec['pattern']}"
     return None
 
 
@@ -204,8 +213,13 @@ def validate_envelope(raw: Any) -> tuple[dict, list[str]]:
 
     tip = raw.get("governance_chain_tip")
     if tip is not None:
-        if not (isinstance(tip, str) and tip):
-            errors.append("governance_chain_tip: expected non-empty string")
+        # A chain tip is a ULID identifier, so require the format rather than merely
+        # a non-empty string. The weaker check accepted arbitrary prose, and this
+        # field is PERSISTED and exempted from the C2 signature scan (see
+        # governance._SKIP_STRING_SCAN) — which made it a storage path for unscanned
+        # customer content. Format-checking it is what makes the exemption legitimate.
+        if not (isinstance(tip, str) and ulid.is_valid_ulid(tip)):
+            errors.append("governance_chain_tip: expected ULID (26-char identifier)")
         else:
             clean["governance_chain_tip"] = tip
 
