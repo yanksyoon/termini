@@ -50,8 +50,10 @@ resolve this with three concrete mechanisms, not a promise: (1) telemetry cadenc
 **deterministic local fast-path** exists for `oom-guard-01` (threshold →
 `instance.restart` of the heaviest workload, no model call), so remediation is never
 gated on model latency — and when the model is consulted instead, that call runs on
-Cloud Run GPU (`1× NVIDIA L4`), where decision latency is seconds, not the
-50–60 s measured for CPU-only inference; (3) the **chaos harness's deterministic ramp**
+**Node C** (`http://10.10.0.13:8080`, `llama.cpp`, CPU-only), where a decision over the
+operator's real prompt is measured in **minutes, not seconds** (≈156 s at a one-sample
+evidence window, ≈9–10 min at the real 20-sample window), which is exactly why the
+deterministic fast-path — not the model — covers the on-screen OOM moment; (3) the **chaos harness's deterministic ramp**
 drives the metric across the threshold on cue, so the rule fires deterministically even if `stress-ng --vm-bytes 85%`
 never quite reaches 95%×2 (`architecture.md` R24). We state plainly that beating the
 kernel OOM-killer is best-effort; what we demonstrate deterministically is the
