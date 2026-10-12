@@ -13,6 +13,7 @@ shown, not described.
 
 | Prep | Detail |
 |---|---|
+| **Resume the demo first** | The deployed demo is **paused by default** — the seeder is stopped and the node VMs are terminated, so nothing bills GPU time when idle. Before recording, start the seeder on the controller VM:<br>`gcloud compute ssh termini-controller --zone asia-south1-a --command "sudo systemctl start termini-seeder"`<br>Until it runs, the dashboard shows offline nodes and an empty operator log. |
 | Open | The live dashboard (one tab, full-screen, zoom that makes the log readable):<br>`https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token` |
 | Second tab | A terminal, for the API/audit check at 2:22. |
 | Timing note | The operator log starts empty and fills as incidents fire (≈1/minute). **Start recording, then wait for the first log line before you begin talking** — or record the wait and cut it. |
@@ -124,5 +125,28 @@ is to show the AI acting, not to assert. If you ad-lib, keep to these:
 - ✅ Say "**C2 never egresses**" (that is the enforced property). Do **not** claim
   "nothing leaves the premises" — the operator's model call does, under governance
   §7.1/§7.2, and it carries C0 telemetry only.
+- ✅ On the gate, be precise: a **C2-class field is rejected fail-closed (`422`)**,
+  while a merely *unknown* field is **stripped** (deny-by-default, §3 — that is what
+  keeps forward-compatibility). Both prevent storage; only the first is a rejection.
 - ✅ Gemma is **Google's open-weights model**; the closed API (Gemini) is not used.
+- ✅ A node from the pre-baked image registers in **291 ms** (measured against a 5 s
+  budget). Say "291 ms"; do not round it down to "instant".
 - ❌ Do not quote a live decision count — it changes every minute.
+
+## Optional: showing day-0 in the video
+
+The registration claim is the strongest day-0 evidence but is **not visible on the
+dashboard** (the deployed demo's nodes are seeded, not booted). If you want it on
+screen, it costs ~2 minutes and replaces the fleet shot in Beat 3:
+
+1. Note the fleet is running (`GET /v1/projects/…/nodes` → `nodes: 2`).
+2. Create a node from the baked image and `journalctl -u termini-bootstrap | tail`:
+
+   ```
+   [termini-bootstrap] REGISTERED role=compute register_ms=291 boot_to_registered_ms=18560
+   ```
+
+   The `.baked-offline` sentinel appearing **before** the boot timestamp is what
+   proves nothing was installed at boot. The procedure is in
+   `infra/gcp/README.md` → "Adopting the baked node image".
+3. Delete the node afterwards so it stops billing.
