@@ -112,6 +112,18 @@ def register(base: str, boot_token: str, machine_id: str, gpus: list) -> dict:
 _INSTANCE_VM_ID: dict[str, str] = {}
 
 
+def initial_seq(now: float | None = None) -> int:
+    """Starting sample sequence for a seeder run.
+
+    MUST be monotonic across restarts. The controller discards samples whose `seq` is
+    not greater than the highest it already stored for that node, so a wrapping value
+    (the previous `int(time.time()) % 100000`) makes a restarted seeder produce seq
+    numbers BELOW the previous run's — and every sample is dropped without an error.
+    The unwrapped epoch cannot wrap on any realistic timescale.
+    """
+    return int(time.time() if now is None else now)
+
+
 def instance_vm_id(node_id: str) -> str:
     if node_id not in _INSTANCE_VM_ID:
         digest = hashlib.sha256(("vm:" + node_id).encode()).hexdigest().upper()
@@ -197,7 +209,14 @@ class NodeTicker(threading.Thread):
         self.high_ram = high_ram
         self.gpu = gpu or []
         self.stop = threading.Event()
-        self.seq = int(time.time()) % 100000
+        # The controller DROPS any sample whose seq <= the last seq it stored for
+        # that node (out-of-order protection, store.insert_samples). A modulo makes
+        # the sequence WRAP: a restart at a different point in the 100000-second
+        # cycle emits seq values BELOW what the previous run left behind, so every
+        # sample is silently dropped — the dashboard freezes, no threshold fires,
+        # no remediation is produced, and nothing is logged as an error. Use the
+        # unwrapped epoch so a restart can only ever move the sequence forward.
+        self.seq = initial_seq()
         self.sent = 0
         self._logged_error = False
 
