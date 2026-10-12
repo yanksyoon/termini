@@ -147,13 +147,29 @@ def check_w2_2(ctx: CheckContext) -> dict:
                 and "ps -eo" not in ln]
     db_path = os.environ.get("TERMINI_DEMO_DB", "/var/lib/termini/demo/controller.db")
     op_tables = []
+    decision_rows = 0
+    audit_rows = 0
+    db_error = ""
+    # Rows, not table names. The old pass condition was `if op_tables:` — satisfied by
+    # the mere existence of the schema, which was reproduced as a PASS with ZERO
+    # telemetry injected. The criterion is that a remediation OCCURRED, so count the
+    # decision/audit records. A DB the check cannot read is an 'error', never a pass:
+    # a check that cannot observe the system must not return a verdict about it.
     try:
         c = sqlite3.connect(db_path)
         all_tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         op_tables = [t for t in all_tables if any(k in t for k in ("health_event", "decision", "audit", "remediation", "command"))]
+        for t in op_tables:
+            # identifiers come from sqlite_master, and are quoted anyway
+            n = c.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
+            if "decision" in t:
+                decision_rows += n
+            if "audit" in t:
+                audit_rows += n
         c.close()
     except Exception as exc:  # noqa: BLE001
         all_tables = f"unreadable: {exc}"
+        db_error = f"{type(exc).__name__}: {exc}"
 
     fresh = ctx.state.get("fresh_node") or {}
     node_token = fresh.get("node_token")
@@ -174,13 +190,27 @@ def check_w2_2(ctx: CheckContext) -> dict:
     # give a poll interval for any running loop to react
     time.sleep(1.5)
 
-    raw = f"operator processes (filtered):\n{op_procs or '(none)'}\n\noperator tables in DB:\n{op_tables or '(none)'}\n\ninjection:\n{injected}"
+    raw = (f"operator processes (filtered):\n{op_procs or '(none)'}\n\n"
+           f"operator DB: {db_path}\noperator tables: {op_tables or '(none)'}\n"
+           f"decision rows: {decision_rows}\naudit rows: {audit_rows}\n\n"
+           f"injection:\n{injected}")
     art = ctx.ev.record("W2.2", "W2.2 OOM -> remediation observation",
                         "ps -eo args (filtered) + telemetry injection + db inspection", raw)
 
-    if op_tables:
+    if db_error:
+        return result("W2.2", WS, criterion, method, "error",
+                      f"cannot read the operator DB at {db_path} ({db_error})",
+                      art, reason="the check could not observe the controller's data, so it must "
+                                  "not report a verdict; set TERMINI_DEMO_DB to the DB the running "
+                                  "controller actually uses (it is printed in its env/state dir)")
+    if op_tables and (decision_rows or audit_rows):
         return result("W2.2", WS, criterion, method, "pass",
-                      f"operator tables present in controller DB: {op_tables}", art)
+                      f"remediation recorded: {decision_rows} decision row(s), {audit_rows} audit row(s)",
+                      art)
+    if op_tables and not (decision_rows or audit_rows):
+        return result("W2.2", WS, criterion, method, "fail",
+                      f"operator schema present ({op_tables}) but NO decision/audit rows after injecting >=95% RAM twice",
+                      art, reason="the remediation loop did not record anything; schema existing is not remediation")
     if op_procs and not op_tables:
         return result("W2.2", WS, criterion, method, "fail",
                       "operator process running but no remediation/audit record after OOM injection",
