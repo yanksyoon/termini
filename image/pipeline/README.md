@@ -19,6 +19,22 @@ boot installs nothing and downloads nothing (D3, `docs/contracts/infra-decisions
   bash image/pipeline/build-image.sh --variant gpu       # Node C
   ```
 
+- Golden-VM bake (when neither `packer` nor `distrobuilder` is installed — the
+  route that actually produced the deployed family members, now committed):
+
+  ```bash
+  export PATH="$HOME/google-cloud-sdk/bin:$PATH"
+  image/pipeline/tools/bake-golden-node-image.sh \
+    --workload-tarball ~/.cache/termini/images/agent-vm-2026.10.0-c3d039642a61.tar.gz
+  image/pipeline/tools/verify-baked-node.sh --image-name termini-node-os-4
+  ```
+
+  See [`golden-vm/README.md`](golden-vm/README.md). It creates a throwaway VM,
+  runs `golden-vm/bake-node-os.sh` as a single pass (verify before
+  de-instancing), captures a GCE image into the `termini-node-os` family, and
+  deletes the VM. `verify-baked-node.sh` boots a node from the family and proves
+  the image ON the node, then deletes it — the behaviour test `--check` cannot be.
+
 ## Image identities (do not conflate them)
 
 | Image | Where it is authored | Alias it ships under | Launched by |
@@ -87,5 +103,10 @@ reintroduces the silent-zero-import bug fails the recipe check.
 `build-image.sh --check` and `verify-pipeline.sh` validate the recipe and the
 stage/import logic on any checkout, without a build host. Confirming the image on
 a **real node** — that `lxc image list` shows the workload image under
-`agent-vm/2026.10.0` and `agent-os/w4` after boot — requires an actual bake on a
-host with `packer`/`distrobuilder` + KVM and is not exercised here.
+`agent-vm/2026.10.0` and `agent-os/w4` after boot — is a BEHAVIOUR test no linter
+can perform, but it no longer needs `packer`: the golden-VM route
+([`golden-vm/`](golden-vm/README.md)) bakes a GCE image from a throwaway VM and
+[`tools/verify-baked-node.sh`](tools/verify-baked-node.sh) boots a node from the
+family and asserts it there. What still requires `packer`/`distrobuilder` is the
+qcow2 / distrobuilder container artifact and the GPU-CUDA-model payloads — see the
+honest-scope section of [`golden-vm/README.md`](golden-vm/README.md).
