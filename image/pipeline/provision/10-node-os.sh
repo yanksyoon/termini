@@ -65,9 +65,17 @@ fi
 # Serve the LXD API on the underlay. 8443 is the port the node contract and the
 # GCP firewall rule expect (infra/gcp/README.md), and the port the remediation
 # executor PUTs to (/1.0/instances/<id>/state).
-snap set lxd core.https_address=":8443" || true
+#
+# Use `lxc config set`, NOT `snap set lxd core.https_address`. The snap form is
+# REJECTED at build time - "Run configure hook of \"lxd\" snap (invalid option
+# name: \"https_address\")" - and the bake then completes with the API still bound
+# to the default address, which silently reproduces the very bug this step exists
+# to fix. Measured on a real build: `lxc config set core.https_address :8443`
+# followed by a daemon restart gives `core.https_address=:8443` and HTTP 200 on
+# https://127.0.0.1:8443/1.0, and those properties survive into the image.
+lxc config set core.https_address ":8443"
 systemctl enable snap.lxd.daemon.service 2>/dev/null || true
-snap restart lxd || true
+systemctl restart snap.lxd.daemon.service || snap restart lxd || true
 for _ in $(seq 1 30); do
   curl -sk --max-time 2 https://127.0.0.1:8443/1.0 >/dev/null 2>&1 && break
   sleep 2
