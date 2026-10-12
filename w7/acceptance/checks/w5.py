@@ -172,9 +172,25 @@ def check_w5_2(ctx: CheckContext) -> dict:
                         output + "\n--- decoded PTY ---\n" + decoded)
 
     if match and match.group(2) == "ssh":
+        observed = match.group(1)
+        # SSH_CONNECTION is satisfied by SSH-to-self, so a shell on the CONTROLLER
+        # reports `ssh` too. That is how this check passed while the shell was on
+        # `hack` (the controller host) — contradicting its own docstring, which claims
+        # the shell is on a node and not a controller-host bash. Bind the observed
+        # hostname instead of trusting the `ssh` marker; the node's plain hostname is
+        # not recoverable (stored only as hostname_hash), so the reliable discrimination
+        # is "is this the machine running the controller/harness".
+        import socket as _socket
+        local_host = _socket.gethostname()
+        if observed == local_host:
+            return result("W5.2", WS, criterion, method, "fail",
+                          f"terminal opened a shell on `{observed}`, which is the controller/harness host",
+                          art, reason=("the shell is on the machine running the controller, not on a "
+                                       "node (SSH-to-self satisfies the SSH_CONNECTION marker); "
+                                       "dashboard.md §3.1 requires a shell on the NODE"))
         return result("W5.2", WS, criterion, method, "pass",
-                      f"terminal opened an SSH shell on the node "
-                      f"(output `{match.group(0)}`, host {match.group(1)})", art)
+                      f"terminal opened an SSH shell on a remote host "
+                      f"(output `{match.group(0)}`, host {observed})", art)
     if match and match.group(2) == "local":
         # Output arrived, but it came from a controller-host shell — not a node.
         return result("W5.2", WS, criterion, method, "fail",

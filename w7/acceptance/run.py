@@ -20,6 +20,7 @@ Usage:
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -37,6 +38,61 @@ def _rel(repo_root: str, path: str) -> str:
         return os.path.relpath(path, repo_root)
     except ValueError:
         return path
+
+
+def _preflight(controller_url: str, project_id: str, project_token: str,
+               db_path: str) -> tuple[bool, list[str]]:
+    """Confirm the target really is a Termini controller, and flag a DB that is not its.
+
+    This exists because the obvious failure is not a crash — it is a run that
+    produces plausible numbers from the WRONG system. The harness defaults
+    (`:8085`, `/var/lib/termini/demo/controller.db`) belong to a different stack than
+    any given local demo, and `:8085` on this host was in fact an 8-day-old leaked
+    controller from a deleted workspace that answered with a valid Termini error
+    envelope while rejecting the repo's own default token. Nothing about that looks
+    broken from the outside.
+    """
+    import urllib.error
+    import urllib.request
+
+    notes: list[str] = []
+    ok = True
+    url = f"{controller_url.rstrip('/')}/v1/projects/{project_id}/nodes"
+    try:
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {project_token}"})
+        with urllib.request.urlopen(req, timeout=8) as r:  # noqa: S310
+            status = r.status
+            body = json.loads(r.read().decode("utf-8", errors="replace") or "{}")
+    except urllib.error.HTTPError as e:
+        try:
+            body = json.loads(e.read().decode("utf-8", errors="replace") or "{}")
+        except Exception:  # noqa: BLE001
+            body = {}
+        status = e.code
+    except Exception as exc:  # noqa: BLE001
+        return False, [f"controller UNREACHABLE at {controller_url}: {type(exc).__name__}: {exc}",
+                       "refusing to run: a harness that cannot observe the system must not "
+                       "report on it"]
+
+    if not (isinstance(body, dict) and ("nodes" in body or "error" in body)):
+        ok = False
+        notes.append(f"controller at {controller_url} answered {status} but NOT with a Termini "
+                     f"envelope — refusing to measure an unknown service")
+    else:
+        nodes = body.get("nodes")
+        if status == 200 and nodes is not None:
+            notes.append(f"controller OK: {len(nodes)} node(s)")
+        else:
+            err = (body.get("error") or {}).get("code")
+            ok = False
+            notes.append(f"controller answered {status} ({err}) — the token/id may be wrong, or "
+                         f"this is a STALE instance from another run; refusing to measure")
+
+    if not os.path.exists(db_path):
+        notes.append(f"WARNING: operator DB {db_path} does not exist, so W2.2 cannot observe "
+                     f"remediation. Set TERMINI_DEMO_DB to the DB the running controller uses "
+                     f"(printed in its state dir) instead of accepting the default.")
+    return ok, notes
 
 
 def main() -> int:
@@ -58,6 +114,19 @@ def main() -> int:
     print(f"evidence_dir   : {evidence_dir}")
     print(f"output         : {output_path}")
     print()
+
+    # Preflight BEFORE any check runs: confirm we are measuring a Termini controller,
+    # and say so loudly if the DB we will inspect is not the one it uses.
+    db_path = os.environ["TERMINI_DEMO_DB"]
+    pre_ok, notes = _preflight(controller_url, project_id, project_token, db_path)
+    for n in notes:
+        print(f"[preflight] {n}")
+    print()
+    if not pre_ok:
+        print("[preflight] ABORTING — the environment does not look like the system under "
+              "test. Fix the URL/token/id (and the DB path) rather than reading the numbers "
+              "below as a measurement.")
+        return 2
 
     env = envhash.collect_env(controller_url, project_id, project_token, REPO_ROOT)
     ev = EvidenceRecorder(run_id, evidence_dir, env)
