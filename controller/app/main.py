@@ -12,9 +12,10 @@ import sys
 import threading
 import time
 
-from . import config, db, events, inventory, logs, server, sshca, store, terminal
+from . import config, db, events, inventory, logs, lxdtrust, server, sshca, store, terminal
 from .operator import Thresholds, OperatorLoop
 from .operator import decision as op_decision
+from .operator import executor as op_executor
 from .operator import playbook as op_playbook
 
 log = logging.getLogger("termini.controller")
@@ -45,6 +46,36 @@ def main(argv: list[str] | None = None) -> int:
     applied = db.migrate(cfg.db_path)
     if applied:
         log.info("applied migrations: %s", ", ".join(applied))
+
+    # --- LXD mTLS client identity + trust (node-bootstrap.md §5/§6.3) ----------
+    # The operator's LXD REST calls are authenticated by a TLS client certificate.
+    # Mint it once (idempotent: reused across restarts) and hand the paths to the
+    # executor, so a real node's LXD answers 200 instead of 403. See app/lxdtrust.py.
+    lxd_identity = lxdtrust.resolve_identity(
+        explicit_cert=cfg.lxd_client_cert,
+        explicit_key=cfg.lxd_client_key,
+        client_dir=cfg.lxd_client_dir,
+        common_name=cfg.lxd_trust_name,
+        provision=cfg.lxd_auto_provision,
+    )
+    if lxd_identity is not None:
+        log.info("LXD client identity ready: %s (fingerprint=%s)",
+                 lxd_identity.cert_path, lxd_identity.fingerprint)
+    else:
+        log.warning("no LXD client identity — operator LXD calls will be unauthenticated")
+
+    # Optionally install that certificate into configured nodes' trust stores on
+    # startup (idempotent; skips nodes that already trust us). Opt-in via
+    # TERMINI_LXD_TRUST_NODES + TERMINI_LXD_TRUST_TOKEN/PASSWORD.
+    _trust_secret = cfg.lxd_trust_token or cfg.lxd_trust_password
+    if lxd_identity is not None and cfg.lxd_trust_nodes and _trust_secret:
+        for _node, _res in lxdtrust.ensure_trusted_all(
+            cfg.lxd_trust_nodes, lxd_identity, _trust_secret,
+            name=cfg.lxd_trust_name, server_ca=cfg.lxd_server_ca,
+            timeout_s=cfg.lxd_request_timeout_s,
+        ):
+            (log.info if _res.ok else log.warning)(
+                "LXD trust %s: %s — %s", _node, _res.status, _res.detail)
 
     with db.session(cfg.db_path) as conn:
         now = store.now_iso()
@@ -124,12 +155,25 @@ def main(argv: list[str] | None = None) -> int:
                 instance_names=cfg.lxd_instance_names,
                 default_instance_name=cfg.lxd_default_instance_name,
             )
+            # Hand the loop an executor that presents the controller's LXD client
+            # certificate (resolved above), so its REST calls are authenticated.
+            lxd_exec = op_executor.LxdExecutor(
+                cfg.lxd_base_url,
+                dry_run=cfg.operator_dry_run,
+                timeout_s=cfg.lxd_request_timeout_s,
+                retry_max=cfg.lxd_retry_max,
+                backoff_s=cfg.lxd_retry_backoff_s,
+                client_cert=lxd_identity.cert_path if lxd_identity else cfg.lxd_client_cert,
+                client_key=lxd_identity.key_path if lxd_identity else cfg.lxd_client_key,
+                server_ca=cfg.lxd_server_ca,
+            )
             loop = OperatorLoop(
                 cfg, project, thresholds, playbooks,
                 instance_names=cfg.lxd_instance_names,
                 default_instance_name=cfg.lxd_default_instance_name,
                 logs=operator_logs,
                 provider=provider,
+                lxd=lxd_exec,
             )
             loop.start()
         else:

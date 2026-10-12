@@ -150,6 +150,14 @@ class Config:
     lxd_default_instance_name: str
     lxd_client_cert: str | None
     lxd_client_key: str | None
+    # LXD mTLS client-trust wiring (app/lxdtrust.py).
+    lxd_client_dir: str            # where the controller mints/reuses its LXD client cert
+    lxd_server_ca: str | None      # pin the node's server cert (else verify is skipped, demo parity)
+    lxd_trust_token: str | None    # LXD certificate-add trust token (one-time)
+    lxd_trust_password: str | None # node core.trust_password (legacy alternative)
+    lxd_trust_name: str            # LXD trust-store entry name for the controller cert
+    lxd_trust_nodes: tuple[str, ...]  # nodes to auto-trust at startup (base URLs)
+    lxd_auto_provision: bool       # mint the client cert at startup when absent
     lxd_request_timeout_s: float
     lxd_retry_max: int
     lxd_retry_backoff_s: float
@@ -184,11 +192,16 @@ class Config:
                     f"TERMINI_LXD_INSTANCE_NAMES must be a JSON object: {exc}"
                 ) from exc
 
+        db_path = os.environ.get("TERMINI_DB_PATH", "").strip() or "data/controller.db"
+        # The controller's LXD client identity lives next to the SQLite store by
+        # default, so it is provisioned once and survives restarts (app/lxdtrust.py).
+        lxd_client_dir = os.environ.get("TERMINI_LXD_CLIENT_DIR", "").strip() \
+            or str(Path(db_path).parent / "lxd-client")
+
         return cls(
             host=os.environ.get("TERMINI_HOST", "0.0.0.0").strip() or "0.0.0.0",
             port=_int_env("TERMINI_PORT", 8080),
-            db_path=os.environ.get("TERMINI_DB_PATH", "").strip()
-            or "data/controller.db",
+            db_path=db_path,
             bootstrap_tokens=bootstrap,
             project_tokens=project,
             project_id=project_id,
@@ -259,6 +272,15 @@ class Config:
             ).strip() or "agent",
             lxd_client_cert=os.environ.get("TERMINI_LXD_CLIENT_CERT", "").strip() or None,
             lxd_client_key=os.environ.get("TERMINI_LXD_CLIENT_KEY", "").strip() or None,
+            lxd_client_dir=lxd_client_dir,
+            lxd_server_ca=_opt_str("TERMINI_LXD_SERVER_CA"),
+            lxd_trust_token=_opt_str("TERMINI_LXD_TRUST_TOKEN"),
+            lxd_trust_password=_opt_str("TERMINI_LXD_TRUST_PASSWORD"),
+            lxd_trust_name=os.environ.get(
+                "TERMINI_LXD_TRUST_NAME", "termini-controller"
+            ).strip() or "termini-controller",
+            lxd_trust_nodes=_opt_list("TERMINI_LXD_TRUST_NODES"),
+            lxd_auto_provision=_bool_env("TERMINI_LXD_AUTO_PROVISION", True),
             lxd_request_timeout_s=_float_env("TERMINI_LXD_TIMEOUT_S", 10.0),
             lxd_retry_max=_int_env("TERMINI_LXD_RETRY_MAX", 3),
             lxd_retry_backoff_s=_float_env("TERMINI_LXD_RETRY_BACKOFF_S", 0.5),

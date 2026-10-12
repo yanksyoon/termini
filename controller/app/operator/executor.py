@@ -12,6 +12,14 @@ Guarantees:
   * every operation returns an ExecResult (method/path/body + status + detail)
     so the loop can write a complete audit record (node, event, action, result).
 
+Client trust: the controller authenticates to a node's LXD by the TLS client
+certificate it presents (`client_cert`/`client_key`). The certificate is minted
+and installed into the node's trust store by `app/lxdtrust.py`; `trust_client`
+here is the raw `POST /1.0/certificates` primitive that consumes an LXD trust
+token (or `core.trust_password`) to add the presented cert to a node's trust
+store, and `list_instances` is the "am I trusted?" probe (200 trusted vs 403
+not).
+
 The actual idempotency/dedup *decision* (one health event -> one command) lives
 in the loop + schema (UNIQUE decision per event, cooldown); the executor's job
 is to make each LXD call safe to re-run and to report exactly what it did.
@@ -61,20 +69,42 @@ class LxdExecutor:
         backoff_s: float = 0.5,
         client_cert: str | None = None,
         client_key: str | None = None,
+        server_ca: str | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.dry_run = dry_run
         self.timeout_s = timeout_s
         self.retry_max = max(1, retry_max)
         self.backoff_s = backoff_s
-        self._ssl_ctx = self._make_ssl_ctx(client_cert, client_key)
+        self._ssl_ctx = self._make_ssl_ctx(client_cert, client_key, server_ca)
 
     @staticmethod
-    def _make_ssl_ctx(cert: str | None, key: str | None) -> ssl.SSLContext | None:
-        if not cert:
+    def _make_ssl_ctx(
+        cert: str | None, key: str | None, server_ca: str | None = None
+    ) -> ssl.SSLContext | None:
+        """Build the HTTPS context: present `cert`, optionally pin the server.
+
+        LXD serves a *self-signed* server certificate (it is its own CA), so the
+        default system trust store cannot verify it. With no `server_ca` we mirror
+        the demo's `curl -k` behaviour — present the client cert, do not verify the
+        server — and log one warning so the gap is visible. Set `server_ca` to a
+        PEM holding the node's/cluster's server certificate to pin it properly.
+        """
+        if not cert and not server_ca:
             return None
         ctx = ssl.create_default_context()
-        ctx.load_cert_chain(certfile=cert, keyfile=key)
+        ctx.check_hostname = False  # nodes are dialled by underlay IP, not hostname
+        if server_ca:
+            ctx.load_verify_locations(cafile=server_ca)
+            ctx.verify_mode = ssl.CERT_REQUIRED
+        else:
+            ctx.verify_mode = ssl.CERT_NONE
+            log.warning(
+                "LXD TLS: verifying the server certificate is DISABLED (no "
+                "server_ca pinned) — set TERMINI_LXD_SERVER_CA to a node PEM to pin it"
+            )
+        if cert:
+            ctx.load_cert_chain(certfile=cert, keyfile=key)
         return ctx
 
     # ------------------------------------------------------------------ HTTP
@@ -145,6 +175,36 @@ class LxdExecutor:
         if r.result == "error" and r.status == 404:
             r.result = "ok"
             r.detail = f"instance {name} already absent (404) — idempotent no-op"
+        return r
+
+    # ------------------------------------------------------------- client trust
+    def list_instances(self) -> ExecResult:
+        """Authenticated GET /1.0/instances — the "am I trusted?" probe.
+
+        A trusted client gets 200; an untrusted one gets 401/403 (the defect this
+        whole change repairs). The status on the returned ExecResult is the
+        observable signal (`app/lxdtrust.py` reads it).
+        """
+        return self._request("GET", "/1.0/instances")
+
+    def trust_client(self, secret: str, *, name: str = "termini-controller") -> ExecResult:
+        """Add THIS client's certificate to the node's LXD trust store.
+
+        `POST /1.0/certificates` with the client cert in the TLS handshake and the
+        secret in `password`. LXD accepts either a certificate-add trust token or
+        `core.trust_password` there. An LXD "already trusted"/409 reply is folded
+        to `already_applied` so a re-run is a no-op rather than an error (the same
+        idempotency rule `delete_instance` applies to a 404).
+        """
+        r = self._request(
+            "POST", "/1.0/certificates",
+            {"type": "client", "password": secret, "name": name},
+        )
+        if r.result == "error" and (
+            r.status == 409 or "already" in (str(r.detail) or "").lower()
+        ):
+            r.result = "already_applied"
+            r.detail = "certificate already present in the node trust store — idempotent no-op"
         return r
 
     def create_instance(
