@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import ssl
 import time
 import urllib.error
@@ -38,6 +39,18 @@ from .models import ExecResult, RemediationAction
 log = logging.getLogger("termini.operator.executor")
 
 _TRANSIENT_MIN = 500  # retry on 5xx; 4xx is terminal
+
+# LXD refuses `PUT .../state {"action":"start"}` on an already-running instance
+# ("You will get an error if the instance does not exist or if it is running
+# already"). That is the *expected* answer on a replay of a plan whose instances
+# are already up, so it is folded to `already_applied` (idempotent no-op) rather
+# than surfaced as a failure. The negative lookahead keeps "not running" out.
+_ALREADY_RUNNING = re.compile(r"already\s+(?:running|started)|(?<!not\s)is\s+running", re.I)
+
+
+def _instance_already_running(detail: object) -> bool:
+    return bool(_ALREADY_RUNNING.search(str(detail or "")))
+
 
 
 def _operation_url(raw: str) -> str:
@@ -169,7 +182,59 @@ class LxdExecutor:
         return self._request("PUT", f"/1.0/instances/{name}/state",
                              {"action": "stop", "force": force})
 
-    def delete_instance(self, name: str) -> ExecResult:
+    def start_instance(self, name: str, *, wait: bool = True,
+                       timeout_s: float = 120.0) -> ExecResult:
+        """Start a created instance and wait until it is running.
+
+        A `create_instance` only *creates* the instance — LXD answers the create
+        operation with the instance left **STOPPED** ("The request creates the
+        instance, but does not start it"). Materialisation's promise is that the
+        agents are running, so the create is followed by this start and the caller
+        does not report the VM ready until the start operation has completed.
+
+        Idempotent: LXD errors when an instance is already running (there is
+        nothing to do), and that specific answer is folded to `already_applied` —
+        the same "re-running the same step is safe" rule `delete_instance` applies
+        to a 404 and `create_instance` applies to a duplicate name. A genuine
+        start failure (no space, cannot allocate) stays an `error` so the caller
+        can treat the allocation as failed.
+        """
+        r = self._request("PUT", f"/1.0/instances/{name}/state", {"action": "start"})
+        if r.result == "error" and _instance_already_running(r.detail):
+            r.result = "already_applied"
+            r.detail = f"instance {name} already running — idempotent no-op"
+            return r
+        if r.result != "ok" or not wait:
+            return r
+
+        op = _operation_url(r.detail)
+        if not op:
+            return r
+        r.operation = op
+        w = self.wait_operation(op, timeout_s=timeout_s)
+        if w.result == "error" and _instance_already_running(w.detail):
+            w.result = "already_applied"
+            w.detail = f"instance {name} already running — idempotent no-op"
+        return w
+
+    def delete_instance(self, name: str, *, force: bool = False,
+                        timeout_s: float = 60.0) -> ExecResult:
+        """Delete an instance; a 404 is success (already gone -> idempotent re-run).
+
+        With `force=True`, stop the instance (and WAIT for the stop operation)
+        before deleting: LXD refuses to delete a RUNNING instance, so a rollback
+        of an allocation whose instances were already started must stop them
+        first or the delete silently no-ops and leaves the VM behind. A stop of an
+        already-stopped instance errors; that error is ignored because the DELETE
+        that follows is the authority.
+        """
+        if force:
+            sr = self._request("PUT", f"/1.0/instances/{name}/state",
+                               {"action": "stop", "force": True})
+            if sr.result == "ok":
+                op = _operation_url(sr.detail)
+                if op:
+                    self.wait_operation(op, timeout_s=timeout_s)
         r = self._request("DELETE", f"/1.0/instances/{name}")
         # 404 = already gone: re-running the same remediation is a no-op.
         if r.result == "error" and r.status == 404:
@@ -231,6 +296,10 @@ class LxdExecutor:
         `already_applied` (the same idempotency rule `delete_instance` applies to a
         404), so a retried or replayed materialisation is a no-op rather than an
         error.
+
+        NOTE: this creates the instance **STOPPED** — LXD does not start a created
+        instance. A caller that needs a running workload must follow this with
+        `start_instance`; `_apply_plan` does exactly that.
         """
         if not image_alias and not image_fingerprint:
             raise ValueError("create_instance needs image_alias or image_fingerprint")
@@ -284,8 +353,16 @@ class LxdExecutor:
             if r.result != "ok":
                 return r
             status = ""
+            err = ""
             if isinstance(meta, dict):
-                status = (meta.get("metadata") or {}).get("status") or ""
+                md = meta.get("metadata")
+                md = md if isinstance(md, dict) else {}
+                status = md.get("status") or ""
+                # The operation's own error string is WHERE the reason lives: LXD
+                # answers a refused start with a *failed operation* ("The instance
+                # is already running"), not a synchronous error, so a caller that
+                # only kept the status could never tell why. Surface it.
+                err = md.get("err") or ""
             if status == "Success":
                 r.result = "ok"
                 r.operation = path
@@ -294,7 +371,7 @@ class LxdExecutor:
             if status in ("Failure", "Cancelled"):
                 r.result = "error"
                 r.operation = path
-                r.detail = f"operation {status}: {path}"
+                r.detail = f"operation {status}: {err}" if err else f"operation {status}: {path}"
                 return r
             if time.monotonic() >= deadline:
                 r.result = "error"
@@ -372,6 +449,11 @@ class LxdExecutor:
             return self.stop_instance(
                 p.get("instance_name") or p.get("name") or "agent",
                 force=bool(p.get("force", True)),
+            )
+        if kind == "instance.start":
+            return self.start_instance(
+                p.get("instance_name") or p.get("name") or "agent",
+                timeout_s=float(p.get("timeout_s", 120.0)),
             )
         if kind == "instance.delete":
             return self.delete_instance(p.get("instance_name") or p.get("name") or "agent")
