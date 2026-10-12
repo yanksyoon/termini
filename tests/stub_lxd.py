@@ -4,23 +4,43 @@ Implements just enough of the LXD REST API surface the executor uses, and
 records every request it receives so tests can assert a *real* HTTP call was
 made (not just a log line):
 
-  POST   /1.0/instances               -> 202 + an async operation (creates; leaves STOPPED)
-  GET    /1.0/operations/{op}         -> metadata.status "Success"
-  PUT    /1.0/instances/{name}/state  -> 202 + operation (start/stop), 400 if already running
-  GET    /1.0/instances/{name}/state  -> metadata.status "Running"/"Stopped"
-  DELETE /1.0/instances/{name}        -> 200 (drops the instance)
-  GET    /1.0/images?recursion=1      -> metadata: <configured image list>
-  DELETE /1.0/images/{fingerprint}    -> 200
+  POST   /1.0/instances                -> 202 + an async operation (creates; STOPPED)
+  GET    /1.0/operations/{op}          -> metadata.status (Success by default)
+  GET    /1.0/instances/{name}/state   -> metadata.status (the instance state)
+  PUT    /1.0/instances/{name}/state   -> 202 + an async operation (state change)
+  DELETE /1.0/instances/{name}         -> 200 (drops the instance)
+  GET    /1.0/images?recursion=1       -> metadata: <configured image list>
+  DELETE /1.0/images/{fingerprint}     -> 200
+
+State model — ONE capitalised state map, ``instance_states``, shared by the
+materialisation tests (#133) and the remediation-effect tests (#136):
+
+  * each instance's state lives in ``instance_states``; ``default_state`` is
+    "Running", so an instance never explicitly placed reads Running
+    (``state_of``/``set_state`` are the accessors);
+  * a create leaves the instance STOPPED (LXD creates but does not start it);
+  * a PUT .../state with action start/restart sets it Running, stop sets Stopped
+    (the stub applies the action, like a real LXD);
+  * ``fail_create`` / ``fail_start`` force a create / a start to 500 (the
+    failure-semantics paths);
+  * ``start`` keeps LXD's strict semantics: 404 for an unknown instance, 400 for
+    one that is already Running (the executor folds that to an idempotent no-op);
+  * ``ignore_actions`` models the measured real-LXD no-op where the operation
+    reports Success but the instance does not change (e.g. restarting a STOPPED
+    container) — the action is accepted and the state is left untouched;
+  * ``operation_status`` forces the operation poll to a non-Success status
+    ("Failure", or a still-pending "Running" that makes a wait time out);
+  * ``operation_gone`` makes the operation poll 404, modelling a finished
+    operation LXD reaped before the executor's first poll.
 """
 from __future__ import annotations
 
 import json
-import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-_INSTANCE_STATE_RE = re.compile(r"^/1\.0/instances/([^/]+)/state$")
-_INSTANCE_RE = re.compile(r"^/1\.0/instances/([^/]+)$")
+# action -> resulting instance state (the stub applies the action like real LXD)
+_ACTION_STATE = {"start": "Running", "restart": "Running", "stop": "Stopped"}
 
 
 class StubLxd:
@@ -28,18 +48,77 @@ class StubLxd:
         self.requests: list[tuple[str, str, dict | None]] = []
         self.images: list[dict] = []
         # Materialisation surface: instances created by a POST /1.0/instances, and
-        # switches to force every create / start to fail (the failure-semantics
-        # paths). `instance_state` mirrors LXD's own state machine: a create leaves
-        # the instance STOPPED, and only a PUT .../state {"action":"start"} that
-        # completes the operation makes it RUNNING.
+        # a switch to force every create to fail (the failure-semantics path).
         self.instances: dict[str, dict] = {}
-        self.instance_state: dict[str, str] = {}
         self.fail_create = False
-        self.fail_start = False
+        # State-change surface (the single, capitalised state map).
+        self.instance_states: dict[str, str] = {}
+        self.default_state = "Running"
+        self.fail_start = False            # force a start to 500
+        self.ignore_actions = False        # accept the action, change nothing
+        self.operation_status = "Success"  # status the operation poll reports
+        self.operation_gone = False        # the op was reaped before we polled it
+        self._op_seq = 0
         self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self.port = self._httpd.server_address[1]
         self.base_url = f"http://127.0.0.1:{self.port}"
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+
+    # ------------------------------------------------------------- state model
+    def state_of(self, name: str) -> str:
+        return self.instance_states.get(name, self.default_state)
+
+    def set_state(self, name: str, state: str) -> None:
+        self.instance_states[name] = state
+
+    def _known(self, name: str) -> bool:
+        """Does this instance exist? Created here, or explicitly given a state.
+
+        A create records the instance in ``instances``; a test that drives a
+        pre-existing instance calls ``set_state``. Either makes the instance
+        real for the purpose of LXD's 404-on-unknown answer to a start.
+        """
+        return name in self.instances or name in self.instance_states
+
+    def _apply(self, path: str, body: dict | None):
+        """Apply a PUT .../state action, like a real LXD; return (status, body).
+
+        ``start`` carries LXD's strict semantics (404 unknown, 500 when forced to
+        fail, 400 if already running) because the executor's start path and its
+        idempotency fold depend on them; every other action keeps the lenient
+        behaviour the restart/stop tests rely on. A state change is answered
+        asynchronously (202 + an operation URL) even when it turns out to be a
+        no-op — which is exactly the trap the executor must not fall into.
+        """
+        name = path[len("/1.0/instances/"): -len("/state")]
+        action = (body or {}).get("action", "")
+
+        if action == "start":
+            if not self._known(name):
+                return 404, {"type": "error", "error_code": 404,
+                             "error": f'Instance "{name}" not found'}
+            if self.fail_start:
+                return 500, {"type": "error", "error_code": 500,
+                             "error": "Failed to start instance"}
+            if self.state_of(name) == "Running":
+                # Real LXD: starting an already-running instance is an error; the
+                # executor folds it to an idempotent no-op.
+                return 400, {"type": "error", "error_code": 400,
+                             "error": f'Instance "{name}" is already running'}
+            if not self.ignore_actions:
+                self.set_state(name, "Running")
+            return 202, {"type": "async", "status_code": 100,
+                         "operation": f"/1.0/operations/op-start-{name}",
+                         "metadata": {"description": "Starting instance"}}
+
+        if not self.ignore_actions:
+            new_state = _ACTION_STATE.get(action)
+            if new_state:
+                self.set_state(name, new_state)
+        self._op_seq += 1
+        op = f"/1.0/operations/op-state-{self._op_seq}"
+        return 202, {"type": "async", "status_code": 100, "operation": op,
+                     "metadata": {"description": f"{action.capitalize()}ing instance"}}
 
     def _handler(self):
         stub = self
@@ -76,7 +155,7 @@ class StubLxd:
                         self._send(500, {"error": f'Instance "{name}" already exists'})
                         return
                     stub.instances[name] = body or {}
-                    stub.instance_state[name] = "stopped"   # LXD creates STOPPED
+                    stub.set_state(name, "Stopped")   # LXD creates STOPPED
                     op = f"/1.0/operations/op-create-{len(stub.instances)}"
                     self._send(202, {"type": "async", "operation": op, "status_code": 100})
                     return
@@ -85,44 +164,18 @@ class StubLxd:
             def do_PUT(self):
                 body = self._read()
                 stub.requests.append(("PUT", self.path, body))
-                m = _INSTANCE_STATE_RE.match(self.path)
-                name = m.group(1) if m is not None else None
-                action = (body or {}).get("action")
-                # Only `start` has strict LXD-like semantics (404 unknown, 400 if
-                # already running); restart/stop keep the lenient stub behaviour the
-                # executor's restart/stop tests rely on.
-                if name is not None and action == "start":
-                    if name not in stub.instances:
-                        self._send(404, {"error": f'Instance "{name}" not found',
-                                         "error_code": 404})
-                        return
-                    if stub.fail_start:
-                        self._send(500, {"error": "Failed to start instance"})
-                        return
-                    if stub.instance_state.get(name) == "running":
-                        # Real LXD: starting an already-running instance is an
-                        # error; the executor folds it to an idempotent no-op.
-                        self._send(400, {"error": f'Instance "{name}" is already running',
-                                         "error_code": 400})
-                        return
-                    stub.instance_state[name] = "running"
-                    self._send(202, {"type": "async",
-                                     "operation": f"/1.0/operations/op-start-{name}",
-                                     "status_code": 100})
+                if self.path.startswith("/1.0/instances/") and self.path.endswith("/state"):
+                    status, resp = stub._apply(self.path, body)
+                    self._send(status, resp)
                     return
-                if name is not None and action == "stop":
-                    stub.instance_state[name] = "stopped"
-                elif name is not None and action == "restart":
-                    stub.instance_state[name] = "running"
-                self._send(200, {"type": "async", "operation": "/1.0/operations/op-1",
-                                 "status_code": 100})
+                self._send(200, {"type": "sync", "status_code": 200, "metadata": {}})
 
             def do_DELETE(self):
                 stub.requests.append(("DELETE", self.path, None))
-                m = _INSTANCE_RE.match(self.path)
-                if m is not None:
-                    stub.instances.pop(m.group(1), None)
-                    stub.instance_state.pop(m.group(1), None)
+                if self.path.startswith("/1.0/instances/"):
+                    name = self.path.rsplit("/", 1)[-1]
+                    stub.instances.pop(name, None)
+                    stub.instance_states.pop(name, None)
                 self._send(200, {"type": "sync", "status_code": 200, "metadata": {}})
 
             def do_GET(self):
@@ -130,18 +183,22 @@ class StubLxd:
                 if self.path.startswith("/1.0/images"):
                     self._send(200, {"type": "sync", "status_code": 200,
                                      "metadata": list(stub.images)})
-                elif self.path.startswith("/1.0/operations"):
-                    self._send(200, {"type": "sync", "status_code": 200,
-                                     "metadata": {"status": "Success", "status_code": 200}})
-                else:
-                    m = _INSTANCE_STATE_RE.match(self.path)
-                    if m is not None:
-                        state = stub.instance_state.get(m.group(1), "stopped")
-                        status = "Running" if state == "running" else "Stopped"
-                        code = 103 if state == "running" else 102
-                        self._send(200, {"type": "sync", "status_code": 200,
-                                         "metadata": {"status": status, "status_code": code}})
+                elif self.path.startswith("/1.0/operations/"):
+                    if stub.operation_gone:
+                        # a finished operation LXD already reaped: 404, like real LXD
+                        self._send(404, {"type": "error", "error_code": 404,
+                                         "error": "not found"})
                         return
+                    self._send(200, {"type": "sync", "status_code": 200,
+                                     "metadata": {"status": stub.operation_status,
+                                                  "status_code": 200}})
+                elif self.path.startswith("/1.0/instances/") and self.path.endswith("/state"):
+                    name = self.path[len("/1.0/instances/"): -len("/state")]
+                    state = stub.state_of(name)
+                    self._send(200, {"type": "sync", "status_code": 200,
+                                     "metadata": {"status": state,
+                                                  "status_code": 103 if state == "Running" else 102}})
+                else:
                     self._send(200, {"type": "sync", "status_code": 200, "metadata": {}})
 
         return Handler
@@ -173,6 +230,20 @@ class StubLxd:
             and b.get("action") == "start"
         ]
 
+    def state_requests(self, action: str | None = None) -> list[tuple[str, str, dict | None]]:
+        """PUT .../state requests, optionally filtered by action.
+
+        ``state_requests()`` is every state change (start/restart/stop);
+        ``state_requests("start")`` is only the ones that started an instance.
+        """
+        out = [
+            (m, p, b) for (m, p, b) in self.requests
+            if m == "PUT" and p.endswith("/state") and isinstance(b, dict)
+        ]
+        if action is not None:
+            out = [r for r in out if r[2].get("action") == action]
+        return out
+
     def running_instances(self) -> list[str]:
         """Instance names whose state is RUNNING (the materialisation postcondition)."""
-        return sorted(n for n, st in self.instance_state.items() if st == "running")
+        return sorted(n for n, st in self.instance_states.items() if st == "Running")

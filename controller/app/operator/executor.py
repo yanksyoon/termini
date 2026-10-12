@@ -9,8 +9,19 @@ Guarantees:
   * transient failures (5xx, connection errors, timeouts) retry with exponential
     backoff; 4xx responses are treated as terminal and returned immediately;
   * `instance.delete` treats a 404 as success (already gone -> idempotent re-run);
-  * every operation returns an ExecResult (method/path/body + status + detail)
-    so the loop can write a complete audit record (node, event, action, result).
+  * every state-changing operation is **waited on and confirmed**: LXD answers a
+    write with `202 + an operation URL`, which only means "accepted", so the
+    operation is polled to a terminal state and the instance's resulting state is
+    read back. A failed/timeout operation, or one whose success did not change the
+    instance, is reported as `error` — never `ok` (see `_await_write` /
+    `_confirm_state`);
+  * a `restart` of a STOPPED instance is a no-op that LXD still accepts with
+    `202 "Restarting instance"` (measured live), so `restart_instance` reads the
+    state first and *starts* a stopped instance instead of issuing a restart that
+    cannot take effect;
+  * every operation returns an ExecResult (method/path/body + status + detail +
+    operation id) so the loop can write a complete audit record (node, event,
+    action, result).
 
 Client trust: the controller authenticates to a node's LXD by the TLS client
 certificate it presents (`client_cert`/`client_key`). The certificate is minted
@@ -174,13 +185,117 @@ class LxdExecutor:
             return r, None
 
     # ------------------------------------------------------------- operations
+    def _instance_state(self, name: str) -> str:
+        """The instance's current LXD state ("Running"/"Stopped"/"Frozen"/...).
+
+        Returns "" when it cannot be read (instance absent, server unreachable,
+        or a synchronous body that carries no state) — callers must treat "" as
+        "unknown", never as a state.
+        """
+        r, meta = self._read_json(f"/1.0/instances/{name}/state")
+        if r.result != "ok" or not isinstance(meta, dict):
+            return ""
+        md = meta.get("metadata")
+        if isinstance(md, dict):
+            st = md.get("status")
+            if isinstance(st, str):
+                return st
+        return ""
+
+    def _await_write(self, r: ExecResult, *, timeout_s: float = 120.0) -> ExecResult:
+        """Poll the operation a write returned, so `ok` means *done*.
+
+        LXD answers a state-changing write with `202 + an operation URL`; the 202
+        only means "accepted", not "the action happened". When the response body
+        carries an operation, this waits on it via ``wait_operation`` (which
+        reports a Failure/timed-out operation as `error`) and then restores the
+        original write's method/path/body onto the result, so the audit row still
+        records the request that was actually issued to LXD. A synchronous
+        response (no operation URL) is returned unchanged.
+        """
+        if r.result != "ok":
+            return r
+        op = _operation_url(r.detail)
+        if not op:
+            return r
+        waited = self.wait_operation(op, timeout_s=timeout_s)
+        if waited.result != "ok" and waited.status == 404:
+            # The operation finished and LXD already reaped it before our first
+            # poll (a fast no-op completes in well under the poll interval). Its
+            # outcome is no longer readable, so fall back to the write's own
+            # acceptance; `_confirm_state` is the ground truth for a state change.
+            r.detail = f"{r.detail}; operation {op} already finished (reaped before first poll)"
+            return r
+        waited.method = r.method
+        waited.path = r.path
+        waited.body = r.body
+        waited.status = r.status
+        return waited
+
+    def _confirm_state(self, name: str, expected: str, *, action: str,
+                       before: str, r: ExecResult, timeout_s: float = 20.0,
+                       poll_s: float = 0.5) -> ExecResult:
+        """Confirm the instance actually reached `expected` after the operation.
+
+        An operation reaching Success is not proof the instance changed (a restart
+        of a stopped instance succeeds and changes nothing), so the state is read
+        back until it matches or the window lapses. When the state cannot be read
+        at all (e.g. the demo stub answers a synchronous body), the effect cannot
+        be contradicted and `r` is returned unchanged; only a positively observed
+        wrong state turns the result into an `error`.
+        """
+        deadline = time.monotonic() + timeout_s
+        seen = ""
+        while True:
+            seen = self._instance_state(name)
+            if seen == expected:
+                r.detail = f"{r.detail}; action={action}; state {before or '?'} -> {seen}"
+                return r
+            if seen:
+                break  # a definitive, different state — no point polling
+            if time.monotonic() >= deadline:
+                return r  # unreadable: nothing contradicts the operation result
+            time.sleep(poll_s)
+        r.result = "error"
+        r.detail = (f"INEFFECTIVE: {action} reported success ({r.detail}) but "
+                    f"instance {name} is {seen!r}, not {expected!r}")
+        return r
+
     def restart_instance(self, name: str, *, force: bool = True, timeout: int = 30) -> ExecResult:
-        return self._request("PUT", f"/1.0/instances/{name}/state",
-                             {"action": "restart", "force": force, "timeout": timeout})
+        """Restart the instance — and make sure that is what actually happens.
+
+        A restart on a STOPPED instance is a no-op LXD nevertheless accepts with
+        `202 "Restarting instance"` (measured live: the call returned ok and the
+        instance stayed STOPPED). So the state is read first: a running (or
+        unreadable) instance is restarted, a stopped one is *started* — a restart
+        cannot bring it up. The operation is waited on and the resulting state is
+        confirmed, so an ineffective remediation is `error`, not `ok`.
+        """
+        path = f"/1.0/instances/{name}/state"
+        if self.dry_run:
+            return self._request("PUT", path,
+                                 {"action": "restart", "force": force, "timeout": timeout})
+        before = self._instance_state(name)
+        # "Running" (or unknown) -> restart; any definitive non-running state ->
+        # start, because restarting a stopped instance changes nothing.
+        action = "restart" if before in ("", "Running") else "start"
+        body = ({"action": "restart", "force": force, "timeout": timeout}
+                if action == "restart" else {"action": "start", "timeout": timeout})
+        r = self._await_write(self._request("PUT", path, body),
+                              timeout_s=max(120.0, float(timeout) + 30.0))
+        if r.result != "ok":
+            return r
+        return self._confirm_state(name, "Running", action=action, before=before, r=r)
 
     def stop_instance(self, name: str, *, force: bool = True) -> ExecResult:
-        return self._request("PUT", f"/1.0/instances/{name}/state",
-                             {"action": "stop", "force": force})
+        """Stop the instance, waiting on the operation and confirming STOPPED."""
+        path = f"/1.0/instances/{name}/state"
+        if self.dry_run:
+            return self._request("PUT", path, {"action": "stop", "force": force})
+        r = self._await_write(self._request("PUT", path, {"action": "stop", "force": force}))
+        if r.result != "ok":
+            return r
+        return self._confirm_state(name, "Stopped", action="stop", before="", r=r)
 
     def start_instance(self, name: str, *, wait: bool = True,
                        timeout_s: float = 120.0) -> ExecResult:
@@ -240,7 +355,9 @@ class LxdExecutor:
         if r.result == "error" and r.status == 404:
             r.result = "ok"
             r.detail = f"instance {name} already absent (404) — idempotent no-op"
-        return r
+            return r
+        # A delete is async too: wait so a following step never races the deletion.
+        return self._await_write(r)
 
     # ------------------------------------------------------------- client trust
     def list_instances(self) -> ExecResult:

@@ -66,19 +66,21 @@ def insert_decision(conn, decision_id: str, event, action, now_iso: str,
 
 
 def insert_audit(conn, audit_id: str, decision_id: str, event, action,
-                 result, idempotency_key: str, now_iso: str, dry_run: bool) -> None:
+                 result, idempotency_key: str, now_iso: str, dry_run: bool,
+                 *, lxd_endpoint: str = "") -> None:
     # `result` is an operator.executor.ExecResult; duck-typed here to avoid a
-    # store->executor import cycle.
+    # store->executor import cycle. `lxd_endpoint` is the executor's base URL, so
+    # the row proves which endpoint (stub vs a real node) the call reached.
     conn.execute(
         "INSERT INTO remediation_audits (id, decision_id, event_id, node_id,"
         " rule_id, action_kind, result, detail, lxd_method, lxd_path, lxd_body,"
-        " idempotency_key, dry_run, executed_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " idempotency_key, dry_run, executed_at, lxd_endpoint)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             audit_id, decision_id, event.event_id, event.node_id, event.rule_id,
             action.kind, result.result, (result.detail or "")[:1000], result.method,
             result.path, (result.body or "")[:1000], idempotency_key,
-            1 if dry_run else 0, now_iso,
+            1 if dry_run else 0, now_iso, lxd_endpoint or "",
         ),
     )
 

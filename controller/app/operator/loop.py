@@ -271,7 +271,8 @@ class OperatorLoop(threading.Thread):
 
         audit_id = ulid.new_ulid()
         opstore.insert_audit(
-            conn, audit_id, decision_id, event, action, result, idem_key, now, dry_run
+            conn, audit_id, decision_id, event, action, result, idem_key, now, dry_run,
+            lxd_endpoint=getattr(self.lxd, "base_url", ""),
         )
         # Remediation latency: chooser start -> remediation completed (includes
         # chooser/selection time, which the previous `fired_at -> now` calc omitted).
