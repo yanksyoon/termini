@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Materialisation primitives on LxdExecutor: create_instance + start_instance +
-wait_operation.
+"""Materialisation primitives on LxdExecutor: create_instance + wait_operation.
 
 These are the calls that turn an accepted plan's allocations into real instances on
 a node. The properties that matter for a live demo, and that this file pins down:
@@ -9,11 +8,8 @@ a node. The properties that matter for a live demo, and that this file pins down
   * it WAITS on the operation - LXD answers 202 and "the POST returned" does not
     mean "the instance exists", so reporting success early would commit capacity
     for an instance that is still being created;
-  * a create leaves the instance STOPPED, so materialisation follows it with a
-    start (PUT .../state {"action":"start"}) that WAITS on its operation too;
   * a duplicate name is `already_applied`, not an error, so a replayed
-    materialisation is a no-op (same rule delete_instance applies to a 404); the
-    same is true of starting an instance that is already running;
+    materialisation is a no-op (same rule delete_instance applies to a 404);
   * a failed or timed-out operation is an error, never a silent pass;
   * dry-run sends nothing.
 """
@@ -156,129 +152,6 @@ class CreateInstanceTest(unittest.TestCase):
         body = ex.calls[0][2]
         self.assertEqual(body["name"], "agent-9")
         self.assertEqual(body["config"]["limits.cpu"], "4")
-
-
-class StartInstanceTest(unittest.TestCase):
-    OP = "/1.0/operations/op-start"
-    PATH = "/1.0/instances/agent-1/state"
-
-    def _ok_script(self):
-        return {
-            ("PUT", self.PATH): (202, json.dumps(
-                {"type": "async", "operation": self.OP})),
-            ("GET", self.OP): (200, json.dumps({"metadata": {"status": "Success"}})),
-        }
-
-    def test_start_posts_action_start_and_waits_for_the_operation(self):
-        ex = _FakeTransport(self._ok_script())
-        r = ex.start_instance("agent-1")
-
-        self.assertEqual(r.result, "ok")
-        self.assertEqual(r.operation, self.OP)          # waited, not fire-and-forget
-        self.assertEqual([c[0] for c in ex.calls], ["PUT", "GET"])
-        self.assertEqual(ex.calls[0][1], self.PATH)
-        self.assertEqual(ex.calls[0][2], {"action": "start"})
-
-    def test_start_of_an_already_running_instance_is_already_applied(self):
-        # LXD errors on starting a running instance; a replay must be a no-op.
-        ex = _FakeTransport({("PUT", self.PATH): (
-            400, json.dumps({"error": 'Instance "agent-1" is already running'}))})
-        r = ex.start_instance("agent-1")
-        self.assertEqual(r.result, "already_applied")
-        self.assertEqual(len(ex.calls), 1)              # no wait attempted
-
-    def test_start_of_a_missing_instance_is_an_error(self):
-        ex = _FakeTransport({("PUT", self.PATH): (
-            404, json.dumps({"error": 'Instance "agent-1" not found'}))})
-        r = ex.start_instance("agent-1")
-        self.assertEqual(r.result, "error")
-
-    def test_start_failed_operation_is_an_error(self):
-        script = {
-            ("PUT", self.PATH): (202, json.dumps({"operation": self.OP})),
-            ("GET", self.OP): (200, json.dumps({"metadata": {"status": "Failure",
-                                                             "err": "no space"}})),
-        }
-        ex = _FakeTransport(script)
-        r = ex.start_instance("agent-1")
-        self.assertEqual(r.result, "error")
-        self.assertIn("Failure", r.detail)
-        self.assertIn("no space", r.detail)     # the operation's own error is surfaced
-
-    def test_start_operation_failing_already_running_is_already_applied(self):
-        # LXD answers a start-on-running with a FAILED operation whose err says so;
-        # a replay must fold that to already_applied, not fail the allocation.
-        script = {
-            ("PUT", self.PATH): (202, json.dumps({"operation": self.OP})),
-            ("GET", self.OP): (200, json.dumps({
-                "metadata": {"status": "Failure",
-                             "err": 'The instance "agent-1" is already running'}})),
-        }
-        ex = _FakeTransport(script)
-        r = ex.start_instance("agent-1")
-        self.assertEqual(r.result, "already_applied")
-
-    def test_start_timeout_is_an_error_not_an_early_pass(self):
-        script = {
-            ("PUT", self.PATH): (202, json.dumps({"operation": self.OP})),
-            ("GET", self.OP): (200, json.dumps({"metadata": {"status": "Running"}})),
-        }
-        ex = _FakeTransport(script)
-        r = ex.start_instance("agent-1", timeout_s=0.01)
-        self.assertEqual(r.result, "error")
-        self.assertIn("still Running", r.detail)
-
-    def test_start_dry_run_sends_nothing(self):
-        ex = LxdExecutor("https://10.10.0.11:8443", dry_run=True)
-        r = ex.start_instance("agent-1")
-        self.assertEqual(r.result, "dry_run")
-        self.assertEqual(r.method, "PUT")
-        self.assertEqual(r.path, self.PATH)
-        self.assertIn("start", r.body)
-
-    def test_dispatch_routes_instance_start(self):
-        ex = _FakeTransport(self._ok_script())
-        action = RemediationAction(kind="instance.start",
-                                   params={"instance_name": "agent-1"})
-        r = ex.execute(action)
-        self.assertEqual(r.result, "ok")
-        self.assertEqual(ex.calls[0][2], {"action": "start"})
-
-
-class DeleteInstanceTest(unittest.TestCase):
-    OP = "/1.0/operations/op-stop"
-
-    def test_plain_delete_does_not_stop_first(self):
-        ex = _FakeTransport({("DELETE", "/1.0/instances/agent-1"): (200, "{}")})
-        r = ex.delete_instance("agent-1")
-        self.assertEqual(r.result, "ok")
-        self.assertEqual(ex.calls, [("DELETE", "/1.0/instances/agent-1", None)])
-
-    def test_force_delete_stops_waits_then_deletes(self):
-        # LXD refuses to delete a running instance: force must stop (and wait) first.
-        script = {
-            ("PUT", "/1.0/instances/agent-1/state"): (202, json.dumps(
-                {"type": "async", "operation": self.OP})),
-            ("GET", self.OP): (200, json.dumps({"metadata": {"status": "Success"}})),
-            ("DELETE", "/1.0/instances/agent-1"): (200, "{}"),
-        }
-        ex = _FakeTransport(script)
-        r = ex.delete_instance("agent-1", force=True)
-        self.assertEqual(r.result, "ok")
-        self.assertEqual([c[0] for c in ex.calls], ["PUT", "GET", "DELETE"])
-        self.assertEqual(ex.calls[0][2], {"action": "stop", "force": True})
-
-    def test_force_delete_still_deletes_when_stop_fails(self):
-        # A stop of an already-stopped instance errors; the DELETE is the authority.
-        script = {
-            ("PUT", "/1.0/instances/agent-1/state"): (400, json.dumps(
-                {"error": "The instance is already stopped"})),
-            ("DELETE", "/1.0/instances/agent-1"): (200, "{}"),
-        }
-        ex = _FakeTransport(script)
-        r = ex.delete_instance("agent-1", force=True)
-        self.assertEqual(r.result, "ok")
-        self.assertEqual([c[0] for c in ex.calls], ["PUT", "DELETE"])
 
 
 if __name__ == "__main__":

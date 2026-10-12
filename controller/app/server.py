@@ -595,13 +595,6 @@ class ControllerHandler(BaseHTTPRequestHandler):
         released (`store.release_allocation`), the allocation is reported `failed`
         with the error, and the job state is terminal `failed`. A create that
         succeeds (or is a duplicate = `already_applied`) keeps its commit.
-
-        Running postcondition — a created instance is left STOPPED by LXD, so a
-        successful create is followed by `start_instance` and the instance is only
-        reported `ready` once the start operation confirms it is running. A create
-        that succeeds but cannot be started is a FAILED allocation under the same
-        all-or-nothing rule (its instances are deleted and its capacity released):
-        "the agents are running" has to be true, not assumed.
         """
         self._require_project(conn, project_id)
         body = self._read_body()
@@ -662,10 +655,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 continue
 
             executor = op_target.executor_for_node(cfg, node)
-            start_timeout = float(getattr(
-                cfg, "lxd_start_timeout_s",
-                getattr(cfg, "lxd_create_timeout_s", 120.0)))
-            created: list[str] = []          # instances materialised by THIS apply
+            created: list[str] = []
             failure: str | None = None
             already = 0
             for slot in range(count):
@@ -676,20 +666,13 @@ class ControllerHandler(BaseHTTPRequestHandler):
                     memory=f"{ram_gb}GiB" if ram_gb else None,
                     timeout_s=cfg.lxd_create_timeout_s,
                 )
-                if r.result == "already_applied":
+                if r.result == "ok":
+                    created.append(name)
+                elif r.result == "already_applied":
                     already += 1
-                elif r.result != "ok":
+                    created.append(name)
+                else:
                     failure = f"create {name} failed: {r.detail}"
-                    break
-                created.append(name)
-
-                # LXD leaves a created instance STOPPED; materialisation promises
-                # the agent is up, so start it and wait for the operation to
-                # confirm. A start that does not reach "running" is a failure (the
-                # name is already in `created`, so it is rolled back too).
-                s = executor.start_instance(name, timeout_s=start_timeout)
-                if s.result not in ("ok", "already_applied"):
-                    failure = f"start {name} failed: {s.detail}"
                     break
 
             if failure is None:
@@ -707,10 +690,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
             # capacity (or a vm_id) for an instance that does not exist.
             any_failed = True
             for name in created:
-                # force=True: an instance we already started is RUNNING, and LXD
-                # refuses to delete a running instance — a plain DELETE would
-                # silently leave it behind, contradicting the all-or-nothing rule.
-                executor.delete_instance(name, force=True)
+                executor.delete_instance(name)
             released = store.release_allocation(
                 conn, project_id, plan_id, node_id,
                 count * vcpus, count * ram_gb, count * disk_gb,

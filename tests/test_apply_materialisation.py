@@ -9,14 +9,10 @@ TERMINAL state with the real instance ids. This file pins the properties:
     global URL); a node that reports none falls back to the global
     `TERMINI_LXD_BASE_URL` (the stub-demo path);
   * apply creates one LXD instance per committed VM and returns the real ids;
-  * apply also STARTS each created instance and only reports the allocation
-    `ready` when it is running — LXD creates an instance STOPPED, so a create that
-    is not followed by a confirmed start is not a materialised VM;
-  * a failed/timed-out create OR start is surfaced as failure, is never reported
-    as success, and releases that allocation's committed capacity so the plan
-    never claims an instance that does not exist / is not running;
-  * a replayed apply is idempotent (a duplicate name is `already_applied`, and
-    starting an already-running instance is likewise folded to `already_applied`).
+  * a failed/timed-out create is surfaced as failure, is never reported as
+    success, and releases that allocation's committed capacity so the plan never
+    claims an instance that does not exist;
+  * a replayed apply is idempotent (a duplicate name is `already_applied`).
 
 The pure resolver tests need no I/O; the apply tests drive `_apply_plan` directly
 with a small harness (a scripted executor for the failure/replay paths) and, for
@@ -56,17 +52,13 @@ PROJECT_ID = "01J0DEM0WARM000000000000AD"
 # --------------------------------------------------------------------------- doubles
 
 class _FakeExecutor:
-    """Records create/start/delete calls; returns a scripted result per instance name."""
+    """Records create/delete calls; returns a scripted result per instance name."""
 
-    def __init__(self, results=None, default="ok", start_results=None, start_default="ok"):
+    def __init__(self, results=None, default="ok"):
         self.created: list[tuple[str, dict]] = []
-        self.started: list[tuple[str, dict]] = []
         self.deleted: list[str] = []
-        self.delete_force: list[bool] = []
         self._results = results or {}
         self._default = default
-        self._start_results = start_results or {}
-        self._start_default = start_default
 
     def create_instance(self, name, **kw):
         self.created.append((name, kw))
@@ -75,17 +67,8 @@ class _FakeExecutor:
             return ExecResult(result=r[0], detail=r[1], method="POST", path="/1.0/instances")
         return ExecResult(result=r, method="POST", path="/1.0/instances")
 
-    def start_instance(self, name, **kw):
-        self.started.append((name, kw))
-        r = self._start_results.get(name, self._start_default)
-        if isinstance(r, tuple):
-            return ExecResult(result=r[0], detail=r[1], method="PUT",
-                              path=f"/1.0/instances/{name}/state")
-        return ExecResult(result=r, method="PUT", path=f"/1.0/instances/{name}/state")
-
-    def delete_instance(self, name, **kw):
+    def delete_instance(self, name):
         self.deleted.append(name)
-        self.delete_force.append(bool(kw.get("force", False)))
         return ExecResult(result="ok", method="DELETE", path=f"/1.0/instances/{name}")
 
 
@@ -125,7 +108,6 @@ def _cfg(**over):
         lxd_node_scheme="https",
         lxd_workload_image="agent-vm",
         lxd_create_timeout_s=5.0,
-        lxd_start_timeout_s=5.0,
         lxd_client_cert=None,
         lxd_client_key=None,
         lxd_request_timeout_s=2.0,
@@ -318,9 +300,6 @@ class ApplyPlanTest(unittest.TestCase):
         self.assertEqual(kw["image_alias"], "agent-vm")
         self.assertEqual(kw["cpu"], 2)
         self.assertEqual(kw["memory"], "4GiB")
-        # ... and the created instance was STARTED (LXD leaves it stopped) and
-        # waited on, so `ready` means "running", not just "exists".
-        self.assertEqual([n for n, _ in fake.started], [vm_id])
         # executor was resolved for the allocation's node
         self.assertEqual(seen_nodes[0]["id"], self.node_id)
         # terminal state published to the broker with per-allocation evidence
@@ -356,9 +335,8 @@ class ApplyPlanTest(unittest.TestCase):
         self.assertEqual(body["vm_ids"], [])
         self.assertEqual(body["allocations"][0]["status"], "failed")
         self.assertIn("no space left", body["allocations"][0]["detail"])
-        # the half-created instance was rolled back (force: it was started/running)
+        # the half-created instance was rolled back
         self.assertEqual(fake.deleted, [first])
-        self.assertEqual(fake.delete_force, [True])
         # capacity released: the plan no longer claims a nonexistent instance
         alloc = store.allocated_capacity(self.conn, self.node_id)
         self.assertEqual((alloc["cpu_allocated"], alloc["ram_allocated_gb"],
@@ -386,47 +364,6 @@ class ApplyPlanTest(unittest.TestCase):
         # capacity is untouched on a successful replay
         self.assertEqual(store.allocated_capacity(self.conn, self.node_id)["ram_allocated_gb"], 4)
         self.assertEqual(fake.deleted, [])
-
-    def test_replay_of_an_already_running_plan_is_a_noop(self):
-        # A replay: the instance already exists AND is running, so the create is a
-        # duplicate (`already_applied`) and the start is LXD's already-running
-        # answer (`already_applied`). The apply must be a no-op, not an error.
-        plan = _plan("PLAN0000000000000000000001", [_alloc(0, self.node_id, count=1)])
-        store.commit_allocation(self.conn, PROJECT_ID, plan["plan_id"], self.node_id,
-                                2, 4, 8, store.now_iso())
-        self.conn.commit()
-        fake = _FakeExecutor(default="already_applied", start_default="already_applied")
-        _, body, broker = self._apply(plan, factory=lambda cfg, node, dry_run=False: fake)
-        self.assertEqual(body["state"], "ready")
-        self.assertEqual(len(body["vm_ids"]), 1)
-        self.assertEqual([n for n, _ in fake.started], body["vm_ids"])   # start attempted
-        self.assertEqual(fake.deleted, [])                               # nothing torn down
-        self.assertEqual(store.allocated_capacity(self.conn, self.node_id)["ram_allocated_gb"], 4)
-        self.assertEqual(broker.events[-1][1]["state"], "ready")
-
-    def test_start_failure_fails_the_allocation_and_releases_capacity(self):
-        plan = _plan("PLAN0000000000000000000002", [_alloc(0, self.node_id, count=2)])
-        store.commit_allocation(self.conn, PROJECT_ID, plan["plan_id"], self.node_id,
-                                2 * 2, 2 * 4, 2 * 8, store.now_iso())
-        self.conn.commit()
-        second = target_mod.instance_name(plan["plan_id"], 0, 1)
-        # Both creates succeed, but the second instance cannot be started.
-        fake = _FakeExecutor(
-            start_results={second: ("error", "operation Failure: cannot start")})
-
-        _, body, broker = self._apply(plan, factory=lambda cfg, node, dry_run=False: fake)
-        self.assertEqual(body["state"], "failed")
-        self.assertEqual(body["vm_ids"], [])
-        self.assertEqual(body["allocations"][0]["status"], "failed")
-        self.assertIn("start", body["allocations"][0]["detail"])
-        # both instances (the started one and the un-startable one) were rolled back
-        self.assertEqual(sorted(fake.deleted), sorted([n for n, _ in fake.created]))
-        self.assertTrue(all(fake.delete_force))   # each delete is a forced stop-then-delete
-        # capacity released: the plan does not claim a VM that is not running
-        alloc = store.allocated_capacity(self.conn, self.node_id)
-        self.assertEqual((alloc["cpu_allocated"], alloc["ram_allocated_gb"],
-                          alloc["disk_allocated_gb"]), (0, 0, 0))
-        self.assertEqual(broker.events[-1][1]["state"], "failed")
 
     def test_inference_host_service_creates_no_vm(self):
         node_id = self._node("infer-1")
@@ -512,58 +449,6 @@ class ApplyPlanHttpTest(unittest.TestCase):
         _, body = self._apply(plan, cfg)
         self.assertEqual(body["state"], "ready")
         self.assertIn(body["vm_ids"][0], self.lxd_a.instances)
-
-    def test_apply_leaves_the_instance_running(self):
-        """The materialisation postcondition: create then start, and RUNNING."""
-        plan = _plan("PLAN000000000000000000001C", [_alloc(0, self.node_b, count=1)])
-        _, body = self._apply(plan, _cfg(lxd_base_url="http://127.0.0.1:1"))
-        self.assertEqual(body["state"], "ready")
-        vm_id = body["vm_ids"][0]
-        # Both REST calls really hit the node's LXD ...
-        self.assertEqual(len(self.lxd_b.create_requests()), 1)
-        starts = self.lxd_b.start_requests()
-        self.assertEqual(len(starts), 1)
-        self.assertEqual(starts[0][1], f"/1.0/instances/{vm_id}/state")
-        self.assertEqual((starts[0][2] or {}).get("action"), "start")
-        # ... and the instance is RUNNING, not merely created (STOPPED).
-        self.assertEqual(self.lxd_b.instance_state.get(vm_id), "running")
-        self.assertEqual(self.lxd_b.running_instances(), [vm_id])
-        # node A was never touched
-        self.assertEqual(self.lxd_a.requests, [])
-
-    def test_replay_against_a_running_instance_is_a_noop(self):
-        plan = _plan("PLAN000000000000000000001D", [_alloc(0, self.node_b, count=1)])
-        cfg = _cfg(lxd_base_url="http://127.0.0.1:1")
-        _, first = self._apply(plan, cfg)
-        self.assertEqual(first["state"], "ready")
-        vm_id = first["vm_ids"][0]
-        starts_before = len(self.lxd_b.start_requests())
-
-        # Re-apply the same plan: the create is a duplicate and the start is
-        # "already running". Both fold to already_applied -> still ready, no teardown.
-        _, second = self._apply(plan, cfg)
-        self.assertEqual(second["state"], "ready")
-        self.assertEqual(second["vm_ids"], [vm_id])
-        self.assertEqual(self.lxd_b.instance_state.get(vm_id), "running")
-        # the replay DID attempt the start (LXD answered "already running")
-        self.assertEqual(len(self.lxd_b.start_requests()), starts_before + 1)
-        self.assertEqual([p for (m, p, _) in self.lxd_b.requests if m == "DELETE"], [])
-
-    def test_start_failure_is_a_failed_allocation(self):
-        plan = _plan("PLAN000000000000000000001E", [_alloc(0, self.node_b, count=1)])
-        store.commit_allocation(self.conn, PROJECT_ID, plan["plan_id"], self.node_b,
-                                2, 4, 8, store.now_iso())
-        self.conn.commit()
-        self.lxd_b.fail_start = True
-        _, body = self._apply(plan, _cfg(lxd_base_url="http://127.0.0.1:1"))
-        self.assertEqual(body["state"], "failed")
-        self.assertEqual(body["vm_ids"], [])
-        self.assertIn("start", body["allocations"][0]["detail"])
-        # the created-but-unstartable instance was deleted from the node
-        vm_id = target_mod.instance_name(plan["plan_id"], 0, 0)
-        self.assertNotIn(vm_id, self.lxd_b.instances)
-        # and the plan released the capacity it had committed
-        self.assertEqual(store.allocated_capacity(self.conn, self.node_b)["ram_allocated_gb"], 0)
 
 
 if __name__ == "__main__":

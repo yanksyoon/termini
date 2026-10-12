@@ -180,7 +180,6 @@ class Config:
     lxd_workload_image: str       # preloaded LXD image alias (D3: no registry at boot)
     lxd_node_scheme: str          # scheme assumed for a node endpoint given as host:port
     lxd_create_timeout_s: float   # ceiling on waiting for the create operation
-    lxd_start_timeout_s: float    # ceiling on waiting for the start operation
 
     @classmethod
     def load(cls) -> "Config":
@@ -308,7 +307,6 @@ class Config:
             or "agent-vm",
             lxd_node_scheme=_lxd_node_scheme(),
             lxd_create_timeout_s=_float_env("TERMINI_LXD_CREATE_TIMEOUT_S", 120.0),
-            lxd_start_timeout_s=_float_env("TERMINI_LXD_START_TIMEOUT_S", 120.0),
         )
 
     @staticmethod
