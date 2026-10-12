@@ -7,6 +7,7 @@ store + terminal manager, and serves.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import sys
 import threading
@@ -63,6 +64,20 @@ def main(argv: list[str] | None = None) -> int:
                  lxd_identity.cert_path, lxd_identity.fingerprint)
     else:
         log.warning("no LXD client identity — operator LXD calls will be unauthenticated")
+
+    # Plumb the minted/reused identity into the (frozen) config so the apply-plan
+    # materialiser also authenticates with it. `op_target.executor_for_node`
+    # builds its LxdExecutor from `cfg.lxd_client_cert`/`_key` only, so without
+    # this the apply path presents NO client certificate: against a real node's
+    # self-signed LXD the request fails TLS verification
+    # (CERTIFICATE_VERIFY_FAILED) before trust is even consulted. The explicit
+    # TERMINI_LXD_CLIENT_CERT/_KEY override is respected (this is a no-op when set).
+    if lxd_identity is not None and not cfg.lxd_client_cert:
+        cfg = dataclasses.replace(
+            cfg,
+            lxd_client_cert=lxd_identity.cert_path,
+            lxd_client_key=lxd_identity.key_path,
+        )
 
     # Optionally install that certificate into configured nodes' trust stores on
     # startup (idempotent; skips nodes that already trust us). Opt-in via
