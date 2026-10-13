@@ -4,19 +4,29 @@
 # The generic Termini node image stays activation-only (D3). Node C is the one
 # node that must actually serve a model for the demo, so this script is injected
 # into Node C's cloud-init: it builds the pinned CPU-only llama.cpp and serves the
-# pinned `deepseek-flash` GGUF (image/models.lock.json, t_ab18d582) on the frozen
-# contract port.
+# pinned `gemma` GGUF — Gemma 3 4B IT (Google open weights), the model the
+# operator's decision step calls (image/models.lock.json).
+#
+# The weights are fetched from the project's OWN bucket (D3): a first boot must
+# not pull a multi-GB weight from a public registry. The pinned object is served
+# from storage.googleapis.com (the project bucket), not huggingface.co; the
+# sha256 below is still checked, fail-closed, against the lock's digest.
 #
 # Frozen contract (docs/contracts/infra-decisions.md D2/D5, agent-runtime.md AR-4/AR-6):
 #   * bind 0.0.0.0:8080 (the GCP firewall only allows 10.10.0.0/24 -> node-c:8080)
-#   * OpenAI-compatible single-model deployment, served under the alias `deepseek-flash`
+#   * OpenAI-compatible single-model deployment, served under the alias `gemma`
 #   * CPU inference (this footprint has no GPU; `--n-gpu-layers 0` is implicit in a
-#     GGML_CUDA=OFF build). The pinned 8B Q4_K_M runs ~6 tok/s on n2-standard-8.
+#     GGML_CUDA=OFF build).
 #
-# `--reasoning-format none` keeps the R1-distill ` thinking` block inline in the
-# assistant `content`, so plain OpenAI clients (termini-agent, the ADK demo) always
-# receive non-empty `content` and incremental SSE deltas instead of an empty
-# `content` with a separate `reasoning_content`.
+# Context sizing: the operator's real 20-sample decision prompt is 8,973 tokens
+# (measured 2026-10-12) and is REJECTED outright at 4,096 tokens/slot
+# (`--ctx-size 8192 --parallel 2`). So the shipped flags are
+# `--ctx-size 16384 --parallel 1 --threads 8`: 16,384 tokens/slot leaves headroom
+# over the real prompt, and generation is pinned to the node's 8 vCPUs.
+#
+# `--reasoning-format none` keeps any inline reasoning block in the assistant
+# `content`, so plain OpenAI clients (termini-agent, the ADK demo) always receive
+# non-empty `content` and incremental SSE deltas (it is a no-op for Gemma).
 #
 # The double-underscore tokens below are substituted by Terraform (main.tf) at
 # apply time so this file stays a plain, lintable shell script.
@@ -94,7 +104,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=termini-infer
-ExecStart=$PREFIX/bin/llama-server --model $MODEL_DIR/$MODEL_FILE --alias $MODEL_ALIAS --host 0.0.0.0 --port $PORT --ctx-size 8192 --parallel 2 --reasoning-format none
+ExecStart=$PREFIX/bin/llama-server --model $MODEL_DIR/$MODEL_FILE --alias $MODEL_ALIAS --host 0.0.0.0 --port $PORT --ctx-size 16384 --parallel 1 --threads 8 --reasoning-format none
 Restart=on-failure
 RestartSec=3
 

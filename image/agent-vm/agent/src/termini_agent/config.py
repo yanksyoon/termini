@@ -176,7 +176,7 @@ def load_config(path: str | os.PathLike[str] = DEFAULT_CONFIG_PATH, *,
     validate_inference_url(base_url, dev_override=dev_override,
                            allowed_networks=allowed_networks)
 
-    allowed = tuple(inj.get("allowed_models") or ["deepseek-flash"])
+    allowed = tuple(inj.get("allowed_models") or ["gemma"])
     default_model = str(inj.get("default_model", allowed[0]))
     if default_model not in allowed:
         raise ConfigError(f"inference.default_model {default_model!r} not in allowed_models {allowed}")

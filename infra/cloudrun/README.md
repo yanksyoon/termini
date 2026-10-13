@@ -72,23 +72,24 @@ Two things bite here:
 ## Where the decision model runs — and the measured latency
 
 The operator's decision step is served by **`llama.cpp` on Node C** (CPU-only,
-`n2-standard-8`, alias `deepseek-flash`), reached over the underlay at
+`n2-standard-8`, alias `gemma` = Gemma 3 4B IT), reached over the underlay at
 `http://10.10.0.13:8080`. `setup-operator-node-c.sh` applies that wiring (the
 on-prem counterpart of `setup-operator-model.sh`, which points the same seam at
 the managed Cloud Run model); set `TERMINI_INFERENCE_BASE_URL` to Node C and the
 `termini/decision` adapter's call goes to Node C.
 
-**Raw measurement on Node C** (`n2-standard-8`, 8 threads, the pinned
-`deepseek-flash` GGUF = DeepSeek-R1-Distill-Llama-8B Q4_K_M):
+**Raw measurement on Node C** (`n2-standard-8`, 8 threads, `--ctx-size 16384 --parallel 1`,
+the pinned `gemma` GGUF = Gemma 3 4B IT Q4_K_M):
 
 | request | prompt tokens | generation | wall clock |
 |---|---|---|---|
-| operator decision, 1-sample evidence window | 1,983 | 125 tok @ 4.1 tok/s | **156.2 s** |
-| operator decision, real 20-sample evidence window | 8,973 | — | **≈9–10 min** (prefill 13.9–16.6 tok/s) |
+| operator decision, 1-sample evidence window | 2,553 | 102 tok @ 10.3 tok/s | **83.7 s** |
+| operator decision, real 20-sample evidence window | 12,748 | 142 tok @ 8.0 tok/s | **402.1 s (6.7 min)** |
 
-The real 20-sample request **exceeds the shipped server context**
-(`--ctx-size 8192 --parallel 2` ⇒ 4,096 tokens/slot) and is rejected with HTTP 400
-before any token is generated. So the model-driven path is real and on-prem, but it
+(The 20-sample prompt is 12,748 tokens under Gemma's tokenizer — it fits
+`--ctx-size 16384`; the same prompt was 8,973 tokens under the DeepSeek distill's
+tokenizer, which did **not** fit the old `--ctx-size 8192 --parallel 2` context and
+was rejected with HTTP 400.) So the model-driven path is real and on-prem, but it
 is **minutes-per-decision, not interactive**; the on-screen demo moment is carried by
 the deterministic fast-path (`architecture.md` R24). Two further consequences worth
 knowing: the operator loop holds its SQLite transaction for the whole call, so

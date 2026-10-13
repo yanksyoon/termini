@@ -77,33 +77,33 @@ variable "gpu_accelerator_count" {
 # --- Node C inference serving (CPU llama.cpp) ---------------------------------
 
 variable "serve_inference" {
-  description = "Provision a host-exposed CPU llama.cpp server on Node C at boot (pinned deepseek-flash GGUF, OpenAI-compatible on :8080). Set false to keep Node C activation-only."
+  description = "Provision a host-exposed CPU llama.cpp server on Node C at boot (pinned gemma GGUF = Gemma 3 4B IT, OpenAI-compatible on :8080). Set false to keep Node C activation-only."
   type        = bool
   default     = true
 }
 
 variable "inference_model_url" {
-  description = "GGUF model URL downloaded onto Node C when serve_inference is true. Default is the pinned deepseek-flash weight from image/models.lock.json (t_ab18d582)."
+  description = "GGUF model URL downloaded onto Node C when serve_inference is true. Default is the pinned gemma weight from image/models.lock.json, served from the project's OWN bucket so first boot never pulls a multi-GB weight from a public registry (D3)."
   type        = string
-  default     = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf"
+  default     = "https://storage.googleapis.com/termini-510609-models/gemma-3-4b-it-gguf/gemma-3-4b-it-Q4_K_M.gguf"
 }
 
 variable "inference_model_file" {
   description = "Filename the GGUF model is saved as under /var/lib/termini/models on Node C."
   type        = string
-  default     = "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf"
+  default     = "gemma-3-4b-it-Q4_K_M.gguf"
 }
 
 variable "inference_model_sha256" {
   description = "sha256 of the GGUF; first boot aborts unless the downloaded file matches (pinned in image/models.lock.json)."
   type        = string
-  default     = "87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d"
+  default     = "04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19"
 }
 
 variable "inference_model_alias" {
-  description = "Model alias llama-server advertises and accepts (frozen contract: deepseek-flash, agent-runtime.md AR-6)."
+  description = "Model alias llama-server advertises and accepts (the operator's decision model; matches the Cloud Run reference alias, gemma)."
   type        = string
-  default     = "deepseek-flash"
+  default     = "gemma"
 }
 
 variable "inference_port" {

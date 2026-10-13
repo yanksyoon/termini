@@ -62,16 +62,16 @@ channel**; the controller's **governance gate** sits on the ingest path.
    ┌────────┼─────────────────────────────────────────────────────┐
    │  customer premises — underlay 10.10.0.0/24                   │
    │                                                              │
-   │  Node A (seed)      Node B (compute)     Node C (GPU)        │
+   │  Node A (seed)      Node B (compute)     Node C (CPU)        │
    │  10.10.0.11         10.10.0.12          10.10.0.13 :8080     │
-   │  LXD member         LXD member          llama.cpp router     │
+   │  LXD member         LXD member          llama.cpp / gemma    │
    │  bootstrap          bootstrap           (on-prem inference)  │
    │  agent VMs          agent VMs                                 │
    └──────────────────────────────────────────────────────────────┘
 ```
 
-Roles: Node A = LXD cluster seed + compute, Node B = compute, Node C = GPU node
-hosting the host-exposed inference router (`:8080`). Agent VMs run only on A/B;
+Roles: Node A = LXD cluster seed + compute, Node B = compute, Node C = **CPU-only** node
+hosting the host-exposed inference server (`:8080`, alias `gemma` = Gemma 3 4B IT). Agent VMs run only on A/B;
 there is no LXD overlay in the demo — cross-node traffic routes over the underlay.
 
 ### 2. Day-0 bootstrap flow
@@ -116,7 +116,7 @@ non-conforming batch is rejected fail-closed at the governance gate
 ([`docs/architecture.md`](docs/architecture.md) §4.3–§4.4). The decision step is a
 seam, and **the shipped demo runs it model-driven**: `oom-guard-01` and
 `disk-degrade-01` route through **`llama.cpp` on Node C** (CPU-only, alias
-`deepseek-flash`), which picks
+`gemma` = Gemma 3 4B IT), which picks
 the action under a hard constraint stack — a GBNF grammar that makes an
 out-of-allowlist command unencodable, a param/guardrail validator, and a
 confidence gate — with a **mandatory deterministic fallback** that records the
@@ -224,16 +224,16 @@ compose — same controller, same decision step, same audit trail.
 | Component | Where | Endpoint |
 |---|---|---|
 | Dashboard | Firebase Hosting | `https://termini-510609.web.app` |
-| Decision model | **Node C** (GCE VM `termini-node-c`) — CPU-only, `n2-standard-8`, `asia-south1-a` | `http://10.10.0.13:8080` (underlay only) — `llama.cpp`, alias `deepseek-flash` |
+| Decision model | **Node C** (GCE VM `termini-node-c`) — CPU-only, `n2-standard-8`, `asia-south1-a` | `http://10.10.0.13:8080` (underlay only) — `llama.cpp`, alias `gemma` = Gemma 3 4B IT |
 | Controller | GCE VM `termini-controller` — `n2-standard-2`, `asia-south1-a` | `https://34-93-190-64.sslip.io` |
 | Telemetry seeder | systemd on the controller VM | — (fabricates `demo-node-a` / `demo-node-c`) |
-| Model weights | GCS | `gs://termini-510609-models/gemma-3-4b-it/` (8.64 GB) |
+| Model weights | GCS | `gs://termini-510609-models/gemma-3-4b-it-gguf/gemma-3-4b-it-Q4_K_M.gguf` (2.49 GB, sha256-pinned); `gs://termini-510609-models/gemma-3-4b-it/` holds the HF safetensors for the Cloud Run reference |
 | Node image (pre-baked) | GCE image, family `termini-node-os` | carries the bootstrap daemon — a node registers with **no installs at boot** (measured `register_ms=150`) |
 
 The operator's decision step runs **model-driven** there
 (`TERMINI_OPERATOR_DECISION_MODE=model`): a fired threshold is diagnosed and
 remediated by **`llama.cpp` on Node C** (`n2-standard-8`, CPU-only, pinned
-`deepseek-flash` = DeepSeek-R1-Distill-Llama-8B Q4_K_M), reached over the underlay
+`gemma` = Gemma 3 4B IT Q4_K_M), reached over the underlay
 at `http://10.10.0.13:8080`. The model chooses the action, the guardrail stack
 constrains it, the `externalModelCall()` guard asserts every substituted field is
 C0 / transformed-C1 before sending, and the deterministic provider remains the
@@ -241,12 +241,13 @@ mandatory fallback — which decider acted is recorded per-decision in
 `decision_source`.
 
 **Measured on Node C: a decision is minutes, not seconds.** A decision over the
-operator's real prompt takes **≈156 s at a one-sample evidence window and ≈9–10 min
-at the real 20-sample window** (prefill ≈15.7 tok/s, generation ≈4.1 tok/s); the real
-20-sample request is **8,973 prompt tokens** and is *rejected outright* by the shipped
-server context (`--ctx-size 8192 --parallel 2` ⇒ 4,096 tokens/slot). The interactive
+operator's real prompt takes **≈84 s at a one-sample evidence window and ≈6.7 min
+(402 s) at the real 20-sample window** (prefill ≈33 tok/s, generation ≈8–10 tok/s);
+the real 20-sample request is **12,748 prompt tokens** under Gemma's tokenizer and
+**fits** the shipped context (`--ctx-size 16384 --parallel 1`). The interactive
 on-screen moment is therefore served by the **deterministic fast-path**, not by the
-model.
+model. (It replaced a DeepSeek-R1 distill that was slower still — 156 s / 12 min,
+and whose 8,973-token request did not fit the old shipped context.)
 
 Two deliberate departures from the "everything on the customer's metal" shape,
 both recorded rather than implied:

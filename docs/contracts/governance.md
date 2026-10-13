@@ -216,7 +216,7 @@ External model calls (the controller's AI operator loop, and intent extraction i
 
 1. **C0 telemetry** from the node allowlist (§4.1) — after controller re-verification.
 2. **C1 identifiers** only in their transformed form (hashed hostname, truncated IP).
-3. **Structured allocation intents** — the JSON output of intent extraction (counts, vcpus, ram_gb, target_node), which is non-sensitive. Intent extraction itself runs **on-prem by default** (DeepSeek flash on node C) so raw prompts never cross the boundary; the external-model fallback path is restricted and requires the prompt to have passed on-node redaction first (§5), and even then is classified C1.
+3. **Structured allocation intents** — the JSON output of intent extraction (counts, vcpus, ram_gb, target_node), which is non-sensitive. Intent extraction itself runs **on-prem by default** (Gemma 3 4B, alias `gemma`, on node C) so raw prompts never cross the boundary; the external-model fallback path is restricted and requires the prompt to have passed on-node redaction first (§5), and even then is classified C1.
 
 Explicitly prohibited as external-model input:
 
@@ -226,7 +226,7 @@ Explicitly prohibited as external-model input:
 
 ### 7.1 Model routing (records the fixed decision)
 
-- On-prem inference (llama.cpp, node C): **deepseek-flash** and **deepseek-v4-pro** — these are the only model aliases wired to on-prem inference. They handle customer payloads, agent workloads, and on-prem intent extraction. Nothing these models touch leaves the premises.
+- **Node C's shipped model** (the operator's decision model and the intent extractor) is **Gemma 3 4B IT** — Google's own open weights, alias **`gemma`** — served by `llama.cpp` under the static C0-only prompt template of §7.2 (pinned Q4_K_M GGUF, `image/models.lock.json`; delivered to the node from the project's own bucket). The catalog also holds the `deepseek-flash` / `deepseek-v4-pro` reference distills (pinned by BQ-1, `docs/architecture.md` §8 R11). Nothing these models touch leaves the premises.
 - The aliases are **distills**, not the DeepSeek-V4 MoE family (pinned by BQ-1, `docs/architecture.md` §8 R11): `deepseek-flash` = DeepSeek-R1-Distill-Llama-8B Q4_K_M (~6 GiB), `deepseek-v4-pro` = DeepSeek-R1-Distill-Qwen-14B Q4_K_M (~18 GiB). Target GPU NVIDIA L4 24 GiB; T4 16 GiB → `deepseek-v4-pro` unavailable (flash-only).
 - External model (GCP): the boundary below is defined for any **off-prem** model call. In the shipped demo the operator's decision model is the **on-prem llama.cpp service on Node C** (`http://10.10.0.13:8080`, CPU-only), so the operator loop makes **no external call at all** — a strictly stronger position than an off-prem decision model. The prompt template is static and versioned; see 7.2. Any future off-prem model call must be added here with a rationale.
 

@@ -50,9 +50,10 @@ resolve this with three concrete mechanisms, not a promise: (1) telemetry cadenc
 **deterministic local fast-path** exists for `oom-guard-01` (threshold →
 `instance.restart` of the heaviest workload, no model call), so remediation is never
 gated on model latency — and when the model is consulted instead, that call runs on
-**Node C** (`http://10.10.0.13:8080`, `llama.cpp`, CPU-only), where a decision over the
-operator's real prompt is measured in **minutes, not seconds** (≈156 s at a one-sample
-evidence window, ≈9–10 min at the real 20-sample window), which is exactly why the
+**Node C** (`http://10.10.0.13:8080`, `llama.cpp`, CPU-only), where the model is
+**Gemma 3 4B IT** (Google's open weights, alias `gemma`) and a decision over the
+operator's real prompt is measured in **minutes, not seconds** (≈84 s at a one-sample
+evidence window, ≈6.7 min at the real 20-sample window), which is exactly why the
 deterministic fast-path — not the model — covers the on-screen OOM moment; (3) the **chaos harness's deterministic ramp**
 drives the metric across the threshold on cue, so the rule fires deterministically even if `stress-ng --vm-bytes 85%`
 never quite reaches 95%×2 (`architecture.md` R24). We state plainly that beating the
@@ -112,8 +113,8 @@ touches the cluster: the validator clamps out-of-range numbers down to what the 
 hosts actually have, and rejects anything structurally impossible. The language model
 recommends; the validator decides.
 
-**Technical justification (verifiable).** Extraction runs **on-prem** (DeepSeek-flash on
-Node C, using a `json_object` response format with tolerant markdown parsing) so raw prompts never leave the customer's
+**Technical justification (verifiable).** Extraction runs **on-prem** (**Gemma 3 4B IT**, alias
+`gemma`, on Node C, using a `json_object` response format with tolerant markdown parsing) so raw prompts never leave the customer's
 premises (`controller-api.md` §4.5). The output is an `AllocationRequest` validated
 against `vm-allocation.schema.json` and the clamp policy in `controller-api.md` §5.
 Placement is then by capacity: the controller passes live host metrics to the model as

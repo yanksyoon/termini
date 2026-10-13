@@ -4,7 +4,22 @@
   "purpose": "Pinned GGUF model weights baked into the Termini pre-baked image. Resolves blocking question BQ-1 (exact Hugging Face distills behind the deepseek-flash / deepseek-v4-pro aliases).",
   "model_root_in_image": "/var/lib/termini/models",
   "pinning_rule": "A model is only admitted to the image if sha256 matches this file; 40-models.sh aborts the bake on mismatch.",
+  "shipped_resident_alias": "gemma",
+  "shipped_resident_note": "Node C's shipped decision model is Gemma 3 4B IT (alias `gemma`, Google open weights) served by the shipped single-model llama.cpp deployment (infra/gcp/cloud-init/llama-serve.sh). The `deepseek-*` entries below remain in the catalog as the documented reference distills (R11/BQ-1) and are staged to disk, but the shipped node-c resident alias is now `gemma`.",
   "aliases": {
+    "gemma": {
+      "residency": "resident",
+      "quant": "Q4_K_M",
+      "repo": "unsloth/gemma-3-4b-it-GGUF",
+      "file": "gemma-3-4b-it-Q4_K_M.gguf",
+      "url": "https://huggingface.co/unsloth/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf",
+      "size_bytes": 2489894016,
+      "sha256": "04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19",
+      "context_length": 16384,
+      "max_parallel": 1,
+      "n_gpu_layers": -1,
+      "source_verified": "huggingface.co/api/models/unsloth/gemma-3-4b-it-GGUF?blobs=true (lfs.sha256 = 04a43a22…) + full-file sha256sum of the 2,489,894,016-byte download on the fetch host (2026-10-13); the same artifact is served to nodes from gs://termini-510609-models/gemma-3-4b-it-gguf/ (project-owned bucket, D3)"
+    },
     "deepseek-flash": {
       "residency": "resident",
       "quant": "Q4_K_M",

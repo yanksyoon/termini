@@ -20,12 +20,13 @@
 # LATENCY — READ THIS BEFORE RUNNING IT
 # -------------------------------------
 # Node C is CPU-only. MEASURED on `n2-standard-8` (8 threads,
-# `llama.cpp --ctx-size 16384`, `deepseek-flash` = DeepSeek-R1-Distill-Llama-8B
-# Q4_K_M): a decision over the operator's real prompt takes **minutes, not
-# seconds** — ≈156 s with a one-sample evidence window and ≈9–10 min with the
-# real 20-sample window (prefill ≈15.7 tok/s, generation ≈4.1 tok/s). The real
-# 20-sample request is 8,973 prompt tokens and is REJECTED outright by the
-# shipped server context (`--ctx-size 8192 --parallel 2` ⇒ 4,096 tokens/slot).
+# `llama.cpp --ctx-size 16384 --parallel 1`, `gemma` = Gemma 3 4B IT Q4_K_M): a
+# decision over the operator's real prompt takes **minutes, not seconds** — ≈84 s
+# with a one-sample evidence window and ≈6.7 min (402 s) with the real 20-sample
+# window (prefill ≈33 tok/s, generation ≈8–10 tok/s). The real 20-sample request
+# is 12,748 prompt tokens under Gemma's tokenizer and **fits** the shipped
+# context. (The DeepSeek distill it replaced was slower — 156 s / 12 min — and its
+# 8,973-token request did not fit the old `--ctx-size 8192 --parallel 2`.)
 #
 # So: this makes the architecture faithful (the model is on-prem and the calls
 # reach Node C), but it does NOT make the decision step interactive. The
@@ -61,7 +62,7 @@ sudo tee /etc/systemd/system/termini-controller.service.d/zz-node-c-model.conf >
 Environment=TERMINI_OPERATOR_ENABLED=true
 Environment=TERMINI_OPERATOR_DECISION_MODE=model
 Environment=TERMINI_INFERENCE_BASE_URL=${BASE_URL}
-Environment=TERMINI_INFERENCE_MODEL=deepseek-flash
+Environment=TERMINI_INFERENCE_MODEL=gemma
 Environment=TERMINI_INFERENCE_TIMEOUT_S=${DECISION_TIMEOUT_S}
 Environment=TERMINI_OPERATOR_DECISION_TIMEOUT_S=${DECISION_TIMEOUT_S}
 DROPIN

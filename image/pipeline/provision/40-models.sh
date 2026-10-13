@@ -21,6 +21,7 @@ install -d -m 0755 "$ROOT" "$ENVDIR"
 # alias -> loopback port for the per-alias llama.cpp worker (agent-runtime.md §8.1)
 port_for() {
   case "$1" in
+    gemma) printf '%s' 8083 ;;
     deepseek-flash) printf '%s' 8081 ;;
     deepseek-v4-pro) printf '%s' 8082 ;;
     *) printf '%s' "" ;;

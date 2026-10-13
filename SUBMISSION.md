@@ -95,10 +95,16 @@ curl -sS -H "Authorization: Bearer demo-project-token" \
 curl -N "https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/logs?token=demo-project-token"
 ```
 
-### The model endpoint
+### The model endpoints
 
-Gemma runs on Cloud Run with `--no-allow-unauthenticated` — deliberately, so an
-LLM is never exposed publicly for demo convenience. Reach it with an identity token:
+**Shipped decider — Node C (on-prem).** The operator's decision model is Gemma 3 4B served by
+`llama.cpp` on `termini-node-c` (CPU-only), alias `gemma`, reachable only over the VPC underlay
+at `http://10.10.0.13:8080`. It is the same code path as the ADK/agent clients — no public
+exposure at all.
+
+**Managed reference — Cloud Run.** The same Gemma 3 4B is also deployed on Cloud Run with
+`--no-allow-authenticated` — deliberately, so an LLM is never exposed publicly for demo
+convenience. Reach it with an identity token:
 
 ```bash
 gcloud run services proxy termini-gemma --region asia-southeast1 --project termini-510609
@@ -110,10 +116,11 @@ gcloud run services proxy termini-gemma --region asia-southeast1 --project termi
 
 | Requirement | What we used | Where |
 |---|---|---|
-| **Google AI model** | **Gemma 3 4B** (`unsloth/gemma-3-4b-it`, open weights) served by **vLLM** | Cloud Run GPU, `1× NVIDIA L4`, region `asia-southeast1` |
-| **Deployed on Cloud Run** | the model service `termini-gemma` | `https://termini-gemma-tylgzp65ma-as.a.run.app` |
+| **Google AI model** | **Gemma 3 4B** (`unsloth/gemma-3-4b-it-GGUF`, Google open weights) — the shipped operator's decider, served by **llama.cpp** | **Node C** (`termini-node-c`, GCE `n2-standard-8`, CPU-only), alias `gemma`, `10.10.0.13:8080`; weights from `gs://termini-510609-models/gemma-3-4b-it-gguf/` |
+| **Managed reference model** | the same Gemma 3 4B served by **vLLM** | Cloud Run GPU, `1× NVIDIA L4`, `asia-southeast1` — deployed, not the shipped decider |
+| **Deployed on Cloud Run** | the reference model service `termini-gemma` | `https://termini-gemma-tylgzp65ma-as.a.run.app` |
 | **Deployed on Firebase** | the operator dashboard | Firebase Hosting — `https://termini-510609.web.app` |
-| **Deployed on GCP** | controller on Compute Engine, weights on Cloud Storage | `termini-controller` (`n2-standard-2`, `asia-south1-a`); `gs://termini-510609-models/gemma-3-4b-it/` |
+| **Deployed on GCP** | controller on Compute Engine, the decider on Compute Engine, weights on Cloud Storage | `termini-controller` (`n2-standard-2`, `asia-south1-a`); `termini-node-c` (`n2-standard-8`, CPU-only); `gs://termini-510609-models/` |
 | **Pre-baked node image** | `termini-node-os-1` (family `termini-node-os`) — carries the bootstrap daemon, so a node registers with **no installs at boot** | GCE image in project `termini-510609` |
 
 ### Claims we measured, not asserted
@@ -142,7 +149,8 @@ is a wake-up signal, never a decision:
 telemetry (C0/C1)  →  threshold rule fires  →  llama.cpp on Node C decides  →  guardrails  →  LXD executes  →  audit
 ```
 
-The model runs **on-prem, on Node C** (`llama.cpp`, CPU-only, alias `deepseek-flash`), so the
+The model runs **on-prem, on Node C** (`llama.cpp`, CPU-only, alias **`gemma` = Gemma 3 4B IT**,
+Google's open weights), so the
 operator loop makes **no external call at all** — a strictly stronger data-residency position
 than an off-prem decision model. The model's choice is constrained three ways — a **GBNF
 grammar** under which an off-allowlist command has no valid encoding, a **param/guardrail
@@ -154,12 +162,13 @@ Governance holds throughout: the call is wrapped by `externalModelCall()`
 (`governance.md` §7.2/§9.3), which asserts the static template version and the C-class of
 every substituted field before sending, and audits before/after.
 **C2 (application logs, payloads, prompts, credentials) never reaches the model.**
-**Note on latency:** on CPU a decision is *minutes*, not seconds (measured: ≈156 s at a
-one-sample evidence window, ≈9–10 min at the real 20-sample window; the real request is
-8,973 prompt tokens and exceeds the shipped server context). The on-screen demo moment is
+**Note on latency:** on CPU a decision is *minutes*, not seconds (measured on Node C with the
+pinned Gemma 3 4B Q4_K_M: ≈84 s at a one-sample evidence window, ≈6.7 min at the real 20-sample
+window; the real request is 12,748 prompt tokens under Gemma's tokenizer and fits `--ctx-size
+16384`). The on-screen demo moment is
 therefore carried by the deterministic fast-path, not the model. The Gemma-on-Cloud-Run-GPU
 service (`termini-gemma`) remains deployed as the reference managed path, but the shipped
-operator does not point at it.
+operator points at Node C's on-prem Gemma instead.
 
 ---
 

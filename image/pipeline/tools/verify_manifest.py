@@ -5,7 +5,7 @@ Runs with only the Python standard library (no jsonschema dependency), so it
 works on any clean checkout and inside CI.
 
 What it checks:
-  1. models.lock.json: aliases are exactly {deepseek-flash, deepseek-v4-pro},
+  1. models.lock.json: aliases are exactly {gemma, deepseek-flash, deepseek-v4-pro},
      every sha256 is 64 hex chars, sizes are positive ints, urls are on
      huggingface.co, the llama.cpp commit is a full 40-hex sha.
   2. image-manifest.schema.json is well formed and declares the same top-level
@@ -24,7 +24,7 @@ import sys
 
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
-REQUIRED_ALIASES = {"deepseek-flash", "deepseek-v4-pro"}
+REQUIRED_ALIASES = {"gemma", "deepseek-flash", "deepseek-v4-pro"}
 EXPECTED_MANIFEST_REQUIRED = {
     "schema_version", "alias", "version", "immutable_tag", "variant", "gitsha",
     "built_at", "base_image", "artifacts", "pins", "contents", "first_boot",

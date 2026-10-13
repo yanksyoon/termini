@@ -23,12 +23,12 @@ means "resident on the node", not on a mounted model volume.
 
 | Artifact | Path on Node C | Size (bytes) | sha256 |
 |---|---|---|---|
-| **GGUF weights** (`deepseek-flash`) | `/var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf` | 4,920,736,608 | `87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d` |
+| **GGUF weights** (`gemma`) | `/var/lib/termini/models/gemma-3-4b-it-Q4_K_M.gguf` | 2,489,894,016 | `04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19` |
 | **`llama-server` binary** | `/opt/termini/llama.cpp/bin/llama-server` | 18,000,096 | `e3772536442b02e74cdaa0835754402995c7bfb2c3a018b46866ad994cd303e5` |
 | weights sha256 sidecar | `/var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf.sha256` | 107 | (contains the same sha256) |
 
 The weights sha256 is **identical to the pin** in `image/models.lock.json`
-(`aliases.deepseek-flash.sha256`, owner `t_ab18d582`) and to the on-node sidecar
+(`aliases.gemma.sha256`; the `deepseek-flash` catalog pin remains at `aliases.deepseek-flash.sha256`, owner `t_ab18d582`) and to the on-node sidecar
 file — three independent records of the same digest. The file is a valid GGUF
 (first four bytes `47 47 55 46` = `GGUF`).
 
@@ -59,7 +59,7 @@ The production unit `termini-llama-server.service` (installed by
 ```
 /opt/termini/llama.cpp/bin/llama-server \
   --model /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf \
-  --alias deepseek-flash --host 0.0.0.0 --port 8080 \
+  --alias gemma --host 0.0.0.0 --port 8080 \
   --ctx-size 8192 --parallel 2 --reasoning-format none
 ```
 
@@ -72,7 +72,7 @@ llama-ser 10930 termini-infer  mem  REG  8,1 4920736608  /var/lib/termini/models
 ```
 
 `http://127.0.0.1:8080/health` → `{"status":"ok"}` and
-`/v1/models` advertises the `deepseek-flash` alias.
+`/v1/models` advertises the `gemma` alias.
 
 **Fresh-start proof.** To show the local files are *bootable* (not just
 currently mapped), a second `llama-server` was launched from the *same* local
@@ -81,7 +81,7 @@ touched:
 
 ```
 $ /opt/termini/llama.cpp/bin/llama-server --model /var/lib/termini/models/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf \
-    --alias deepseek-flash --host 127.0.0.1 --port 18080 --ctx-size 2048 --parallel 1 --reasoning-format none
+    --alias gemma --host 127.0.0.1 --port 18080 --ctx-size 2048 --parallel 1 --reasoning-format none
 fresh instance /health ok after 7s
 health={"status":"ok"}
 0.05.664.455 I srv  llama_server: model loaded

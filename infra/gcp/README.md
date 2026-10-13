@@ -94,20 +94,21 @@ service, no installs, no downloads). Node C is the one exception: when
 1. installs `build-essential cmake git curl`,
 2. clones and builds **CPU-only, static** `llama-server` at the pinned commit
    (`llamacpp_commit`, default `7fe450e1…`, matching `image/models.lock.json`),
-3. downloads the pinned **`deepseek-flash`** GGUF
-   (`bartowski/DeepSeek-R1-Distill-Llama-8B-Q4_K_M`, 4.92 GB, sha256-pinned in
-   `image/models.lock.json`) to `/var/lib/termini/models/` and **aborts the boot
-   if the sha256 does not match**,
+3. downloads the pinned **`gemma`** GGUF (**Gemma 3 4B IT**, `unsloth/gemma-3-4b-it-GGUF`,
+   2.49 GB, sha256-pinned in `image/models.lock.json`) to `/var/lib/termini/models/` **from
+   the project's own bucket** (`gs://termini-510609-models/gemma-3-4b-it-gguf/`, D3 — never a
+   public registry at first boot) and **aborts the boot if the sha256 does not match**,
 4. runs it as `termini-llama-server.service` on **`0.0.0.0:8080`** as an
-   OpenAI-compatible single-model deployment aliased **`deepseek-flash`**
-   (`agent-runtime.md` AR-4/AR-6; `--reasoning-format none` so the R1 ` thinking`
-   block stays inline in `content` and plain clients always see text).
+   OpenAI-compatible single-model deployment aliased **`gemma`**
+   (`agent-runtime.md` AR-4/AR-6; `--ctx-size 16384 --parallel 1 --threads 8`, and
+   `--reasoning-format none` so any inline reasoning block stays in `content`).
 
 The underlay firewall rule allows `10.10.0.0/24 → node-c:8080` only, so the
 endpoint is reachable from Node A but never public. Health probe:
 `curl http://10.10.0.13:8080/health`. The first build takes ~10–20 min; the
 service is idempotent across reboots (`/var/log/termini-llama-serve.log`).
-The pinned 8B Q4_K_M runs at ~6 tok/s (prompt ~12 tok/s) on `n2-standard-8` CPU.
+The pinned Gemma 3 4B Q4_K_M runs at ≈33 tok/s prompt and ≈8–10 tok/s generation
+on `n2-standard-8` CPU.
 
 Acceptance for the endpoint itself (Node A → Node C completion + streaming) is
 verified by `infra/inference/verify-inference.sh`; see `infra/inference/`.
@@ -318,7 +319,7 @@ Re-provisioned from a clean project on the supplied free-tier billing account:
 | Node A | `n2-standard-2` @ `10.10.0.11` — RUNNING, no accelerator, SSH OK |
 | Node B | `n2-standard-2` @ `10.10.0.12` — RUNNING, no accelerator, SSH OK |
 | Node C | `n2-standard-8` @ `10.10.0.13` — RUNNING, no accelerator, SSH OK |
-| llama.cpp | Node C `:8080` (pinned `deepseek-flash` = DeepSeek-R1-Distill-Llama-8B Q4_K_M, alias `deepseek-flash`), reachable from Node A over the underlay |
+| llama.cpp | Node C `:8080` (pinned `gemma` = Gemma 3 4B IT Q4_K_M, alias `gemma`), reachable from Node A over the underlay |
 | Inventory | `/home/ubuntu/.termini/inventory.json` (valid vs `inventory.schema.json`) |
 
 **Why A/B are `n2-standard-2` here.** The project's `CPUS_ALL_REGIONS` quota is
@@ -332,10 +333,12 @@ cap; `2 + 2 + 8 = 12` fits and keeps Node C CPU-heavy. Restore A/B to
 VPC, firewall rules and static IPs were then torn down; this run starts clean and
 re-provisions all three with a CPU-only Node C.
 
-**Inference endpoint activation (`t_95528ae8`, W3).** On the live footprint Node C
-was switched from the stopgap Qwen2.5-1.5B weight to the pinned **`deepseek-flash`**
-GGUF from `image/models.lock.json` (t_ab18d582), served with `--alias deepseek-flash`
-so `/v1/models` and completions report the frozen contract alias. GPU device
+**Inference endpoint activation (`t_95528ae8`, W3; re-pointed to Gemma 2026-10-13).** On the
+live footprint Node C was first switched from the stopgap Qwen2.5-1.5B weight to the pinned
+**`deepseek-flash`** GGUF, then (2026-10-13) to the pinned **`gemma`** GGUF — **Gemma 3 4B IT**,
+Google's own open weights — served with `--alias gemma` so `/v1/models` and completions report
+the deployed alias. The GGUF is fetched from the project's own bucket (D3) and sha256-verified
+before the unit starts. GPU device
 visibility was re-confirmed absent (`nvidia-smi` absent, `lspci` no NVIDIA device,
 no `/dev/nvidia*`) — the free-tier billing account rejects non-TPU accelerators, so
 host-exposed CPU llama.cpp is the sanctioned D5 path. Acceptance ("a request from

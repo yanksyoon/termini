@@ -371,7 +371,7 @@
         <p>Injected <b>I/O error</b> (write latency climb / read-only mount) → operator <b>flags the drive, stops the heaviest workload, alerts</b> the user.</p>
       </div>
     </div>
-    <div class="risk"><span class="rlabel">Contested:</span> beating the kernel OOM-killer is best-effort. Resolved with <b>1000&nbsp;ms telemetry</b> + a rule that fires <b>deterministically</b> (the trigger is never a model) + a <b>deterministic chaos ramp</b>, with the decision made by <b>Gemma on an L4</b> — seconds, not the 50–60&nbsp;s measured on CPU — and a <b>mandatory deterministic fallback</b>. We demonstrate the <b>detect → decide → execute → audit</b> loop end to end.</div>
+    <div class="risk"><span class="rlabel">Contested:</span> beating the kernel OOM-killer is best-effort. Resolved with <b>1000&nbsp;ms telemetry</b> + a rule that fires <b>deterministically</b> (the trigger is never a model) + a <b>deterministic chaos ramp</b>, with the decision made by <b>Gemma 3 4B on Node C</b> (CPU-only, on-prem — measured <b>minutes</b> per decision, never a wrong-but-plausible answer) and a <b>mandatory deterministic fallback</b>; the on-screen moment is carried by the deterministic fast-path. We demonstrate the <b>detect → decide → execute → audit</b> loop end to end.</div>
     <div class="proof"><span class="plabel">How the demo proves it</span> — dashboard shows RAM crossing 95% → an <b>instance.restart</b> acks <b>succeeded</b> → the workload recovers, traceable end-to-end in the audit log.</div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">07</span></div>
   </section>
@@ -488,11 +488,11 @@
   <section class="slide">
     <div class="kicker"><span class="n">12</span> &nbsp;Built on Google AI &amp; Google Cloud</div>
     <h2>The AI runs the operations <span class="accent">— live, on Google Cloud</span></h2>
-    <div class="lede">No playbook lookup chooses the fix. The threshold detects the fault; <b>Gemma</b> — an open-weights Google model — reasons about it and selects the remediation, which then executes against the cluster and lands in the audit trail.</div>
+    <div class="lede">No playbook lookup chooses the fix. The threshold detects the fault; <b>Gemma 3 4B</b> — Google's open-weights model, served on the customer's own GCE node — reasons about it and selects the remediation, which then executes against the cluster and lands in the audit trail.</div>
     <div class="cols three" style="margin-top:22px;">
       <div class="card">
         <h3><span class="num">1</span> Gemma 3 4B decides</h3>
-        <p>Telemetry in, action out — the model diagnoses the fault and picks the fix. Served by <b>vLLM on Cloud Run GPU (1× NVIDIA L4)</b> in <b>asia-southeast1</b>.</p>
+        <p>Telemetry in, action out — the model diagnoses the fault and picks the fix. Served <b>on-prem by llama.cpp on Node C</b> (a GCE VM, CPU-only, <code>10.10.0.13:8080</code>) from the project's own GCS bucket. The Cloud Run GPU (1× L4) path is the managed reference, deployed but not the shipped operator's model.</p>
       </div>
       <div class="card">
         <h3><span class="num">2</span> Constrained, never trusted</h3>
@@ -500,7 +500,7 @@
       </div>
       <div class="card">
         <h3><span class="num">3</span> Deployed, not mocked</h3>
-        <p><b>Cloud Run</b> serves the model · <b>Firebase Hosting</b> the dashboard · <b>GCE</b> the controller · <b>GCS</b> the weights. A judge can open it and watch it run.</p>
+        <p><b>GCE</b> serves the model (Node C) and runs the controller · <b>Firebase Hosting</b> the dashboard · <b>GCS</b> the weights. A judge can open it and watch it run.</p>
       </div>
     </div>
     <div class="cols three" style="margin-top:16px;">
