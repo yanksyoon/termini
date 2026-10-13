@@ -84,7 +84,7 @@ Field contract:
 | `node_id` | string (ULID) | controller-issued |
 | `registration_id` | string | stable bootstrap label (1..64 chars) |
 | `role` | enum | `compute \| inference` |
-| `synthetic` | boolean | `true` only for a row fabricated by the demo seeder (`console/seed_demo.py`); `false` for real hardware. Placement never uses a `true` row while any real node is registered (`controller-api.md` §5.2 step 5); the dashboard labels it (e.g. "demo") so a viewer can tell them apart. |
+| `synthetic` | boolean | `true` only for a row fabricated by the demo seeder (`console/seed_demo.py`); `false` for real hardware. Placement never uses a `true` row while any real node is registered (`controller-api.md` §5.2 step 5); the dashboard labels it (e.g. "demo") so a viewer can tell them apart. **Amendment (standing-fleet default view):** the listing applies the same rule — while any real node is registered, a `synthetic` row is EXCLUDED from the default response, so the fleet a viewer sees is the real hardware (a stopped seeder's stale rows cannot make the listing contradict the deck). A seeder-only demo (no real node registered) lists its fabricated rows, and `?include=synthetic` returns every row (labelled). |
 | `status` | enum | `online \| degraded \| offline` (derivation below) |
 | `last_seen_at` | RFC3339 | last heartbeat/telemetry contact |
 | `uptime_sec` | integer | from the latest telemetry sample (`uptime_sec`) |

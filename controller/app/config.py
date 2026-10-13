@@ -12,6 +12,17 @@ import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Default LXD workload-image alias the controller launches agent VMs from.
+#
+# This MUST match what the node bake actually publishes, or an out-of-the-box
+# apply fails `create ... : Image not provided for instance creation` because the
+# alias does not exist in the node's local LXD store. The bake publishes
+# `agent-vm/<semver>` (image/agent-vm/build-agent-image.sh: ALIAS_BASE/version;
+# docs/contracts/agent-runtime.md §3.1/§4.2) — the bare `agent-vm` matches
+# nothing. Kept next to the Config default so the two agree by construction, and
+# pinned by tests/test_workload_image_default.py against the baked alias.
+DEFAULT_LXD_WORKLOAD_IMAGE = "agent-vm/2026.10.0"
+
 
 def _int_env(name: str, default: int) -> int:
     raw = os.environ.get(name)
@@ -305,7 +316,7 @@ class Config:
             lxd_retry_max=_int_env("TERMINI_LXD_RETRY_MAX", 3),
             lxd_retry_backoff_s=_float_env("TERMINI_LXD_RETRY_BACKOFF_S", 0.5),
             lxd_workload_image=os.environ.get("TERMINI_LXD_WORKLOAD_IMAGE", "").strip()
-            or "agent-vm",
+            or DEFAULT_LXD_WORKLOAD_IMAGE,
             lxd_node_scheme=_lxd_node_scheme(),
             lxd_create_timeout_s=_float_env("TERMINI_LXD_CREATE_TIMEOUT_S", 120.0),
             lxd_start_timeout_s=_float_env("TERMINI_LXD_START_TIMEOUT_S", 120.0),

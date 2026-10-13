@@ -78,6 +78,58 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(r.result, "ok")
         self.assertEqual(r.path, "/1.0/instances/agent-c1")
 
+    # ------------------------------------------------ idempotent stop (DEFECT 4)
+    def test_stop_of_a_stopped_instance_is_an_idempotent_no_op(self):
+        """LXD's "already stopped" answer folds to `already_applied`.
+
+        MEASURED DEFECT (live): the first real remediation attempt stopped an
+        already-STOPPED instance, LXD answered
+        `operation Failure: The instance is already stopped`, and the audit
+        recorded `result=error` for a remediation that was in fact a correct
+        no-op — mirroring the already-running fold (#133).
+        """
+        self.lxd.strict_stop = True
+        self.lxd.set_state("agent-c1", "Stopped")
+
+        r = LxdExecutor(self.lxd.base_url).stop_instance("agent-c1")
+
+        self.assertEqual(r.result, "already_applied")
+        self.assertEqual(r.method, "PUT")
+        self.assertEqual(r.path, "/1.0/instances/agent-c1/state")
+        self.assertIn("already stopped", r.detail)
+
+    def test_stop_of_a_running_instance_still_really_stops_it(self):
+        """Control: the fold must not swallow a genuine stop."""
+        self.lxd.strict_stop = True
+        self.lxd.set_state("agent-c1", "Running")
+
+        r = LxdExecutor(self.lxd.base_url).stop_instance("agent-c1")
+
+        self.assertEqual(r.result, "ok")
+        self.assertEqual(self.lxd.state_of("agent-c1"), "Stopped")
+
+    def test_a_genuine_stop_failure_is_not_folded(self):
+        """A real (non-"already stopped") stop failure stays an `error`."""
+        self.lxd.operation_status = "Failure"
+        self.lxd.set_state("agent-c1", "Running")
+
+        r = LxdExecutor(self.lxd.base_url).stop_instance("agent-c1")
+
+        self.assertEqual(r.result, "error")
+
+    def test_stop_of_repeated_remediation_is_a_no_op_on_the_second_run(self):
+        """Stop twice against real LXD semantics: no error on the re-run."""
+        self.lxd.strict_stop = True
+        self.lxd.set_state("agent-c1", "Running")
+        ex = LxdExecutor(self.lxd.base_url)
+
+        first = ex.stop_instance("agent-c1")
+        second = ex.stop_instance("agent-c1")
+
+        self.assertEqual(first.result, "ok")
+        self.assertEqual(second.result, "already_applied")
+        self.assertEqual(self.lxd.state_of("agent-c1"), "Stopped")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

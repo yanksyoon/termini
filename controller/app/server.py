@@ -391,8 +391,21 @@ class ControllerHandler(BaseHTTPRequestHandler):
         return 204, {}
 
     def _list_nodes(self, conn, project_id: str) -> tuple[int, dict]:
+        """GET /v1/projects/{pid}/nodes — the fleet listing (dashboard.md §1.1).
+
+        Default view is the REAL fleet: a seeder-fabricated row (`synthetic`) is
+        excluded while any real node is registered, mirroring the placement rule
+        (`_selection_pool`, controller-api.md §5.2 step 5). The standing demo's
+        fleet is its hardware, so a stopped seeder's stale fabricated rows must
+        not make the dashboard contradict the deck. A seeder-only demo (no real
+        node registered) still lists its fabricated rows so the seeded demo
+        renders, and `?include=synthetic` returns every row (provenance intact).
+        """
         self._require_project(conn, project_id)
         nodes = store.list_nodes(conn, project_id)
+        include = (self._query().get("include") or "").strip().lower()
+        if include != "synthetic" and _real_nodes(nodes):
+            nodes = _real_nodes(nodes)
         return 200, {"nodes": [self._node_view(conn, n) for n in nodes]}
 
     def _get_node(self, conn, project_id: str, node_id: str) -> tuple[int, dict]:

@@ -1,5 +1,10 @@
 # The STANDING demo fleet on real GCP hardware — RAW EVIDENCE (2026-10-13)
 
+> Follow-up: the judge-facing defects recorded below (the operator DB lock, the
+> fleet listing, the workload-image default, LXD `already stopped`) are fixed and
+> evidenced live in `infra/gcp/evidence/standing-demo-fixes-2026-10-13.md`. This
+> document is kept as the dated pre-fix record.
+
 Raises the Termini demo on real GCP hardware from the current node image, exercises
 every published claim end to end, and leaves the stack RUNNING. Every block below is
 verbatim output from a real `gcloud` / `ssh` / `curl` / `lxc` / controller-HTTP run
