@@ -5,10 +5,26 @@
 
 Runs as a daemon thread inside the controller process (started by `app/main`),
 polling every `operator_poll_interval_s` (tuned to 1-2 s so a fault is detected
-before the OOM-killer or log noise ends the run). Each poll is a single
-short-lived SQLite transaction; trigger state, event, decision, and audit writes
-happen in the same transaction, so the latch and the decision log are always
-consistent with what was actually issued.
+before the OOM-killer or log noise ends the run).
+
+Transaction shape (this is a correctness rule, not an optimisation): a poll is
+**two phases**, and NO SQLite transaction is ever open across the slow steps
+(the model call, and the LXD REST call).
+
+  * **detect** — one short write transaction: renew the single-owner lease, load
+    the durable trigger config/state, evaluate every node's triggers, persist the
+    latch state and the fired health events. It is committed *before* any
+    remediation starts.
+  * **remediate** — per fired event, with no transaction open: make the decision
+    (a MODEL call, minutes long on CPU), then write the decision, the idempotency
+    lookup, the LXD call, and the audit each in their own short transaction.
+
+Before this split, the whole pass — model call included — was one transaction, so
+SQLite's single-writer lock was held for the entire decision. On the contract's
+20-sample evidence window that is ~400 s on CPU, during which EVERY other writer
+(telemetry ingest, `POST /intents`) failed `sqlite3.OperationalError: database is
+locked` (HTTP 500) and a healthy fleet rendered as all-offline. A `busy_timeout`
+cannot fix a 400 s hold; the transaction must not span the call.
 
 Each fired remediation is also published to the controller's operator log stream
 (`OperatorLogs`, docs/contracts/dashboard.md §2) when a sink is injected by
@@ -86,6 +102,15 @@ class OperatorLoop(threading.Thread):
         # instead of standing by for the previous incarnation's TTL to lapse.
         self.owner_id = f"loop:{project['id']}"
         self.lease_ttl_s = max(1.0, float(getattr(cfg, "operator_lease_ttl_s", 10.0)))
+        # A pass may spend its whole decision timeout inside ONE model call, and
+        # the loop deliberately holds no transaction (hence no SQLite lock) across
+        # it. So a pass renews the lease for at least the longest step it can take
+        # — otherwise a concurrent operator could take the lease over while this
+        # one is legitimately busy inside a model call, and the single-owner
+        # invariant would be lost. This is a row update, not a held lock.
+        self.decision_timeout_s = max(
+            0.0, float(getattr(cfg, "operator_decision_timeout_s", 30.0) or 30.0))
+        self.pass_lease_ttl_s = max(self.lease_ttl_s, self.decision_timeout_s + 30.0)
         self._standby_logged = False
 
         # Decision step (operator-decision.md §2/§8/§10/§12). The loop no longer
@@ -150,6 +175,10 @@ class OperatorLoop(threading.Thread):
     def stop(self) -> None:
         self._stop.set()
 
+    def _session(self):
+        """A fresh short-lived connection/transaction (see `app/db.session`)."""
+        return db.session(self.cfg.db_path)
+
     def _node_count(self) -> int:
         try:
             with db.session(self.cfg.db_path) as conn:
@@ -160,15 +189,28 @@ class OperatorLoop(threading.Thread):
     # ------------------------------------------------------------------- core
     def run_once(self) -> list[dict]:
         """One full poll->detect->choose->execute->audit pass. Returns the audit
-        records produced this pass (empty if nothing fired)."""
-        produced: list[dict] = []
-        with db.session(self.cfg.db_path) as conn:
+        records produced this pass (empty if nothing fired).
+
+        Two phases, and NO transaction spans the slow steps:
+
+        1. **detect** (one short write transaction, committed before anything
+           slow): lease, thresholds, per-node trigger evaluation + latch/event
+           writes.
+        2. **remediate** (no transaction open across the model/LXD call): decide,
+           write, execute, audit — each in its own short transaction.
+
+        Holding any transaction across phase 2 is the live defect this shape
+        removes: on CPU a decision is minutes long, and while a transaction was
+        held every other writer was locked out (`database is locked`).
+        """
+        pending: list[tuple[str, object, decision.DecisionContext]] = []
+        with self._session() as conn:
             # Single-owner lease: if another operator (e.g. the standalone CLI
             # driven by OPERATOR_CMD) holds the lease, this loop is a standby and
             # issues nothing this pass. Renews its own lease when it is the owner.
             if not opstore.acquire_lease(
                 conn, self.project["id"], self.owner_id,
-                triggers.now_iso_ms(), self.lease_ttl_s,
+                triggers.now_iso_ms(), self.pass_lease_ttl_s,
             ):
                 if not self._standby_logged:
                     lease = opstore.get_lease(conn, self.project["id"])
@@ -178,12 +220,18 @@ class OperatorLoop(threading.Thread):
                         lease_owner, self.owner_id,
                     )
                     self._standby_logged = True
-                return produced
+                return []
             self._standby_logged = False
-            th = self._load_thresholds(conn)
-            engine = triggers.TriggerEngine(th)
+            engine = triggers.TriggerEngine(self._load_thresholds(conn))
             for node in store.list_nodes(conn, self.project["id"]):
-                produced.extend(self._process_node(conn, node, engine))
+                pending.extend(self._detect_node(conn, node, engine))
+        # Detection is committed and the write lock released HERE. Nothing below
+        # may run with a transaction open across the model/LXD call.
+        produced: list[dict] = []
+        for node_id, event, ctx in pending:
+            audit = self._remediate(node_id, event, ctx)
+            if audit is not None:
+                produced.append(audit)
         return produced
 
     def _load_thresholds(self, conn) -> detect.Thresholds:
@@ -196,7 +244,16 @@ class OperatorLoop(threading.Thread):
             return self.thresholds
         return triggers.merge_config(parts)
 
-    def _process_node(self, conn, node: dict, engine: triggers.TriggerEngine) -> list[dict]:
+    def _detect_node(self, conn, node: dict,
+                     engine: triggers.TriggerEngine) -> list[tuple[str, object, decision.DecisionContext]]:
+        """Evaluate one node's triggers inside the detection transaction.
+
+        Persists the (possibly new) hysteresis latch state and, for each event
+        that is past the cooldown, the fired health event; returns the events to
+        remediate together with their C0 decision context. The decision/model
+        call is deliberately NOT made here — nothing that can take minutes may
+        run while this write transaction is open.
+        """
         node_id = node["id"]
         samples_desc = store.recent_samples(conn, node_id, self.window)
         samples_asc = list(reversed(samples_desc))
@@ -207,46 +264,64 @@ class OperatorLoop(threading.Thread):
         for rule_id, st in new_state.items():
             opstore.save_trigger_state(conn, node_id, rule_id, st, now)
 
-        produced: list[dict] = []
+        pending: list[tuple[str, object, decision.DecisionContext]] = []
         for event in events:
-            ctx = self._build_context(event, samples_asc)
-            audit = self._handle_event(conn, node_id, event, now, ctx)
-            if audit is not None:
-                produced.append(audit)
-        return produced
+            # Cooldown: a time-based supplement to the hysteresis latch. Checked
+            # here (read-only) rather than in the remediation transaction, so the
+            # model call never runs under a held transaction.
+            if self.cooldown_s > 0 and opstore.recent_audit(
+                conn, node_id, event.rule_id, self.cooldown_s
+            ):
+                continue
+            opstore.insert_health_event(conn, event)
+            pending.append((node_id, event, self._build_context(event, samples_asc)))
+        return pending
 
-    def _handle_event(self, conn, node_id: str, event, now: str, ctx: decision.DecisionContext) -> dict | None:
+    def _remediate(self, node_id: str, event, ctx: decision.DecisionContext) -> dict | None:
+        """Decide -> write decision -> execute -> audit ONE event.
+
+        Holds NO transaction across the decision (a model call in model mode) or
+        the LXD call; every DB write around them is its own short transaction.
+        This is DEFECT 1's fix: a concurrent writer (telemetry ingest, a new
+        `POST /intents`) is never blocked behind this loop's slow steps.
+        """
         # Detection latency: fault-onset (first breaching sample) -> trigger fire.
         detect_lat = triggers.detection_latency_s(event)
         log.info("node %s rule %s FIRED: detection_latency=%ss (breach=%s -> fired=%s)",
                  node_id, event.rule_id, detect_lat, event.breach_started_at, event.fired_at)
 
-        # Cooldown: a time-based supplement to the hysteresis latch.
-        if self.cooldown_s > 0 and opstore.recent_audit(
-            conn, node_id, event.rule_id, self.cooldown_s
-        ):
-            return None
+        # Renew the single-owner lease for the duration of this (possibly long)
+        # pass, in its own short transaction. If another operator took the lease
+        # over while we were between passes, we are a standby and issue nothing.
+        with self._session() as conn:
+            if not opstore.acquire_lease(
+                conn, self.project["id"], self.owner_id,
+                triggers.now_iso_ms(), self.pass_lease_ttl_s,
+            ):
+                log.info("operator loop lost the lease; skipping %s/%s",
+                         node_id, event.rule_id)
+                return None
 
-        opstore.insert_health_event(conn, event)
-
+        now = triggers.now_iso_ms()
         # Start the remediation clock BEFORE the chooser so chooser/selection time
         # is included in remediation_latency_s (t_2c00b7fe). A model-driven
         # chooser can dominate the wall-clock cost.
         remed_start = time.monotonic()
-        result = self._decide(conn, node_id, event, ctx, now)
+        result = self._decide(node_id, event, ctx, now)
         action = result.action
         if action is None:
             log.info("event %s (%s) has no playbook action; recorded only",
                      event.rule_id, node_id)
-            self._emit_log(conn, node_id, f"{event.rule_id}: no playbook action; recorded only")
+            self._emit_log_line(node_id, f"{event.rule_id}: no playbook action; recorded only")
             return None
 
         decision_id = ulid.new_ulid()
-        opstore.insert_decision(
-            conn, decision_id, event, action, now,
-            source=result.source, confidence=result.confidence,
-            fallback_reason=result.fallback_reason,
-        )
+        with self._session() as conn:
+            opstore.insert_decision(
+                conn, decision_id, event, action, now,
+                source=result.source, confidence=result.confidence,
+                fallback_reason=result.fallback_reason,
+            )
 
         target = action.params.get("instance_name", "")
         idem_key = opstore.idempotency_key_for(
@@ -257,7 +332,8 @@ class OperatorLoop(threading.Thread):
         # the latch is the primary dedup). The lookup is bounded by the §1.5 24h
         # idempotency window, so an expired prior audit never suppresses a
         # genuine later episode; failed entries are already excluded below.
-        prior = opstore.audit_by_idempotency_key(conn, idem_key)
+        with self._session() as conn:
+            prior = opstore.audit_by_idempotency_key(conn, idem_key)
         if prior is not None and prior["result"] in ("ok", "dry_run"):
             result = ExecResult(
                 result="already_applied",
@@ -266,24 +342,26 @@ class OperatorLoop(threading.Thread):
             )
             dry_run = False
         else:
+            # No transaction is open across the LXD REST call either.
             result = self.lxd.execute(action)
             dry_run = bool(self.lxd.dry_run)
 
         audit_id = ulid.new_ulid()
-        opstore.insert_audit(
-            conn, audit_id, decision_id, event, action, result, idem_key, now, dry_run,
-            lxd_endpoint=getattr(self.lxd, "base_url", ""),
-        )
         # Remediation latency: chooser start -> remediation completed (includes
         # chooser/selection time, which the previous `fired_at -> now` calc omitted).
         remed_lat = round(time.monotonic() - remed_start, 3)
-        log.info("node %s rule %s -> %s %s: %s (remediation_latency=%ss)",
-                 node_id, event.rule_id, action.kind, target, result.result, remed_lat)
         message = f"{event.rule_id}: {action.kind} {target} -> {result.result}".strip()
         threshold = getattr(event, "threshold", None)
         if threshold:
             message += f" (threshold: {threshold})"
-        self._emit_log(conn, node_id, message)
+        with self._session() as conn:
+            opstore.insert_audit(
+                conn, audit_id, decision_id, event, action, result, idem_key, now, dry_run,
+                lxd_endpoint=getattr(self.lxd, "base_url", ""),
+            )
+            self._emit_log(conn, node_id, message)
+        log.info("node %s rule %s -> %s %s: %s (remediation_latency=%ss)",
+                 node_id, event.rule_id, action.kind, target, result.result, remed_lat)
         return {
             "audit_id": audit_id, "decision_id": decision_id, "event_id": event.event_id,
             "node_id": node_id, "rule_id": event.rule_id, "action_kind": action.kind,
@@ -308,24 +386,32 @@ class OperatorLoop(threading.Thread):
             project_id=self.project["id"],
         )
 
-    def _decide(self, conn, node_id: str, event, ctx: decision.DecisionContext,
+    def _decide(self, node_id: str, event, ctx: decision.DecisionContext,
                 now: str) -> decision.DecisionResult:
-        """Run the decision step, applying the fallback-streak cap (§10.2)."""
+        """Run the decision step, applying the fallback-streak cap (§10.2).
+
+        The provider call (a MODEL call in model mode) runs with NO transaction
+        open: the fallback state is read in one short transaction before it and
+        written in another after it, so a minutes-long model call cannot lock the
+        database (DEFECT 1).
+        """
         # Deterministic mode: never construct a model request (§12).
         if self.decision_mode != "model":
             return self._deterministic.decide(event, ctx)
 
-        state = opstore.load_decision_fallback_state(conn, node_id, event.rule_id)
+        with self._session() as conn:
+            state = opstore.load_decision_fallback_state(conn, node_id, event.rule_id)
         # Forced-deterministic cooldown: skip the model path entirely for this
         # (node, rule), emit one warn line at entry, and use deterministic.
         if decision.in_forced_cooldown(state, now):
             log.warning("node %s rule %s: forced deterministic (fallback cooldown)",
                         node_id, event.rule_id)
-            self._emit_log(conn, node_id,
-                           f"{event.rule_id}: forced deterministic (fallback cooldown)",
-                           severity="warn")
+            self._emit_log_line(
+                node_id, f"{event.rule_id}: forced deterministic (fallback cooldown)",
+                severity="warn")
             return self._deterministic.decide(event, ctx)
 
+        # NO transaction is open across the model call.
         result = self.provider.decide(event, ctx)
 
         if result.source == "model":
@@ -333,32 +419,50 @@ class OperatorLoop(threading.Thread):
                 state, "success", now, self.decision_max_fallbacks,
                 self.decision_fallback_cooldown_s,
             )
-            opstore.save_decision_fallback_state(
-                conn, node_id, event.rule_id, new_state["fallback_streak"],
-                new_state["forced_until"], now,
-            )
+            with self._session() as conn:
+                opstore.save_decision_fallback_state(
+                    conn, node_id, event.rule_id, new_state["fallback_streak"],
+                    new_state["forced_until"], now,
+                )
         elif result.source == "fallback":
             new_state, forced = decision.transition_fallback_state(
                 state, "fallback", now, self.decision_max_fallbacks,
                 self.decision_fallback_cooldown_s,
             )
-            opstore.save_decision_fallback_state(
-                conn, node_id, event.rule_id, new_state["fallback_streak"],
-                new_state["forced_until"], now,
-            )
             log.warning("node %s rule %s: model decision fell back (reason=%s)",
                         node_id, event.rule_id, result.fallback_reason)
-            self._emit_log(conn, node_id,
-                           f"{event.rule_id}: fallback ({result.fallback_reason}) -> deterministic",
-                           severity="warn")
-            if forced:
+            with self._session() as conn:
+                opstore.save_decision_fallback_state(
+                    conn, node_id, event.rule_id, new_state["fallback_streak"],
+                    new_state["forced_until"], now,
+                )
                 self._emit_log(
                     conn, node_id,
-                    f"{event.rule_id}: fallback cap reached; forcing deterministic for "
-                    f"{self.decision_fallback_cooldown_s:.0f}s",
-                    severity="warn",
-                )
+                    f"{event.rule_id}: fallback ({result.fallback_reason}) -> deterministic",
+                    severity="warn")
+                if forced:
+                    self._emit_log(
+                        conn, node_id,
+                        f"{event.rule_id}: fallback cap reached; forcing deterministic for "
+                        f"{self.decision_fallback_cooldown_s:.0f}s",
+                        severity="warn",
+                    )
         return result
+
+    # ------------------------------------------------------------------ logging
+    def _emit_log_line(self, node_id: str, message: str, severity: str = "info") -> None:
+        """Publish one operator line in its own short transaction.
+
+        The standalone form of `_emit_log` for call sites that are not already
+        inside a session (so a log line never forces a transaction to be held).
+        """
+        if self.logs is None:
+            return
+        try:
+            with self._session() as conn:
+                self._emit_log(conn, node_id, message, severity=severity)
+        except Exception:  # noqa: BLE001
+            log.exception("failed to emit operator log line")
 
     def _emit_log(self, conn, node_id: str, message: str, severity: str = "info") -> None:
         """Publish one AI-operator line to the dashboard stream (dashboard.md §2).

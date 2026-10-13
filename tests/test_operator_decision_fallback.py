@@ -345,16 +345,17 @@ class LoopDecisionIntegrationTest(unittest.TestCase):
         )
         now = "2026-10-04T08:00:00.000Z"
 
-        with db.session(self.db_path) as conn:
-            for _ in range(3):
-                result = loop._decide(conn, self.node_id, event, ctx, now)
-                self.assertEqual(result.source, "fallback")
-            self.assertEqual(provider.calls, 3)
-            # The 4th decision is inside the forced-deterministic cooldown: the
-            # model path is skipped entirely and deterministic is used.
-            result = loop._decide(conn, self.node_id, event, ctx, now)
-            self.assertEqual(result.source, "deterministic")
-            self.assertEqual(provider.calls, 3)  # no further model call
+        # `_decide` owns its own short transactions (the model call must run with
+        # none open — see loop.run_once), so it takes no connection.
+        for _ in range(3):
+            result = loop._decide(self.node_id, event, ctx, now)
+            self.assertEqual(result.source, "fallback")
+        self.assertEqual(provider.calls, 3)
+        # The 4th decision is inside the forced-deterministic cooldown: the
+        # model path is skipped entirely and deterministic is used.
+        result = loop._decide(self.node_id, event, ctx, now)
+        self.assertEqual(result.source, "deterministic")
+        self.assertEqual(provider.calls, 3)  # no further model call
 
 
 if __name__ == "__main__":

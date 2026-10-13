@@ -23,6 +23,9 @@ materialisation tests (#133) and the remediation-effect tests (#136):
     (the stub applies the action, like a real LXD);
   * ``fail_create`` / ``fail_start`` force a create / a start to 500 (the
     failure-semantics paths);
+  * ``strict_stop`` makes a stop of an already-STOPPED instance answer LXD's real
+    400 ("is already stopped"), the answer the executor folds to `already_applied`
+    (off by default: every other test relies on the lenient stop);
   * ``start`` keeps LXD's strict semantics: 404 for an unknown instance, 400 for
     one that is already Running (the executor folds that to an idempotent no-op);
   * ``ignore_actions`` models the measured real-LXD no-op where the operation
@@ -55,6 +58,7 @@ class StubLxd:
         self.instance_states: dict[str, str] = {}
         self.default_state = "Running"
         self.fail_start = False            # force a start to 500
+        self.strict_stop = False           # opt-in: 400 on an already-stopped instance
         self.ignore_actions = False        # accept the action, change nothing
         self.operation_status = "Success"  # status the operation poll reports
         self.operation_gone = False        # the op was reaped before we polled it
@@ -111,6 +115,17 @@ class StubLxd:
                          "operation": f"/1.0/operations/op-start-{name}",
                          "metadata": {"description": "Starting instance"}}
 
+        if action == "stop" and self.strict_stop:
+            # Real LXD refuses to stop an already-STOPPED instance; the executor
+            # folds this answer to `already_applied` (idempotent no-op). Opt-in so
+            # the lenient stub behaviour other tests rely on is unchanged.
+            if not self._known(name):
+                return 404, {"type": "error", "error_code": 404,
+                             "error": f'Instance "{name}" not found'}
+            if self.state_of(name) == "Stopped":
+                return 400, {"type": "error", "error_code": 400,
+                             "error": f'Instance "{name}" is already stopped'}
+
         if not self.ignore_actions:
             new_state = _ACTION_STATE.get(action)
             if new_state:
@@ -119,7 +134,6 @@ class StubLxd:
         op = f"/1.0/operations/op-state-{self._op_seq}"
         return 202, {"type": "async", "status_code": 100, "operation": op,
                      "metadata": {"description": f"{action.capitalize()}ing instance"}}
-
     def _handler(self):
         stub = self
 

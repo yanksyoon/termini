@@ -58,9 +58,20 @@ _TRANSIENT_MIN = 500  # retry on 5xx; 4xx is terminal
 # than surfaced as a failure. The negative lookahead keeps "not running" out.
 _ALREADY_RUNNING = re.compile(r"already\s+(?:running|started)|(?<!not\s)is\s+running", re.I)
 
+# The symmetric answer for stop: LXD refuses `PUT .../state {"action":"stop"}` on
+# an instance that is already STOPPED ("The instance is already stopped"). That is
+# the expected answer when a stop-remediation re-runs (or when the workload was
+# stopped by a previous episode), so it is folded to `already_applied` exactly as
+# the already-running answer is — otherwise a correct re-run reads as a failure.
+_ALREADY_STOPPED = re.compile(r"already\s+stopped|(?<!not\s)is\s+stopped", re.I)
+
 
 def _instance_already_running(detail: object) -> bool:
     return bool(_ALREADY_RUNNING.search(str(detail or "")))
+
+
+def _instance_already_stopped(detail: object) -> bool:
+    return bool(_ALREADY_STOPPED.search(str(detail or "")))
 
 
 
@@ -288,11 +299,24 @@ class LxdExecutor:
         return self._confirm_state(name, "Running", action=action, before=before, r=r)
 
     def stop_instance(self, name: str, *, force: bool = True) -> ExecResult:
-        """Stop the instance, waiting on the operation and confirming STOPPED."""
+        """Stop the instance, waiting on the operation and confirming STOPPED.
+
+        Idempotent: LXD refuses to stop an instance that is already STOPPED
+        ("The instance is already stopped"), and that specific answer — whether
+        returned synchronously or as a failed operation — is folded to
+        `already_applied` (the same "re-running the same step is safe" rule
+        `start_instance` applies to already-running), so a re-run of a stop
+        remediation is a no-op rather than an error. A genuine stop failure stays
+        an `error`.
+        """
         path = f"/1.0/instances/{name}/state"
         if self.dry_run:
             return self._request("PUT", path, {"action": "stop", "force": force})
         r = self._await_write(self._request("PUT", path, {"action": "stop", "force": force}))
+        if r.result == "error" and _instance_already_stopped(r.detail):
+            r.result = "already_applied"
+            r.detail = f"instance {name} already stopped — idempotent no-op"
+            return r
         if r.result != "ok":
             return r
         return self._confirm_state(name, "Stopped", action="stop", before="", r=r)
