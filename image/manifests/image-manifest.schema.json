@@ -66,8 +66,9 @@
         "models": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["deepseek-flash", "deepseek-v4-pro"],
+          "required": ["gemma", "deepseek-flash", "deepseek-v4-pro"],
           "properties": {
+            "gemma": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
             "deepseek-flash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
             "deepseek-v4-pro": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
           }

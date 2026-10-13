@@ -32,9 +32,11 @@ so a fresh node's first boot installs nothing and downloads nothing.
 | `compute` | `agentic-os/w3` (compute) | **~2.2 GiB** | Ubuntu 24.04 base (~0.6) + base pkgs (~0.6) + LXD snap (~0.25) + llama.cpp CPU (~0.03) + python/node/ruby deps (~0.7) |
 | `gpu` | `agentic-os/w3` (gpu, Node C) | **~20 GiB** | compute base + NVIDIA driver (~0.5) + CUDA/cuDNN runtime (~3.5) + llama.cpp CUDA build (~0.2) + **model weights 12.95 GiB** |
 
-The "~4 GiB GGUF" the task called for is the `deepseek-flash` weight (4.58 GiB);
-`deepseek-v4-pro` (8.37 GiB) is also resident on disk but **lazy-loaded** per
-`agent-runtime.md` §11.2. A compute-only node carries **no** weights.
+The shipped resident weight on Node C is now the **`gemma`** GGUF — **Gemma 3 4B IT**
+(`unsloth/gemma-3-4b-it-GGUF`, Q4_K_M, 2,489,894,016 B / 2.32 GiB), Google's own open
+weights. The `deepseek-flash` (4.58 GiB) and `deepseek-v4-pro` (8.37 GiB) distills
+remain catalog pins, resident/lazy on disk per `agent-runtime.md` §11.2. A compute-only
+node carries **no** weights.
 
 ### What is baked in
 
@@ -44,7 +46,7 @@ The "~4 GiB GGUF" the task called for is the `deepseek-flash` weight (4.58 GiB);
 | Hypervisor | LXD snap, channel `5.21/stable`, revision recorded to `/etc/termini/lxd-snap.txt`, `snap refresh --hold` so boot never refreshes. **Initialised at bake time** (`lxd init --preseed` → `default` dir pool + `lxdbr0` bridge + `default` profile; API on `:8443`), so a booted node has a daemon to launch against |
 | Inference runtime | `llama.cpp` @ commit `7fe450e19305b828c199d602c23a8337aaa1f03b` (release `v0.5.0`) built to `/opt/termini/llama.cpp/bin/{llama-server,llama-cli}`; `llama-cpp@<alias>.service` template |
 | GPU (gpu variant) | NVIDIA driver stack (`cuda-drivers-550` + `nvidia-smi`, step `15-nvidia-driver.sh`) + CUDA runtime 12.4 (`cudart`, `cublas`, `nvrtc`) + cuDNN 9. Nouveau is blacklisted and `nvidia`/`nvidia_uvm` load at boot; nothing is installed at boot. |
-| Weights | `deepseek-flash` + `deepseek-v4-pro` GGUF under `/var/lib/termini/models/`, sha256-pinned |
+| Weights | `gemma` (Gemma 3 4B IT, shipped resident) + `deepseek-flash` + `deepseek-v4-pro` GGUF under `/var/lib/termini/models/`, sha256-pinned |
 | Agent deps | `/opt/termini/venv` (openai, httpx, pydantic, tenacity, structlog, langchain-core, langgraph), Node.js 20, ruby gems |
 | Offline proof | `/var/lib/termini/.baked-offline` sentinel + `/etc/termini/image-version` + `termini-firstboot-preflight.service` |
 | Workload images | the guest `agent-vm/<version>` the controller launches (per-node `agent-os/w4`) is preloaded into the local LXD image store **at bake time**, under both aliases, from an on-disk stage — no registry pull at boot (see `image/pipeline/README.md`) |
@@ -56,13 +58,15 @@ The first-boot unit actively forbids it (see §4).
 
 ## 2. Model pins — resolves BQ-1
 
-`models.lock.json` pins the exact Hugging Face GGUF distills behind the two
-aliases. The build fails if a downloaded file's `sha256` does not match the lock.
+`models.lock.json` pins the exact Hugging Face GGUF artifacts behind the aliases. The
+build fails if a downloaded file's `sha256` does not match the lock. The **shipped
+resident** alias is `gemma` (Node C's decision model).
 
 | Alias | Repo | File | Bytes | Residency |
 |-------|------|------|-------|-----------|
-| `deepseek-flash` | `bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF` | `...-Q4_K_M.gguf` | 4,920,736,608 (4.58 GiB) | resident |
-| `deepseek-v4-pro` | `bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF` | `...-Q4_K_M.gguf` | 8,988,110,240 (8.37 GiB) | lazy |
+| `gemma` | `unsloth/gemma-3-4b-it-GGUF` | `gemma-3-4b-it-Q4_K_M.gguf` | 2,489,894,016 (2.32 GiB) | resident (shipped) |
+| `deepseek-flash` | `bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF` | `...-Q4_K_M.gguf` | 4,920,736,608 (4.58 GiB) | catalog |
+| `deepseek-v4-pro` | `bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF` | `...-Q4_K_M.gguf` | 8,988,110,240 (8.37 GiB) | catalog, lazy |
 
 `sha256` values were read from the Hugging Face "blobs" API (`lfs.sha256`, which
 is the file-content digest); the `llama.cpp` commit is the **peeled** commit of

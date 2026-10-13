@@ -59,7 +59,7 @@ governance boundary and the governed AI-operator control loop.
   │  ┌───────────── Node A (seed) ─────────────┐   ┌──────── Node C (CPU) ──────┐ │
   │  │ 10.10.0.11   LXD member (seed) :8443    │   │ 10.10.0.13                │ │
   │  │ termini-bootstrap ──► termini-agent-    │   │ termini-llama-server :8080 │ │
-  │  │                    │      broker :7071  │   │  llama.cpp / deepseek-flash│ │
+  │  │                    │      broker :7071  │   │  llama.cpp / gemma         │ │
   │  │                    ▼                     │   │  (CPU-only; no L4 in demo) │ │
   │  │   agent VM (10.20.1.x) ──► 10.10.0.13:8080 (inference)                   │ │
   │  └──────────────────────────────────────────┘   └───────────────────────────┘ │
@@ -71,7 +71,7 @@ governance boundary and the governed AI-operator control loop.
 ```
 
 Roles: Node A = LXD cluster seed + compute; Node B = compute; Node C = **CPU-only** node hosting the
-host-exposed llama.cpp service (`:8080`, single model aliased `deepseek-flash`; `/:8081`,`/:8082` per-alias
+host-exposed llama.cpp service (`:8080`, single model aliased `gemma` = Gemma 3 4B IT; `/:8081`,`/:8082` per-alias
 workers are the reference design, not the shipped single-model deployment). Agent VMs run only on A/B.
 There is **no LXD overlay network** in the demo — cross-node traffic routes over the underlay (D2).
 
@@ -109,7 +109,7 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 ### 4.2 Deploy agent VMs
 
 1. Frontend `POST /v1/projects/{id}/intents` (NL prompt or structured `spec`).
-2. NL prompt → on-prem `deepseek-flash` extraction (`json_object` response format) → `AllocationRequest`.
+2. NL prompt → on-prem `gemma` extraction (`json_object` response format) → `AllocationRequest`.
 3. Guardrail validator → `AllocationPlan` (all-or-nothing; clamp numeric, reject structural).
 4. Frontend `POST /v1/projects/{id}/vms/apply` → controller **materialises** the plan:
    for each accepted `agent_vm` allocation it creates the instances on that
@@ -143,7 +143,7 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
    `docs/contracts/operator-decision.md`): `TERMINI_OPERATOR_DECISION_MODE=model`
    routes the threshold→action choice through the `termini/decision` adapter to the
    **llama.cpp service on Node C** (`http://10.10.0.13:8080`, CPU-only, alias
-   `deepseek-flash`) over the underlay — the model is on-prem, not an external
+   `gemma` = Gemma 3 4B IT) over the underlay — the model is on-prem, not an external
    call. A hard guardrail (allowed-action whitelist, param bounds, confidence gate)
    applies and the deterministic playbook mapping is the **default and mandatory
    fallback**. `deterministic` makes **no model call** and is identical to the
@@ -153,11 +153,14 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
    service. Which decider chose a given action is recorded per-decision in
    `decision_source`.
    **Measured latency (Node C, CPU-only): a decision is minutes, not seconds** —
-   ≈156 s with a one-sample evidence window and ≈9–10 min with the real 20-sample
-   window (prefill ≈15.7 tok/s, generation ≈4.1 tok/s, `n2-standard-8`, 8 threads).
-   The interactive on-screen moment is therefore served by the **deterministic
-   fast-path** (`R24`), not by the model; the model-driven path is wired and real
-   but is not interactive.
+   ≈84 s with a one-sample evidence window and ≈6.7 min (402 s) with the real
+   20-sample window (prefill ≈33 tok/s, generation ≈8–10 tok/s, `n2-standard-8`,
+   8 threads; the real 20-sample request is 12,748 prompt tokens under Gemma's
+   tokenizer and fits `--ctx-size 16384`). It replaced a slower DeepSeek-R1
+   distill (156 s / 12 min; its 8,973-token request did not fit the old shipped
+   context). The interactive on-screen moment is therefore served by the
+   **deterministic fast-path** (`R24`), not by the model; the model-driven path is
+   wired and real but is not interactive.
 
 ### 4.5 Inference (two paths)
 
@@ -166,13 +169,14 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 1. `termini-agent` (in the VM) → on-node broker (`10.20.<n>.1:7071`) for tasks.
 2. LLM calls go to `http://10.10.0.13:8080` (OpenAI-compatible router) with a bearer token and
    `X-Termini-*` attribution headers.
-3. Router routes the `model` alias explicitly (`deepseek-flash` resident / `deepseek-v4-pro` lazy);
+3. Router routes the `model` alias explicitly (`gemma` resident in the shipped demo; the
+   `deepseek-*` distills remain catalog aliases);
    no silent substitution except opt-in `X-Termini-Allow-Degrade`.
 4. Results (C2) stay on-prem; only the C0 result summary egresses via the node daemon.
 
 **Operator-loop path (Node C, on-prem — no egress).** The Day-2 decision step calls
 the llama.cpp service on **Node C** (`http://10.10.0.13:8080`, CPU-only, alias
-`deepseek-flash`) over the underlay, under the static versioned template of
+`gemma` = Gemma 3 4B IT, Google's open weights) over the underlay, under the static versioned template of
 `governance.md` §7.2. It is **not** a customer-payload path: C2 never reaches it, and
 the controller wraps the call in `externalModelCall()`, which asserts the template
 version and the class of every substituted field (C0 / transformed C1) before
@@ -330,18 +334,25 @@ processing). **Rationale:** these are the load-bearing governance guarantees for
 
 ### R11 — BQ-1: pin the model artifacts (open question, now answered)
 
-**Answer:** the `deepseek-*` aliases are **distills**, not the V4 MoE family:
+**Answer:** the shipped resident model on Node C is **`gemma` = Gemma 3 4B IT**
+(Google's open weights, Q4_K_M, 2.49 GB, sha256-pinned in `image/models.lock.json`),
+served by the single-model `llama.cpp` deployment and delivered from the project's own
+bucket. The `deepseek-*` aliases remain in the catalog as the documented **distills**
+(not the V4 MoE family):
 
 | Alias | Artifact | Quant | Weights | GPU budget |
 |-------|----------|-------|---------|------------|
-| `deepseek-flash` | DeepSeek-R1-Distill-Llama-8B | Q4_K_M | ~6 GiB | ~9 GiB (resident, ×4 parallel) |
-| `deepseek-v4-pro` | DeepSeek-R1-Distill-Qwen-14B | Q4_K_M | ~18 GiB | ~22 GiB (lazy, ×1) |
+| `gemma` (shipped resident) | Gemma 3 4B IT (`unsloth/gemma-3-4b-it-GGUF`) | Q4_K_M | ~2.32 GiB | CPU-only on Node C |
+| `deepseek-flash` (catalog) | DeepSeek-R1-Distill-Llama-8B | Q4_K_M | ~6 GiB | ~9 GiB (resident, ×4 parallel) |
+| `deepseek-v4-pro` (catalog, lazy) | DeepSeek-R1-Distill-Qwen-14B | Q4_K_M | ~18 GiB | ~22 GiB (lazy, ×1) |
 
-Target GPU: **NVIDIA L4 24 GiB** (both fit). **T4 16 GiB** → `flash-only` (`deepseek-v4-pro`
-unavailable, degrade path demonstrated). `governance.md` §7.1 wording is amended to state the
+Target GPU for the catalog distills: **NVIDIA L4 24 GiB** (both fit). **T4 16 GiB** → `flash-only`
+(`deepseek-v4-pro` unavailable, degrade path demonstrated). `governance.md` §7.1 wording is amended to state the
 aliases are distills. **Rationale:** the literal V4 MoE (Flash 284 B ≈146 GiB, Pro 1.6 T) cannot
 fit a single L4/T4; `agent-runtime.md` §11.1 already budgeted to these distill sizes. The exact
-HF GGUF files are pinned by the Node C bake (infra) against these aliases.
+HF GGUF files are pinned by the Node C bake (infra) against these aliases; the `gemma` weight is
+served to nodes from `gs://termini-510609-models/gemma-3-4b-it-gguf/` (D3 — never a public
+registry at first boot).
 
 ### R12 — D5 / D7 wording
 

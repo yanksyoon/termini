@@ -40,7 +40,7 @@ Termini inverts the data direction: *same* delegation of operations, *opposite* 
 
 **Where Termini wins:** it is the single most citable proof our thesis is real — the world's largest memory-chip maker is paying to keep AI on-prem for data-sovereignty reasons. But it is a **bespoke, equity-backed, mega-corp engagement** that a small business cannot replicate, and it covers **models and platform, not maintenance and operations** — the deal does not answer who runs the cluster day-2. Samsung has expert engineers; SMBs do not.
 
-Termini productizes, for the long tail, what Samsung bought bespoke: open-weight self-hosted models (we serve DeepSeek-R1 distills on the customer's GPU) **plus** the bootstrap and the governed operator that the deal leaves out. Model choice is a config knob — the product is the ops + governance layer, not the weights.
+Termini productizes, for the long tail, what Samsung bought bespoke: open-weight self-hosted models (we serve **Gemma**, Google's open-weights model, on the customer's own nodes) **plus** the bootstrap and the governed operator that the deal leaves out. Model choice is a config knob — the product is the ops + governance layer, not the weights.
 
 ---
 
@@ -73,13 +73,18 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 - We do **not** claim GPU-accelerated inference. The model **runs on Node C**, CPU-only
   (`llama.cpp`, no `guest_accelerator` on the instance — `gpu_accelerator_count = 0`); GPU
   acceleration is a config knob for paid/bare-metal accounts, not shipped live.
+- The model on Node C is **Gemma 3 4B IT** — Google's own open-weights model, served by
+  `llama.cpp` under the alias **`gemma`** from the pinned Q4_K_M GGUF. It is **not** a
+  DeepSeek distill (a Gemma GGUF is pinned in `image/models.lock.json` and delivered to the
+  node from the project's own bucket).
 - We do **not** claim the model-driven decision is *interactive*. Measured on Node C
-  (`n2-standard-8`, pinned `deepseek-flash` = DeepSeek-R1-Distill-Llama-8B Q4_K_M, 8 threads):
-  a decision over the operator's real prompt takes **~156 s with a one-sample evidence window
-  and ~9–10 min with the real 20-sample window** (prefill ≈15.7 tok/s, generation ≈4.1 tok/s);
-  the real 20-sample request (**8,973 prompt tokens**) is in fact *rejected outright* by the
-  shipped server context (`--ctx-size 8192 --parallel 2` ⇒ 4,096 tokens/slot). The on-screen
-  demo moment is therefore covered by the **deterministic fast-path** (`architecture.md` R24),
-  which fires in milliseconds; the model-driven path is real and wired to Node C, but it is
-  minutes-per-decision, not seconds.
+  (`n2-standard-8`, pinned `gemma` = Gemma 3 4B IT Q4_K_M, 8 threads, `--ctx-size 16384`):
+  a decision over the operator's real prompt takes **~84 s with a one-sample evidence window
+  and ~6.7 min (402 s) with the real 20-sample window** (prefill ≈33 tok/s, generation
+  ≈8–10 tok/s); the real 20-sample request is **12,748 prompt tokens** under Gemma's
+  tokenizer and **fits** the shipped context. The on-screen demo moment is therefore covered
+  by the **deterministic fast-path** (`architecture.md` R24), which fires in milliseconds;
+  the model-driven path is real and wired to Node C, but it is minutes-per-decision, not
+  seconds. (It replaced a DeepSeek-R1 distill that was slower still — 156 s / 12 min — and
+  whose 8,973-token request did not even fit the shipped context.)
 - We do **not** hide the `inference` role assignment. Node C runs the model CPU-only, but the demo harness reports a synthetic 24 GiB VRAM footprint from config (`gpu_bytes` → `gpu_vram_bytes`) so the real role rule (≥12 GiB VRAM → `inference`) is exercised end-to-end. The synthetic report drives role selection only; it does not claim a physical GPU is present on the build host.

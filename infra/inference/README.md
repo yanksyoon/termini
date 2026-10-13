@@ -19,7 +19,7 @@ Both are proven against the live 3-node GCP footprint in
 | | |
 |---|---|
 | Frozen decisions | `docs/contracts/infra-decisions.md` **D2** (underlay routing, no overlay), **D5** (host-exposed `llama.cpp`, OpenAI-compatible) |
-| Interface | `docs/contracts/agent-runtime.md` **AR-4** (OpenAI-compatible router on `:8080`) / **AR-6** (alias `deepseek-flash` resident) |
+| Interface | `docs/contracts/agent-runtime.md` **AR-4** (OpenAI-compatible router on `:8080`) / **AR-6** (alias `gemma` resident, shipped) |
 | Endpoint | `http://10.10.0.13:8080` — Node C's **underlay** IP, bound `0.0.0.0` on the host |
 | Reachability | GCP firewall allows `tcp/8080` from `10.10.0.0/24` **only** (never public) |
 
@@ -28,11 +28,11 @@ Both are proven against the live 3-node GCP footprint in
 | Aspect | Value |
 |---|---|
 | Engine | `llama-server` built from pinned commit `7fe450e19305b828c199d602c23a8337aaa1f03b` (`image/models.lock.json`), CPU-only (`GGML_CUDA=OFF`) |
-| Model | pinned **`deepseek-flash`** = `bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF` / `Q4_K_M` / 4,920,736,608 B / sha256 `87bcba20…896f5d` (from `image/models.lock.json`, t_ab18d582) |
-| Alias | `deepseek-flash` (a single-model deployment collapses the AR-4 router to a transparent passthrough — the documented case) |
-| Serve flags | `--host 0.0.0.0 --port 8080 --ctx-size 8192 --parallel 2 --reasoning-format none` |
+| Model | shipped resident **`gemma`** = **Gemma 3 4B IT** (`unsloth/gemma-3-4b-it-GGUF`) / `Q4_K_M` / 2,489,894,016 B / sha256 `04a43a22…a7d19` (from `image/models.lock.json`, delivered from `gs://termini-510609-models/gemma-3-4b-it-gguf/`). The `deepseek-flash` / `deepseek-v4-pro` catalog pins remain (t_ab18d582) |
+| Alias | `gemma` (a single-model deployment collapses the AR-4 router to a transparent passthrough — the documented case) |
+| Serve flags | `--host 0.0.0.0 --port 8080 --ctx-size 16384 --parallel 1 --threads 8 --reasoning-format none` |
 | Unit | `termini-llama-server.service` (enabled; `/var/log/termini-llama-serve.log`) |
-| Measured (n2-standard-8, CPU) | generation ≈ **6.2 tok/s**, prompt ≈ 12 tok/s, first SSE token ≈ **0.9 s** |
+| Measured (n2-standard-8, CPU) | Gemma 3 4B: generation ≈ **8–10 tok/s**, prompt ≈ 33 tok/s (the prior 8B distill measured ≈ 6.2 tok/s / 12 tok/s) |
 
 `--reasoning-format none` keeps the R1-distill ` thinking` block inline in the
 assistant `content` instead of a separate `reasoning_content`, so plain OpenAI

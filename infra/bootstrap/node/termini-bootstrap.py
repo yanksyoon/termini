@@ -468,7 +468,7 @@ def inference_snapshot(cfg: dict) -> dict | None:
         up = False
     return {
         "server_up": up,
-        "model": cfg.get("model_alias", "deepseek-flash"),
+        "model": cfg.get("model_alias", "gemma"),
         "active_requests": 0,
         "queue_depth": 0,
         "tokens_per_s": 0.0,

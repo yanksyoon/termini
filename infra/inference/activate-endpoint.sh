@@ -9,7 +9,7 @@
 #   BIN         llama-server path        (default /opt/termini/llama.cpp/bin/llama-server)
 #   MODEL_DIR   weights dir              (default /var/lib/termini/models)
 #   MODEL_FILE  GGUF filename            (default DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf)
-#   MODEL_ALIAS advertised alias         (default deepseek-flash)
+#   MODEL_ALIAS advertised alias         (default gemma)
 #   PORT        listen port              (default 8080)
 #   CTX_SIZE    context size             (default 8192)
 #   PARALLEL    server slots             (default 2)
@@ -19,7 +19,7 @@ set -euo pipefail
 BIN="${BIN:-/opt/termini/llama.cpp/bin/llama-server}"
 MODEL_DIR="${MODEL_DIR:-/var/lib/termini/models}"
 MODEL_FILE="${MODEL_FILE:-DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf}"
-MODEL_ALIAS="${MODEL_ALIAS:-deepseek-flash}"
+MODEL_ALIAS="${MODEL_ALIAS:-gemma}"
 PORT="${PORT:-8080}"
 CTX_SIZE="${CTX_SIZE:-8192}"
 PARALLEL="${PARALLEL:-2}"

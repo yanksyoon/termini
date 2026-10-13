@@ -53,10 +53,10 @@ SNAPSHOT_WARM="${TERMINI_SNAPSHOT_WARM:-warm}"       # registered + inference re
 SNAPSHOT_UNREG="${TERMINI_SNAPSHOT_UNREG:-unregistered}"  # baked, not yet enrolled
 
 # --- resident model (pinned by image/models.lock.json) -----------------------
-MODEL_ALIAS="${TERMINI_MODEL_ALIAS:-deepseek-flash}"
-MODEL_FILE="${TERMINI_MODEL_FILE:-DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf}"
-MODEL_SIZE_BYTES="${TERMINI_MODEL_SIZE_BYTES:-4920736608}"
-MODEL_SHA256="${TERMINI_MODEL_SHA256:-87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d}"
+MODEL_ALIAS="${TERMINI_MODEL_ALIAS:-gemma}"
+MODEL_FILE="${TERMINI_MODEL_FILE:-gemma-3-4b-it-Q4_K_M.gguf}"
+MODEL_SIZE_BYTES="${TERMINI_MODEL_SIZE_BYTES:-2489894016}"
+MODEL_SHA256="${TERMINI_MODEL_SHA256:-04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19}"
 INFERENCE_PORT="${TERMINI_INFERENCE_PORT:-8080}"
 # llama.cpp loads the model with --no-mmap, so VmRSS tracks residency. Require
 # at least ~60% of the on-disk model to be resident before we call it warm.

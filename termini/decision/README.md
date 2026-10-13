@@ -93,7 +93,7 @@ Needs the on-prem router reachable and the frozen env vars
 
 ```bash
 export TERMINI_INFERENCE_BASE_URL=http://10.10.0.13:8080
-export TERMINI_INFERENCE_MODEL=deepseek-flash
+export TERMINI_INFERENCE_MODEL=gemma
 export TERMINI_INFERENCE_TOKEN=...        # optional on-prem bearer
 export TERMINI_INFERENCE_TIMEOUT_S=30
 

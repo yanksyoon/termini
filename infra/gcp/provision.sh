@@ -9,7 +9,7 @@
 #   - node-a/b = compute machine type; node-c = CPU-heavy inference host
 #     (CPU-only by default — free-tier billing rejects every non-TPU accelerator)
 #   - node-c additionally serves host-exposed CPU llama.cpp on :8080 (pinned
-#     deepseek-flash GGUF, OpenAI-compatible, alias `deepseek-flash`)
+#     gemma GGUF (Gemma 3 4B IT), OpenAI-compatible, alias `gemma`)
 #   - an inventory JSON at $INVENTORY_PATH for downstream tasks
 #
 # Requires an authenticated gcloud (GOOGLE_APPLICATION_CREDENTIALS or
@@ -32,10 +32,10 @@ GPU_ACCELERATOR_TYPE="${GPU_ACCELERATOR_TYPE:-nvidia-l4}"
 GPU_ACCELERATOR_COUNT="${GPU_ACCELERATOR_COUNT:-0}"
 SERVE_INFERENCE="${SERVE_INFERENCE:-1}"
 INFERENCE_PORT="${INFERENCE_PORT:-8080}"
-INFERENCE_MODEL_URL="${INFERENCE_MODEL_URL:-https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf}"
-INFERENCE_MODEL_FILE="${INFERENCE_MODEL_FILE:-DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf}"
-INFERENCE_MODEL_SHA256="${INFERENCE_MODEL_SHA256:-87bcba20b4846d8dadf753d3ff48f9285d131fc95e3e0e7e934d4f20bc896f5d}"
-INFERENCE_MODEL_ALIAS="${INFERENCE_MODEL_ALIAS:-deepseek-flash}"
+INFERENCE_MODEL_URL="${INFERENCE_MODEL_URL:-https://storage.googleapis.com/termini-510609-models/gemma-3-4b-it-gguf/gemma-3-4b-it-Q4_K_M.gguf}"
+INFERENCE_MODEL_FILE="${INFERENCE_MODEL_FILE:-gemma-3-4b-it-Q4_K_M.gguf}"
+INFERENCE_MODEL_SHA256="${INFERENCE_MODEL_SHA256:-04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19}"
+INFERENCE_MODEL_ALIAS="${INFERENCE_MODEL_ALIAS:-gemma}"
 LLAMACPP_COMMIT="${LLAMACPP_COMMIT:-7fe450e19305b828c199d602c23a8337aaa1f03b}"
 IMAGE_PROJECT="${IMAGE_PROJECT:-ubuntu-os-cloud}"
 IMAGE_FAMILY="${IMAGE_FAMILY:-ubuntu-2404-lts-amd64}"

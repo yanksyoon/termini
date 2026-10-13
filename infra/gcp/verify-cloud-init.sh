@@ -79,7 +79,7 @@ for n in node-a node-b; do
 done
 have "grep -q 'path: /usr/local/sbin/termini-llama-serve.sh' '$WORK/node-c.yaml'" "node-c: llama serve script written"
 have "grep -q '\\[ /usr/local/sbin/termini-llama-serve.sh \\]' '$WORK/node-c.yaml'" "node-c: llama serve runcmd present"
-have "grep -q 'MODEL_ALIAS=\"deepseek-flash\"' '$WORK/node-c.yaml'" "node-c: model alias resolved"
+have "grep -q 'MODEL_ALIAS=\"gemma\"' '$WORK/node-c.yaml'" "node-c: model alias resolved"
 have "grep -q 'PORT=\"8080\"' '$WORK/node-c.yaml'" "node-c: port resolved"
 
 echo "== 5b. rendered user-data is valid YAML"

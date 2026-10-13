@@ -26,7 +26,7 @@ set -uo pipefail
 INVENTORY="${INVENTORY:-/home/ubuntu/.termini/inventory.json}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 PORT="${PORT:-8080}"
-MODEL_ALIAS="${MODEL_ALIAS:-deepseek-flash}"
+MODEL_ALIAS="${MODEL_ALIAS:-gemma}"
 
 inv() { python3 -c "import json,sys; d=json.load(open('$INVENTORY')); n={x['name']:x for x in d['nodes']}; print(n['$1']['$2'])" 2>/dev/null; }
 

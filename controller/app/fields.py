@@ -115,7 +115,7 @@ LXD_INSTANCE_FIELDS: dict[str, dict] = {
 
 INFERENCE_FIELDS: dict[str, dict] = {
     "server_up": {"kind": "bool", "unit": None, "cclass": "C0"},
-    "model": {"kind": "str", "unit": None, "cclass": "C0", "enum": ["deepseek-flash", "deepseek-v4-pro"]},
+    "model": {"kind": "str", "unit": None, "cclass": "C0", "enum": ["gemma", "deepseek-flash", "deepseek-v4-pro"]},
     "active_requests": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
     "queue_depth": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
     "tokens_per_s": {"kind": "float", "unit": "tok/s", "cclass": "C0", "min": 0},
