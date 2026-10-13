@@ -119,9 +119,20 @@ p { margin: 0; }
 .node-card.status-online { border-left-color: var(--ok); }
 .node-card.status-degraded { border-left-color: var(--warn); }
 .node-card.status-offline { border-left-color: var(--err); }
-.node-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.node-name { font-weight: 700; font-size: 1.05rem; }
-.node-sub { color: var(--muted); font-size: .8rem; font-family: ui-monospace, monospace; }
+.node-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.node-name {
+  font-weight: 700; font-size: 1.05rem;
+  /* A real node's registration_id is a 32-char hex string. Without these the name
+     stretches the flex row and pushes the role/status badges outside the card. */
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* The badges must never be squeezed by a long name: they keep their intrinsic
+   size, and the name ellipsises instead. */
+.node-head > .badge { flex: 0 0 auto; }
+.node-sub {
+  color: var(--muted); font-size: .8rem; font-family: ui-monospace, monospace;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .badge { font-size: .74rem; text-transform: uppercase; letter-spacing: .06em; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-2); color: var(--fg-dim); }
 .badge.role-inference { border-color: #26678f; color: #9fe0ff; }
 .badge.status-online { color: #b6f0c8; border-color: #2f8a4d; }
