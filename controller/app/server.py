@@ -662,7 +662,21 @@ class ControllerHandler(BaseHTTPRequestHandler):
             extract_and_validate = _load_intent_extractor()
             if extract_and_validate is None:
                 raise errors.err(503, "INTERNAL", "intent extractor unavailable")
-            result = extract_and_validate(body["prompt"], host_caps)
+            # Bound the extraction on the USER's side of the request. Without
+            # this the round-trip inherited the operator's minutes-long model
+            # timeout, and a user request that arrived while the operator held
+            # node-c's single model slot waited behind it until the client gave
+            # up (HTTP 000, no status code at all). The extraction shares the
+            # on-prem model with the operator by design; it must not share its
+            # unbounded patience. See config.intent_model_timeout_s.
+            result = extract_and_validate(
+                body["prompt"], host_caps,
+                config=_load_intent_model_config(
+                    self.server.cfg.intent_model_timeout_s,
+                    self.server.cfg.intent_inference_base_url or None,
+                ),
+            )
+            _raise_if_extraction_failed(result)
             raw_allocations = None
         elif "spec" in body:
             spec = body["spec"]
@@ -1075,7 +1089,16 @@ class ControllerHandler(BaseHTTPRequestHandler):
                     reject_reasons.append({
                         "index": i,
                         "reason": cap_reject,
-                        "detail": _CAPACITY_REJECT_DETAILS.get(cap_reject, cap_reject),
+                        # Name the node and the numbers, not just the rule. A bare
+                        # "aggregate RAM exceeds the node's free capacity" tells a
+                        # user nothing about which node refused or by how much, so
+                        # the natural-language path looked broken (Defect B) when
+                        # the guardrail was in fact correctly refusing a request
+                        # that could not fit the compute node it resolved to.
+                        "detail": _capacity_reject_detail(
+                            cap_reject, node_id, cap, resolved,
+                            spec.count, spec.vcpus, spec.ram_gb, spec.disk_gb,
+                        ),
                     })
                     outcome = "rejected"
                     continue
@@ -1664,6 +1687,52 @@ def reconcile_allocations(conn, cfg, project_id: str, *, executor_factory=None) 
             "released_count": len(released)}
 
 
+def release_orphaned_reservations(conn, project_id: str, *, live_plan_ids) -> dict:
+    """Release never-applied reservations this process can never materialise.
+
+    `reconcile_allocations` deliberately leaves a commit with no recorded
+    instances alone: it materialised nothing, so no absence can be proven from
+    the node. That is right for a *live* plan, but it leaves a hole with no
+    recovery route: `POST /intents` commits capacity at plan-acceptance time
+    (controller-api.md §5.2 step 7), the accepted plan lives only in the
+    controller's in-memory `plans` dict, and a controller restart drops it. The
+    client's later `POST /vms/apply` then 404s (`plan … not found`) and the
+    reservation is permanent — the node shows `ram_free_gb` it can never actually
+    hand out, and the next request that needs those GiB is rejected
+    `exceeds_node_ram_ceiling` forever. Live example: node-a carried a
+    never-applied 2 vCPU / 2 GiB / 32 GiB reservation from a previous session, so
+    its free RAM was 1 GiB and *any* two-agent deploy — even at the minimum 1 GiB
+    each — was refused (Defect B).
+
+    The proof here is different from reconcile's, and stronger: the plan_id is
+    simply not in the set of plans this process holds, and this process is the
+    only thing that can apply a plan (the set is in-memory, never persisted), so
+    the reservation cannot become an instance. Called once at startup, when the
+    set is necessarily empty, that releases exactly the reservations orphaned by
+    a restart — never one whose plan this process is still holding.
+
+    Returns `{"released": [...], "released_count": n}`.
+    """
+    live = set(live_plan_ids or ())
+    released: list[dict] = []
+    for row in store.live_allocations(conn, project_id):
+        if row.get("vm_ids"):
+            continue  # materialised: reconcile owns it, absence is provable there
+        if row["plan_id"] in live:
+            continue  # this process still holds the plan; it may yet be applied
+        store.release_allocations(
+            conn, project_id, plan_id=row["plan_id"], node_id=row["node_id"],
+            reason="plan_orphaned_restart")
+        released.append({
+            "plan_id": row["plan_id"], "node_id": row["node_id"],
+            "reason": "plan_orphaned_restart",
+            "released": {"cpu_allocated": row["cpu_allocated"],
+                         "ram_allocated_gb": row["ram_allocated_gb"],
+                         "disk_allocated_gb": row["disk_allocated_gb"]},
+        })
+    return {"released": released, "released_count": len(released)}
+
+
 def _const_eq(a: str, b: str) -> bool:
     return hmac.compare_digest(a, b)
 
@@ -1784,6 +1853,79 @@ def _load_intent_extractor():
             return None
 
 
+def _load_intent_model_config(timeout_s: float, base_url: str | None = None):
+    """The extractor's model config, with the INTENT path's own bound and endpoint.
+
+    The on-prem model config is read from the frozen `TERMINI_INFERENCE_*` env
+    (termini/intent/config.py). Both overrides exist so a user-facing synchronous
+    extraction cannot be starved by the operator's minutes-long decision:
+
+    * ``timeout_s`` — `TERMINI_INFERENCE_TIMEOUT_S` is shared with the operator's
+      decision adapter and is set to minutes on a CPU-only fleet; the intent path
+      must not inherit that patience.
+    * ``base_url`` — `TERMINI_INTENT_INFERENCE_BASE_URL`, the deployment's
+      dedicated extraction endpoint. Even on a multi-slot model server the
+      operator's ~12k-token decision prompt fills the llama.cpp batch, so a small
+      concurrent request makes no progress until that prefill ends; a separate
+      instance gives the extraction its own threads. Empty/None falls back to the
+      general endpoint.
+
+    Returns ``None`` when the package is unavailable, in which case the extractor
+    falls back to its own defaults (existing behaviour).
+    """
+    try:
+        import dataclasses
+
+        from termini.intent.config import ModelConfig
+    except ImportError:
+        _add_repo_root()
+        try:
+            import dataclasses
+
+            from termini.intent.config import ModelConfig
+        except ImportError:
+            return None
+    overrides: dict = {"timeout_s": float(timeout_s)}
+    if base_url:
+        overrides["base_url"] = base_url
+    try:
+        return dataclasses.replace(ModelConfig.from_env(), **overrides)
+    except Exception:  # noqa: BLE001 — a bad env value must not break extraction
+        log.exception("could not build the intent model config; using defaults")
+        return None
+
+
+def _raise_if_extraction_failed(result) -> None:
+    """Surface a model-side extraction failure as a clear, retryable 503.
+
+    A guardrail rejection (capacity / role) is a real verdict on a real spec and
+    stays `422 GUARDRAIL_REJECTED` with its reason. An *extraction* failure is not
+    a verdict at all — the model produced no spec (timeout, connection error,
+    unparseable JSON). Reporting that behind `422 GUARDRAIL_REJECTED` hides a
+    model/backpressure problem behind a guardrail verdict, which is exactly how
+    the seeder-starves-the-controller defect read to a user. Raise it as an
+    explicit `503 INTERNAL` with the `extraction_failed` detail instead, so a
+    caller can tell "your request was refused" from "the model did not answer".
+    """
+    try:
+        from termini.intent.types import REASON_EXTRACTION_FAILED
+    except ImportError:
+        _add_repo_root()
+        from termini.intent.types import REASON_EXTRACTION_FAILED
+
+    if getattr(result, "outcome", None) != "rejected":
+        return
+    failures = [r for r in getattr(result, "rejections", []) if r.reason == REASON_EXTRACTION_FAILED]
+    if not failures:
+        return
+    raise errors.err(
+        503, "INTERNAL",
+        "intent extraction failed: the on-prem model did not return a usable "
+        "allocation spec in time",
+        [r.to_dict() for r in failures],
+    )
+
+
 def _add_repo_root() -> None:
     import sys
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1825,3 +1967,29 @@ _CAPACITY_REJECT_DETAILS = {
     "exceeds_node_cpu_ceiling": "aggregate vCPU exceeds the node's overcommit ceiling",
     "exceeds_node_disk_ceiling": "aggregate disk exceeds the node's free capacity",
 }
+
+
+def _capacity_reject_detail(reason: str, node_id: str, cap: dict, resolved: dict,
+                            count: int, req_vcpus: int, req_ram_gb: int,
+                            req_disk_gb: int) -> str:
+    """A capacity refusal that names the node and the numbers.
+
+    The frozen reason CODE is unchanged (`_CAPACITY_REJECT_DETAILS`); only the
+    human-readable `detail` gains the resolved node, what the request asked for
+    as an aggregate, and what the node actually had free. That is what turns a
+    bare "guardrail said no" into something a dashboard user can act on (and what
+    makes a re-sized retry obvious).
+    """
+    base = _CAPACITY_REJECT_DETAILS.get(reason, reason)
+    requested = f"{count}×{req_vcpus} vCPU / {count}×{req_ram_gb} GiB RAM"
+    if reason == "exceeds_node_cpu_ceiling":
+        free = f"cpu_free={cap.get('cpu_free')} vCPU"
+    elif reason == "exceeds_node_disk_ceiling":
+        free = f"disk_free_gb={cap.get('disk_free_gb')} GiB"
+    else:
+        free = f"ram_free_gb={cap.get('ram_free_gb')} GiB"
+    return (
+        f"{base}: node {node_id} had {free} free and the request needed "
+        f"{requested} (already allocated {cap.get('cpu_allocated')} vCPU / "
+        f"{cap.get('ram_allocated_gb')} GiB RAM)"
+    )

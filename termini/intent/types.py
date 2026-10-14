@@ -50,6 +50,25 @@ ROLE_FLOORS: Dict[str, Dict[str, int]] = {
     "inference_vm": {"vcpus": 4, "ram_gb": 8, "disk_gb": 32},
 }
 
+# The size an `agent_vm` gets when the request names no size — the demo's
+# out-of-the-box default, and the one the extraction prompt's few-shot examples
+# show the model.
+#
+# It has to be sized for the SMALLEST node the demo actually places on, not for
+# the schema's preferred maxima. `termini-node-a` is an `n2-standard-2`: 2
+# logical cores and 8 GiB registered, i.e. 5 GiB allocatable RAM after the
+# 2 GiB OS/LXD reserve (health.RAM_RESERVE_GB) and an overcommit ceiling of
+# 4 vCPUs. The prompt used to show the model 2 vCPU / 4 GiB per agent (a value
+# inherited from the "generous sizes" wording), so a plain "deploy 2 worker
+# agents" asked for 4 vCPU / 8 GiB of aggregate — more than the node can host —
+# and the per-node clamp (controller-api.md §5.2 step 6) had no per-VM RAM left
+# to give (free_ram // count == 0), so the plan was REJECTED
+# `exceeds_node_ram_ceiling` instead of deployed. The guardrail was right; the
+# default was wrong. 1 vCPU / 1 GiB / 8 GiB per agent fits node-a with headroom
+# (two agents = 2 vCPU / 2 GiB) and matches what the previous workstream had to
+# hand-specify to make the demo run at all.
+DEFAULT_AGENT_VM: Dict[str, int] = {"vcpus": 1, "ram_gb": 1, "disk_gb": 8}
+
 # Demo defaults (controller-api.md §5.1 preferred-range maxima). Production
 # injects real per-host capacity; these are the frozen demo ceilings.
 DEFAULT_HOST_CAPS: Dict[str, Dict[str, int]] = {

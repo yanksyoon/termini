@@ -154,6 +154,29 @@ def main(argv: list[str] | None = None) -> int:
     threading.Thread(target=_approval_sweeper, args=(srv,), daemon=True).start()
     threading.Thread(target=_reconcile_allocations_once, args=(srv,), daemon=True).start()
 
+    # Heal never-applied, restart-orphaned capacity reservations BEFORE serving
+    # (server.release_orphaned_reservations). `_reconcile_allocations_once` cannot
+    # touch these — it reconciles against the node, and a commit with no recorded
+    # instances has no absence to prove — so without this a reservation from a
+    # previous process survives forever and permanently shrinks a node's free
+    # capacity. This is pure database work (no node calls), so it runs inline:
+    # the first request after a restart must already see the healed capacity.
+    try:
+        with db.session(cfg.db_path) as conn:
+            healed = server.release_orphaned_reservations(
+                conn, project["id"], live_plan_ids=srv.plans.keys())
+        if healed["released_count"]:
+            log.info(
+                "startup released %d orphaned capacity reservation(s) "
+                "(never applied; their plan died with a previous process): %s",
+                healed["released_count"],
+                ", ".join(
+                    f"{r['plan_id']}({r['released']['cpu_allocated']} vCPU/"
+                    f"{r['released']['ram_allocated_gb']} GiB)" for r in healed["released"]),
+            )
+    except Exception:  # noqa: BLE001 — self-heal must never take the controller down
+        log.exception("startup orphaned-reservation release failed")
+
     log.info("controller listening on %s:%s (db=%s)", cfg.host, cfg.port, cfg.db_path)
 
     loop = None

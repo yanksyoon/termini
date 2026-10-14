@@ -171,6 +171,24 @@ resource "google_compute_firewall" "inference" {
   }
 }
 
+# The intent-extraction instance (D5 follow-up): `POST /intents` extraction runs
+# against its OWN llama.cpp process on Node C so the operator's ~12k-token
+# decision prompt cannot starve it (controller-api.md §5.2). Node-c-only, same
+# underlay source, never public.
+resource "google_compute_firewall" "inference_intent" {
+  name          = "${var.name_prefix}-allow-inference-intent"
+  network       = google_compute_network.vpc.name
+  direction     = "INGRESS"
+  priority      = 1000
+  source_ranges = [var.network_cidr]
+  target_tags   = ["${var.name_prefix}-node-c"]
+  description   = "Intent-extraction llama.cpp HTTP on Node C only, from the underlay subnet. Never public."
+  allow {
+    protocol = "tcp"
+    ports    = ["8090"]
+  }
+}
+
 # --- Compute instances --------------------------------------------------------
 
 resource "google_compute_instance" "node" {

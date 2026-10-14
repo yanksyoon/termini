@@ -185,6 +185,26 @@ class Config:
     # out of `auto` agent placement. `agent_placement_exclude_hosts` lets an
     # operator name additional hosts to exclude (comma-separated).
     inference_base_url: str
+    # Natural-language intent extraction (termini.intent.extractor) runs as a
+    # SYNCHRONOUS model round-trip inside POST /intents, and it shares the
+    # on-prem model with the operator's long decisions. Two knobs keep a user
+    # request from being starved by one:
+    #   * `intent_model_timeout_s` bounds the round-trip on the USER's side of
+    #     the request, independently of `TERMINI_INFERENCE_TIMEOUT_S` (which the
+    #     operator's decision path also reads). Without its own bound the
+    #     extraction inherited the operator's minutes-long timeout, so a request
+    #     queued behind a decision on node-c's single model slot hung until the
+    #     client gave up (HTTP 000) instead of answering.
+    #   * `intent_inference_base_url` optionally points the extraction at its OWN
+    #     model endpoint. Even with a multi-slot server the operator's ~12k-token
+    #     decision prompt monopolises the llama.cpp batch (a small concurrent
+    #     request makes no progress until that prefill ends), so the shipped
+    #     deployment serves a dedicated small-context instance beside the
+    #     decision model. Empty (the default) falls back to
+    #     `inference_base_url`.
+    # See docs/contracts/controller-api.md §5.2.
+    intent_model_timeout_s: float
+    intent_inference_base_url: str
     agent_placement_exclude_hosts: tuple[str, ...]
     lxd_instance_names: dict[str, str]
     lxd_default_instance_name: str
@@ -313,6 +333,9 @@ class Config:
             or "http://127.0.0.1:8443",
             inference_base_url=os.environ.get("TERMINI_INFERENCE_BASE_URL", "").strip()
             or DEFAULT_INFERENCE_BASE_URL,
+            intent_model_timeout_s=_float_env("TERMINI_INTENT_MODEL_TIMEOUT_S", 120.0),
+            intent_inference_base_url=os.environ.get(
+                "TERMINI_INTENT_INFERENCE_BASE_URL", "").strip(),
             agent_placement_exclude_hosts=_opt_list("TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS"),
             lxd_instance_names=instance_names,
             lxd_default_instance_name=os.environ.get(
