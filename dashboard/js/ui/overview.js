@@ -38,8 +38,14 @@ function card(node, sample, view, state, handlers) {
   const selected = state.selectedNodeId === node.node_id;
 
   const head = el("div", { class: "node-head" }, [
-    el("div", {}, [
-      el("div", { class: "node-name", text: node.registration_id || shortId(node.node_id) }),
+    el("div", { class: "node-ident" }, [
+      el("div", {
+        class: "node-name",
+        text: node.registration_id || shortId(node.node_id),
+        // The name is truncated in the card (a registration_id is 32 chars), so
+        // carry the full value on the element for hover/discovery.
+        title: node.registration_id || node.node_id,
+      }),
       el("div", { class: "node-sub", text: shortId(node.node_id), title: node.node_id }),
     ]),
     el("div", { class: "flag-row" }, [
