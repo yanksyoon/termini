@@ -100,12 +100,18 @@ service, no installs, no downloads). Node C is the one exception: when
    public registry at first boot) and **aborts the boot if the sha256 does not match**,
 4. runs it as `termini-llama-server.service` on **`0.0.0.0:8080`** as an
    OpenAI-compatible single-model deployment aliased **`gemma`**
-   (`agent-runtime.md` AR-4/AR-6; `--ctx-size 16384 --parallel 1 --threads 8`, and
-   `--reasoning-format none` so any inline reasoning block stays in `content`).
+   (`agent-runtime.md` AR-4/AR-6; `--ctx-size 32768 --parallel 2 --threads 6`, and
+   `--reasoning-format none` so any inline reasoning block stays in `content`), and
+   **a second, dedicated instance** — `termini-llama-intent.service` on
+   **`0.0.0.0:8090`** (`--ctx-size 4096 --parallel 1 --threads 3`) — so
+   `POST /intents` extraction never queues behind the operator's ~12,000-token,
+   ~400 s-on-CPU decision prompt (controller-api.md §5.2). The controller reaches
+   it with `TERMINI_INTENT_INFERENCE_BASE_URL`.
 
-The underlay firewall rule allows `10.10.0.0/24 → node-c:8080` only, so the
-endpoint is reachable from Node A but never public. Health probe:
-`curl http://10.10.0.13:8080/health`. The first build takes ~10–20 min; the
+The underlay firewall rules allow `10.10.0.0/24 → node-c:8080` (the decision model)
+and `10.10.0.0/24 → node-c:8090` (the intent-extraction model) only, so both
+endpoints are reachable from the underlay but never public. Health probes:
+`curl http://10.10.0.13:8080/health` and `curl http://10.10.0.13:8090/health`. The first build takes ~10–20 min; the
 service is idempotent across reboots (`/var/log/termini-llama-serve.log`).
 The pinned Gemma 3 4B Q4_K_M runs at ≈33 tok/s prompt and ≈8–10 tok/s generation
 on `n2-standard-8` CPU.
