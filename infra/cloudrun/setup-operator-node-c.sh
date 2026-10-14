@@ -19,21 +19,27 @@
 #
 # LATENCY — READ THIS BEFORE RUNNING IT
 # -------------------------------------
-# Node C is CPU-only. MEASURED on `n2-standard-8` (8 threads,
-# `llama.cpp --ctx-size 16384 --parallel 1`, `gemma` = Gemma 3 4B IT Q4_K_M): a
-# decision over the operator's real prompt takes **minutes, not seconds** — ≈84 s
-# with a one-sample evidence window and ≈6.7 min (402 s) with the real 20-sample
-# window (prefill ≈33 tok/s, generation ≈8–10 tok/s). The real 20-sample request
-# is 12,748 prompt tokens under Gemma's tokenizer and **fits** the shipped
-# context. (The DeepSeek distill it replaced was slower — 156 s / 12 min — and its
-# 8,973-token request did not fit the old `--ctx-size 8192 --parallel 2`.)
+# Node C is CPU-only. MEASURED on `n2-standard-8` (8 threads, `gemma` = Gemma 3 4B
+# IT Q4_K_M): a decision over the operator's real prompt takes **minutes, not
+# seconds** — ≈84 s with a one-sample evidence window and ≈6.7 min (402 s) with
+# the real 20-sample window (prefill ≈33 tok/s, generation ≈8–10 tok/s). The real
+# 20-sample request is 12,748 prompt tokens under Gemma's tokenizer and fits the
+# 16,384-token slot.
+#
+# Node C MUST serve more than one slot (`--ctx-size 32768 --parallel 2` in
+# `infra/gcp/cloud-init/llama-serve.sh`). With `--parallel 1` the server is a
+# single-slot queue, so a `POST /intents` extraction that arrives while the
+# operator is deciding waits behind the whole ~400 s decision and the request is
+# never answered (HTTP 000) — the seeder-driven operator log and a responsive
+# intent path were mutually exclusive. Two slots make them independent.
 #
 # So: this makes the architecture faithful (the model is on-prem and the calls
 # reach Node C), but it does NOT make the decision step interactive. The
 # interactive demo moment is carried by the deterministic fast-path
 # (architecture.md R24). Budget `TERMINI_OPERATOR_DECISION_TIMEOUT_S` for the
-# slow path, and be aware the operator loop holds its DB transaction for the
-# duration of the call, so ingest stalls while a decision is in flight.
+# slow path. The operator loop holds NO DB transaction across the call
+# (controller/app/operator/loop.py: detection commits before remediation), so
+# ingest continues while a decision is in flight.
 #
 # Usage (on the controller VM):
 #   sudo bash setup-operator-node-c.sh [NODE_C_HOST]
@@ -45,6 +51,11 @@ BASE_URL="http://${NODE_C}:8080"
 # A decision can legitimately take ~10 min on CPU; the default 30 s would make
 # every decision a timeout+fallback. Widen it on purpose.
 DECISION_TIMEOUT_S="${DECISION_TIMEOUT_S:-900}"
+# The intent extractor shares that model but NOT that patience: it is a
+# user-facing synchronous call inside POST /intents, so it gets its own bound.
+# Without it the extraction inherited the 900 s decision timeout and a request
+# that landed behind a decision hung until the client gave up (HTTP 000).
+INTENT_TIMEOUT_S="${INTENT_TIMEOUT_S:-120}"
 
 echo "--- proving Node C's llama.cpp is reachable before touching the controller ---"
 if ! curl -sS -m 10 -o /dev/null -w '  /health http=%{http_code}\n' "${BASE_URL}/health"; then
@@ -65,6 +76,8 @@ Environment=TERMINI_INFERENCE_BASE_URL=${BASE_URL}
 Environment=TERMINI_INFERENCE_MODEL=gemma
 Environment=TERMINI_INFERENCE_TIMEOUT_S=${DECISION_TIMEOUT_S}
 Environment=TERMINI_OPERATOR_DECISION_TIMEOUT_S=${DECISION_TIMEOUT_S}
+# The user-facing intent path gets its own bound (see INTENT_TIMEOUT_S above).
+Environment=TERMINI_INTENT_MODEL_TIMEOUT_S=${INTENT_TIMEOUT_S}
 DROPIN
 
 sudo systemctl daemon-reload

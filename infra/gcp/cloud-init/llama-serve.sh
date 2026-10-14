@@ -18,11 +18,25 @@
 #   * CPU inference (this footprint has no GPU; `--n-gpu-layers 0` is implicit in a
 #     GGML_CUDA=OFF build).
 #
-# Context sizing: the operator's real 20-sample decision prompt is 8,973 tokens
-# (measured 2026-10-12) and is REJECTED outright at 4,096 tokens/slot
-# (`--ctx-size 8192 --parallel 2`). So the shipped flags are
-# `--ctx-size 16384 --parallel 1 --threads 8`: 16,384 tokens/slot leaves headroom
-# over the real prompt, and generation is pinned to the node's 8 vCPUs.
+# Context/slot sizing: llama.cpp divides `--ctx-size` across `--parallel` slots,
+# so the shipped flags give EVERY slot the full 16,384 tokens.
+#
+# It must be at least 2 slots. With `--parallel 1` this server is a single-slot
+# queue: a request that arrives while another is being processed is held open
+# until the first finishes. The AI operator's decision prompt is ~9,000 tokens
+# (20-sample evidence window) and takes ~400 s to prefill on CPU, so while the
+# operator was deciding — which the demo seeder's fault injection triggers
+# continuously — a user's `POST /intents` extraction queued behind it and the
+# request was never answered at all (`HTTP 000` after 200 s; the request never
+# reached the controller's access log because the handler was still blocked
+# inside the model call). Two slots is the minimum that makes the operator's
+# decision and a user's extraction independent; measured on node-c, a warm
+# extraction is ~5.5 s and the operator's decision ~400 s.
+#
+# `--ctx-size 32768 --parallel 2` = 2 × 16,384 tokens/slot, which keeps the
+# 20-sample operator prompt (8,973 tokens measured 2026-10-12) inside one slot
+# with headroom. (The older `--ctx-size 8192 --parallel 2` was rejected outright
+# because that halves the per-slot window to 4,096.)
 #
 # `--reasoning-format none` keeps any inline reasoning block in the assistant
 # `content`, so plain OpenAI clients (termini-agent, the ADK demo) always receive
@@ -104,7 +118,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=termini-infer
-ExecStart=$PREFIX/bin/llama-server --model $MODEL_DIR/$MODEL_FILE --alias $MODEL_ALIAS --host 0.0.0.0 --port $PORT --ctx-size 16384 --parallel 1 --threads 8 --reasoning-format none
+ExecStart=$PREFIX/bin/llama-server --model $MODEL_DIR/$MODEL_FILE --alias $MODEL_ALIAS --host 0.0.0.0 --port $PORT --ctx-size 32768 --parallel 2 --threads 8 --reasoning-format none
 Restart=on-failure
 RestartSec=3
 

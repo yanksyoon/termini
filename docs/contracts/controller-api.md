@@ -346,6 +346,25 @@ premises boundary — `governance.md` §7.3) → structured `AllocationRequest` 
 guardrail validator (section 5) → `AllocationPlan`. A `spec` skips extraction and
 is validated directly.
 
+Extraction is a **synchronous model call inside this request**, and the model is
+shared with the AI operator's decision step. Two consequences are contractual:
+
+- the extraction round-trip is bounded by `TERMINI_INTENT_MODEL_TIMEOUT_S`
+  (default 120 s), NOT by `TERMINI_INFERENCE_TIMEOUT_S` — the latter is sized for
+  the operator's minutes-long decisions on a CPU-only fleet and must not be
+  inherited by a user-facing request;
+- the on-prem model must serve **more than one slot** (`--ctx-size 32768
+  --parallel 2`, `infra/gcp/cloud-init/llama-serve.sh`). A single-slot server
+  queues the extraction behind a whole operator decision (~400 s with the
+  20-sample evidence window), which is indistinguishable from a hang: the request
+  is never answered, so the client sees `000` and no access-log line is written.
+
+If extraction does not produce a spec in that window (timeout, connection error,
+unparseable JSON) the endpoint answers `503 INTERNAL` with the
+`extraction_failed` detail — an explicit, retryable "the model did not answer",
+kept distinct from a guardrail refusal. `422 GUARDRAIL_REJECTED` is reserved for
+a *real* spec that the guardrail refused.
+
 Response `200 OK` (plan), or `422` if the plan outcome is rejected:
 ```json
 {
@@ -362,7 +381,9 @@ Response `200 OK` (plan), or `422` if the plan outcome is rejected:
 ```
 The plan is accepted or rejected; a rejected plan returns HTTP 422 with
 `code: GUARDRAIL_REJECTED` and the same `allocations` array explaining per-class
-rejections. Accepted plans are NOT executed by this endpoint — the caller invokes
+rejections, plus a plan-level `reject_reasons[]` whose `detail` names the node and
+the numbers (`ram_free_gb`, what was already allocated, what the request needed).
+Accepted plans are NOT executed by this endpoint — the caller invokes
 `POST /v1/projects/{project_id}/vms/apply` (below) to materialize a plan, at which
 point each allocation's `vm_ids` is filled with the real LXD instance ids.
 
@@ -474,6 +495,17 @@ Two deliberate conservatisms (absence must be *proven*, not assumed):
 - a node that **cannot be reached** (untrusted, unreachable, timeout, non-JSON) is
   skipped, never treated as empty — an unreachable node must not release every
   plan's capacity.
+
+One reservation shape *can* be proven dead, and is released by a separate
+startup pass (`release_orphaned_reservations`): a never-applied commit whose
+`plan_id` is not among the plans this controller process holds. The accepted-plan
+map is in-memory only and `vms/apply` is the only thing that can materialise a
+plan, so after a controller restart such a reservation can never become an
+instance — the client's apply would `404 plan not found`. It is released once at
+startup with `reason: "plan_orphaned_restart"`, so a node's advertised free
+capacity is capacity it can really hand out. This closes the case that otherwise
+had no recovery route at all: `POST /intents` commits at acceptance (§5.2 step 7),
+so an intent submitted and never applied used to shrink a node forever.
 
 #### POST /v1/projects/{project_id}/nodes/{node_id}/decommission
 
@@ -749,6 +781,7 @@ without a passing validator run.
 | agent_vm `vcpus`      | [1, 8]  | Preferred range (clamped, not rejected)        |
 | agent_vm `ram_gb`     | [1, 16] | Preferred range (clamped, not rejected)        |
 | agent_vm `disk_gb`    | [4, 64] | Preferred range (clamped, not rejected)        |
+| agent_vm unspecified size | `vcpus 1 / ram_gb 1 / disk_gb 8` | The size an `agent_vm` gets when the request names none (`termini.intent.types.DEFAULT_AGENT_VM`, also the extraction prompt's few-shot). Sized for the smallest node the demo places on (`n2-standard-2`: 2 vCPU / 8 GiB ⇒ 5 GiB allocatable after the 2 GiB reserve), so a plain "deploy 2 worker agents" is accepted with headroom instead of refused `exceeds_node_ram_ceiling`. A user who names a size still gets literal extraction + the §5.2 step 6 clamp. |
 | inference_vm `vcpus`  | [4, 32] | Reference sizing for the Node C host service (day-2 VM budget; not launched in the demo) |
 | inference_vm `ram_gb` | [8, 64] | Reference sizing (day-2 VM budget; not launched in the demo) |
 | inference_vm `disk_gb`| [32,512]| Reference sizing (day-2 VM budget; not launched in the demo) |

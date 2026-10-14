@@ -8,6 +8,7 @@ output except through :func:`extract_and_validate`.
 
 from .extractor import ExtractionError, extract, extract_and_validate
 from .types import (
+    DEFAULT_AGENT_VM,
     DEFAULT_HOST_CAPS,
     AllocationSpec,
     ClampDecision,
@@ -21,6 +22,7 @@ from .validator import clamp_validate
 __all__ = [
     "AllocationSpec",
     "ClampDecision",
+    "DEFAULT_AGENT_VM",
     "DEFAULT_HOST_CAPS",
     "ExtractionError",
     "HostCaps",

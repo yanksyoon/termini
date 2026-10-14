@@ -10,9 +10,18 @@ canonical "3 agents + 1 fast LLM" case.
 
 from __future__ import annotations
 
+import json
 from typing import Dict, List
 
-TEMPLATE_VERSION = "intent-extract v1"
+from .types import DEFAULT_AGENT_VM
+
+TEMPLATE_VERSION = "intent-extract v2"
+
+# The agent_vm size shown to the model when the user names no size. Sourced from
+# `types.DEFAULT_AGENT_VM` so the prompt and the validator defaults cannot drift
+# apart — a model that copies the example and a model that omits the field must
+# both land on a size the demo's smallest node can actually host.
+_AGENT_DEFAULT = DEFAULT_AGENT_VM
 
 # The subset of the allocation_spec schema the extractor must emit. Kept tight
 # so output parses directly into the validator's input.
@@ -50,32 +59,59 @@ Rules:
 - If a request is ambiguous or asks for an unknown resource, output
   {{"allocations": []}} rather than guessing.
 
-You may recommend generous sizes — a downstream deterministic validator clamps
-every number to the host's real capacity, so your job is faithful extraction,
-not safety. Extract the user's intent literally (e.g. a user asking for 1000
-vCPUs gets vcpus: 1000; the validator will clamp it)."""
+Sizing:
+- If the user NAMES a size ("4 vcpu", "32 GB"), extract it literally — a
+  downstream deterministic validator clamps every number to the host's real
+  capacity, so your job there is faithful extraction, not safety. A user asking
+  for 1000 vCPUs gets vcpus: 1000; the validator clamps it.
+- If the user does NOT name a size, do NOT invent a generous one. Emit the
+  documented demo default for that class: agent_vm -> vcpus
+  {_AGENT_DEFAULT["vcpus"]}, ram_gb {_AGENT_DEFAULT["ram_gb"]}, disk_gb
+  {_AGENT_DEFAULT["disk_gb"]}; inference_vm -> vcpus 4, ram_gb 8, disk_gb 32.
+  The demo's compute node is small (2 vCPU / 8 GiB), so an unspecified agent
+  size larger than the default is rejected by the guardrail instead of
+  deploying anything."""
 
-# Few-shot examples. The first covers the canonical demo prompt.
+# Few-shot examples. The first covers the canonical demo prompt. The `agent_vm`
+# sizes are the documented default (`_AGENT_DEFAULT`) — a judge typing "deploy 2
+# worker agents" with no sizes must get an example of exactly what to emit, or
+# the model invents a size the compute node cannot host (Defect B).
+def _agent_vm_example(count: int) -> dict:
+    return {
+        "type": "agent_vm",
+        "count": count,
+        "vcpus": _AGENT_DEFAULT["vcpus"],
+        "ram_gb": _AGENT_DEFAULT["ram_gb"],
+        "disk_gb": _AGENT_DEFAULT["disk_gb"],
+        "passthrough_gpu": False,
+        "target_node": "auto",
+    }
+
+
+def _inference_vm_reference() -> dict:
+    return {
+        "type": "inference_vm",
+        "count": 1,
+        "vcpus": 8,
+        "ram_gb": 16,
+        "disk_gb": 64,
+        "passthrough_gpu": False,
+        "target_node": "auto",
+    }
+
+
 FEW_SHOT: List[Dict[str, str]] = [
     {
         "user": "deploy 3 agents + 1 fast LLM",
-        "assistant": (
-            '{"allocations": ['
-            '{"type": "agent_vm", "count": 3, "vcpus": 2, "ram_gb": 4, '
-            '"disk_gb": 8, "passthrough_gpu": false, "target_node": "auto"}, '
-            '{"type": "inference_vm", "count": 1, "vcpus": 8, "ram_gb": 16, '
-            '"disk_gb": 64, "passthrough_gpu": false, "target_node": "auto"}'
-            "]}"
+        # Built with json.dumps rather than an interpolated literal so the
+        # example is guaranteed to parse and cannot drift from `_AGENT_DEFAULT`.
+        "assistant": json.dumps(
+            {"allocations": [_agent_vm_example(3), _inference_vm_reference()]}
         ),
     },
     {
         "user": "spin up 5 worker agents for web scraping",
-        "assistant": (
-            '{"allocations": ['
-            '{"type": "agent_vm", "count": 5, "vcpus": 2, "ram_gb": 4, '
-            '"disk_gb": 16, "passthrough_gpu": false, "target_node": "auto"}'
-            "]}"
-        ),
+        "assistant": json.dumps({"allocations": [_agent_vm_example(5)]}),
     },
     {
         "user": "one GPU box with 32 vcpus and 64GB RAM to serve the big model",
