@@ -76,8 +76,13 @@ Environment=TERMINI_INFERENCE_BASE_URL=${BASE_URL}
 Environment=TERMINI_INFERENCE_MODEL=gemma
 Environment=TERMINI_INFERENCE_TIMEOUT_S=${DECISION_TIMEOUT_S}
 Environment=TERMINI_OPERATOR_DECISION_TIMEOUT_S=${DECISION_TIMEOUT_S}
-# The user-facing intent path gets its own bound (see INTENT_TIMEOUT_S above).
 Environment=TERMINI_INTENT_MODEL_TIMEOUT_S=${INTENT_TIMEOUT_S}
+# The user-facing intent path gets its own bound (see INTENT_TIMEOUT_S above) AND
+# its own model instance: even with a multi-slot server, the operator's ~12k-token
+# decision prompt fills llama.cpp's batch, so a small concurrent extraction makes
+# no progress until that prefill ends. Node C serves a dedicated small-context
+# llama.cpp instance on :8090 for exactly this (infra/gcp/cloud-init/llama-serve.sh).
+Environment=TERMINI_INTENT_INFERENCE_BASE_URL=http://${NODE_C}:8090
 DROPIN
 
 sudo systemctl daemon-reload

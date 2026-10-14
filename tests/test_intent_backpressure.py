@@ -70,7 +70,7 @@ DEFAULT_SPEC = {
 }
 
 
-def _load_cfg(db_path: str, intent_timeout_s: float):
+def _load_cfg(db_path: str, intent_timeout_s: float, extra_env: dict | None = None):
     env = {
         "TERMINI_BOOTSTRAP_TOKEN": "boot-a,boot-c",
         "TERMINI_PROJECT_TOKEN": PROJECT_TOKEN,
@@ -82,6 +82,7 @@ def _load_cfg(db_path: str, intent_timeout_s: float):
         "TERMINI_PORT": "0",
         "TERMINI_INTENT_MODEL_TIMEOUT_S": str(intent_timeout_s),
     }
+    env.update(extra_env or {})
     with mock.patch.dict(os.environ, env, clear=False):
         return config.Config.load()
 
@@ -186,18 +187,20 @@ class _StubModel:
 
 
 class ShippedModelServerSlotsTest(unittest.TestCase):
-    """The model server node-c ships must not be a single-slot queue."""
+    """Node-c must not serve the operator and the user from one model instance."""
 
     def setUp(self):
         self.script = (REPO / "infra/gcp/cloud-init/llama-serve.sh").read_text()
-        # Parse the ACTUAL service invocation, not the prose around it (the
+        # Parse the ACTUAL service invocations, not the prose around them (the
         # comments deliberately discuss the old `--parallel 1` flags).
-        exec_lines = [ln for ln in self.script.splitlines() if ln.startswith("ExecStart=")]
-        self.assertEqual(len(exec_lines), 1, "expected exactly one ExecStart line")
-        self.exec_line = exec_lines[0]
+        self.exec_lines = [ln for ln in self.script.splitlines() if ln.startswith("ExecStart=")]
+        self.assertEqual(len(self.exec_lines), 2,
+                         "expected the decision instance and the intent instance")
+        self.decision_line = self.exec_lines[0]
+        self.intent_line = self.exec_lines[1]
 
-    def test_more_than_one_slot(self):
-        m = re.search(r"--parallel\s+(\d+)", self.exec_line)
+    def test_the_decision_instance_has_more_than_one_slot(self):
+        m = re.search(r"--parallel\s+(\d+)", self.decision_line)
         self.assertIsNotNone(m, "llama-serve.sh no longer sets --parallel")
         self.assertGreaterEqual(
             int(m.group(1)), 2,
@@ -207,13 +210,70 @@ class ShippedModelServerSlotsTest(unittest.TestCase):
         )
 
     def test_every_slot_keeps_the_full_16k_context(self):
-        parallel = int(re.search(r"--parallel\s+(\d+)", self.exec_line).group(1))
-        ctx = int(re.search(r"--ctx-size\s+(\d+)", self.exec_line).group(1))
+        parallel = int(re.search(r"--parallel\s+(\d+)", self.decision_line).group(1))
+        ctx = int(re.search(r"--ctx-size\s+(\d+)", self.decision_line).group(1))
         self.assertGreaterEqual(
             ctx // parallel, 16384,
             "llama.cpp divides --ctx-size across --parallel slots; the 20-sample "
             "operator prompt is ~9k tokens and must fit one slot",
         )
+
+    def test_a_dedicated_extraction_instance_is_served_on_its_own_port(self):
+        """A second slot is NOT enough — the extraction needs its own PROCESS.
+
+        llama.cpp fills its batch from the operator's ~12k-token prompt first, so
+        a small concurrent request on another slot of the SAME server gets no
+        compute until that prefill ends (measured: the extraction hit its 120 s
+        bound while the decision prefilled). The shipped cloud-init therefore
+        serves a separate small-context instance for `POST /intents`.
+        """
+        self.assertIn("termini-llama-intent.service", self.script)
+        m_port = re.search(r"--port\s+(\S+)", self.intent_line)
+        self.assertIsNotNone(m_port, "the intent instance must pin its own port")
+        self.assertNotEqual(m_port.group(1),
+                            re.search(r"--port\s+(\S+)", self.decision_line).group(1))
+        # The dedicated port is a concrete default (not the templated decision
+        # port) and is not the frozen inference port.
+        default_port = re.search(r'INTENT_PORT="\$\{INTENT_PORT:-(\d+)\}"', self.script)
+        self.assertIsNotNone(default_port, "INTENT_PORT must have a concrete default")
+        self.assertNotEqual(default_port.group(1), "8080")
+        self.assertRegex(self.script, r"systemctl enable --now termini-llama-intent\.service")
+        # Small context: it only ever holds the extraction prompt.
+        ctx = int(re.search(r"--ctx-size\s+(\d+)", self.intent_line).group(1))
+        self.assertLessEqual(ctx, 8192)
+
+    def test_the_two_instances_do_not_oversubscribe_the_node(self):
+        threads = [int(re.search(r"--threads\s+(\d+)", ln).group(1))
+                   for ln in self.exec_lines]
+        self.assertLessEqual(sum(threads), 10,
+                             "the node has 8 vCPUs; the intent instance must keep "
+                             "a real thread budget without starving the decision")
+
+
+class IntentModelConfigTest(unittest.TestCase):
+    """The intent path's endpoint/timeout are its own, not the operator's."""
+
+    def test_dedicated_endpoint_is_used_when_set(self):
+        cfg = _load_cfg(tempfile.mktemp(suffix=".db"), 1.0,
+                        extra_env={"TERMINI_INTENT_INFERENCE_BASE_URL": "http://10.0.0.9:8090"})
+        self.assertEqual(cfg.intent_inference_base_url, "http://10.0.0.9:8090")
+        built = server_mod._load_intent_model_config(120.0, cfg.intent_inference_base_url)
+        self.assertIsNotNone(built)
+        self.assertEqual(built.base_url, "http://10.0.0.9:8090")
+        self.assertEqual(built.timeout_s, 120.0)
+
+    def test_endpoint_defaults_to_unset_and_falls_back(self):
+        cfg = _load_cfg(tempfile.mktemp(suffix=".db"), 1.0)
+        self.assertEqual(cfg.intent_inference_base_url, "")
+        with mock.patch.dict(os.environ, {
+            "TERMINI_INFERENCE_BASE_URL": "http://10.0.0.7:8080",
+            "TERMINI_INFERENCE_TIMEOUT_S": "900",
+        }):
+            built = server_mod._load_intent_model_config(120.0, cfg.intent_inference_base_url or None)
+        self.assertIsNotNone(built)
+        # Falls back to the shared endpoint, but NEVER to the operator's timeout.
+        self.assertEqual(built.base_url, "http://10.0.0.7:8080")
+        self.assertEqual(built.timeout_s, 120.0)
 
 
 # --------------------------------------------------------------------------- http harness

@@ -353,11 +353,15 @@ shared with the AI operator's decision step. Two consequences are contractual:
   (default 120 s), NOT by `TERMINI_INFERENCE_TIMEOUT_S` — the latter is sized for
   the operator's minutes-long decisions on a CPU-only fleet and must not be
   inherited by a user-facing request;
-- the on-prem model must serve **more than one slot** (`--ctx-size 32768
-  --parallel 2`, `infra/gcp/cloud-init/llama-serve.sh`). A single-slot server
-  queues the extraction behind a whole operator decision (~400 s with the
-  20-sample evidence window), which is indistinguishable from a hang: the request
-  is never answered, so the client sees `000` and no access-log line is written.
+- the extraction runs against its own model endpoint,
+  `TERMINI_INTENT_INFERENCE_BASE_URL` (empty falls back to the shared model). It
+  is not enough to give one model server extra slots: llama.cpp fills its batch
+  from the operator's ~12k-token decision prompt first, so a small concurrent
+  request on another slot gets no compute until that prefill ends. The shipped
+  deployment therefore serves a dedicated small-context instance beside the
+  decision model (`infra/gcp/cloud-init/llama-serve.sh`, node-c `:8090`), and the
+  decision instance serves ≥2 slots (`--ctx-size 32768 --parallel 2`) so a
+  request that does share it is not queued behind a whole decision.
 
 If extraction does not produce a spec in that window (timeout, connection error,
 unparseable JSON) the endpoint answers `503 INTERNAL` with the

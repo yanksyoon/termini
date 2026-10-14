@@ -21,22 +21,24 @@
 # Context/slot sizing: llama.cpp divides `--ctx-size` across `--parallel` slots,
 # so the shipped flags give EVERY slot the full 16,384 tokens.
 #
-# It must be at least 2 slots. With `--parallel 1` this server is a single-slot
-# queue: a request that arrives while another is being processed is held open
-# until the first finishes. The AI operator's decision prompt is ~9,000 tokens
-# (20-sample evidence window) and takes ~400 s to prefill on CPU, so while the
-# operator was deciding — which the demo seeder's fault injection triggers
-# continuously — a user's `POST /intents` extraction queued behind it and the
-# request was never answered at all (`HTTP 000` after 200 s; the request never
-# reached the controller's access log because the handler was still blocked
-# inside the model call). Two slots is the minimum that makes the operator's
-# decision and a user's extraction independent; measured on node-c, a warm
-# extraction is ~5.5 s and the operator's decision ~400 s.
+# TWO instances are served, because one is not enough to keep the user-facing
+# intent path alive:
 #
-# `--ctx-size 32768 --parallel 2` = 2 × 16,384 tokens/slot, which keeps the
-# 20-sample operator prompt (8,973 tokens measured 2026-10-12) inside one slot
-# with headroom. (The older `--ctx-size 8192 --parallel 2` was rejected outright
-# because that halves the per-slot window to 4,096.)
+#   * `termini-llama-server` (:8080) — the AI operator's decision model. Its
+#     20-sample decision prompt is ~12,000 tokens and takes ~400 s to prefill on
+#     CPU. It MUST serve >=2 slots (`--parallel 1` made it a single-slot queue, so
+#     a concurrent request waited behind the whole decision).
+#   * `termini-llama-intent` (:8090) — a small-context instance for
+#     `POST /intents` extraction only. A second slot on ONE server is not enough:
+#     llama.cpp fills its batch from the big prompt first, so a small concurrent
+#     request gets no compute at all until the ~400 s prefill ends (measured: the
+#     extraction timed out at its 120 s bound while the operator's prompt
+#     processed). Separate processes give the extraction its own threads, which
+#     is what makes a judge's keystroke answer while the operator log stays live.
+#     The controller points at it with TERMINI_INTENT_INFERENCE_BASE_URL.
+#
+# The thread budgets add to slightly more than the node's 8 vCPUs (6 + 3): the
+# decision is the slow path and may yield.
 #
 # `--reasoning-format none` keeps any inline reasoning block in the assistant
 # `content`, so plain OpenAI clients (termini-agent, the ADK demo) always receive
@@ -52,6 +54,7 @@ MODEL_FILE="__MODEL_FILE__"
 MODEL_SHA256="__MODEL_SHA256__"
 MODEL_ALIAS="__MODEL_ALIAS__"
 PORT="__PORT__"
+INTENT_PORT="${INTENT_PORT:-8090}"
 
 PREFIX="/opt/termini/llama.cpp"
 MODEL_DIR="/var/lib/termini/models"
@@ -118,7 +121,28 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=termini-infer
-ExecStart=$PREFIX/bin/llama-server --model $MODEL_DIR/$MODEL_FILE --alias $MODEL_ALIAS --host 0.0.0.0 --port $PORT --ctx-size 32768 --parallel 2 --threads 8 --reasoning-format none
+ExecStart=$PREFIX/bin/llama-server --model $MODEL_DIR/$MODEL_FILE --alias $MODEL_ALIAS --host 0.0.0.0 --port $PORT --ctx-size 32768 --parallel 2 --threads 6 --reasoning-format none
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+# Dedicated small-context instance for `POST /intents` NL extraction. Separate
+# PROCESS, so the operator's ~12k-token decision prefill cannot starve the
+# extraction batch. The controller reaches it via
+# TERMINI_INTENT_INFERENCE_BASE_URL=http://<node-c>:$INTENT_PORT.
+cat > /etc/systemd/system/termini-llama-intent.service <<UNIT
+[Unit]
+Description=Termini intent-extraction llama.cpp server (Node C, :$INTENT_PORT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=termini-infer
+ExecStart=$PREFIX/bin/llama-server --model $MODEL_DIR/$MODEL_FILE --alias $MODEL_ALIAS --host 0.0.0.0 --port $INTENT_PORT --ctx-size 4096 --parallel 1 --threads 3 --reasoning-format none
 Restart=on-failure
 RestartSec=3
 
@@ -128,5 +152,7 @@ UNIT
 
 systemctl daemon-reload
 systemctl enable --now termini-llama-server.service
+systemctl enable --now termini-llama-intent.service
 
 echo "[$(date -u +%FT%TZ)] termini-llama-server enabled; health http://0.0.0.0:$PORT/health"
+echo "[$(date -u +%FT%TZ)] termini-llama-intent  enabled (:${INTENT_PORT}): the POST /intents extraction endpoint"

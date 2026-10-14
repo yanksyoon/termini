@@ -671,7 +671,10 @@ class ControllerHandler(BaseHTTPRequestHandler):
             # unbounded patience. See config.intent_model_timeout_s.
             result = extract_and_validate(
                 body["prompt"], host_caps,
-                config=_load_intent_model_config(self.server.cfg.intent_model_timeout_s),
+                config=_load_intent_model_config(
+                    self.server.cfg.intent_model_timeout_s,
+                    self.server.cfg.intent_inference_base_url or None,
+                ),
             )
             _raise_if_extraction_failed(result)
             raw_allocations = None
@@ -1850,15 +1853,25 @@ def _load_intent_extractor():
             return None
 
 
-def _load_intent_model_config(timeout_s: float):
-    """The extractor's model config, with the INTENT path's own timeout.
+def _load_intent_model_config(timeout_s: float, base_url: str | None = None):
+    """The extractor's model config, with the INTENT path's own bound and endpoint.
 
     The on-prem model config is read from the frozen `TERMINI_INFERENCE_*` env
-    (termini/intent/config.py). `TERMINI_INFERENCE_TIMEOUT_S` is shared with the
-    operator's decision adapter, so it is set to minutes on a CPU-only fleet; the
-    intent path is a user-facing synchronous call and must not inherit that
-    patience. Returns ``None`` when the package is unavailable, in which case the
-    extractor falls back to its own defaults (existing behaviour).
+    (termini/intent/config.py). Both overrides exist so a user-facing synchronous
+    extraction cannot be starved by the operator's minutes-long decision:
+
+    * ``timeout_s`` — `TERMINI_INFERENCE_TIMEOUT_S` is shared with the operator's
+      decision adapter and is set to minutes on a CPU-only fleet; the intent path
+      must not inherit that patience.
+    * ``base_url`` — `TERMINI_INTENT_INFERENCE_BASE_URL`, the deployment's
+      dedicated extraction endpoint. Even on a multi-slot model server the
+      operator's ~12k-token decision prompt fills the llama.cpp batch, so a small
+      concurrent request makes no progress until that prefill ends; a separate
+      instance gives the extraction its own threads. Empty/None falls back to the
+      general endpoint.
+
+    Returns ``None`` when the package is unavailable, in which case the extractor
+    falls back to its own defaults (existing behaviour).
     """
     try:
         import dataclasses
@@ -1872,8 +1885,11 @@ def _load_intent_model_config(timeout_s: float):
             from termini.intent.config import ModelConfig
         except ImportError:
             return None
+    overrides: dict = {"timeout_s": float(timeout_s)}
+    if base_url:
+        overrides["base_url"] = base_url
     try:
-        return dataclasses.replace(ModelConfig.from_env(), timeout_s=float(timeout_s))
+        return dataclasses.replace(ModelConfig.from_env(), **overrides)
     except Exception:  # noqa: BLE001 — a bad env value must not break extraction
         log.exception("could not build the intent model config; using defaults")
         return None
