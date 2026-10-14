@@ -115,6 +115,11 @@ p { margin: 0; }
 .node-card {
   background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 11px; padding: 14px;
   display: flex; flex-direction: column; gap: 10px; border-left-width: 4px;
+  /* The card is a GRID ITEM. Grid items default to `min-width: auto`, so an
+     unbreakable child (a 32-char registration_id on one nowrap line) inflates the
+     track itself and the whole card grows past its column. Truncating the name
+     alone does not fix that - the item has to be allowed to shrink first. */
+  min-width: 0; overflow: hidden;
 }
 .node-card.status-online { border-left-color: var(--ok); }
 .node-card.status-degraded { border-left-color: var(--warn); }
@@ -126,8 +131,13 @@ p { margin: 0; }
      stretches the flex row and pushes the role/status badges outside the card. */
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* The badges must never be squeezed by a long name: they keep their intrinsic
-   size, and the name ellipsises instead. */
+/* The identity block is a flex child of .node-head, and the badges live inside
+   .flag-row (NOT as direct children). Both need explicit sizing or the long
+   nowrap name wins the row and pushes the badges out of the card:
+     - .node-ident must be allowed to shrink (min-width: 0) so the name ellipsises;
+     - .flag-row must not shrink, so the badges keep their intrinsic size. */
+.node-ident { min-width: 0; flex: 1 1 auto; }
+.node-head > .flag-row { flex: 0 0 auto; }
 .node-head > .badge { flex: 0 0 auto; }
 .node-sub {
   color: var(--muted); font-size: .8rem; font-family: ui-monospace, monospace;
