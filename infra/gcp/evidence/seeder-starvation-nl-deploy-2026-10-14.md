@@ -145,6 +145,33 @@ that was materialised had its instances deleted and was released by
 `POST /vms/reconcile` as `instances_gone`. No database row was hand-edited.)
 
 <!--A_COINCIDENT-->
+### The same-moment proof: the intent is served *while* the decision instance is busy
+
+A ~4,200-token operator-scale prefill was submitted to the decision instance
+(`:8080`) and the intent submitted 20 s later, while that prefill was running. The
+prefill ran for **259 s**; the intent did not wait for it:
+
+```
+[8080] operator-scale prefill STARTED
+--- POST /intents on the controller WHILE :8080 is prefilling ---
+HTTP=200 time=12.219191s
+BODY: outcome accepted plan 01M4X72NFVS0K3871W9ZMRAKGX node 01M4TGD31WXH97JAA5S6A4R10D accepted
+      {"type": "agent_vm", "count": 2, "vcpus": 1, "ram_gb": 1, "disk_gb": 8, "target_node": "auto"}
+--- 8080 slot activity (proof the decision instance was busy) ---
+[8080] prefill FINISHED 259 s
+```
+
+Because the extraction never touches `:8080` any more, "a decision is in flight"
+is no longer part of the intent path's latency at all — which is the property the
+demo needs: the operator log and a responsive dashboard, at the same time.
+
+Two honest caveats on the timing above: the third-party prefill on `:8080` stands
+in for a real decision (same shape and same instance); and the operator's 600 s
+per-rule cooldown meant no *spontaneous* decision overlapped the final measurement
+window (the real decision captured earlier is in the BEFORE section). The
+mechanism-level evidence — which server answered, and its own timing line — is in
+the block above.
+
 
 
 ---
