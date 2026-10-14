@@ -690,6 +690,43 @@ fault episode.
 by. The lease is persisted in the controller DB (`operator_lease`, migration
 0007), so the in-process loop and the standalone CLI share one source of truth.
 
+### 4.6 Operator provisioning (seeder self-bootstrap)
+
+#### POST /v1/bootstrap-tokens
+
+`project_token` auth **and direct-loopback only**. Body `{ "count": 2 }` (`count`
+an integer in `[1, 32]`, default `2`). Mints `count` fresh **unused single-use**
+bootstrap tokens — the same rows `TERMINI_BOOTSTRAP_TOKEN` seeds at startup — and
+returns them:
+
+```json
+{ "schema_version": "1.0", "count": 2,
+  "tokens": ["<opaque>", "<opaque>"],
+  "created_at": "2026-10-04T07:49:05.000Z", "single_use": true }
+```
+
+Why it exists: the demo seeder (`console/seed_demo.py`, systemd unit
+`termini-seeder`) registers its synthetic nodes through `POST /v1/nodes/register`,
+which **burns** a single-use bootstrap token. A burned token cannot be reused, so
+a seeder restart used to need hand-minted tokens written into its unit — and even
+then a drop-in could override them (drop-ins load after the unit; the last one
+setting a key wins). Starting the seeder therefore failed `401 bootstrap token
+already used`, which is a recording landmine. With this route the seeder fetches
+fresh tokens at startup (`--bootstrap-mint N`) and a bare
+`systemctl start termini-seeder` works.
+
+**The single-use property is unchanged for real nodes.** A minted token is an
+ordinary `bootstrap_tokens` row: registration still burns it
+(`store.burn_bootstrap_token`) and a replayed token is still rejected by
+`_require_bootstrap` with `401 bootstrap token already used`. Minting is
+restricted to a **direct** loopback connection precisely so that the only
+credential the demo hands out (the project token) does not become a token-minting
+capability for a remote caller: the demo controller is reached publicly through a
+reverse proxy on the same host (`:443 -> 127.0.0.1:8080`), so a loopback TCP peer
+alone would not distinguish a public request from the seeder's — a request carrying
+any proxy-forwarding header (`X-Forwarded-For`, `X-Real-Ip`, `Forwarded`, `Via`) is
+treated as remote and refused `403`.
+
 ---
 
 ## 5. Guardrail & Clamp Validator
@@ -748,6 +785,21 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
    the most free allocatable RAM (deterministic tie-break: lowest `node_id`). An
    explicit `target_node` that is not a valid compute node → `REJECT`
    (`invalid_target_node_type`).
+   **Model-host exclusion (normative).** `auto` never resolves to the node that
+   serves the always-on decision model. That node is a *service* host — it runs
+   llama.cpp for the whole fleet — and nothing in the frozen role vocabulary says
+   so: role is GPU-gated (§4.1 / `node-bootstrap.md` §5.3), so a CPU-only model
+   host registers `compute` and, on a fleet where it has more RAM than the real
+   compute node, won every max-free-RAM comparison (agents materialised on the
+   machine busy serving the model, and the operator's remediation — which dials
+   each node's own endpoint — then touched a different node than the one that
+   holds the agents). The host is identified from the model address the controller
+   already knows (`TERMINI_INFERENCE_BASE_URL`) matched against each node's
+   reported LXD endpoint / source address, plus any operator-named hosts
+   (`TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`). The exclusion is dropped when it
+   would leave **no** candidate at all, so a single-node / seeder-only demo stays
+   placeable; an explicit `target_node` naming the model host is still honoured,
+   because naming a node is not `auto`. This does **not** change role assignment.
    **Provenance rule (normative).** A row fabricated by the demo seeder
    (`nodes.synthetic = true`; declared on the registration wire, `node-bootstrap.md`
    §5.2) is never preferred over a real registered node, and is not resolvable at
@@ -827,8 +879,13 @@ The demo wires two command surfaces (`architecture.md` R5):
   `{"reason": "disk_degradation", "evacuate_to": "<node-id>"}`.
 - **AI-operator remediation** — the LXD REST actions the executor issues
   (`controller/app/operator/executor.py`): `instance.restart`, `instance.stop`,
-  `instance.delete`, `image.prune`. These are issued directly against the node's LXD
-  REST API by the operator loop; they are **not** `vm.*` command-envelope verbs.
+  `instance.delete`, `image.prune`. These are issued directly against the LXD
+  REST API of **the node that reported the fault** — the loop resolves a per-node
+  executor exactly as apply-plan materialisation does
+  (`app/operator/target.executor_for_node`), so remediation reaches the machine
+  that holds the instances; the global `TERMINI_LXD_BASE_URL` is only the fallback
+  for a node that reported no endpoint. They are **not** `vm.*` command-envelope
+  verbs.
 
 Command envelope (the queued-command store, `controller/app/commands.py`):
 

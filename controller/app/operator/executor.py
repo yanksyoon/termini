@@ -111,7 +111,37 @@ class LxdExecutor:
         self.timeout_s = timeout_s
         self.retry_max = max(1, retry_max)
         self.backoff_s = backoff_s
+        # Retained for introspection and re-targeting (`with_base_url`). The SSL
+        # context is built once and SHARED with every re-targeted executor, so a
+        # per-node executor always presents exactly the client identity the
+        # controller was configured with: a per-node executor that silently lost
+        # the client certificate would be refused (mTLS) by a real node.
+        self.client_cert = client_cert
+        self.client_key = client_key
+        self.server_ca = server_ca
         self._ssl_ctx = self._make_ssl_ctx(client_cert, client_key, server_ca)
+
+    def with_base_url(self, base_url: str) -> "LxdExecutor":
+        """A copy of this executor pointed at another node's LXD endpoint.
+
+        The operator loop uses this to reach the node that reported a fault while
+        keeping the controller's credentials, timeouts and TLS policy exactly as
+        configured (`OperatorLoop._executor_for`). Sharing `_ssl_ctx` rather than
+        rebuilding it from env is deliberate: production resolves the LXD client
+        identity out-of-band (`app/lxdtrust.py`) and hands the loop a credentialed
+        executor, so a re-targeted executor must inherit THAT identity.
+        """
+        clone = object.__new__(LxdExecutor)
+        clone.base_url = base_url.rstrip("/")
+        clone.dry_run = self.dry_run
+        clone.timeout_s = self.timeout_s
+        clone.retry_max = self.retry_max
+        clone.backoff_s = self.backoff_s
+        clone.client_cert = self.client_cert
+        clone.client_key = self.client_key
+        clone.server_ca = self.server_ca
+        clone._ssl_ctx = self._ssl_ctx
+        return clone
 
     @staticmethod
     def _make_ssl_ctx(

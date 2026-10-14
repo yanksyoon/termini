@@ -98,6 +98,24 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(r.path, "/1.0/instances/agent-c1/state")
         self.assertIn("already stopped", r.detail)
 
+    def test_a_failed_operation_carrying_the_LIVE_message_is_also_folded(self):
+        """The exact LIVE transport: the stop operation itself FAILS.
+
+        The sibling test above uses LXD's synchronous 400. Real node-a answered with
+        a *failed operation* — the audit row recorded `result=error`, detail
+        `operation Failure: The instance is already stopped` (remediation_audits,
+        2026-10-13T12:24:37Z) — so the fold must cover the operation path too, not
+        just the synchronous one.
+        """
+        self.lxd.operation_status = "Failure"
+        self.lxd.operation_error = "The instance is already stopped"
+        self.lxd.set_state("agent-c1", "Running")
+
+        r = LxdExecutor(self.lxd.base_url).stop_instance("agent-c1")
+
+        self.assertEqual(r.result, "already_applied")
+        self.assertIn("already stopped", r.detail)
+
     def test_stop_of_a_running_instance_still_really_stops_it(self):
         """Control: the fold must not swallow a genuine stop."""
         self.lxd.strict_stop = True

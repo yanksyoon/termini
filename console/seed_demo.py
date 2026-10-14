@@ -124,6 +124,31 @@ def register(base: str, boot_token: str, machine_id: str, gpus: list) -> dict:
     return r
 
 
+def mint_bootstrap_tokens(base: str, project_token: str, count: int) -> list[str]:
+    """Ask the controller for `count` FRESH single-use bootstrap tokens.
+
+    A bootstrap token is burned by the first registration, so the seeder cannot
+    simply reuse the tokens it was started with: the second run (or the first run
+    after any restart) would authenticate with an already-used token and fail
+    `401 bootstrap token already used`. That is what made the seeder need
+    hand-minted tokens written into its systemd unit — and a recording landmine
+    when they went stale.
+
+    `POST /v1/bootstrap-tokens` mints new UNUSED single-use tokens on demand. It
+    is project-token-authenticated and loopback-only (the seeder runs beside the
+    controller and talks to `127.0.0.1`). The tokens it returns are ordinary
+    single-use rows: the registration path still burns them and a replayed token
+    is still rejected, so the security property is unchanged.
+    """
+    st, r = _request(base, "POST", "/v1/bootstrap-tokens", {"count": count}, project_token)
+    if st not in (200, 201) or not isinstance(r, dict):
+        raise SystemExit(f"bootstrap-token mint failed: {st} {r}")
+    tokens = r.get("tokens")
+    if not isinstance(tokens, list) or len(tokens) < count:
+        raise SystemExit(f"bootstrap-token mint returned no tokens: {r}")
+    return [t for t in tokens if isinstance(t, str) and t]
+
+
 # Stable synthetic LXD instance id per node.
 #
 # ``lxd_instances[]`` is a contract field (node-telemetry.md 4.6) and it is the
@@ -274,14 +299,25 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Seed the W5 demo controller")
     ap.add_argument("--controller", default="http://127.0.0.1:8085")
     ap.add_argument("--token", required=True, help="project_token")
-    ap.add_argument("--bootstrap", required=True, help="comma-separated single-use bootstrap tokens")
+    ap.add_argument("--bootstrap", default="",
+                    help="comma-separated single-use bootstrap tokens (optional "
+                         "when --bootstrap-mint is given)")
+    ap.add_argument("--bootstrap-mint", type=int, default=0, metavar="N",
+                    help="mint N fresh single-use bootstrap tokens from the "
+                         "controller at startup, so the seeder self-provisions and "
+                         "`systemctl start termini-seeder` needs no hand-minted token")
     ap.add_argument("--duration", type=float, default=0.0, help="0 = run until interrupted")
     args = ap.parse_args(argv)
 
     base = args.controller.rstrip("/")
     boots = [t.strip() for t in args.bootstrap.split(",") if t.strip()]
+    if args.bootstrap_mint:
+        boots.extend(mint_bootstrap_tokens(base, args.token, args.bootstrap_mint))
     if len(boots) < 2:
-        raise SystemExit("need at least two bootstrap tokens (compute + inference)")
+        raise SystemExit(
+            "need at least two bootstrap tokens (compute + inference): pass "
+            "--bootstrap a,b or --bootstrap-mint 2"
+        )
 
     # wait for readiness (any HTTP answer means the server is up)
     for _ in range(200):

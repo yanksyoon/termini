@@ -4,6 +4,7 @@ Endpoints (controller core + W5 dashboard surfaces, per controller-api.md §4/§
 and dashboard.md §1–§4):
 
     POST /v1/nodes/register                       (bootstrap_token)  -> 201
+    POST /v1/bootstrap-tokens                     (project_token, loopback) -> 201
     POST /v1/nodes/{nid}/heartbeat                (node_token)       -> 204/200
     GET  /v1/projects/{pid}/nodes                 (project_token)    -> 200
     GET  /v1/projects/{pid}/nodes/{nid}           (project_token)    -> 200
@@ -72,6 +73,12 @@ def _stripped_sample_keys(raw_samples: Any, clean_samples: Any) -> set[str]:
 
 MAX_BODY = 1_048_576  # 1 MiB, controller-api.md §1.4
 WS_CLOSE_UNAUTHORIZED = 4401
+
+# Headers a reverse proxy adds when it forwards a request. The demo controller is
+# reached publicly through the host's reverse proxy (:443 -> 127.0.0.1:8080), so a
+# REMOTE request still arrives with a loopback TCP peer; these headers are what
+# distinguish it from the seeder's direct loopback call (see `_is_loopback_client`).
+PROXY_REQUEST_HEADERS = ("X-Forwarded-For", "X-Real-Ip", "Forwarded", "Via")
 
 
 class ControllerServer(ThreadingHTTPServer):
@@ -222,6 +229,8 @@ class ControllerHandler(BaseHTTPRequestHandler):
         if (method == "POST" and len(segs) == 7 and segs[:2] == ["v1", "projects"]
                 and segs[3] == "nodes" and segs[5] == "actions"):
             return self._node_action(conn, segs[2], segs[4], segs[6])
+        if method == "POST" and segs == ["v1", "bootstrap-tokens"]:
+            return self._mint_bootstrap_tokens(conn)
         if method == "POST" and len(segs) == 4 and segs[:2] == ["v1", "projects"] and segs[3] == "intents":
             return self._intents(conn, segs[2])
         if method == "POST" and len(segs) == 5 and segs[:2] == ["v1", "projects"] and segs[3] == "vms" and segs[4] == "apply":
@@ -559,6 +568,85 @@ class ControllerHandler(BaseHTTPRequestHandler):
             raise errors.invalid_argument("reason must be a string")
         return 200, cmd_mod.deny_command(
             conn, self.server.operator_logs, project_id, command_id, reason or "")
+
+    # Headers a reverse proxy adds when it forwards a request. The public path to
+    # the controller goes through the host's Caddy (:443 -> 127.0.0.1:8080), so a
+    # REMOTE request still arrives with a loopback TCP peer — `client_address`
+    # alone cannot tell it apart from the seeder's direct call. A direct caller
+    # sends none of these; a proxied one carries at least X-Forwarded-For.
+    def _is_loopback_client(self) -> bool:
+        """True only for a DIRECT connection over the controller's own loopback.
+
+        Provisioning surfaces (bootstrap-token minting) are restricted to the
+        controller itself: the demo seeder runs beside the controller and talks to
+        `127.0.0.1:8080`, so a remote holder of the project token cannot mint. A
+        loopback TCP peer is necessary but NOT sufficient — the host's reverse proxy
+        also connects from loopback — so a request that carries any proxy-forwarding
+        header is treated as remote.
+        """
+        addr = self.client_address[0] if self.client_address else ""
+        if addr not in ("127.0.0.1", "::1", "localhost"):
+            return False
+        for h in PROXY_REQUEST_HEADERS:
+            if self.headers.get(h):
+                return False
+        return True
+
+    # ------------------------------------------------------ seeder provisioning
+    def _mint_bootstrap_tokens(self, conn) -> tuple[int, dict]:
+        """POST /v1/bootstrap-tokens — mint fresh single-use bootstrap tokens.
+
+        Why: the demo seeder (`console/seed_demo.py`, systemd unit
+        `termini-seeder`) registers synthetic nodes through the same
+        `POST /v1/nodes/register` endpoint real hardware uses, which consumes a
+        single-use bootstrap token. A token is burned on first use
+        (`store.burn_bootstrap_token`), so a seeder *restart* had nothing left to
+        authenticate with: starting it needed hand-minted tokens written into the
+        unit (and a drop-in that silently overrode them), and a bare
+        `systemctl start termini-seeder` failed `401 bootstrap token already used`
+        (or `unknown bootstrap token` when the drop-in disagreed with the unit).
+        That made a recording a landmine.
+
+        This endpoint makes the seeder self-provisioning: it mints N **unused**
+        tokens on demand. They are ordinary `bootstrap_tokens` rows, so the
+        single-use property is untouched — the registration path still burns the
+        token, and a replayed token is still rejected
+        (`_require_bootstrap` -> `401 bootstrap token already used`). Nothing here
+        relaxes that check; a REAL node's replayed token must keep failing.
+
+        Trust boundary: minting is loopback-only (see `_is_loopback_client`) and
+        still requires the project token.
+        """
+        self._require_project(conn, self.server.project["id"])
+        if not self._is_loopback_client():
+            raise errors.permission_denied(
+                "bootstrap-token minting is restricted to the controller loopback"
+            )
+        body = self._read_body()
+        count = body.get("count", 2)
+        if isinstance(count, bool) or not isinstance(count, int) or not (1 <= count <= 32):
+            raise errors.invalid_argument("count must be an integer in [1, 32]")
+
+        now = store.now_iso()
+        tokens = [self.server.cfg.new_secret() for _ in range(count)]
+        # Insert as UNUSED single-use rows — exactly the rows
+        # `TERMINI_BOOTSTRAP_TOKEN` seeds at startup produce.
+        store.seed_bootstrap_tokens(conn, tokens, now)
+
+        logs = getattr(self.server, "operator_logs", None)
+        if logs is not None:
+            logs.append(
+                conn, self.server.project["id"], severity="info", actor="human",
+                message=f"minted {count} single-use bootstrap token(s) for the demo seeder",
+                remediation={"count": count},
+            )
+        return 201, {
+            "schema_version": "1.0",
+            "count": count,
+            "tokens": tokens,
+            "created_at": now,
+            "single_use": True,
+        }
 
     # ------------------------------------------------------------------ intent / plans
     def _intents(self, conn, project_id: str) -> tuple[int, dict]:
@@ -1075,6 +1163,18 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 if n["role"] == "inference":
                     return n
             return None
+        # auto (agent_vm): the node that serves the always-on model is a SERVICE
+        # host, not an agent target (see `agent_placement_excluded_hosts`) — the
+        # demo's CPU model host registers `compute`, so without this it wins the
+        # max-free-RAM comparison against the real compute node and every agent
+        # lands on the machine that is busy running the fleet's model. The
+        # exclusion is dropped when it would leave no candidate at all, so a
+        # single-node or seeder-only demo stays placeable.
+        excluded = _placement_excluded_hosts(self)
+        if excluded:
+            allowed = [n for n in candidates if node_address_host(n) not in excluded]
+            if allowed:
+                candidates = allowed
         # auto (agent_vm): node with the most free allocatable RAM (tie-break: lowest node_id)
         best = None
         best_ram = -1
@@ -1594,6 +1694,63 @@ def _selection_pool(nodes: list[dict]) -> list[dict]:
     """
     real = _real_nodes(nodes)
     return real or list(nodes)
+
+
+def _endpoint_host(value: object) -> str:
+    """Bare, lowercased host from a node address (`host:port` or `scheme://...`).
+
+    Returns "" for anything that is not a usable address, so a node that reported
+    no endpoint simply never matches an exclusion rather than being silently
+    assigned another node's identity.
+    """
+    if not isinstance(value, str):
+        return ""
+    raw = value.strip()
+    if not raw:
+        return ""
+    if "://" in raw:
+        raw = raw.split("://", 1)[1]
+    raw = raw.split("/", 1)[0]
+    if raw.startswith("["):                     # bracketed IPv6 literal
+        return raw.split("]", 1)[0].lstrip("[").lower()
+    host = raw.rsplit(":", 1)[0] if ":" in raw else raw
+    return host.strip().lower()
+
+
+def node_address_host(node: dict) -> str:
+    """Host a node is reachable at for LXD: its own endpoint, else its source IP."""
+    return _endpoint_host(node.get("lxd_endpoint")) or _endpoint_host(node.get("source_ip"))
+
+
+def agent_placement_excluded_hosts(cfg) -> set[str]:
+    """Hosts that must not receive *auto* agent placement (controller-api.md §5.2 step 5).
+
+    The node that serves the always-on decision model is a *service* host — it is
+    running llama.cpp for the whole fleet, so it is not an agent compute target.
+    Nothing in the frozen role rule expresses that: role is GPU-gated
+    (`node-bootstrap.md` §5.3 / controller-api.md §4.1), so a CPU-only model host
+    like the demo's node C registers `compute` and would otherwise beat the real
+    compute node on free RAM. The exclusion is therefore stated in terms of the
+    model address the controller already knows (`TERMINI_INFERENCE_BASE_URL`),
+    plus any operator-named hosts (`TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`).
+    """
+    hosts: set[str] = set()
+    if cfg is None:
+        return hosts
+    h = _endpoint_host(getattr(cfg, "inference_base_url", ""))
+    if h:
+        hosts.add(h)
+    for extra in (getattr(cfg, "agent_placement_exclude_hosts", ()) or ()):
+        eh = _endpoint_host(extra)
+        if eh:
+            hosts.add(eh)
+    return hosts
+
+
+def _placement_excluded_hosts(handler) -> set[str]:
+    """Excluded placement hosts for a request handler (tolerates `self=None`)."""
+    cfg = getattr(getattr(handler, "server", None), "cfg", None)
+    return agent_placement_excluded_hosts(cfg)
 
 
 def _parse_rfc3339(s: str) -> float:

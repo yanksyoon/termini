@@ -12,6 +12,13 @@ import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Default address of the always-on model service (node C's llama.cpp server,
+# `termini/decision/config.py` DEFAULT_BASE_URL, operator-decision.md §13). The
+# controller records it so agent placement can recognise the node that serves the
+# model and keep agent workloads off it (see `agent_placement_excluded_hosts`).
+DEFAULT_INFERENCE_BASE_URL = "http://10.10.0.13:8080"
+
+
 # Default LXD workload-image alias the controller launches agent VMs from.
 #
 # This MUST match what the node bake actually publishes, or an out-of-the-box
@@ -172,6 +179,13 @@ class Config:
     latency_clear_consecutive: int
     # LXD REST target + instance-name mapping.
     lxd_base_url: str
+    # Agent placement policy (controller-api.md §5.2 step 5).
+    # `inference_base_url` is the address of the always-on model service; the node
+    # whose LXD endpoint/source IP matches its host serves the model and is kept
+    # out of `auto` agent placement. `agent_placement_exclude_hosts` lets an
+    # operator name additional hosts to exclude (comma-separated).
+    inference_base_url: str
+    agent_placement_exclude_hosts: tuple[str, ...]
     lxd_instance_names: dict[str, str]
     lxd_default_instance_name: str
     lxd_client_cert: str | None
@@ -297,6 +311,9 @@ class Config:
             latency_clear_consecutive=_int_env("TERMINI_LATENCY_CLEAR_CONSECUTIVE", 3),
             lxd_base_url=os.environ.get("TERMINI_LXD_BASE_URL", "").strip()
             or "http://127.0.0.1:8443",
+            inference_base_url=os.environ.get("TERMINI_INFERENCE_BASE_URL", "").strip()
+            or DEFAULT_INFERENCE_BASE_URL,
+            agent_placement_exclude_hosts=_opt_list("TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS"),
             lxd_instance_names=instance_names,
             lxd_default_instance_name=os.environ.get(
                 "TERMINI_LXD_DEFAULT_INSTANCE_NAME", ""
