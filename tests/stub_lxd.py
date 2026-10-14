@@ -61,6 +61,7 @@ class StubLxd:
         self.strict_stop = False           # opt-in: 400 on an already-stopped instance
         self.ignore_actions = False        # accept the action, change nothing
         self.operation_status = "Success"  # status the operation poll reports
+        self.operation_error = ""          # the operation's own `err` string (metadata.err)
         self.operation_gone = False        # the op was reaped before we polled it
         self._op_seq = 0
         self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -205,7 +206,8 @@ class StubLxd:
                         return
                     self._send(200, {"type": "sync", "status_code": 200,
                                      "metadata": {"status": stub.operation_status,
-                                                  "status_code": 200}})
+                                                  "status_code": 200,
+                                                  "err": stub.operation_error}})
                 elif self.path.startswith("/1.0/instances/") and self.path.endswith("/state"):
                     name = self.path[len("/1.0/instances/"): -len("/state")]
                     state = stub.state_of(name)

@@ -72,6 +72,10 @@ Everything below is deployed and serving now. No local install is required.
 >   --command "sudo systemctl start termini-seeder"
 > ```
 >
+> The seeder self-provisions its own single-use bootstrap tokens at start-up
+> (`POST /v1/bootstrap-tokens`, loopback-only), so no hand-minted token is needed
+> and a restart — or a fresh take — just works.
+>
 > Pause again with `sudo systemctl stop termini-seeder`. The Cloud Run GPU scales to
 > zero on its own once traffic stops, so the pause costs nothing to maintain.
 

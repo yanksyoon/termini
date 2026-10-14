@@ -50,7 +50,7 @@ import threading
 import time
 
 from .. import db, store, ulid
-from . import decision, detect, executor, triggers
+from . import decision, detect, executor, target, triggers
 from . import store as opstore
 from .models import ExecResult, RemediationAction
 
@@ -82,6 +82,14 @@ class OperatorLoop(threading.Thread):
         self.logs = logs
         self.instance_names = instance_names or {}
         self.default_instance_name = default_instance_name
+        # `self.lxd` is the FALLBACK executor. The loop resolves an executor PER
+        # NODE (see `_executor_for`) so a remediation reaches the node that actually
+        # holds the instance (target.py); the executor passed in here — production
+        # hands in a credentialed one bound to the global `TERMINI_LXD_BASE_URL` —
+        # is used only for a node that reported no endpoint. Before this, one global
+        # executor bound to `TERMINI_LXD_BASE_URL` (node-a) was used for EVERY event,
+        # so a fault on node-c was remediated against node-a.
+        self._executors: dict[str, executor.LxdExecutor] = {}
         self.lxd = lxd or executor.LxdExecutor(
             cfg.lxd_base_url,
             dry_run=cfg.operator_dry_run,
@@ -178,6 +186,40 @@ class OperatorLoop(threading.Thread):
     def _session(self):
         """A fresh short-lived connection/transaction (see `app/db.session`)."""
         return db.session(self.cfg.db_path)
+
+    def _executor_for(self, node_id: str) -> executor.LxdExecutor:
+        """The LXD executor for `node_id`'s OWN endpoint.
+
+        Materialisation already resolves a per-node executor
+        (`app/operator/target.executor_for_node`); remediation must do the same or
+        the two halves of the loop touch different machines. The executor the loop
+        was constructed with is the FALLBACK for a node that reported no endpoint —
+        NOT an override. This matters in production: `app/main` hands the loop a
+        credentialed executor bound to the global `TERMINI_LXD_BASE_URL`, so
+        treating that executor as "the" executor for every node silently re-created
+        the defect (a fault on node-c was remediated against node-a).
+        """
+        if node_id in self._executors:
+            return self._executors[node_id]
+        node = None
+        try:
+            with self._session() as conn:
+                node = store.get_node(conn, node_id)
+        except Exception:  # noqa: BLE001 — never let a lookup failure stop a remediation
+            log.exception("could not load node %s for executor resolution", node_id)
+            node = None
+        endpoint = (node or {}).get("lxd_endpoint")
+        if endpoint:
+            # Re-target a copy of the loop's executor (same client identity, same
+            # timeouts/TLS policy) at this node's endpoint.
+            base = target.endpoint_base_url(
+                endpoint, fallback=self.lxd.base_url,
+                default_scheme=getattr(self.cfg, "lxd_node_scheme", "https"))
+            ex = self.lxd.with_base_url(base)
+        else:
+            ex = self.lxd
+        self._executors[node_id] = ex
+        return ex
 
     def _node_count(self) -> int:
         try:
@@ -328,6 +370,11 @@ class OperatorLoop(threading.Thread):
             node_id, event.rule_id, action.kind, target, episode=event.episode
         )
 
+        # Resolve the executor for THIS event's node before the idempotency
+        # short-circuit, so the audit records the node actually dialled (or would
+        # be dialled) rather than a global default that may be a different machine.
+        ex = self._executor_for(node_id)
+
         # Idempotency: same episode already applied -> no-op (safety net only;
         # the latch is the primary dedup). The lookup is bounded by the §1.5 24h
         # idempotency window, so an expired prior audit never suppresses a
@@ -343,8 +390,8 @@ class OperatorLoop(threading.Thread):
             dry_run = False
         else:
             # No transaction is open across the LXD REST call either.
-            result = self.lxd.execute(action)
-            dry_run = bool(self.lxd.dry_run)
+            result = ex.execute(action)
+            dry_run = bool(ex.dry_run)
 
         audit_id = ulid.new_ulid()
         # Remediation latency: chooser start -> remediation completed (includes
@@ -357,7 +404,7 @@ class OperatorLoop(threading.Thread):
         with self._session() as conn:
             opstore.insert_audit(
                 conn, audit_id, decision_id, event, action, result, idem_key, now, dry_run,
-                lxd_endpoint=getattr(self.lxd, "base_url", ""),
+                lxd_endpoint=getattr(ex, "base_url", ""),
             )
             self._emit_log(conn, node_id, message)
         log.info("node %s rule %s -> %s %s: %s (remediation_latency=%ss)",

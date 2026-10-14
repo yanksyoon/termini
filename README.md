@@ -220,6 +220,12 @@ compose — same controller, same decision step, same audit trail.
 > looks broken. Resume it with
 > `gcloud compute ssh termini-controller --zone asia-south1-a --command "sudo systemctl start termini-seeder"`
 > (~30 s); the GPU scales to zero on its own once traffic stops.
+>
+> The seeder **self-provisions**: it mints its own fresh single-use bootstrap tokens
+> from the controller at start-up (`--bootstrap-mint`, `POST /v1/bootstrap-tokens`,
+> loopback-only), so no hand-minted token is ever needed and a restart just works.
+> Real nodes are unaffected — a bootstrap token is still burned on first use and a
+> replayed one is still rejected.
 
 | Component | Where | Endpoint |
 |---|---|---|
