@@ -40,7 +40,7 @@ to a shell on the controller host, which is **not** the contract.
 
 | File | Role |
 |------|------|
-| `serve.py` | Static compose + runtime-config injector. Serves `dashboard/` at `/` and `frontend/terminal/` at `/terminal/`, injecting `apiBase`/`projectId`/`token` into the dashboard's `config.js` and the terminal's page defaults. Stdlib-only; it does **not** proxy the controller. |
+| `serve.py` | Static compose + runtime-config injector. Serves `dashboard/` at `/`, `frontend/terminal/` at `/terminal/`, and the operator fault console at `/console/`, injecting `apiBase`/`projectId`/`token` into the dashboard's `config.js` and the terminal's page defaults. The fault console gets `apiBase`/`projectId` only — **never** the token. Stdlib-only; it does **not** proxy the controller. |
 | `seed_demo.py` | Registers a compute + an inference node and streams telemetry (with an out-of-phase fault pattern) so health is live and the AI operator keeps emitting log lines. Retries a failed telemetry POST and can never lose its ticker threads — see *Seeder resilience* below. |
 | `run-demo.sh` | Brings up SSH CA + node sshd + controller + seed + console with one command; generates the CA, the operator key and the break-glass key + inventory. |
 
@@ -83,6 +83,35 @@ Evidence: `tests/test_seeder_ticker_resilience.py` — a real hanging HTTP serve
 reproduces the timeout, and asserts the ticker survives it, that an unguarded call
 really does kill a thread, and that the watchdog respawns a dead ticker and reports
 a silent one.
+
+## Operator fault console (`/console/`)
+
+`console/fault_console/` is the **operator-only** control surface for demo faults
+(contract `docs/contracts/controller-api.md` §4.7): it lists the scenarios the
+harness already implements (`oom`, `disk-degrade`, `disk-fail`, `latency`), lets the
+operator pick a node from the fleet listing, a scenario, a TTL and whether the node
+is `real` or `synthetic`, and shows the currently-active injections with a **Clear**
+button. Before it, fault injection existed only as `seed_demo.py`'s oscillation —
+there was no way to trigger a chosen fault on a chosen node from the UI, and no way
+to clear one that was running.
+
+It is deliberately **not** part of the client-facing dashboard: it is not linked
+from the dashboard's navigation, it is not given the project token by `serve.py`,
+and every call is authenticated with the project token the operator pastes in
+(kept in that tab's `sessionStorage`). Without a token the page loads and can do
+nothing — the controller answers `401`/`403`. Guardrails enforced by the controller,
+not the page: one open injection per `(node, rule)`, refusal while a remediation for
+that `(node, rule)` is in flight, a fault is always clearable, and nothing outlives
+its TTL silently (see §4.7).
+
+```bash
+CONTROLLER_PORT=8085 CONSOLE_PORT=8090 console/run-demo.sh
+# dashboard http://127.0.0.1:8090/ · operator fault console http://127.0.0.1:8090/console/
+```
+
+The seeder is **not** required for a demo with the console: it stays usable (and is
+still the fixture that gives a seeder-only demo a fleet to fault), but the faults
+themselves are driven by the console's injections.
 
 ## Configuration injection
 

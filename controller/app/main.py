@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 import sys
 import threading
 import time
 from typing import Any, Dict
 
-from . import config, db, events, inventory, logs, lxdtrust, server, sshca, store, terminal
+from . import config, db, demo_faults, events, inventory, logs, lxdtrust, server, sshca, store, terminal
 from .operator import Thresholds, OperatorLoop
 from .operator import decision as op_decision
 from .operator import egress as op_egress
@@ -181,28 +182,29 @@ def main(argv: list[str] | None = None) -> int:
 
     log.info("controller listening on %s:%s (db=%s)", cfg.host, cfg.port, cfg.db_path)
 
+    thresholds = Thresholds(
+        oom_ram_pct=cfg.oom_ram_pct,
+        oom_clear_pct=cfg.oom_clear_pct,
+        oom_consecutive=cfg.oom_consecutive,
+        oom_clear_consecutive=cfg.oom_clear_consecutive,
+        disk_fail_consecutive=cfg.disk_fail_consecutive,
+        disk_fail_clear_consecutive=cfg.disk_fail_clear_consecutive,
+        disk_free_pct=cfg.disk_free_pct,
+        disk_free_clear_pct=cfg.disk_free_clear_pct,
+        disk_free_consecutive=cfg.disk_free_consecutive,
+        disk_write_latency_ms=cfg.disk_write_latency_ms,
+        disk_write_latency_clear_ms=cfg.disk_write_latency_clear_ms,
+        disk_latency_consecutive=cfg.disk_latency_consecutive,
+        disk_free_slope_bps=cfg.disk_free_slope_bps,
+        disk_clear_consecutive=cfg.disk_clear_consecutive,
+        latency_ms=cfg.latency_ms,
+        latency_clear_ms=cfg.latency_clear_ms,
+        latency_consecutive=cfg.latency_consecutive,
+        latency_clear_consecutive=cfg.latency_clear_consecutive,
+    )
+
     loop = None
     if cfg.operator_enabled:
-        thresholds = Thresholds(
-            oom_ram_pct=cfg.oom_ram_pct,
-            oom_clear_pct=cfg.oom_clear_pct,
-            oom_consecutive=cfg.oom_consecutive,
-            oom_clear_consecutive=cfg.oom_clear_consecutive,
-            disk_fail_consecutive=cfg.disk_fail_consecutive,
-            disk_fail_clear_consecutive=cfg.disk_fail_clear_consecutive,
-            disk_free_pct=cfg.disk_free_pct,
-            disk_free_clear_pct=cfg.disk_free_clear_pct,
-            disk_free_consecutive=cfg.disk_free_consecutive,
-            disk_write_latency_ms=cfg.disk_write_latency_ms,
-            disk_write_latency_clear_ms=cfg.disk_write_latency_clear_ms,
-            disk_latency_consecutive=cfg.disk_latency_consecutive,
-            disk_free_slope_bps=cfg.disk_free_slope_bps,
-            disk_clear_consecutive=cfg.disk_clear_consecutive,
-            latency_ms=cfg.latency_ms,
-            latency_clear_ms=cfg.latency_clear_ms,
-            latency_consecutive=cfg.latency_consecutive,
-            latency_clear_consecutive=cfg.latency_clear_consecutive,
-        )
         try:
             playbooks = op_playbook.load_playbooks(cfg.playbooks_dir)
         except Exception:
@@ -265,6 +267,29 @@ def main(argv: list[str] | None = None) -> int:
         else:
             log.warning("no playbooks loaded; operator loop disabled")
 
+    # Operator-only demo fault console (controller-api.md §4.7). The driver is part
+    # of the controller, not an accessory beside it: the card's requirement is that
+    # a demo run drives faults on demand and does NOT depend on the always-on seeder
+    # or on a CLI. `TERMINI_DEMO_FAULTS=off` disables the surface (the endpoints then
+    # refuse 503 rather than pretending to inject).
+    fault_injector = None
+    if (os.environ.get("TERMINI_DEMO_FAULTS", "on") or "on").strip().lower() not in ("off", "0", "false", "no"):
+        fault_injector = demo_faults.DemoFaultInjector(
+            cfg, project["id"], broker=broker, operator_logs=operator_logs,
+            publish=srv.publish_node_events, thresholds=thresholds,
+        )
+        srv.fault_injector = fault_injector
+        # Sweep BEFORE serving: an injection a previous process left open can never
+        # be advanced again, and the first request after a restart must not be told
+        # it is still live (controller-api.md §4.7 "TTL and restarts").
+        swept = fault_injector.expire_stale_on_boot()
+        if swept:
+            log.warning("demo fault injection: %d stale injection(s) expired at boot", swept)
+        fault_injector.start()
+        log.info("demo fault injection enabled (guard window %ss)", fault_injector.guard_s)
+    else:
+        log.info("demo fault injection disabled (TERMINI_DEMO_FAULTS=off)")
+
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -272,6 +297,8 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if loop is not None:
             loop.stop()
+        if fault_injector is not None:
+            fault_injector.stop()
         srv.server_close()
     return 0
 

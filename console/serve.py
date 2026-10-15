@@ -37,6 +37,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.normpath(os.path.join(HERE, ".."))
 DASH_DIR = os.path.join(REPO_ROOT, "dashboard")
 TERM_DIR = os.path.join(REPO_ROOT, "frontend", "terminal")
+# Operator-only fault console (controller-api.md §4.7). Deliberately NOT linked
+# from the client dashboard's nav and NOT given the project token by this server:
+# the operator pastes the token themselves, so an unauthenticated visitor can load
+# the page and do nothing with it (the controller answers 401/403).
+FAULT_DIR = os.path.join(HERE, "fault_console")
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -52,6 +57,11 @@ CONTENT_TYPES = {
 
 # Injected before the terminal module loads; app.js reads window.__TERMINI_TERMINAL_DEFAULTS__.
 TERM_ANCHOR = '<script type="module" src="js/app.js"></script>'
+
+# Injected into the operator fault console's index.html; app.js reads
+# window.__TERMINI_FAULT_DEFAULTS__. Controller URL + project id ONLY — the console
+# is useless (and must stay useless) without the operator typing the project token.
+FAULT_ANCHOR = '<script src="js/app.js"></script>'
 
 
 def _read(path: str) -> bytes:
@@ -94,6 +104,23 @@ class ConsoleConfig:
             + ");\n"
         )
         return base_js + tail.encode("utf-8")
+
+    def fault_index_html(self, base_html: bytes) -> bytes:
+        """Return the fault console's index.html with the non-secret defaults.
+
+        Only `apiBase` and `projectId` are injected. The project token is NOT:
+        the console requires the operator to paste it, and it lives in the tab's
+        sessionStorage — that is what keeps the surface operator-only.
+        """
+        defaults = {"apiBase": self.controller, "projectId": self.project}
+        script = ("<script>window.__TERMINI_FAULT_DEFAULTS__ = "
+                  + json.dumps(defaults) + ";</script>\n    ")
+        text = base_html.decode("utf-8")
+        if FAULT_ANCHOR in text:
+            text = text.replace(FAULT_ANCHOR, script + FAULT_ANCHOR, 1)
+        else:  # anchor moved/renamed -> fail loud rather than serve a console that cannot talk
+            raise RuntimeError("fault console index.html is missing the app.js anchor")
+        return text.encode("utf-8")
 
     def terminal_index_html(self, base_html: bytes) -> bytes:
         defaults = {"api": self.controller, "project": self.project,
@@ -171,6 +198,15 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if norm.startswith("/terminal/"):
             return self._static(TERM_DIR, norm[len("/terminal/"):])
 
+        # operator-only fault console (controller-api.md §4.7)
+        if norm in ("/console", "/console/", "/console/index.html"):
+            base = _read(os.path.join(FAULT_DIR, "index.html"))
+            return self._send(200, self.server.cfg.fault_index_html(base),
+                              "text/html; charset=utf-8")
+
+        if norm.startswith("/console/"):
+            return self._static(FAULT_DIR, norm[len("/console/"):])
+
         # everything else is a dashboard asset (assets/, js/, favicon…)
         return self._static(DASH_DIR, norm.lstrip("/"))
 
@@ -214,6 +250,8 @@ def main(argv=None) -> int:
     print(f"[console] project    : {cfg.project or '(unset — set in the dashboard Settings dialog)'}")
     print(f"[console] dashboard  : http://{host}:{port}/")
     print(f"[console] terminal   : http://{host}:{port}/terminal/")
+    print(f"[console] fault console (operator-only, project token required): "
+          f"http://{host}:{port}/console/")
     sys.stdout.flush()
     try:
         srv.serve_forever()
