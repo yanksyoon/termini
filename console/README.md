@@ -41,7 +41,7 @@ to a shell on the controller host, which is **not** the contract.
 | File | Role |
 |------|------|
 | `serve.py` | Static compose + runtime-config injector. Serves `dashboard/` at `/` and `frontend/terminal/` at `/terminal/`, injecting `apiBase`/`projectId`/`token` into the dashboard's `config.js` and the terminal's page defaults. Stdlib-only; it does **not** proxy the controller. |
-| `seed_demo.py` | Registers a compute + an inference node and streams telemetry (with an out-of-phase fault pattern) so health is live and the AI operator keeps emitting log lines. |
+| `seed_demo.py` | Registers a compute + an inference node and streams telemetry (with an out-of-phase fault pattern) so health is live and the AI operator keeps emitting log lines. Retries a failed telemetry POST and can never lose its ticker threads — see *Seeder resilience* below. |
 | `run-demo.sh` | Brings up SSH CA + node sshd + controller + seed + console with one command; generates the CA, the operator key and the break-glass key + inventory. |
 
 Environment knobs: `CONTROLLER_PORT`, `CONSOLE_PORT`, `PROJECT_ID`,
@@ -50,6 +50,39 @@ Environment knobs: `CONTROLLER_PORT`, `CONSOLE_PORT`, `PROJECT_ID`,
 hermetic host-shell fallback for tests), `TERMINI_NODE_SSHD` (`auto`|`off`),
 `TERMINI_SSH_KEY` (break-glass private key, default
 `~/.ssh/termini_breakglass`), `TERMINI_DEMO_STATE`.
+
+## Seeder resilience (telemetry timeouts)
+
+The seeder is the only thing keeping the synthetic nodes ONLINE, so it is built to
+survive a controller that stops answering:
+
+- a telemetry POST that **times out** (or a 5xx — the controller failing to store a
+  valid sample) is **retried inside the ticker** with backoff, and can never kill
+  the ticker thread. A 4xx is not retried: the sample or the token is wrong;
+- anything unexpected in the tick loop is caught and logged, because an exception
+  that escapes `NodeTicker.run` ends the thread silently;
+- `main` runs a watchdog: a ticker that died anyway is respawned in-process (same
+  node id, token and sample `seq` — no re-registration), and a ticker that is alive
+  but has not landed a sample for `--stall-warn-seconds` (default 20 s) is reported
+  loudly on stderr, at most once per window per node.
+
+Why this is load-bearing: a dead ticker is invisible from outside the process —
+`main` keeps sleeping, `systemctl is-active termini-seeder` keeps reporting
+**ACTIVE**, and the only symptom is both nodes flipping OFFLINE ~45 s later
+(`DEGRADED_AFTER_S=15` / `OFFLINE_AFTER_S=45`), with no error anywhere. That
+"sounds healthy, is frozen" state was observed live when the controller held its
+single SQLite writer across the operator's model call (controller side fixed in
+PR #145).
+
+Knobs: `--telemetry-timeout S` (default 15; the retry deadline for one POST) and
+`--stall-warn-seconds S` (default 20; the silence that gets reported). The run
+also ends with a per-node total, `N sample(s) accepted, M attempt(s) failed` — the
+line to read in the journal when the dashboard looks quiet.
+
+Evidence: `tests/test_seeder_ticker_resilience.py` — a real hanging HTTP server
+reproduces the timeout, and asserts the ticker survives it, that an unguarded call
+really does kill a thread, and that the watchdog respawns a dead ticker and reports
+a silent one.
 
 ## Configuration injection
 
