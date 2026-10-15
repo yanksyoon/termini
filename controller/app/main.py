@@ -12,10 +12,12 @@ import logging
 import sys
 import threading
 import time
+from typing import Any, Dict
 
 from . import config, db, events, inventory, logs, lxdtrust, server, sshca, store, terminal
 from .operator import Thresholds, OperatorLoop
 from .operator import decision as op_decision
+from .operator import egress as op_egress
 from .operator import executor as op_executor
 from .operator import playbook as op_playbook
 
@@ -213,6 +215,32 @@ def main(argv: list[str] | None = None) -> int:
                 instance_names=cfg.lxd_instance_names,
                 default_instance_name=cfg.lxd_default_instance_name,
             )
+            # Where did the answer come from? The decision endpoint may serve from
+            # local weights or forward to a managed model, and the audit must say
+            # which (external_call.py records it; egress.py observes it). The probe
+            # is cached and bounded so it can never dominate a decision's latency.
+            if isinstance(provider, op_decision.ModelDecisionProvider):
+                provider.egress_probe = op_egress.CachedEgressProbe(cfg.inference_base_url)
+                provider.egress_endpoint = cfg.inference_base_url
+                project_id = project["id"]
+
+                def _egress_audit(record: Dict[str, Any], _pid: str = project_id) -> None:
+                    """Land the external-model audit row in the operator's log stream.
+
+                    The dashboard's live AI log is where a judge reads what the
+                    operator did; the destination of a model call belongs there, not
+                    only in the journal.
+                    """
+                    try:
+                        with db.session(cfg.db_path) as conn:
+                            operator_logs.append(
+                                conn, _pid, severity="info", actor="ai_operator",
+                                message=op_egress.audit_message(record),
+                            )
+                    except Exception:  # noqa: BLE001 - observability must not break the loop
+                        log.exception("failed to record the external-model audit row")
+
+                provider.audit_sink = _egress_audit
             # Hand the loop an executor that presents the controller's LXD client
             # certificate (resolved above), so its REST calls are authenticated.
             lxd_exec = op_executor.LxdExecutor(
