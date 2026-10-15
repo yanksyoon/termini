@@ -55,6 +55,7 @@ python3 -m http.server 8099 --directory dashboard
 | Node detail + latest sample | `GET /projects/{pid}/nodes/{nid}` | dashboard §1.2 |
 | Resource series | `GET /projects/{pid}/nodes/{nid}/metrics?start&end&resolution&metrics` | dashboard §1.4 |
 | AI-operator log | `GET /projects/{pid}/logs` (SSE, `Last-Event-ID`/`since` resume) | dashboard §2.2/§2.3 |
+| Operator decisions + the telemetry that fired them + the audit rows | `GET /operator/{decisions,events,audits}` (poll 3 s, joined client-side) | operator-decision.md §11 |
 | Restart | `POST /projects/{pid}/nodes/{nid}/actions/reboot` | dashboard §4.1 |
 | Drain | `POST /projects/{pid}/nodes/{nid}/actions/drain` | dashboard §4.2 |
 | Scale intent | `POST /projects/{pid}/intents` → `POST /projects/{pid}/vms/apply` | dashboard §4.3 |
@@ -148,6 +149,43 @@ backend is owned by `t_3468e5f0`.
 * **SSE auth.** `EventSource` cannot set `Authorization`; the token rides in
   `?token=` exactly as the contract specifies for `/logs`.
 * **Terminal.** Out of scope here; see `t_cd585251` (`/terminal/v1/{node_id}`).
+
+## Decisions panel (telemetry → decider → action → result)
+
+`GET /v1/operator/{decisions,events,audits}` are three separate lists; the panel
+joins them client-side (`js/core/decisions.js`, pure and unit-tested). Per row:
+timestamp, node, rule, the breaching metric + trigger value + threshold text,
+`decision_source`, the model's confidence + rationale (or the fallback reason),
+the chosen action + target instance, the execution result and LXD endpoint from
+the audit row, and the audit id — with links to the audit record and to the
+telemetry sample that fired the decision.
+
+Two things it deliberately does **not** do:
+
+* it never presents a `fallback` decision like a model decision — a fallback is
+  the deterministic playbook stepping in because the model did not answer
+  (operator-decision.md §8), so the row is styled differently and says so;
+* it never claims the model ran locally. The decider label is built from the
+  egress record the controller writes to the operator log stream
+  (`externalModelCall … backend=… model=… destination=… answered_by=…`), and an
+  unobserved decider reads "decider unknown" rather than "local GPU".
+
+`show on chart` plots the decision's own node (revealing `?include=synthetic`
+seeder rows, labelled `demo`) with a decision marker coloured by who decided and
+the threshold line resolved from the rule's own threshold text, so the fault
+rising and the action landing are readable off one axis.
+
+### Log stream: the empty panel
+
+The controller's SSE replays only when the client supplies a cursor
+(`?since=` / `Last-Event-ID`, dashboard.md §2.2/§2.3). A cold page load has no
+cursor, so the panel rendered "0 lines — Waiting for operator events…" until the
+next live event, even though the stream itself was healthy. The client now opens
+the first connection with the §2.3 out-of-buffer cursor (a 26-zero ULID) so the
+server takes its documented truncation path and replays the retained tail, then
+resumes from the last real `log_id`. The truncation control line reuses the
+oldest retained line's `log_id`, so it is never entered into the client de-dupe
+set (that collision used to swallow the first replayed line).
 
 ### Contract discrepancies found while building
 

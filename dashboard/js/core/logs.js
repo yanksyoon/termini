@@ -29,6 +29,11 @@ export function normalizeLine(raw) {
   const severity = normalizeSeverity(raw.severity || raw.level);
   const message = typeof raw.message === "string" ? raw.message : typeof raw.text === "string" ? raw.text : "";
   if (!message) return null;
+  // §2.3 control line: the server marks the resumption point after a gap with
+  // `truncated: true`. It is NOT a real log line — critically, it reuses the
+  // oldest retained line's `log_id`, so a client that dedupes on log_id would
+  // silently swallow that first real line. `control` keeps the two apart.
+  const control = raw.truncated === true;
   const rem = raw.remediation && typeof raw.remediation === "object" ? raw.remediation : null;
   return {
     log_id: typeof raw.log_id === "string" ? raw.log_id : null,
@@ -37,6 +42,7 @@ export function normalizeLine(raw) {
     severity,
     actor: raw.actor === "human" ? "human" : raw.actor === "ai_operator" ? "ai_operator" : "ai_operator",
     message,
+    control,
     remediation: rem
       ? {
           command_id: rem.command_id ?? null,
@@ -44,8 +50,13 @@ export function normalizeLine(raw) {
           status: rem.status ?? null,
         }
       : null,
-    truncated: raw.truncated === true,
+    truncated: control,
   };
+}
+
+/** True for the §2.3 truncation/control marker (never counted as an event). */
+export function isControlLine(line) {
+  return !!(line && line.control);
 }
 
 /** Newest-first append with a hard client cap (ring-buffer semantics §2.3). */

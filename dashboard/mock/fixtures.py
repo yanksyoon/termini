@@ -446,6 +446,135 @@ def err(code: str, message: str, status: int, details=None) -> tuple[int, dict]:
     }
 
 
+# ------------------------------------------------- operator decisions (mock)
+
+def synthetic_node(project_id: str = PROJECT_ID) -> dict:
+    """A seeder-fabricated row, labelled `synthetic: true` (dashboard.md §1.1).
+
+    Returned only for `?include=synthetic`; the default listing is the real
+    fleet, exactly as the contract's standing-fleet amendment requires.
+    """
+    return {
+        "node_id": ulid(),
+        "registration_id": "demo-node-a",
+        "role": "compute",
+        "synthetic": True,
+        "status": "online",
+        "last_seen_at": now_iso(),
+        "uptime_sec": 4200,
+        "hardware": {
+            "cpu": {"model": "AMD EPYC 7B13", "threads": 16, "cores": 8},
+            "memory": {"total_bytes": 68719476736},
+            "disks": [{"device": "/dev/sda", "type": "ssd", "size_bytes": 274877906944}],
+            "gpus": [],
+        },
+        "capacity": {"cpu_cores": 16, "ram_gb": 64, "disk_gb": 256, "gpu_free": 0, "cpu_allocated": 4, "ram_allocated_gb": 8},
+        "health": {
+            "cpu_util_pct": 31.2,
+            "ram_used_pct": 96.0,
+            "disk_ok": True,
+            "gpu_ok": None,
+            "inference_ok": None,
+            "services": [],
+            "degraded_reasons": [],
+        },
+    }
+
+
+def _decision_row(node_id: str, *, rule_id: str, type_: str, metric: str, value: float, threshold: str,
+                  action_kind: str, instance: str, reason: str, source: str, confidence=None,
+                  fallback_reason=None, result: str = "ok", decided_ms: int | None = None) -> dict:
+    decided_ms = decided_ms if decided_ms is not None else int(time.time() * 1000)
+    event_id = ulid(decided_ms - 4000)
+    decision_id = ulid(decided_ms)
+    event = {
+        "id": event_id,
+        "node_id": node_id,
+        "rule_id": rule_id,
+        "type": type_,
+        "metric": metric,
+        "value": value,
+        "threshold": threshold,
+        "evidence_seq_start": 1000,
+        "evidence_seq_end": 1002,
+        "fired_at": now_iso(decided_ms - 4000),
+        "breach_started_at": now_iso(decided_ms - 12000),
+        "evidence": [],
+    }
+    decision = {
+        "id": decision_id,
+        "event_id": event_id,
+        "node_id": node_id,
+        "rule_id": rule_id,
+        "playbook": rule_id,
+        "action_kind": action_kind,
+        "action_params": {"instance_name": instance, "force": True},
+        "reason": reason,
+        "decided_at": now_iso(decided_ms),
+        "decision_source": source,
+        "confidence": confidence,
+        "fallback_reason": fallback_reason,
+    }
+    audit = {
+        "id": ulid(decided_ms + 2),
+        "decision_id": decision_id,
+        "event_id": event_id,
+        "node_id": node_id,
+        "rule_id": rule_id,
+        "action_kind": action_kind,
+        "result": result,
+        "detail": "state transitioned" if result == "ok" else "HTTP 404: Instance not found",
+        "lxd_method": "PUT",
+        "lxd_path": f"/1.0/instances/{instance}/state",
+        "lxd_body": '{"action": "stop", "force": true}',
+        "idempotency_key": f"{node_id}:{rule_id}:{action_kind}:{instance}:1",
+        "dry_run": 0,
+        "executed_at": now_iso(decided_ms + 2),
+        "lxd_endpoint": "https://10.10.0.11:8443",
+    }
+    return {"decision": decision, "event": event, "audit": audit}
+
+
+def operator_decisions(nodes: list[dict], now_ms: int | None = None) -> dict:
+    """Decisions + the events they answered + their audit rows (newest first).
+
+    Contains a MODEL decision (with confidence + rationale) and a deterministic
+    FALLBACK, because the dashboard must show both and never conflate them.
+    """
+    now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
+    a = nodes[0]["node_id"] if nodes else ulid()
+    b = nodes[-1]["node_id"] if nodes else ulid()
+    instance = "01H4KZ9Q2R3T5V7W9X1Y3Z5E4H"
+    rows = [
+        _decision_row(
+            b, rule_id="disk-degrade-01", type_="disk_degrade", metric="disk_write_latency_ms",
+            value=120.0, threshold="free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s",
+            action_kind="instance.stop", instance=instance,
+            reason="disk write latency on /dev/sda is 120ms, exceeding the 50ms threshold; stopping the instance with the highest disk usage will reduce disk I/O.",
+            source="model", confidence=0.85, decided_ms=now_ms - 60_000,
+        ),
+        _decision_row(
+            a, rule_id="oom-guard-01", type_="oom", metric="ram_used_bytes",
+            value=33114165248.0, threshold=">= 95% of ram_total_bytes for 2 consecutive samples",
+            action_kind="instance.restart", instance=instance,
+            reason="host RAM is at 96.04% of total, and this instance is the heaviest consumer; restarting it should free memory.",
+            source="model", confidence=0.9, decided_ms=now_ms - 180_000,
+        ),
+        _decision_row(
+            a, rule_id="oom-guard-01", type_="oom", metric="ram_used_bytes",
+            value=33000000000.0, threshold=">= 95% of ram_total_bytes for 2 consecutive samples",
+            action_kind="instance.restart", instance=instance,
+            reason="playbook: restart the heaviest instance (RAM 96%)",
+            source="fallback", fallback_reason="inference_unavailable",
+            result="error", decided_ms=now_ms - 300_000,
+        ),
+    ]
+    decisions = [r["decision"] for r in rows][::-1]
+    events = [r["event"] for r in rows][::-1]
+    audits = [r["audit"] for r in rows][::-1]
+    return {"decisions": decisions, "events": events, "audits": audits}
+
+
 def intent_plan(prompt: str) -> dict:
     """A deterministic guardrail plan (accepted, or rejected for a magic word)."""
     if random is not None and any(w in (prompt or "").lower() for w in ("reject", "impossible", "too big")):

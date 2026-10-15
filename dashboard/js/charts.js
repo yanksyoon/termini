@@ -14,6 +14,11 @@ import { hhmm } from "./core/format.js";
 
 const PALETTE = ["#5ac8fa", "#ff9f0a", "#30d158", "#ff375f", "#bf5af2", "#64d2ff", "#ffd60a"];
 
+/* Decision markers are coloured by WHO decided, so a fallback never reads as a
+ * model decision on the chart either. */
+const MARKER_COLORS = { model: "#5ac8fa", fallback: "#ff9f0a", deterministic: "#bf5af2", det: "#bf5af2" };
+const THRESHOLD_COLOR = "#ff375f";
+
 export class TimeSeriesChart {
   constructor(canvas) {
     this.canvas = canvas;
@@ -64,6 +69,9 @@ export class TimeSeriesChart {
     }
     if (!Number.isFinite(tMin) || !Number.isFinite(tMax) || count === 0) return null;
     if (tMin === tMax) tMax = tMin + 1000;
+    for (const th of g.thresholds || []) {
+      if (Number.isFinite(th.value) && th.value > vMax) vMax = th.value;
+    }
     let top = g.yMax !== undefined ? g.yMax : niceMax(vMax);
     if (top <= 0) top = 1;
     return { tMin, tMax, top, count };
@@ -178,6 +186,60 @@ export class TimeSeriesChart {
       const rows = g.series.map((s, si) => ({ color: this.colorOf(si), label: s.label, value: nearest(s.points, tt) }));
       drawTooltip(ctx, hx, t, l + plotW, rows, g.unit);
     }
+    // thresholds: the line the telemetry crossed (drawn under the series)
+    for (const th of g.thresholds || []) {
+      if (!Number.isFinite(th.value)) continue;
+      const y = yOf(th.value);
+      if (y < t - 1 || y > t + plotH + 1) continue;
+      ctx.save();
+      ctx.strokeStyle = THRESHOLD_COLOR;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(l, y);
+      ctx.lineTo(l + plotW, y);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = THRESHOLD_COLOR;
+      ctx.font = "10px system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(clip(`${th.label}`, 54), l + 4, y - 3);
+    }
+
+    // decision markers: WHEN the operator acted, coloured by who decided
+    let lastLabelX = -999;
+    for (const mk of g.markers || []) {
+      if (!Number.isFinite(mk.t) || mk.t < tMin || mk.t > tMax) continue;
+      const x = xOf(mk.t);
+      const color = MARKER_COLORS[mk.kind] || "#8b95a5";
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, t);
+      ctx.lineTo(x, t + plotH);
+      ctx.stroke();
+      ctx.restore();
+      // flag at the top of the line
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x, t);
+      ctx.lineTo(x + 7, t + 4.5);
+      ctx.lineTo(x, t + 9);
+      ctx.closePath();
+      ctx.fill();
+      // one label per cluster, so overlapping decisions stay readable
+      if (x - lastLabelX > 48) {
+        ctx.fillStyle = color;
+        ctx.font = "10px system-ui, sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText(clip(mk.label, 22), Math.min(x + 9, l + plotW - 60), t + 1);
+        lastLabelX = x;
+      }
+    }
   }
 
   _pointer(e, active) {
@@ -200,6 +262,12 @@ function nearest(points, tt) {
     }
   }
   return best.v;
+}
+
+/** Truncate a chart label so a long rationale never bleeds across the plot. */
+function clip(text, max) {
+  const s = String(text ?? "");
+  return s.length > max ? `${s.slice(0, Math.max(0, max - 1))}…` : s;
 }
 
 function niceMax(v) {

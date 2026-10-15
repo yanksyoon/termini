@@ -50,6 +50,9 @@ function card(node, sample, view, state, handlers) {
     ]),
     el("div", { class: "flag-row" }, [
       el("span", { class: `badge role-${node.role || "compute"}`, text: node.role || "compute" }),
+      // contract §1.1: a `synthetic: true` row is fabricated by the demo seeder,
+      // so it is labelled rather than presented as hardware.
+      node.synthetic ? el("span", { class: "badge synthetic", text: "demo", title: "fabricated by the demo seeder (synthetic: true)" }) : null,
       el("span", { class: `badge status-${status}`, text: status }),
     ]),
   ]);

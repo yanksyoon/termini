@@ -10,6 +10,20 @@
 import { apiUrl } from "./core/config.js";
 import { normalizeLine } from "./core/logs.js";
 
+/**
+ * Cold-start cursor (contract §2.3). The controller's SSE replays only when it
+ * is given a cursor, so a fresh page load with no cursor renders NOTHING until
+ * the next live event — which is how the published panel came to read
+ * "0 lines — Waiting for operator events…" while the same stream was delivering
+ * events to anyone who asked for the tail.
+ *
+ * A ULID of all zeros is a well-formed cursor older than anything the ring
+ * buffer can hold, so §2.3's documented out-of-buffer path applies: the server
+ * emits one control line and then replays every retained line, live-tail
+ * included. After that first connection every reconnect uses the real last id.
+ */
+export const FIRST_CURSOR = "00000000000000000000000000";
+
 export class LogStream {
   /**
    * @param cfg resolved config
@@ -43,7 +57,9 @@ export class LogStream {
       return;
     }
     const url = apiUrl(this.cfg, `/projects/${encodeURIComponent(this.cfg.projectId)}/logs`, {
-      since: this.lastId || undefined,
+      // First connect asks for the retained tail (§2.3 out-of-buffer cursor);
+      // every later reconnect resumes from the last line we actually saw.
+      since: this.lastId || FIRST_CURSOR,
       // EventSource cannot set an Authorization header (contract §2.2).
       token: this.cfg.token || undefined,
     });
@@ -68,7 +84,10 @@ export class LogStream {
       if (!raw) return;
       const line = normalizeLine(raw);
       if (!line) return;
-      if (line.log_id) this.lastId = line.log_id;
+      // A control line (§2.3 truncation marker) is a real cursor but not a real
+      // event; the panel decides how to show it.
+      if (line.log_id && !line.control) this.lastId = line.log_id;
+      else if (line.log_id && !this.lastId) this.lastId = line.log_id;
       if (this.handlers.onLine) this.handlers.onLine(line);
     };
 

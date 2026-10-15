@@ -9,10 +9,13 @@ export const DEFAULTS = {
   projectId: "",
   token: "",
   pollMs: 5000,
+  decisionMs: 3000,
+  decisionLimit: 50,
   windows: { "5m": 300, "15m": 900, "1h": 3600, "6h": 21600 },
   defaultWindow: "15m",
   logBufferMax: 2000,
   offline: false,
+  includeSynthetic: false,
 };
 
 export function resolveConfig({ query = {}, stored = {}, file = {}, defaults = DEFAULTS } = {}) {
@@ -35,10 +38,13 @@ export function resolveConfig({ query = {}, stored = {}, file = {}, defaults = D
     projectId: String(pick("projectId") ?? ""),
     token: String(pick("token") ?? ""),
     pollMs: clampInt(pick("pollMs"), 1000, 60000, defaults.pollMs),
+    decisionMs: clampInt(pick("decisionMs"), 1000, 30000, defaults.decisionMs),
+    decisionLimit: clampInt(pick("decisionLimit"), 5, 500, defaults.decisionLimit),
     windows: file.windows && typeof file.windows === "object" ? file.windows : defaults.windows,
     defaultWindow: String(pick("window") ?? file.defaultWindow ?? defaults.defaultWindow),
     logBufferMax: clampInt(pick("logBufferMax"), 50, 20000, defaults.logBufferMax),
     offline: bool(offlineFlag(query, stored, file), defaults.offline),
+    includeSynthetic: bool(pick("synthetic") ?? query.synthetic, defaults.includeSynthetic),
   };
 }
 
