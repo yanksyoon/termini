@@ -147,11 +147,27 @@ check("usage is reported", isinstance(body.get("usage"), dict)
       and isinstance(body["usage"].get("total_tokens"), int), f"usage={body.get('usage')}")
 
 label = body.get("termini_backend") or {}
-print(f"      in-band label: {json.dumps(label)}")
-check("the response labels its backend in-band", bool(label.get("backend")),
-      f"backend={label.get('backend')!r}")
+# Where the labels live depends on the backend, and that is deliberate:
+#   * forwarded  -> headers AND a `termini_backend` body block (the answer is ours
+#                   to shape, so the substitution is stated in-band in both);
+#   * local      -> headers only, because the body is llama.cpp's OWN bytes
+#                   (byte-transparent passthrough is what makes it a drop-in).
+hdr = {k.lower(): v for k, v in headers.items()}
+hdr_backend = hdr.get("x-termini-backend", "")
+hdr_answered = hdr.get("x-termini-answered-by", "")
+hdr_egress = hdr.get("x-termini-egress", "")
+hdr_dest = hdr.get("x-termini-external-destination", "")
+backend_label = label.get("backend") or hdr_backend
+answered_label = label.get("answered_by") or hdr_answered
+egress_label = label.get("egress") or hdr_egress
+print(f"      label headers: X-Termini-Backend={hdr_backend!r} "
+      f"X-Termini-Answered-By={hdr_answered!r} X-Termini-Egress={hdr_egress!r} "
+      f"X-Termini-External-Destination={hdr_dest!r}")
+print(f"      in-band body label: {json.dumps(label)}")
+check("the response labels its backend in-band", bool(backend_label),
+      f"header={hdr_backend!r} body={label.get('backend')!r}")
 check("the label names what actually answered (answered_by)",
-      bool(label.get("answered_by")), f"answered_by={label.get('answered_by')!r}")
+      bool(answered_label), f"header={hdr_answered!r} body={label.get('answered_by')!r}")
 # The strongest form of "nothing may claim GPU": the word must not appear in a
 # response or its headers at all, for either backend.
 blob = (json.dumps(body) + json.dumps(dict(headers))).lower()
@@ -161,18 +177,21 @@ check("no response claims local weights for a forwarded call",
       expect != "gemini-proxy" or "local-weights" not in json.dumps(label))
 if expect == "gemini-proxy":
     check("a forwarded answer is labelled answered_by=forwarded-managed-model",
-          label.get("answered_by") == "forwarded-managed-model", f"got {label.get('answered_by')!r}")
+          answered_label == "forwarded-managed-model", f"got {answered_label!r}")
     check("a forwarded answer names its external destination",
-          bool(label.get("destination")), f"destination={label.get('destination')!r}")
+          bool(label.get("destination") or hdr_dest),
+          f"body={label.get('destination')!r} header={hdr_dest!r}")
     check("a forwarded answer is flagged egress=external",
-          label.get("egress") == "external", f"egress={label.get('egress')!r}")
+          egress_label == "external", f"got {egress_label!r}")
     check("a forwarded answer is NOT labelled as local weights",
-          label.get("backend") != "local")
+          backend_label != "local")
 elif expect == "local":
     check("a local answer is labelled answered_by=local-weights",
-          label.get("answered_by") == "local-weights", f"got {label.get('answered_by')!r}")
-    check("a local answer is flagged egress=in-vpc", label.get("egress") == "in-vpc",
-          f"egress={label.get('egress')!r}")
+          answered_label == "local-weights", f"got {answered_label!r}")
+    check("a local answer is flagged egress=in-vpc", egress_label == "in-vpc",
+          f"got {egress_label!r}")
+    check("the local answer is llama.cpp's own envelope (byte-transparent passthrough)",
+          "termini_backend" not in json.dumps(body))
 
 # -- 4. parameters honoured -------------------------------------------------- #
 status, _, body2, elapsed2 = post({
@@ -199,6 +218,8 @@ started = time.monotonic()
 deltas, done, first, final_usage, final_label, final_finish = [], False, None, None, None, None
 with urllib.request.urlopen(req, timeout=180) as resp:
     stream_status = resp.status
+    final_hdr_backend = resp.headers.get("X-Termini-Backend", "")
+    final_hdr_dest = resp.headers.get("X-Termini-External-Destination", "")
     for raw in resp:
         line = raw.decode().strip()
         if not line.startswith("data:"):
@@ -230,11 +251,13 @@ check("streaming terminates with [DONE]", done)
 check("streaming assembled content is non-empty", bool("".join(deltas).strip()))
 check("streaming reports usage when asked (include_usage)", isinstance(final_usage, dict)
       and isinstance(final_usage.get("total_tokens"), int), f"usage={final_usage}")
-check("streaming final chunk is labelled in-band", bool((final_label or {}).get("backend")),
-      f"label={final_label}")
+check("streaming final chunk is labelled in-band",
+      bool((final_label or {}).get("backend") or final_hdr_backend),
+      f"body={final_label} header={final_hdr_backend!r}")
 if expect == "gemini-proxy":
     check("streaming from a forwarded backend names the destination",
-          bool((final_label or {}).get("destination")), f"label={final_label}")
+          bool((final_label or {}).get("destination") or final_hdr_dest),
+          f"label={final_label} header={final_hdr_dest!r}")
 
 # -- 6. the honest comparison ------------------------------------------------ #
 print(f"\n      latency samples (s): {[round(x, 3) for x in latencies]}")
