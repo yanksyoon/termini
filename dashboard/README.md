@@ -19,27 +19,38 @@ file server can host it.
 python3 dashboard/mock/server.py --port 8099
 #    -> http://localhost:8099/   (config.js is generated, so no query args needed)
 
-# 2) or point at a real controller: edit dashboard/config.js, or use Settings,
-#    or pass query params:
-#    http://<host>/dashboard/?apiBase=https://10.10.0.10/v1&projectId=<ULID>&token=<project_token>
+# 2) or point at a real controller: edit dashboard/config.js, or use Settings, or
+#    pass the NON-SECRET connection parameters as query params and sign in once:
+#    http://<host>/dashboard/?apiBase=https://10.10.0.10/v1&projectId=<ULID>
+#
+#    The credential is never a query parameter. Open Settings, paste the
+#    project_token, and it is sent in the Authorization header from then on,
+#    kept for that browser tab only (sessionStorage) — see "Credential handling".
 ```
 
 Live controller, no mock:
 
 ```bash
 python3 -m http.server 8099 --directory dashboard
-# then open .../?apiBase=https://<controller>/v1&projectId=<ULID>&token=<project_token>
+# then open .../?apiBase=https://<controller>/v1&projectId=<ULID>, open Settings and
+# sign in. A `?token=…` link is refused and scrubbed from the address bar.
 ```
 
 ### Configuration precedence
 
-`?query` → `localStorage` (Settings dialog) → `dashboard/config.js` → defaults.
+`?query` → `localStorage` (Settings dialog, non-secret settings) →
+`dashboard/config.js` → defaults.
+
+**The credential is the one exception:** it is read only from this tab's
+`sessionStorage` (what Settings writes) or from `dashboard/config.js` when a
+deployment injects it server-side. It is *never* read from the query string, and
+`apiUrl()` throws rather than build any request URL that would carry it.
 
 | Key | Meaning |
 |-----|---------|
 | `apiBase` | REST root incl. `/v1`. `""` = same origin. |
 | `projectId` | project ULID (required unless `offline`) |
-| `token` | `project_token` (Bearer for REST; `?token=` for SSE) |
+| `token` | `project_token` — Bearer header on every request; **never** a query parameter |
 | `pollMs` | REST poll cadence (default 5000, contract §1.5) |
 | `defaultWindow` | initial chart window (`5m`/`15m`/`1h`/`6h`) |
 | `logBufferMax` | client-side log ring buffer (default 2000) |
@@ -146,8 +157,12 @@ backend is owned by `t_3468e5f0`.
   `health`; the as-built core (`server.py _node_view`) does not, so the dashboard
   falls back to deriving contract §1.3 flags from a latest sample
   (`GET /nodes/{id}` → `metrics_latest`) when `health` is absent.
-* **SSE auth.** `EventSource` cannot set `Authorization`; the token rides in
-  `?token=` exactly as the contract specifies for `/logs`.
+* **SSE auth.** `EventSource` cannot set `Authorization`, which is what forced
+  the old `?token=` query parameter on `/logs`. The dashboard therefore reads the
+  stream with `fetch()` + a `ReadableStream` reader and sends the credential in
+  the `Authorization` header (`js/stream.js`); the URL carries only `?since=`.
+  Reconnect/backoff is explicit (the browser's automatic EventSource reconnect
+  no longer applies).
 * **Terminal.** Out of scope here; see `t_cd585251` (`/terminal/v1/{node_id}`).
 
 ## Decisions panel (telemetry → decider → action → result)
@@ -197,3 +212,55 @@ set (that collision used to swallow the first replayed line).
 2. **`controller-api.md` §7.2/§7.3** still describe the thin `{ts,level,text}` log
    shape and the VM-level terminal; `dashboard.md` §7 (R-D1/R-D3) already
    supersedes both for this surface — the dashboard follows R-D1/R-D3.
+
+---
+
+## Credential handling (no credential in a URL)
+
+The published dashboard URL used to carry `?token=<project_token>`. A credential
+in a URL is shareable by construction — address bar, browser history, the
+`Referer` header, every proxy log, and any link a viewer copies — so the pattern
+is now refused at three depths, each covered by a test
+(`tests/credentials.test.mjs`):
+
+1. `resolveConfig()` never reads a credential from the query string. A legacy
+   `?token=…` link sets `urlTokenIgnored`, the app strips the parameter out of the
+   address bar (`history.replaceState`) and tells the viewer to sign in;
+2. `apiUrl()` — used by every REST call *and* the SSE stream — throws rather than
+   build a URL carrying one, including when `apiBase` itself was pasted out of a
+   tokenized link;
+3. the SSE reader (`fetch()` + a `ReadableStream` reader) sends the credential in
+   the `Authorization` header, which is why `EventSource` (which cannot set one)
+   is gone.
+
+Where state is held: non-secret connection settings (`apiBase`, `projectId`,
+`offline`) live in `localStorage`; **credentials** — the project token from
+Settings, and the client view's node credential — live in `sessionStorage`, i.e.
+one tab, gone when it closes, so a copied link never carries them.
+
+## Your node (client view)
+
+`GET /v1/nodes/{node_id}/telemetry/recent`, authenticated with the node's
+**own** credential: the per-node `node_token` the installer left at
+`/var/lib/termini/identity/node.json` (0600) when the node registered. The panel
+shows the registration state (`pending` / `registered` / `degraded` /
+`not reporting`, derived with contract §1.3's 15 s/45 s thresholds), when the node
+was last seen, and the first telemetry: heartbeat `seq` + timestamp, CPU, memory,
+uptime, load, node runtime facts and service status — refreshing in place every
+5 s with no page reload, and never using the project token.
+
+It is deliberately **one node, not a fleet**. Under the frozen enrollment contract
+(task `t_074b1a14`, option (a) provider-issued single-use tokens) a client's only
+read credential is that node token, which reads exactly one node (the controller
+refuses a cross-node id with 403). Client isolation therefore comes from the
+credential itself: there is no client identity store and no client-authenticated
+list, by decision — building one would reintroduce the ruled-out option (b).
+
+A client with nothing enrolled yet gets the instructive empty state: the
+documented one-liner, the `termini-node-status --watch` confirmation, and exactly
+what they will see once their node registers.
+
+`dashboard/evidence/run-client-view-evidence.sh` runs the whole client path with
+no GCP and no stub (real controller process, the documented one-liner, the real
+node daemon, the dashboard on a second origin). The screenshots and the network
+capture under `dashboard/evidence/` come from that run.

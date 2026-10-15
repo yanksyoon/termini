@@ -374,6 +374,41 @@ class Handler(BaseHTTPRequestHandler):
     # ----------------------------------------------------------------- api
     def _api_get(self, path: str, query: dict):
         w = self.world
+
+        # Client view of ONE node (task t_5649d117): that node's own credential in
+        # the Authorization header. Checked BEFORE the project-token gate because
+        # on the real controller this route is node_token-authenticated and
+        # project-scoped nowhere. A credential in the query string is refused here
+        # on purpose, so the dashboard cannot regress to the ?token=… pattern even
+        # against the mock.
+        m = re.fullmatch(r"/v1/nodes/([^/]+)/telemetry/recent/?", path)
+        if m:
+            node_id = m.group(1)
+            if query.get("token"):
+                self._json(400, fx.err(
+                    "INVALID_ARGUMENT",
+                    "credentials must not travel in the query string; use the Authorization header",
+                    400)[1])
+                return
+            node = self._find_node(node_id)
+            if node is None:
+                self._json(404, fx.err("NOT_FOUND", "node not found", 404)[1])
+                return
+            header = self.headers.get("Authorization", "")
+            presented = header[7:].strip() if header.startswith("Bearer ") else ""
+            if not presented:
+                self._json(401, fx.err("UNAUTHENTICATED", "missing node token", 401)[1])
+                return
+            # The mock keeps ONE credential universe (mock/README.md): a Bearer
+            # value that is not the mock's token is refused, which is the shape of
+            # the real controller's "this credential cannot read that node" 403.
+            if presented != w.token:
+                self._json(403, fx.err("PERMISSION_DENIED", "this credential cannot read that node", 403)[1])
+                return
+            limit = int(query.get("limit", "5") or 5)
+            self._json(200, {"node_id": node_id, "samples": list(w.history[node_id])[-limit:]})
+            return
+
         if not self._auth_ok(query):
             self._json(401, {"error": {"code": "UNAUTHENTICATED", "message": "invalid project token", "details": [], "request_id": fx.ulid()}})
             return
