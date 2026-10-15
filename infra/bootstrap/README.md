@@ -78,6 +78,34 @@ Timing: `register_ms` / `boot_to_registered_ms` (ack) and `fail_fast_s`
 `register_timeout_s` (5), `registration_max_retries` (3),
 `registration_backoff_base_s` (1), `registration_backoff_cap_s` (60).
 
+### 1.2 Client-facing install — the customer half
+
+Everything above is the *provider-driven* path: an operator renders the cloud-init
+user-data (controller URL + a single-use enrollment token) and boots the node. Task
+`t_70bd0f2b` adds the **customer-facing** half on top of the same daemon, so a
+customer bootstraps their own machine with their own credential and sees it
+register — no provider shell in the loop:
+
+* `client/termini-node-install.sh` — the one-liner installer a customer pipes into
+  `sh`. It writes the same `/etc/termini/config.yaml` + enrollment token this
+  cloud-init writes, installs the runtime if the machine did not come from the node
+  image, starts the unit, waits for the controller to **acknowledge** the
+  registration, then prints the client's confirmation. Re-running it reuses the
+  persisted identity (`/var/lib/termini/identity/node.json`) and never consumes a
+  second credential.
+* `client/termini-node-status.py` — the customer's own view of the node
+  (registration details + live health), read back with the node's own token, and
+  the single implementation of the three distinct failure messages.
+* `client/issue-enrollment.py` — the provider half: mints the single-use credential
+  over the loopback-only mint route, preflights the public install surface and
+  prints the customer's exact command.
+* The controller serves those artifacts and this daemon publicly, with **no
+  credential of any class**, at `GET /install/…`
+  (`docs/contracts/controller-api.md` §4.8).
+
+The customer never holds the controller's project token; the customer-facing guide
+is `client/README.md`.
+
 ---
 
 ## 2. Files
@@ -90,6 +118,7 @@ Timing: `register_ms` / `boot_to_registered_ms` (ack) and `fail_fast_s`
 | `render-cloud-init.sh` | Renders the template with `envsubst` (documented variable list only). |
 | `provision-node.sh` | Creates/configures a node from the image alias with the rendered user-data (idempotent). |
 | `verify-bootstrap.sh` | Acceptance harness — provisions a fresh node, times boot→registered, tests passwordless SSH with the injected key, and checks idempotency. |
+| `client/` | **Customer-facing install half** (task `t_70bd0f2b`): the one-liner installer, the client status helper, the provider's mint/handover helper and the customer guide. See `client/README.md`. |
 | `evidence/` | Captured raw evidence (see §5). |
 
 `infra/warm/node/termini-bootstrap.py` and `.service` are symlinks to the two
