@@ -960,6 +960,45 @@ Nothing existing changed.
 
 ---
 
+### 4.8 Agent tasks (client → controller → agent) — card `t_1a2c913c`
+
+Give an agent a task and read its answer. The agent-facing surface is inside the instance and bound to loopback; the controller **proxies** the call through the owning node's LXD exec (decision **AT-1** in `agent-runtime.md` §7.4), so the client needs no route to the instance and receives no instance credentials. Every submission is audited like a node action.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `POST` | `/v1/projects/{project_id}/agents/{vm_id}/tasks` | `project_token`. Body `{ "prompt": str, "model_preference": str?, "max_tokens": int?, "actor": str? }`. `202` + the task record. |
+| `GET` | `/v1/projects/{project_id}/agents/{vm_id}/tasks/{task_id}` | `project_token`. State + answer (`answer`, `model`, `provenance`, `usage`, `duration_ms`, `error`). |
+| `GET` | `/v1/projects/{project_id}/agents/{vm_id}/tasks?limit=N` | `project_token`. The enumerable record (summaries only — no prompts, no answers). |
+
+`vm_id` is the agent's LXD instance name (`controller-api.md` §5). Task record:
+```json
+{
+  "task_id": "01M506S2JJ5JFCR3K30BJY26NK",
+  "vm_id": "termini-01m4wjhwqr3b8pcav2tvqbgg-0-0",
+  "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+  "command_id": "01M506S2JJP0CJQ5C1C4V3N7T9",
+  "agent_task_id": "01M506S2JK3S4T5V6W7X8Y9Z01",
+  "state": "done",
+  "actor": "human:ops",
+  "model": "gemma",
+  "provenance": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "egress": "external", "forwarded": true},
+  "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
+  "answer": "pong",
+  "error_code": null,
+  "submitted_at": "2026-10-15T16:31:02Z",
+  "ended_at": "2026-10-15T16:31:06Z",
+  "duration_ms": 4120
+}
+```
+
+States: `queued | running | done | error` (agent-runtime §5.6). The controller's deadline for one task is 300 s; a task that outlives it is `error: TASK_TIMEOUT`, and a controller restart fails any inherited row with `TASK_ORPHANED` rather than leaving it looking slow.
+
+**Errors** (§3 envelope): `404 AGENT_NOT_FOUND`, `503 NODE_OFFLINE`, `503 NODE_UNREACHABLE`, `503 AGENT_UNREACHABLE`, `429 TASK_BOUND_EXCEEDED`, `400 MODEL_NOT_ALLOWED`, `413 PROMPT_TOO_LARGE`. Codes the controller adds outside the §3 list are task-specific and always carry `details[0].reason` with the action to take.
+
+**Audit and events.** Each submission writes an `agent.dispatch_task` command (`§6` allowlist, `issued_by: human`, node-scoped) plus a content-free operator-log line, and emits `task.queued` → `task.state_changed` → `task.completed` on the WS stream (§7.1) with `{task_id, vm_id, state, duration_ms, model}` — never content.
+
+---
+
 ## 5. Guardrail & Clamp Validator
 
 The deterministic choke point between "DeepSeek/Gemini recommends" and "LXD

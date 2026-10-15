@@ -42,12 +42,14 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from . import db, errors, governance, health, inventory, registration, role, store, validate, ws as wsmod
+from . import agent_tasks as agent_tasks_mod
 from . import commands as cmd_mod
 from . import demo_faults as demo_faults_mod
 from . import ulid
@@ -265,6 +267,16 @@ class ControllerHandler(BaseHTTPRequestHandler):
             return self._node_action(conn, segs[2], segs[4], segs[6])
         if method == "POST" and segs == ["v1", "bootstrap-tokens"]:
             return self._mint_bootstrap_tokens(conn)
+        # Agent task API (t_1a2c913c, agent-runtime.md §5.6/§7.4).
+        if (method == "POST" and len(segs) == 6 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "agents" and segs[5] == "tasks"):
+            return self._agent_task_submit(conn, segs[2], segs[4])
+        if (method == "GET" and len(segs) == 6 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "agents" and segs[5] == "tasks"):
+            return self._agent_task_list(conn, segs[2], segs[4])
+        if (method == "GET" and len(segs) == 7 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "agents" and segs[5] == "tasks"):
+            return self._agent_task_get(conn, segs[2], segs[4], segs[6])
         if method == "POST" and len(segs) == 4 and segs[:2] == ["v1", "projects"] and segs[3] == "intents":
             return self._intents(conn, segs[2])
         if method == "POST" and len(segs) == 5 and segs[:2] == ["v1", "projects"] and segs[3] == "vms" and segs[4] == "apply":
@@ -606,6 +618,146 @@ class ControllerHandler(BaseHTTPRequestHandler):
                          "state": cmd["state"], "issued_by": "human"}
 
         raise errors.not_found(f"unknown action {action}")
+
+    # ------------------------------------------------------------ agent tasks
+    def _agent_task_submit(self, conn, project_id: str, vm_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/agents/{vm_id}/tasks — give an agent a task.
+
+        Decision AT-1 (agent-runtime.md §7.4): the controller PROXIES this call onto
+        the agent's loopback task surface through the owning node's LXD exec API. The
+        client never needs a route to the instance and never receives instance
+        credentials; the cost is that task content transits the controller, which is
+        recorded, never logged, never model-processed here (see `agent_tasks.py`).
+
+        Every submission is audited exactly like a node action: an `agent.dispatch_task`
+        command in the same envelope/allowlist (`commands.py`) + an operator-log line,
+        both content-free, plus the enumerable `agent_tasks` row.
+        """
+        self._require_project(conn, project_id)
+        body = self._read_body()
+
+        prompt = body.get("prompt")
+        messages = body.get("messages")
+        if prompt is None and messages:
+            prompt = "\n".join(str(m.get("content", "")) for m in messages
+                               if isinstance(m, dict))
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise errors.err(422, "INVALID_ARGUMENT", "prompt is required",
+                             [{"field": "prompt", "reason": "required"}])
+        size = len(prompt.encode("utf-8"))
+        if size > agent_tasks_mod.MAX_PROMPT_BYTES:
+            raise errors.err(
+                413, "PROMPT_TOO_LARGE",
+                f"prompt is {size} bytes; the per-task limit is "
+                f"{agent_tasks_mod.MAX_PROMPT_BYTES}",
+                [{"field": "prompt", "reason": "too_large"}])
+
+        max_tokens = body.get("max_tokens", 256)
+        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) \
+                or not (1 <= max_tokens <= 4096):
+            raise errors.err(422, "INVALID_ARGUMENT", "max_tokens must be an integer in [1, 4096]",
+                             [{"field": "max_tokens", "reason": "out_of_range"}])
+        model_preference = body.get("model_preference") or body.get("model")
+        if model_preference is not None and not isinstance(model_preference, str):
+            raise errors.err(422, "INVALID_ARGUMENT", "model_preference must be a string",
+                             [{"field": "model_preference", "reason": "not_a_string"}])
+        actor = body.get("actor") or "human"
+        if not isinstance(actor, str):
+            raise errors.err(422, "INVALID_ARGUMENT", "actor must be a string",
+                             [{"field": "actor", "reason": "not_a_string"}])
+
+        node, reason, known = agent_tasks_mod.resolve_agent(
+            conn, self.server.cfg, project_id, vm_id)
+        if node is None:
+            if reason == "node_unreachable":
+                raise errors.err(
+                    503, "NODE_UNREACHABLE",
+                    f"the node holding agent {vm_id} cannot be reached, so its state "
+                    f"cannot be established",
+                    [{"field": "vm_id", "reason": "owning node unreachable"}])
+            raise errors.err(
+                404, "AGENT_NOT_FOUND",
+                f"no agent {vm_id} on this project's nodes",
+                [{"field": "vm_id", "reason": "unknown",
+                  "known_vm_ids": known[:20]}])
+
+        sample = store.latest_sample(conn, node["id"])
+        node_status, _ = health.node_status_health(node, sample, time.time())
+        if node_status == "offline":
+            raise errors.err(503, "NODE_OFFLINE",
+                             f"node {node['id']} is offline; agent {vm_id} cannot be reached",
+                             [{"field": "vm_id", "reason": "node_offline"}])
+
+        command = cmd_mod.issue_command(
+            conn, self.server.operator_logs, project_id, "agent.dispatch_task",
+            {"vm_id": vm_id, "prompt_bytes": size,
+             "model_preference": model_preference, "max_tokens": max_tokens},
+            "human", node_id=node["id"])
+
+        task = agent_tasks_mod.insert_task(
+            conn, project_id=project_id, vm_id=vm_id, node_id=node["id"],
+            command_id=command["command_id"], actor=actor, prompt=prompt,
+            model_preference=model_preference, max_tokens=int(max_tokens),
+            timeout_s=agent_tasks_mod.DEFAULT_TASK_TIMEOUT_S)
+        # Commit BEFORE dispatch: the record (and its audit command) must survive a
+        # dispatch failure, and `_route` rolls the transaction back on any ApiError.
+        conn.commit()
+
+        try:
+            submitted = agent_tasks_mod.submit_to_agent(self.server.cfg, node, task)
+        except agent_tasks_mod.AgentTaskError as exc:
+            agent_tasks_mod.fail_task(
+                conn, project_id, task["task_id"], code=exc.code,
+                message=str(exc), actionable=exc.actionable,
+                logs=self.server.operator_logs)
+            conn.commit()
+            details = [{"field": exc.param or "vm_id",
+                        "reason": exc.actionable or str(exc)}]
+            raise errors.err(exc.status, exc.code, str(exc), details)
+
+        state = submitted.get("state")
+        if state not in (agent_tasks_mod.QUEUED, agent_tasks_mod.RUNNING):
+            state = agent_tasks_mod.QUEUED
+        agent_tasks_mod.update_task(
+            conn, task["task_id"], state=state,
+            agent_task_id=submitted.get("task_id"),
+            started_at=submitted.get("started_at"))
+        conn.commit()
+        self.server.broker.publish(
+            "task.queued",
+            {"task_id": task["task_id"], "vm_id": vm_id, "project_id": project_id},
+            project_id)
+        threading.Thread(
+            target=agent_tasks_mod.poll_until_terminal,
+            args=(self.server.cfg, project_id, task["task_id"], vm_id, node["id"],
+                  self.server.operator_logs),
+            name=f"task-poll-{task['task_id'][-6:]}", daemon=True).start()
+        return 202, agent_tasks_mod.get_task(conn, task["task_id"], project_id) or {}
+
+    def _agent_task_get(self, conn, project_id: str, vm_id: str,
+                        task_id: str) -> tuple[int, dict]:
+        """GET /v1/projects/{pid}/agents/{vm_id}/tasks/{task_id} — state + answer."""
+        self._require_project(conn, project_id)
+        task = agent_tasks_mod.get_task(conn, task_id, project_id)
+        if task is None or task["vm_id"] != vm_id:
+            raise errors.not_found(f"no task {task_id} for agent {vm_id}")
+        return 200, task
+
+    def _agent_task_list(self, conn, project_id: str, vm_id: str) -> tuple[int, dict]:
+        """GET /v1/projects/{pid}/agents/{vm_id}/tasks — the enumerable record.
+
+        The answers are omitted here on purpose (a listing is not the read path for
+        content); each row carries the states/errors for evidence, and the single-task
+        GET returns the body.
+        """
+        self._require_project(conn, project_id)
+        limit = self._query().get("limit", "50")
+        try:
+            limit_i = int(limit)
+        except ValueError:
+            raise errors.invalid_argument("limit must be an integer")
+        tasks = agent_tasks_mod.list_tasks(conn, project_id, vm_id=vm_id, limit=limit_i)
+        return 200, {"vm_id": vm_id, "tasks": tasks, "count": len(tasks)}
 
     def _remediation_decision(self, conn, project_id: str, command_id: str, decision: str) -> tuple[int, dict]:
         self._require_project(conn, project_id)

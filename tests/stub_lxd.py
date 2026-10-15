@@ -63,6 +63,14 @@ class StubLxd:
         self.operation_status = "Success"  # status the operation poll reports
         self.operation_error = ""          # the operation's own `err` string (metadata.err)
         self.operation_gone = False        # the op was reaped before we polled it
+        # Exec surface (agent task API, t_1a2c913c): the recored stdout/stderr of a
+        # `POST /1.0/instances/{name}/exec` with `record-output: true`, served back
+        # from `/1.0/instances/{name}/logs/...` exactly like real LXD. `exec_handler`
+        # is what the test puts INSIDE the instance: it receives the command argv and
+        # returns (returncode, stdout, stderr).
+        self.exec_handler = None           # Callable[[list[str]], tuple[int, str, str]]
+        self.exec_fail = False             # force the exec POST to 500
+        self.exec_operations: dict[str, dict] = {}   # op path -> recorded output
         self._op_seq = 0
         self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self.port = self._httpd.server_address[1]
@@ -159,6 +167,28 @@ class StubLxd:
             def do_POST(self):
                 body = self._read()
                 stub.requests.append(("POST", self.path, body))
+                if self.path.endswith("/exec") and self.path.startswith("/1.0/instances/"):
+                    stub._op_seq += 1
+                    op = f"/1.0/operations/op-exec-{stub._op_seq}"
+                    if stub.exec_fail:
+                        self._send(500, {"error": "Failed to run command"})
+                        return
+                    argv = (body or {}).get("command") or []
+                    rc, out, err = (0, "", "")
+                    if stub.exec_handler is not None:
+                        rc, out, err = stub.exec_handler(list(argv))
+                    name = self.path[len("/1.0/instances/"):-len("/exec")]
+                    stdout_path = f"/1.0/instances/{name}/logs/exec-{stub._op_seq}.stdout"
+                    stderr_path = f"/1.0/instances/{name}/logs/exec-{stub._op_seq}.stderr"
+                    stub.exec_operations[op] = {
+                        "return": rc, "stdout": out, "stderr": err,
+                        "output": {"1": stdout_path, "2": stderr_path},
+                    }
+                    stub.requests.append(("EXEC", self.path, body))
+                    self._send(202, {
+                        "type": "async", "status_code": 100, "operation": op,
+                        "metadata": {"description": "Executing command"}})
+                    return
                 if self.path == "/1.0/instances":
                     name = (body or {}).get("name", "")
                     if stub.fail_create:
@@ -204,10 +234,34 @@ class StubLxd:
                         self._send(404, {"type": "error", "error_code": 404,
                                          "error": "not found"})
                         return
+                    exec_op = stub.exec_operations.get(self.path)
+                    if exec_op is not None and stub.operation_status == "Success":
+                        # An exec operation reports what the command produced: its
+                        # return code and the two recorded output paths (real LXD
+                        # shape, see `record-output`).
+                        self._send(200, {"type": "sync", "status_code": 200,
+                                         "metadata": {
+                                             "status": "Success", "status_code": 200,
+                                             "err": "",
+                                             "metadata": {"return": exec_op["return"],
+                                                          "output": exec_op["output"]}}})
+                        return
                     self._send(200, {"type": "sync", "status_code": 200,
                                      "metadata": {"status": stub.operation_status,
                                                   "status_code": 200,
                                                   "err": stub.operation_error}})
+                elif "/logs/" in self.path:
+                    # Recorded exec output, served as LXD serves it (the log file's
+                    # metadata carries the text).
+                    for op in stub.exec_operations.values():
+                        for stream, path in op["output"].items():
+                            if path == self.path:
+                                text = op["stdout"] if stream == "1" else op["stderr"]
+                                self._send(200, {"type": "sync", "status_code": 200,
+                                                 "metadata": text})
+                                return
+                    self._send(404, {"type": "error", "error_code": 404,
+                                     "error": "no such log file"})
                 elif self.path.startswith("/1.0/instances/") and self.path.endswith("/state"):
                     name = self.path[len("/1.0/instances/"): -len("/state")]
                     state = stub.state_of(name)
@@ -234,6 +288,13 @@ class StubLxd:
     def create_requests(self) -> list[tuple[str, str, dict | None]]:
         """POST /1.0/instances requests (the materialisation calls)."""
         return [r for r in self.requests if r[0] == "POST" and r[1] == "/1.0/instances"]
+
+    def exec_requests(self, instance: str | None = None) -> list[tuple[str, str, dict | None]]:
+        """Exec calls made inside an instance (the agent task transport)."""
+        out = [r for r in self.requests if r[0] == "EXEC"]
+        if instance is not None:
+            out = [r for r in out if r[1] == f"/1.0/instances/{instance}/exec"]
+        return out
 
     def restart_requests(self) -> list[tuple[str, str, dict | None]]:
         """Requests that are a restart of an instance (PUT .../state with action restart)."""

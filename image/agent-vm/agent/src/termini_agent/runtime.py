@@ -17,6 +17,7 @@ from .config import AgentConfig
 from .inference import InferenceClient, InferenceError
 from .logging_setup import configure_logging
 from .status import StatusServer, StatusState
+from .taskapi import TaskService
 from .ulid import new_ulid
 
 log = logging.getLogger("termini_agent.runtime")
@@ -48,6 +49,9 @@ class AgentRuntime:
         self.inference = InferenceClient(cfg)
         self.broker = BrokerClient(cfg.broker.endpoint, cfg.vm_id,
                                    cfg.inference_token() or "termini-local")
+        # The task surface (§5.6) shares the loopback listener with /status; its
+        # concurrency bound is what stops one agent's tasks saturating the node.
+        self.tasks = TaskService(cfg, client=self.inference)
         self.state = StatusState({
             "schema_version": "1.0",
             "kind": "termini.agent_status",
@@ -62,9 +66,10 @@ class AgentRuntime:
             "stats": {"completed": 0, "failed": 0, "requeued": 0},
             "governance": {"egress": "deny", "telemetry_class": "C0", "local_only": True},
             "config": cfg.as_public_dict(),
+            "tasks": self.tasks.counters(),
         })
         self.status = StatusServer(self.state, unix_path=status_unix,
-                                   http_port=status_http_port)
+                                   http_port=status_http_port, tasks=self.tasks)
 
     # -- lifecycle ------------------------------------------------------------
     def run(self) -> int:
@@ -85,7 +90,8 @@ class AgentRuntime:
             w.start()
 
         while not self.stop_event.is_set():
-            self.state.update(status_time=int(time.time()))
+            self.state.update(status_time=int(time.time()),
+                              tasks=self.tasks.counters())
             self._refresh_broker_health()
             time.sleep(1.0)
 
