@@ -159,13 +159,48 @@ the proxy card promised.
    and nothing served on `:8080`. The standing node-c only worked because its boot
    disk predates the external-IP removal and already carries the binary + weights.
    The new opt-in `--with-external-ip` flag is what makes a from-scratch raise
-   work; it was used for this run and the access config was deleted again at
-   teardown (the standing posture stays `--no-address`). If the demo raises a
-   node-c from scratch it must use that flag (or a NAT) — otherwise the node has
-   no inference endpoint at all.
+   work; it was used for this run. **The access config was NOT deleted in this
+   run**: the worker that raised the node exhausted its iteration budget before
+   teardown, so node-c was left with an ephemeral public IP. It was removed in
+   the post-merge re-verification below (and the node kept serving `:8080` from
+   the peer afterwards), so the standing posture is `--no-address` again. If the
+   demo raises a node-c from scratch it must use that flag (or a NAT) — otherwise
+   the node has no inference endpoint at all.
 3. `n2-standard-2`/`n2-standard-8` were again `ZONE_RESOURCE_POOL_EXHAUSTED` in
    `asia-south1-a`; the run used `e2-standard-2`/`e2-standard-8` and restored the
    declared types at teardown.
+
+## Post-merge re-verification (2026-10-15T12:25–12:42Z, on the LANDED commit)
+
+The acceptance above was taken on the branch commit, before this card landed. The
+claim was therefore re-taken against the landed state — `origin/main` = `9a01c9a`
+(PR #160), whose tree is byte-identical to the branch (`git diff --stat origin/main HEAD`
+prints nothing). Raw output, verbatim: [`post-merge-reverify.txt`](post-merge-reverify.txt).
+
+- **The installed bytes ARE the merged bytes.** `/opt/termini/inference/proxy.py`
+  `acf80f7c…` and `/usr/local/sbin/termini-inference-switch` `85b1c822…` match
+  `origin/main`, and the installer cloud-init staged at
+  `/usr/local/src/termini-inference/install-inference-proxy.sh` is `929afeef…` —
+  the same digest as the merged repo file. The four staged files are stamped
+  12:05 (the instance create); nothing was installed by hand.
+- **The node's own first boot is still the only thing that installed it:**
+  `/var/log/termini-llama-serve.log` lines 624/633, `ActiveEnterTimestamp`
+  12:12:11Z–12:14:01Z, `cloud-init status: done`.
+- **`/health` → `backend=gemini-proxy`** (`HTTP 200` in 1.5 ms), **`/v1/models` →
+  `gemma`**, the llama.cpp worker answers on `127.0.0.1:8081` and is `HTTP=000` on
+  the underlay address (loopback only), and `termini-inference-switch status`
+  reports what is serving.
+- **The PEER acceptance from node-a** with the committed `verify-proxy.sh`
+  (`2b740a80…`, the same digest on the peer) is `VERIFY_EXIT=0` — median 1.379 s,
+  every drop-in/labelling/streaming check PASS — and a bare peer request with no
+  harness returns `REVERIFY_OK` with `backend=gemini-proxy`. The first peer
+  invocation in PART 1/3 used a wrong argv (`<ip> <port> <backend>` where the
+  harness takes `<ip> [backend]`) and FAILED that one check; PART 2/3 is the
+  correct run. Both are in the capture, unedited.
+- **Teardown:** the timed-out worker left node-c's ephemeral access config
+  attached. It was deleted here, and the peer call then returned
+  `POSTTEARDOWN_OK`. The fleet is left as it was found: controller + node-a
+  RUNNING, node-b TERMINATED, node-c RUNNING internal-only.
 
 ## Reproduce
 
