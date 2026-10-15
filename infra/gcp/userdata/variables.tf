@@ -10,6 +10,22 @@ variable "llama_serve_script_path" {
   type        = string
 }
 
+variable "inference_front_door_files" {
+  description = "Node C inference front-door payload staged into cloud-init (task t_359ed606): objects with `source` (absolute host path, read with filebase64), `path` (destination on the node) and `mode`. The files themselves are owned by infra/inference/install-inference-proxy.sh, which the first boot then CALLS; an empty list renders no payload (activation-only nodes)."
+  type = list(object({
+    source = string
+    path   = string
+    mode   = string
+  }))
+  default = []
+}
+
+variable "inference_backend" {
+  description = "Backend a FRESH Node C serves through the front door: gemini-proxy (the shipped demo configuration) or local. Substituted for __INFERENCE_BACKEND__ in the serve script."
+  type        = string
+  default     = "gemini-proxy"
+}
+
 variable "node_spec" {
   description = "Per-node role/inference flags, keyed by node name (node-a/b/c)."
   type        = map(object({ role = string, inference = bool }))

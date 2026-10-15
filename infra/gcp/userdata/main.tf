@@ -17,25 +17,28 @@ terraform {
 }
 
 locals {
-  # Node C first-boot script with its __LLAMACPP_COMMIT__/__MODEL_*__/__PORT__
-  # tokens resolved. replace() (not a templatefile) keeps the shell script's own
-  # ${VAR} interpolations literal.
+  # Node C first-boot script with its __LLAMACPP_COMMIT__/__MODEL_*__/__PORT__/
+  # __INFERENCE_BACKEND__ tokens resolved. replace() (not a templatefile) keeps
+  # the shell script's own ${VAR} interpolations literal.
   llama_serve_script = replace(
     replace(
       replace(
         replace(
           replace(
             replace(
-              file(var.llama_serve_script_path),
-              "__LLAMACPP_COMMIT__", var.llamacpp_commit
+              replace(
+                file(var.llama_serve_script_path),
+                "__LLAMACPP_COMMIT__", var.llamacpp_commit
+              ),
+              "__MODEL_URL__", var.inference_model_url
             ),
-            "__MODEL_URL__", var.inference_model_url
+            "__MODEL_FILE__", var.inference_model_file
           ),
-          "__MODEL_FILE__", var.inference_model_file
+          "__MODEL_SHA256__", var.inference_model_sha256
         ),
-        "__MODEL_SHA256__", var.inference_model_sha256
+        "__MODEL_ALIAS__", var.inference_model_alias
       ),
-      "__MODEL_ALIAS__", var.inference_model_alias
+      "__INFERENCE_BACKEND__", var.inference_backend
     ),
     "__PORT__", tostring(var.inference_port)
   )
@@ -58,6 +61,22 @@ locals {
   ])
   llama_serve_runcmd = "  - [ /usr/local/sbin/termini-llama-serve.sh ]"
 
+  # Node C's inference FRONT DOOR payload (task t_359ed606): the four committed
+  # files install-inference-proxy.sh owns, staged so cloud-init can CALL the
+  # installer instead of carrying a copy of its heredocs. base64 (filebase64)
+  # keeps a 50 KB python file byte-exact — no block-scalar indentation or
+  # escaping can alter it — and infra/gcp/verify-cloud-init.sh decodes each entry
+  # and compares its sha256 with the repo file.
+  front_door_write_files = join("\n", [
+    for f in var.inference_front_door_files : join("\n", [
+      "  - path: ${f.path}",
+      "    permissions: '${f.mode}'",
+      "    owner: root:root",
+      "    encoding: b64",
+      "    content: \"${filebase64(f.source)}\"",
+    ])
+  ])
+
   # Per-node cloud-init user-data, rendered from the SHARED bootstrap template.
   node_user_data = {
     for k, v in var.node_spec : k => templatefile(var.cloud_init_template, {
@@ -74,8 +93,9 @@ locals {
       image_alias               = var.image_alias
       image_version             = var.image_version
       ssh_authorized_keys_block = local.ssh_authorized_keys_block
-      # Node C only (serve_inference): keep the llama.cpp serve block.
-      extra_write_files = (v.inference && var.serve_inference) ? local.llama_serve_write_file : ""
+      # Node C only (serve_inference): keep the llama.cpp serve block, plus the
+      # inference front door the first boot installs (t_359ed606).
+      extra_write_files = (v.inference && var.serve_inference) ? join("\n", [local.llama_serve_write_file, local.front_door_write_files]) : ""
       extra_runcmd      = (v.inference && var.serve_inference) ? local.llama_serve_runcmd : ""
     })
   }

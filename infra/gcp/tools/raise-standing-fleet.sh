@@ -45,6 +45,11 @@ CONTROLLER_URL="${CONTROLLER_URL:-http://10.10.0.2:8080}"
 TELEMETRY_INTERVAL_MS="${TELEMETRY_INTERVAL_MS:-1000}"
 NODE_IMAGE_VERSION="${NODE_IMAGE_VERSION:-2026.10.0}"
 INFERENCE_PORT="${INFERENCE_PORT:-8080}"
+# Which backend a FRESH node serves: gemini-proxy (the shipped demo
+# configuration — the forwarded managed model emulating the GPU node) or local
+# (the node's own CPU weights). On a running node the same choice is one command:
+# `termini-inference-switch local|gemini-proxy` (task t_359ed606).
+INFERENCE_BACKEND="${INFERENCE_BACKEND:-gemini-proxy}"
 INFERENCE_MODEL_URL="${INFERENCE_MODEL_URL:-https://storage.googleapis.com/termini-510609-models/gemma-3-4b-it-gguf/gemma-3-4b-it-Q4_K_M.gguf}"
 INFERENCE_MODEL_FILE="${INFERENCE_MODEL_FILE:-gemma-3-4b-it-Q4_K_M.gguf}"
 INFERENCE_MODEL_SHA256="${INFERENCE_MODEL_SHA256:-04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19}"
@@ -72,6 +77,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GCP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 RENDER_CLOUD_INIT="$GCP_DIR/../bootstrap/render-cloud-init.sh"
 LLAMA_SERVE_SCRIPT="$GCP_DIR/cloud-init/llama-serve.sh"
+# ONE renderer for Node C's serve block (llama-serve.sh + the front-door payload),
+# shared with infra/gcp/provision.sh so the two gcloud raise paths cannot drift
+# (task t_359ed606). The Terraform path renders the same block natively.
+NODE_C_SERVE_BLOCK="$GCP_DIR/cloud-init/node-c-serve-block.sh"
 
 log() { printf '[raise-fleet] %s\n' "$*" >&2; }
 die() { printf '[raise-fleet] FATAL: %s\n' "$*" >&2; exit 1; }
@@ -89,23 +98,21 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -f "$RENDER_CLOUD_INIT" ] || die "missing shared renderer: $RENDER_CLOUD_INIT"
+[ -f "$LLAMA_SERVE_SCRIPT" ] || die "missing $LLAMA_SERVE_SCRIPT"
+[ -x "$NODE_C_SERVE_BLOCK" ] || die "missing/not executable: $NODE_C_SERVE_BLOCK"
 
-# Node C's llama.cpp serve block — identical substitution to infra/gcp/provision.sh
-# (the Terraform path does the same through extra_write_files).
+# Node C's serve block — the shared renderer (llama-serve.sh + the front-door
+# payload), identical to infra/gcp/provision.sh's (the Terraform path does the
+# same through extra_write_files).
 llama_extra_write_files() {
-  local script
-  script="$(cat "$LLAMA_SERVE_SCRIPT")"
-  script="${script//__LLAMACPP_COMMIT__/$LLAMACPP_COMMIT}"
-  script="${script//__MODEL_URL__/$INFERENCE_MODEL_URL}"
-  script="${script//__MODEL_FILE__/$INFERENCE_MODEL_FILE}"
-  script="${script//__MODEL_SHA256__/$INFERENCE_MODEL_SHA256}"
-  script="${script//__MODEL_ALIAS__/$INFERENCE_MODEL_ALIAS}"
-  script="${script//__PORT__/$INFERENCE_PORT}"
-  printf '  - path: /usr/local/sbin/termini-llama-serve.sh\n'
-  printf '    permissions: %s\n' "'0755'"
-  printf '    owner: root:root\n'
-  printf '    content: |\n'
-  while IFS= read -r line; do printf '      %s\n' "$line"; done <<< "$script"
+  LLAMACPP_COMMIT="$LLAMACPP_COMMIT" \
+  MODEL_URL="$INFERENCE_MODEL_URL" \
+  MODEL_FILE="$INFERENCE_MODEL_FILE" \
+  MODEL_SHA256="$INFERENCE_MODEL_SHA256" \
+  MODEL_ALIAS="$INFERENCE_MODEL_ALIAS" \
+  PORT="$INFERENCE_PORT" \
+  INFERENCE_BACKEND="$INFERENCE_BACKEND" \
+    "$NODE_C_SERVE_BLOCK" --write-files
 }
 
 userdata() { # $1=node $2=role $3=underlay_ip $4=enrollment_token
@@ -113,7 +120,7 @@ userdata() { # $1=node $2=role $3=underlay_ip $4=enrollment_token
   local extra_write="" extra_runcmd=""
   if [ "$node" = "node-c" ]; then
     extra_write="$(llama_extra_write_files)"
-    extra_runcmd="  - [ /usr/local/sbin/termini-llama-serve.sh ]"
+    extra_runcmd="$("$NODE_C_SERVE_BLOCK" --runcmd)"
   fi
   controller_url="$CONTROLLER_URL" node_name="$node" \
     enrollment_token="$token" team_ssh_pubkey="$(cat "$TEAM_SSH_PUBKEY_FILE")" \

@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # install-inference-proxy.sh — put the simulated-GPU front door on Node C.
 #
-# Run ON Node C as root, on a node whose first boot already built llama.cpp and
-# fetched the pinned weights (infra/gcp/cloud-init/llama-serve.sh):
+# THE SINGLE SOURCE OF TRUTH for the front door: the parameterised proxy, the
+# worker unit, the proxy unit, their env files and the one-step switch are all
+# written HERE. Two callers use it, and neither carries a copy of these heredocs:
 #
-#   sudo ./install-inference-proxy.sh [--backend local|gemini-proxy]
+#   * Node C's FIRST BOOT — cloud-init stages this file (byte-identical, see
+#     infra/gcp/cloud-init/node-c-serve-block.sh) at
+#     /usr/local/src/termini-inference/ and infra/gcp/cloud-init/llama-serve.sh
+#     calls it, so a node created from the image family comes up with the front
+#     door already serving and no manual step (task t_359ed606);
+#   * an OPERATOR on a running node — `sudo ./install-inference-proxy.sh
+#     [--backend local|gemini-proxy]` (idempotent: re-running repairs the units
+#     and re-asserts the chosen backend).
 #
 # What it changes (and why each change is needed):
 #
@@ -13,14 +21,27 @@
 #      (`127.0.0.1:8081`) instead of the host-exposed server on `0.0.0.0:8080`.
 #      This is the "disable the stale host-exposed serve path" step, and it also
 #      realises the frozen AR-4 shape (front door on :8080, workers on loopback).
-#      The original unit is backed up next to it and `termini-inference-switch
-#      legacy` puts the node back exactly as it was — one command, no reinstall.
+#      Nothing is lost: `termini-inference-switch legacy` restores the
+#      host-exposed server on :8080 in one command, with no reinstall.
 #   3. `termini-inference-proxy.service` — the front door on `0.0.0.0:8080`,
 #      i.e. the address nodes A/B already call. They cannot tell the difference.
 #   4. `/etc/termini/inference-proxy.env` — the backend choice. Configuration, not
 #      code: `termini-inference-switch local` restores the CPU path, no rebuild.
+#   5. `/usr/local/sbin/termini-inference-switch` — the one-step backend switch.
+#   6. `/usr/lib/tmpfiles.d/termini-inference.conf` — recreates `/run/termini`
+#      owned by `termini-infer` on every boot. The active-backend state file lives
+#      there and `/run` is a tmpfs, so without this a REBOOTED node would answer
+#      `/health` from a proxy that cannot record what it is serving.
 #
-# Idempotent: re-running repairs the units and re-asserts the chosen backend.
+# Backend default: `gemini-proxy` — the shipped demo configuration (a forwarded
+# managed model that emulates the GPU node, labelled in-band on every response,
+# log line and audit row). `local` serves this node's CPU weights through the same
+# front door; both are one command apart.
+#
+# Run ON Node C as root, on a node whose first boot already built llama.cpp and
+# fetched the pinned weights (infra/gcp/cloud-init/llama-serve.sh):
+#
+#   sudo ./install-inference-proxy.sh [--backend local|gemini-proxy]
 set -euo pipefail
 
 BACKEND="${BACKEND:-gemini-proxy}"
@@ -34,6 +55,8 @@ MODEL_FILE="${MODEL_FILE:-gemma-3-4b-it-Q4_K_M.gguf}"
 BIN_DIR="${BIN_DIR:-/opt/termini/inference}"
 ENV_DIR="${ENV_DIR:-/etc/termini}"
 UNIT_DIR="${UNIT_DIR:-/etc/systemd/system}"
+SBIN_DIR="${SBIN_DIR:-/usr/local/sbin}"
+TMPFILES_DIR="${TMPFILES_DIR:-/usr/lib/tmpfiles.d}"
 GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"
 GEMINI_LOCATION="${GEMINI_LOCATION:-global}"
 GEMINI_HOST="${GEMINI_HOST:-aiplatform.googleapis.com}"
@@ -43,8 +66,8 @@ UPSTREAM_TIMEOUT_S="${UPSTREAM_TIMEOUT_S:-900}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --backend) BACKEND="$2"; shift ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    --backend) BACKEND="${2:-}"; shift ;;
+    -h|--help) sed -n '2,48p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
   shift
@@ -58,6 +81,7 @@ esac
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROXY_SRC="${PROXY_SRC:-$HERE/proxy.py}"
 UNIT_SRC="${UNIT_SRC:-$HERE/termini-inference-proxy.service}"
+SWITCH_SRC="${SWITCH_SRC:-$HERE/termini-inference-switch.sh}"
 
 log() { printf '[install-inference-proxy] %s\n' "$*" >&2; }
 die() { printf '[install-inference-proxy] FATAL: %s\n' "$*" >&2; exit 1; }
@@ -65,6 +89,7 @@ die() { printf '[install-inference-proxy] FATAL: %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" = "0" ] || die "run as root (it writes systemd units)"
 [ -f "$PROXY_SRC" ] || die "proxy source not found: $PROXY_SRC"
 [ -f "$UNIT_SRC" ] || die "unit source not found: $UNIT_SRC"
+[ -f "$SWITCH_SRC" ] || die "switch source not found: $SWITCH_SRC"
 [ -x "$BIN" ] || die "$BIN missing — run the node's first-boot llama.cpp build first"
 [ -s "$MODEL_DIR/$MODEL_FILE" ] || die "model $MODEL_DIR/$MODEL_FILE missing on this node"
 
@@ -144,6 +169,22 @@ chown termini-infer:termini-infer /run/termini
 chmod 0755 /run/termini
 install -m 0644 /dev/null /var/log/termini-inference-proxy.jsonl
 chown termini-infer:termini-infer /var/log/termini-inference-proxy.jsonl
+
+# --- 5. the switch (the one-step way back) ----------------------------------- #
+install -d -m 0755 "$SBIN_DIR"
+install -m 0755 "$SWITCH_SRC" "$SBIN_DIR/termini-inference-switch"
+log "installed $SBIN_DIR/termini-inference-switch (gemini-proxy|local|legacy|status)"
+
+# --- 6. /run survives a reboot ----------------------------------------------- #
+# /run is a tmpfs, so without this the state directory is gone after a restart
+# and the proxy can no longer record the active backend.
+install -d -m 0755 "$TMPFILES_DIR"
+cat > "$TMPFILES_DIR/termini-inference.conf" <<EOF
+# Termini inference front door (task t_359ed606): the active-backend state file
+# lives in /run, which is a tmpfs. Recreate it, owned by the service user.
+d /run/termini 0755 termini-infer termini-infer -
+EOF
+systemd-tmpfiles --create "$TMPFILES_DIR/termini-inference.conf"
 
 systemctl daemon-reload
 systemctl enable termini-llama-server.service >/dev/null 2>&1 || true

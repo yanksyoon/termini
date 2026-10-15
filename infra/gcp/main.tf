@@ -49,6 +49,22 @@ module "userdata" {
   cloud_init_template     = "${abspath(path.module)}/cloud-init/node.yaml.tftpl"
   llama_serve_script_path = "${abspath(path.module)}/cloud-init/llama-serve.sh"
 
+  # Node C's inference FRONT DOOR (task t_359ed606): the four committed files
+  # that install-inference-proxy.sh owns, staged into cloud-init so the FIRST
+  # BOOT installs the front door itself (the proxy on 0.0.0.0:8080, llama.cpp
+  # moved to the loopback worker on 127.0.0.1:8081) instead of a node coming up
+  # on the legacy host-exposed path until someone runs the installer by hand.
+  # The contents are read from the SAME repo files the manual path uses, so the
+  # two cannot drift; the destination paths must match the defaults in
+  # infra/gcp/cloud-init/node-c-serve-block.sh (asserted cross-renderer by
+  # infra/gcp/verify-cloud-init.sh).
+  inference_front_door_files = [
+    { source = "${abspath(path.module)}/../inference/install-inference-proxy.sh", path = "/usr/local/src/termini-inference/install-inference-proxy.sh", mode = "0755" },
+    { source = "${abspath(path.module)}/../inference/proxy.py", path = "/usr/local/src/termini-inference/proxy.py", mode = "0644" },
+    { source = "${abspath(path.module)}/../inference/termini-inference-proxy.service", path = "/usr/local/src/termini-inference/termini-inference-proxy.service", mode = "0644" },
+    { source = "${abspath(path.module)}/../inference/termini-inference-switch.sh", path = "/usr/local/src/termini-inference/termini-inference-switch.sh", mode = "0755" },
+  ]
+
   node_spec              = { for k, v in local.node_spec : k => { role = v.role, inference = v.inference } }
   node_ip                = local.node_ip
   gateway_ip             = local.gateway_ip
@@ -68,6 +84,7 @@ module "userdata" {
   inference_model_sha256 = var.inference_model_sha256
   inference_model_alias  = var.inference_model_alias
   inference_port         = var.inference_port
+  inference_backend      = var.inference_backend
 }
 
 # --- Network -----------------------------------------------------------------
