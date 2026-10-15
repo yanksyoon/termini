@@ -65,6 +65,13 @@ _ALREADY_RUNNING = re.compile(r"already\s+(?:running|started)|(?<!not\s)is\s+run
 # the already-running answer is — otherwise a correct re-run reads as a failure.
 _ALREADY_STOPPED = re.compile(r"already\s+stopped|(?<!not\s)is\s+stopped", re.I)
 
+# A state-changing call was NOT issued because its target does not exist on the
+# node this executor dials. Distinct from a transport failure ("could not ask")
+# and from LXD's own refusal ("asked, said no"): the decision named an instance
+# that is not there, so issuing the write could only produce a 404 — the live
+# defect this reason exists to make impossible (see `_refuse_missing_target`).
+TARGET_MISSING = "target_missing"
+
 
 def _instance_already_running(detail: object) -> bool:
     return bool(_ALREADY_RUNNING.search(str(detail or "")))
@@ -243,6 +250,59 @@ class LxdExecutor:
                 return st
         return ""
 
+    def instance_exists(self, name: str) -> tuple[bool | None, ExecResult]:
+        """(exists, probe) for `name` on THIS endpoint — LXD's own existence probe.
+
+        ``GET /1.0/instances/<name>`` answers 200 with the instance body when it
+        is there and 404 when it is not, so this is the only question that
+        separates "the decision named a real instance" from "the decision named
+        something invented".
+
+        The tri-state return is the point:
+
+          * True   — LXD answered 200: the instance exists, proceed;
+          * False  — LXD answered 404: the instance is NOT there, refuse;
+          * None   — the probe could not answer (transport error, 5xx, dry-run,
+                     or a non-404 error). Callers MUST NOT read None as "absent":
+                     turning an unreachable node into a refused remediation would
+                     be a new failure mode, not a fix.
+        """
+        r = self._request("GET", f"/1.0/instances/{name}")
+        if r.status == 404:
+            return False, r
+        if r.result != "ok":
+            return None, r
+        return True, r
+
+    def _refuse_missing_target(self, name: str, *, probe: ExecResult) -> ExecResult:
+        """Fail CLOSED: the target is not on this node, so issue no state change.
+
+        The audit row and the operator log line both carry `TARGET_MISSING`, and
+        the wording is deliberately about the *target*, not about HTTP: on the
+        live demo the model diagnosed an injected fault correctly and the audit
+        then read ``HTTP 404 ... Instance not found``, which on camera is
+        indistinguishable from the AI failing. What actually happened is that the
+        decision named an instance that does not exist on the node the executor
+        dials, and the honest thing to do is refuse *before* the write, say so,
+        and never report ok for a target that is not there.
+        """
+        put_path = f"/1.0/instances/{name}/state"
+        detail = (
+            f"{TARGET_MISSING}: refused PUT {put_path} — no LXD instance {name!r} "
+            f"on {self.base_url} (probe GET /1.0/instances/{name} -> not found). "
+            f"The decision's target does not exist on the node this executor "
+            f"dials, so no LXD state change was issued; the node's live instance "
+            f"inventory is the only authority on which targets exist."
+        )
+        log.warning("node %s: %s", self.base_url, detail)
+        refused = ExecResult(
+            result="error", reason=TARGET_MISSING, detail=detail,
+            method="GET", path=probe.path or f"/1.0/instances/{name}",
+            body="", status=404,
+        )
+        refused.operation = ""
+        return refused
+
     def _await_write(self, r: ExecResult, *, timeout_s: float = 120.0) -> ExecResult:
         """Poll the operation a write returned, so `ok` means *done*.
 
@@ -316,6 +376,9 @@ class LxdExecutor:
         if self.dry_run:
             return self._request("PUT", path,
                                  {"action": "restart", "force": force, "timeout": timeout})
+        exists, probe = self.instance_exists(name)
+        if exists is False:
+            return self._refuse_missing_target(name, probe=probe)
         before = self._instance_state(name)
         # "Running" (or unknown) -> restart; any definitive non-running state ->
         # start, because restarting a stopped instance changes nothing.
@@ -342,6 +405,9 @@ class LxdExecutor:
         path = f"/1.0/instances/{name}/state"
         if self.dry_run:
             return self._request("PUT", path, {"action": "stop", "force": force})
+        exists, probe = self.instance_exists(name)
+        if exists is False:
+            return self._refuse_missing_target(name, probe=probe)
         r = self._await_write(self._request("PUT", path, {"action": "stop", "force": force}))
         if r.result == "error" and _instance_already_stopped(r.detail):
             r.result = "already_applied"
@@ -361,6 +427,10 @@ class LxdExecutor:
         agents are running, so the create is followed by this start and the caller
         does not report the VM ready until the start operation has completed.
 
+        A `start` whose instance is not on the node is REFUSED before the write
+        (`target_missing`) instead of being sent as a 404 — the same fail-closed
+        rule `restart_instance`/`stop_instance` apply.
+
         Idempotent: LXD errors when an instance is already running (there is
         nothing to do), and that specific answer is folded to `already_applied` —
         the same "re-running the same step is safe" rule `delete_instance` applies
@@ -368,6 +438,9 @@ class LxdExecutor:
         start failure (no space, cannot allocate) stays an `error` so the caller
         can treat the allocation as failed.
         """
+        exists, probe = self.instance_exists(name)
+        if exists is False:
+            return self._refuse_missing_target(name, probe=probe)
         r = self._request("PUT", f"/1.0/instances/{name}/state", {"action": "start"})
         if r.result == "error" and _instance_already_running(r.detail):
             r.result = "already_applied"
@@ -388,7 +461,7 @@ class LxdExecutor:
 
     def delete_instance(self, name: str, *, force: bool = False,
                         timeout_s: float = 60.0) -> ExecResult:
-        """Delete an instance; a 404 is success (already gone -> idempotent re-run).
+        """Delete an instance; a 404 means there was nothing to delete.
 
         With `force=True`, stop the instance (and WAIT for the stop operation)
         before deleting: LXD refuses to delete a RUNNING instance, so a rollback
@@ -396,6 +469,14 @@ class LxdExecutor:
         first or the delete silently no-ops and leaves the VM behind. A stop of an
         already-stopped instance errors; that error is ignored because the DELETE
         that follows is the authority.
+
+        The 404 fold is `already_applied` (the vocabulary this executor already
+        uses for "the desired state holds, nothing to do" — start/stop), NOT `ok`:
+        `ok` would report a *successful remediation* for a target that does not
+        exist, which is exactly what a fabricated target must never be able to
+        earn (the same rule `_refuse_missing_target` enforces on the state
+        changes). The reason travels with it so the audit and the operator log
+        name the situation instead of a bare LXD 404.
         """
         if force:
             sr = self._request("PUT", f"/1.0/instances/{name}/state",
@@ -407,8 +488,11 @@ class LxdExecutor:
         r = self._request("DELETE", f"/1.0/instances/{name}")
         # 404 = already gone: re-running the same remediation is a no-op.
         if r.result == "error" and r.status == 404:
-            r.result = "ok"
-            r.detail = f"instance {name} already absent (404) — idempotent no-op"
+            r.result = "already_applied"
+            r.reason = TARGET_MISSING
+            r.detail = (f"{TARGET_MISSING}: instance {name!r} is not on "
+                        f"{self.base_url} — nothing to delete (idempotent no-op; "
+                        f"DELETE /1.0/instances/{name} -> not found)")
             return r
         # A delete is async too: wait so a following step never races the deletion.
         return self._await_write(r)

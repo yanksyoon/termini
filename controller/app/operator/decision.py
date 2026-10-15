@@ -201,7 +201,13 @@ class DeterministicDecisionProvider:
     """``playbook.choose`` with ``source="deterministic"``, ``confidence=None``.
 
     Byte-identical to today's behavior so existing operator-loop tests pass
-    unchanged in deterministic mode.
+    unchanged in deterministic mode — with one deliberate exception: when the
+    caller supplies a `DecisionContext`, its `instance_names` are merged over the
+    configured map. The loop fills that mapping from the node's LIVE LXD
+    inventory (`loop._live_instance_names`), and a resolution that ignored it
+    would name a vm_id as if it were an instance name and be refused by the
+    executor (`target_missing`) — the deterministic fast-path the demo leans on
+    would stop remediating real nodes.
     """
 
     def __init__(self, *, playbooks: dict, instance_names: dict | None = None,
@@ -211,9 +217,12 @@ class DeterministicDecisionProvider:
         self.default_instance_name = default_instance_name
 
     def decide(self, event: HealthEvent, context: DecisionContext | None = None) -> DecisionResult:
-        action = playbook.choose(
-            event, self.playbooks, self.instance_names, self.default_instance_name
-        )
+        names = dict(self.instance_names)
+        default = self.default_instance_name
+        if context is not None:
+            names.update(context.instance_names or {})
+            default = context.default_instance_name or default
+        action = playbook.choose(event, self.playbooks, names, default)
         return DecisionResult(
             action=action, source="deterministic", confidence=None,
             fallback_reason=None, guardrail=[],

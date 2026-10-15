@@ -818,6 +818,9 @@ def build_sample(cfg: dict, seq: int) -> dict:
         "disk": disk_facts(),
         "net": net_facts(cfg, ifname),
     }
+    inventory = lxd_instance_inventory(cfg)
+    if inventory is not None:
+        sample["lxd_instances"] = inventory
     inf = inference_snapshot(cfg)
     if inf is not None:
         sample["inference"] = inf
@@ -849,6 +852,163 @@ def _swap_used() -> int:
         return max(0, total - free)
     except OSError:
         return 0
+
+
+# --------------------------------------------------------------------------- per-instance inventory
+# `lxd_instances[]` — contract field, node-telemetry.md §4.6, C0.
+#
+# This is the field the operator's guardrail resolves a remediation target
+# through (G5: `params.instance_name` must resolve against
+# `target_resource.instances[]`), and the field the executor then turns into
+# `PUT /1.0/instances/<name>/state`. Reporting the node's REAL instances is what
+# makes the loop solvable: with the array absent, every model-chosen action is
+# unresolvable and falls back (`fallback_reason=invalid_target`), and with the
+# array carrying invented ids the write 404s at the node.
+#
+# `vm_id` is a C0 id and the ingest validator requires a 26-char Crockford ULID
+# (`controller/app/fields.py`), so an instance *name* can never be reported here
+# (names are lowercase/DNS-ish and may carry customer data). The id is therefore
+# DERIVED from the name:
+#
+#     vm_id = 26 Crockford base32 chars of SHA-256("termini-vm-id:" + <name>)
+#
+# deterministic and one-way, so the controller can derive the same id from the
+# instance names it reads back over the LXD REST API and resolve a model-chosen
+# vm_id to the instance it belongs to — with no config table to keep in sync and
+# no name on the wire. `controller/app/operator/vmids.py` carries the
+# byte-identical implementation; `tests/test_vm_id_derivation.py` fails the build
+# if the two drift.
+CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+VM_ID_LEN = 26
+VM_ID_PREFIX = "termini-vm-id:"
+
+# Wall-clock ceiling for the local `lxc list` probe. One sample per second means
+# a hung LXD must not hold the telemetry loop; a probe that does not answer in
+# time is reported as "no inventory this sample", never as an empty node.
+LXD_INVENTORY_TIMEOUT_S = float(os.environ.get("TERMINI_LXD_INVENTORY_TIMEOUT_S", "5") or 5)
+
+# LXD's status strings -> the contract's enum (`node-telemetry.md` §4.6).
+_LXD_STATE = {
+    "running": "running",
+    "stopped": "stopped",
+    "frozen": "frozen",
+    "paused": "paused",
+    "error": "error",
+    "ready": "starting",
+    "starting": "starting",
+}
+
+# name -> (monotonic_s, cpu.usage_ns) from the previous sample, for the
+# per-instance CPU percentage (LXD reports cumulative CPU nanoseconds).
+_CPU_PREV: dict[str, tuple[float, int]] = {}
+
+
+def vm_id_for_instance(name: str) -> str:
+    """Controller-issued `vm_id` for LXD instance `name` (see the block above).
+
+    Byte-for-byte compatible with `controller/app/operator/vmids.py`.
+    """
+    digest = hashlib.sha256((VM_ID_PREFIX + str(name)).encode("utf-8")).digest()
+    value = int.from_bytes(digest[:17], "big") >> 6
+    out = []
+    for _ in range(VM_ID_LEN):
+        out.append(CROCKFORD[value & 0x1F])
+        value >>= 5
+    return "".join(reversed(out))
+
+
+def _instance_cpu_pct(name: str, usage_ns: object, now: float) -> float | None:
+    """Per-instance CPU utilisation (% of this node's total CPU capacity).
+
+    LXD's `state.cpu.usage` is cumulative nanoseconds, so a percentage needs two
+    samples: the first sample for an instance reports nothing rather than a
+    fabricated 0. Returns None when the delta cannot be computed (first sample,
+    clock going backwards, counter reset).
+    """
+    if not isinstance(usage_ns, (int, float)) or isinstance(usage_ns, bool):
+        return None
+    prev = _CPU_PREV.get(name)
+    _CPU_PREV[name] = (now, int(usage_ns))
+    if prev is None:
+        return None
+    dt = now - prev[0]
+    d_ns = int(usage_ns) - prev[1]
+    if dt <= 0 or d_ns < 0:
+        return None
+    cores = max(1, os.cpu_count() or 1)
+    pct = 100.0 * (d_ns / 1e9) / (dt * cores)
+    return round(min(100.0, max(0.0, pct)), 2)
+
+
+def lxd_instance_inventory(cfg: dict) -> list | None:
+    """`lxd_instances[]` for this node, from its OWN LXD (contract §4.6).
+
+    Reads the local LXD through the `lxc` CLI (`lxc list --format=json`), which
+    resolves the unix socket the daemon owns — no network, no trust prompt, and
+    the same view LXD itself serves over the REST API.
+
+    Returns None when the inventory cannot be read (no `lxc` binary, LXD not
+    initialised, a probe that times out or answers junk) so the caller OMITS the
+    field: "this node did not report an inventory" is the truth, whereas an empty
+    list would claim a node with no instances and would make every model-chosen
+    target unresolvable. `lxd_inventory: 0` in config.yaml disables it explicitly.
+    """
+    if str(cfg.get("lxd_inventory", "1")).strip().lower() in ("0", "false", "no", "off"):
+        return None
+    try:
+        proc = subprocess.run(
+            ["lxc", "list", "--format=json"],
+            capture_output=True, text=True, timeout=LXD_INVENTORY_TIMEOUT_S, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        log(f"lxd inventory unavailable: {type(e).__name__}: {e}")
+        return None
+    if proc.returncode != 0:
+        log("lxd inventory unavailable: lxc list exit "
+            f"{proc.returncode}: {(proc.stderr or '').strip()[:200]}")
+        return None
+    try:
+        items = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError as e:
+        log(f"lxd inventory unavailable: lxc list returned non-JSON: {e}")
+        return None
+    if not isinstance(items, list):
+        return None
+
+    now = time.monotonic()
+    out: list = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        name = it.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        raw_state = it.get("state")
+        state = raw_state if isinstance(raw_state, dict) else {}
+        raw_mem = state.get("memory")
+        mem = raw_mem if isinstance(raw_mem, dict) else {}
+        raw_disk = state.get("disk")
+        disk = raw_disk if isinstance(raw_disk, dict) else {}
+        raw_root = disk.get("root")
+        root = raw_root if isinstance(raw_root, dict) else {}
+        raw_cpu = state.get("cpu")
+        cpu = raw_cpu if isinstance(raw_cpu, dict) else {}
+
+        def _bytes(v: object) -> int:
+            return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else 0
+
+        entry = {
+            "vm_id": vm_id_for_instance(name),
+            "state": _LXD_STATE.get(str(it.get("status") or "").lower(), "idle"),
+            "ram_used_bytes": _bytes(mem.get("usage")),
+            "ram_limit_bytes": _bytes(mem.get("total")),
+            "disk_used_bytes": _bytes(root.get("usage")),
+        }
+        pct = _instance_cpu_pct(name, cpu.get("usage"), now)
+        if pct is not None:
+            entry["cpu_util_pct"] = pct
+        out.append(entry)
+    return out
 
 
 def telemetry_batch(cfg: dict, node_id: str, seq: int) -> dict:

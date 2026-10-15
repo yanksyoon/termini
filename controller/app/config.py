@@ -206,6 +206,12 @@ class Config:
     intent_model_timeout_s: float
     intent_inference_base_url: str
     agent_placement_exclude_hosts: tuple[str, ...]
+    # Live instance inventory: how long the {vm_id -> LXD instance name} map read
+    # back from a node's own LXD is reused before it is refreshed (loop.py
+    # `_live_instance_names`). It bounds how stale a resolution can be; a stale
+    # entry can only ever name an instance that is gone, which the executor then
+    # refuses fail-closed instead of 404ing.
+    operator_live_inventory_ttl_s: float
     lxd_instance_names: dict[str, str]
     lxd_default_instance_name: str
     lxd_client_cert: str | None
@@ -304,6 +310,8 @@ class Config:
             operator_dry_run=_bool_env("TERMINI_OPERATOR_DRY_RUN", False),
             operator_cooldown_s=_float_env("TERMINI_OPERATOR_COOLDOWN_S", 60.0),
             cadence_report_s=_float_env("TERMINI_OPERATOR_CADENCE_REPORT_S", 30.0),
+            operator_live_inventory_ttl_s=_float_env(
+                "TERMINI_OPERATOR_LIVE_INVENTORY_TTL_S", 30.0),
             operator_lease_ttl_s=_float_env("TERMINI_OPERATOR_LEASE_TTL_S", 10.0),
             playbooks_dir=playbooks_dir,
             operator_decision_mode=_decision_mode(),

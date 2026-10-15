@@ -55,3 +55,6 @@ class ExecResult:
     body: str = ""                  # JSON body that was (or would be) sent
     status: int = 0                 # HTTP status when actually executed
     operation: str = ""             # LXD operation id, when returned
+    reason: str = ""                # short machine-readable refusal code, "" = none
+                                    # (e.g. "target_missing": the action was NOT issued
+                                    # because its target does not exist on the node)

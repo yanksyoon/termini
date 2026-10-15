@@ -6,11 +6,20 @@ made (not just a log line):
 
   POST   /1.0/instances                -> 202 + an async operation (creates; STOPPED)
   GET    /1.0/operations/{op}          -> metadata.status (Success by default)
+  GET    /1.0/instances/{name}         -> 200 (exists) / 404 (no such instance)
   GET    /1.0/instances/{name}/state   -> metadata.status (the instance state)
   PUT    /1.0/instances/{name}/state   -> 202 + an async operation (state change)
   DELETE /1.0/instances/{name}         -> 200 (drops the instance)
   GET    /1.0/images?recursion=1       -> metadata: <configured image list>
   DELETE /1.0/images/{fingerprint}     -> 200
+
+The single-instance GET is LXD's existence probe, and the executor uses it as its
+fail-closed guard before any state change: an instance that `_known()` does not
+recognise is answered 404 here exactly as real LXD answers it, so a remediation
+aimed at an instance that does not exist is REFUSED rather than attempted. A test
+that wants a remediation to land must therefore declare its instance
+(`set_state(name, "Running")`, or create it), which is the truth the guard is
+enforcing.
 
 State model — ONE capitalised state map, ``instance_states``, shared by the
 materialisation tests (#133) and the remediation-effect tests (#136):
@@ -214,6 +223,18 @@ class StubLxd:
                     self._send(200, {"type": "sync", "status_code": 200,
                                      "metadata": {"status": state,
                                                   "status_code": 103 if state == "Running" else 102}})
+                elif self.path.startswith("/1.0/instances/") and self.path.count("/") == 3:
+                    # LXD's existence probe: GET /1.0/instances/{name}. 404 when the
+                    # instance is not there — the answer the executor's fail-closed
+                    # guard turns into a refusal instead of a state change.
+                    name = self.path[len("/1.0/instances/"):].split("?", 1)[0]
+                    if stub._known(name):
+                        self._send(200, {"type": "sync", "status_code": 200,
+                                         "metadata": {"name": name,
+                                                      "status": stub.state_of(name)}})
+                    else:
+                        self._send(404, {"type": "error", "error_code": 404,
+                                         "error": f'Instance "{name}" not found'})
                 elif self.path.startswith("/1.0/instances"):
                     # Existence probe for reconciliation: the names currently
                     # materialised on this node (recursion=1 object list shape).

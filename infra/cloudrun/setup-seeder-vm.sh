@@ -27,6 +27,19 @@ set -euo pipefail
 CONTROLLER_URL="${CONTROLLER_URL:-http://127.0.0.1:8080}"
 PROJECT_TOKEN="${PROJECT_TOKEN:-demo-project-token}"
 SEEDER_TOKENS="${SEEDER_TOKENS:-2}"
+# The REAL LXD instance the synthetic nodes advertise in `lxd_instances[]`.
+#
+# The seeder's guardrail-resolvable target used to be an INVENTED id
+# (`01M4N827979BD9D2762EFE24A0`), so the model's remediation was resolved to a
+# vm_id that exists nowhere and the executor's real LXD call came back
+# `HTTP 404 ... Instance not found` — on camera, indistinguishable from the AI
+# failing (measured live 2026-10-15T15:29:48Z). It now advertises the
+# controller-issued vm_id of an instance that EXISTS on the node the executor
+# dials (`--lxd-instance`), so the action LANDS. The default keeps the seeder in
+# step with the controller's own fallback instance (`TERMINI_LXD_DEFAULT_INSTANCE_NAME`,
+# the same instance the operator names when the model does not), so the demo is
+# solvable by construction rather than by a per-take flag.
+SEEDER_LXD_INSTANCE="${SEEDER_LXD_INSTANCE:-${TERMINI_LXD_DEFAULT_INSTANCE_NAME:-demo-workload}}"
 
 sudo mkdir -p /opt/termini/console
 if [ -f /tmp/seed_demo.py ]; then
@@ -56,6 +69,7 @@ ExecStart=/usr/bin/python3 /opt/termini/console/seed_demo.py \\
   --controller ${CONTROLLER_URL} \\
   --token ${PROJECT_TOKEN} \\
   --bootstrap-mint ${SEEDER_TOKENS} \\
+  --lxd-instance ${SEEDER_LXD_INSTANCE} \\
   --duration 0
 Restart=always
 RestartSec=5
