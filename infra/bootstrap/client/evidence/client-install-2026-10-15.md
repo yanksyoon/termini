@@ -11,7 +11,7 @@ controller's project token. Self-service enrollment (option b) is out of scope.
 | | |
 |---|---|
 | Branch | `wt/t_70bd0f2b-client-installer` |
-| Commit | _filled in by the follow-up commit on this branch_ |
+| Commit | `383ca22` (`wt/t_70bd0f2b-client-installer`) |
 | PR | _see the kanban card / PR body_ |
 | Harness | `infra/bootstrap/client/verify-client-install.sh` — hermetic: a **real controller process** + the **real node daemon**, loopback, no root, no systemd, no cloud spend; 27 checks, ~79 s |
 | Raw transcript | `harness-run.txt` (verbatim) |
