@@ -1,0 +1,94 @@
+/*
+ * "Your node" panel — the client-facing registration + health view.
+ * Kept in its own file so it never collides with concurrent edits to the shared
+ * operations stylesheet (task t_5649d117).
+ */
+
+.panel-mynode { grid-column: 1 / -1; }
+
+.mynode-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 4px 0 8px;
+}
+
+.mynode-form .field { min-width: 280px; flex: 1 1 280px; }
+.mynode-form input { width: 100%; }
+
+.mynode-empty {
+  border: 1px dashed var(--line-2);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: var(--bg-1);
+}
+
+.mynode-headline { margin: 0 0 4px; font-weight: 600; }
+
+.mynode-steps { margin: 8px 0; padding-left: 20px; }
+.mynode-steps li { margin: 6px 0; }
+
+.mynode-cmd {
+  display: block;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86em;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.mynode-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+
+.mynode-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 0 0 10px;
+}
+
+.mynode-facts dt {
+  color: var(--muted);
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mynode-facts dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
+
+.mynode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.mynode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+}
+
+.mynode-card-label {
+  color: var(--muted);
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mynode-card-value { font-size: 1.15em; font-variant-numeric: tabular-nums; }
+.mynode-card-hint { font-size: 0.8em; overflow-wrap: anywhere; }

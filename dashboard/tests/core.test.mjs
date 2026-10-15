@@ -238,9 +238,10 @@ test("config: apiBase normalisation and url building", () => {
   assert.equal(apiUrl({ apiBase: "" }, "/projects/1/nodes"), "/v1/projects/1/nodes");
   assert.equal(apiUrl({ apiBase: "http://h" }, "/projects/1/nodes"), "http://h/v1/projects/1/nodes");
   assert.equal(apiUrl({ apiBase: "http://h/v1" }, "/projects/1/nodes"), "http://h/v1/projects/1/nodes");
-  const u = apiUrl({ apiBase: "/v1" }, "/p/1/logs", { since: "A", token: "tok" });
+  const u = apiUrl({ apiBase: "/v1" }, "/p/1/logs", { since: "A" });
   assert.match(u, /since=A/);
-  assert.match(u, /token=tok/);
+  // A credential in a URL is refused at the builder (task t_5649d117).
+  assert.throws(() => apiUrl({ apiBase: "/v1" }, "/p/1/logs", { since: "A", token: "tok" }), /credential/);
 });
 
 test("config: offline flag and clamping", () => {
@@ -276,8 +277,9 @@ test("stream: a cold start asks for the retained tail (§2.3 out-of-buffer curso
   assert.equal(FIRST_CURSOR, "00000000000000000000000000");
   assert.equal(FIRST_CURSOR.length, 26);
   assert.match(FIRST_CURSOR, /^[0-9A-HJKMNP-TV-Z]{26}$/);
-  const url = apiUrl({ apiBase: "https://c/v1" }, "/projects/P/logs", { since: FIRST_CURSOR, token: "t" });
+  const url = apiUrl({ apiBase: "https://c/v1" }, "/projects/P/logs", { since: FIRST_CURSOR });
   assert.match(url, /since=0{26}/);
+  assert.ok(!url.includes("token"), "the stream URL carries no credential (header only)");
 });
 
 /* --------------------------------------------------------------- decisions */
