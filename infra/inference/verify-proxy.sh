@@ -152,7 +152,13 @@ check("the response labels its backend in-band", bool(label.get("backend")),
       f"backend={label.get('backend')!r}")
 check("the label names what actually answered (answered_by)",
       bool(label.get("answered_by")), f"answered_by={label.get('answered_by')!r}")
-check("no label claims GPU inference", "gpu" not in json.dumps(label).lower())
+# The strongest form of "nothing may claim GPU": the word must not appear in a
+# response or its headers at all, for either backend.
+blob = (json.dumps(body) + json.dumps(dict(headers))).lower()
+check("no response claims GPU inference (word absent from body + headers)",
+      "gpu" not in blob)
+check("no response claims local weights for a forwarded call",
+      expect != "gemini-proxy" or "local-weights" not in json.dumps(label))
 if expect == "gemini-proxy":
     check("a forwarded answer is labelled answered_by=forwarded-managed-model",
           label.get("answered_by") == "forwarded-managed-model", f"got {label.get('answered_by')!r}")

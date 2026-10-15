@@ -137,6 +137,13 @@ TERMINI_INFERENCE_STATE_FILE=/run/termini/inference-backend.json
 TERMINI_INFERENCE_LOG_FILE=/var/log/termini-inference-proxy.jsonl
 EOF
 install -d -m 0755 /run/termini /var/log
+# The proxy runs as termini-infer and records the ACTIVE backend in
+# /run/termini/inference-backend.json — the node's status surface for "which one
+# is serving". It needs write access to that directory.
+chown termini-infer:termini-infer /run/termini
+chmod 0755 /run/termini
+install -m 0644 /dev/null /var/log/termini-inference-proxy.jsonl
+chown termini-infer:termini-infer /var/log/termini-inference-proxy.jsonl
 
 systemctl daemon-reload
 systemctl enable termini-llama-server.service >/dev/null 2>&1 || true

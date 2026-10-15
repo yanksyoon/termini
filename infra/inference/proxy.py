@@ -1023,7 +1023,7 @@ class Handler(BaseHTTPRequestHandler):
             label["destination"] = cfg.external_destination()
             label["forwarded"] = True
             label["note"] = ("answered by a forwarded managed model, not by local weights "
-                             "on this node and not by a GPU on this node")
+                             "on this node and not by an accelerator on this node")
         else:
             label["forwarded"] = False
             label["upstream"] = cfg.upstream
