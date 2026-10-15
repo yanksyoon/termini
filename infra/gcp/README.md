@@ -84,7 +84,7 @@ Every resource carries `labels = {project, managed-by, workstream, task}` and
 network tags `termini-node` (+ per-node `termini-node-a|b|c`) so the footprint
 tears down cleanly (`deletion_protection = false`).
 
-## Node C CPU llama.cpp serving
+## Node C CPU llama.cpp serving — BEHIND the inference front door
 
 Nodes A/B are strictly activation-only (D3 cloud-init: config file + bootstrap
 service, no installs, no downloads). Node C is the one exception: when
@@ -98,30 +98,56 @@ service, no installs, no downloads). Node C is the one exception: when
    2.49 GB, sha256-pinned in `image/models.lock.json`) to `/var/lib/termini/models/` **from
    the project's own bucket** (`gs://termini-510609-models/gemma-3-4b-it-gguf/`, D3 — never a
    public registry at first boot) and **aborts the boot if the sha256 does not match**,
-4. runs it as `termini-llama-server.service` on **`0.0.0.0:8080`** as an
-   OpenAI-compatible single-model deployment aliased **`gemma`**
-   (`agent-runtime.md` AR-4/AR-6; `--ctx-size 32768 --parallel 2 --threads 6`, and
-   `--reasoning-format none` so any inline reasoning block stays in `content`), and
-   **a second, dedicated instance** — `termini-llama-intent.service` on
-   **`0.0.0.0:8090`** (`--ctx-size 4096 --parallel 1 --threads 3`) — so
+4. starts the dedicated intent-extraction instance — `termini-llama-intent.service`
+   on **`0.0.0.0:8090`** (`--ctx-size 4096 --parallel 1 --threads 3`) — so
    `POST /intents` extraction never queues behind the operator's ~12,000-token,
    ~400 s-on-CPU decision prompt (controller-api.md §5.2). The controller reaches
-   it with `TERMINI_INTENT_INFERENCE_BASE_URL`.
+   it with `TERMINI_INTENT_INFERENCE_BASE_URL`, and
+5. **installs the inference FRONT DOOR in the same boot** by CALLING
+   `infra/inference/install-inference-proxy.sh` (staged by cloud-init, byte-exact
+   — task `t_359ed606`). A node created from the image family therefore serves
+   the forwarded decider with **no manual step**: `termini-inference-proxy.service`
+   answers on `0.0.0.0:8080`, and llama.cpp becomes the **loopback worker** on
+   `127.0.0.1:8081` (`--ctx-size 32768 --parallel 2 --threads 6`,
+   `--reasoning-format none`, alias `gemma`).
 
-The underlay firewall rules allow `10.10.0.0/24 → node-c:8080` (the decision model)
-and `10.10.0.0/24 → node-c:8090` (the intent-extraction model) only, so both
-endpoints are reachable from the underlay but never public. Health probes:
-`curl http://10.10.0.13:8080/health` and `curl http://10.10.0.13:8090/health`. The first build takes ~10–20 min; the
-service is idempotent across reboots (`/var/log/termini-llama-serve.log`).
+**What a fresh node serves is explicit and one variable away.**
+`inference_backend` (default **`gemini-proxy`**) is substituted into the first
+boot as `TERMINI_INFERENCE_BACKEND`: the shipped demo configuration, in which the
+front door translates the OpenAI request to Vertex AI `gemini-2.5-flash` and
+labels the substitution in-band (`X-Termini-*` headers + a `termini_backend` body
+block, `destination=aiplatform.googleapis.com`). It is **not** GPU inference, not
+on-prem, and not Gemma; every surface says so. On a running node the CPU path is
+one command away — `termini-inference-switch local` — and the pre-proxy
+host-exposed server is `termini-inference-switch legacy`; `status` reports what is
+actually serving (`/run/termini/inference-backend.json`).
+
+The underlay firewall rules allow `10.10.0.0/24 → node-c:8080` (the front door,
+i.e. the frozen inference address) and `10.10.0.0/24 → node-c:8090` (the
+intent-extraction model) only, so both endpoints are reachable from the underlay
+but never public. The worker on `127.0.0.1:8081` is loopback-only by design (AR-4).
+Health probes: `curl http://10.10.0.13:8080/health` and
+`curl http://10.10.0.13:8090/health`. The first build takes ~10–20 min; the
+whole block is idempotent across reboots (`/var/log/termini-llama-serve.log`), and
+`/run/termini` is recreated for `termini-infer` by a `tmpfiles.d` rule the
+installer writes, so a rebooted node still records its active backend.
 The pinned Gemma 3 4B Q4_K_M runs at ≈33 tok/s prompt and ≈8–10 tok/s generation
 on `n2-standard-8` CPU.
 
 Acceptance for the endpoint itself (Node A → Node C completion + streaming) is
-verified by `infra/inference/verify-inference.sh`; see `infra/inference/`.
+verified by `infra/inference/verify-proxy.sh` (run from a PEER) and
+`infra/inference/verify-inference.sh`; see `infra/inference/`.
 
-Tunables: `serve_inference`, `inference_port`, `inference_model_url`,
-`inference_model_file`, `inference_model_sha256`, `inference_model_alias`,
-`llamacpp_commit`.
+Tunables: `serve_inference`, `inference_backend`, `inference_port`,
+`inference_model_url`, `inference_model_file`, `inference_model_sha256`,
+`inference_model_alias`, `llamacpp_commit`.
+
+The first-boot block (the serve script + the front-door payload) is rendered by
+**one** shared emitter for the gcloud paths
+(`cloud-init/node-c-serve-block.sh`) and natively by the `userdata` module for
+Terraform; `verify-cloud-init.sh` decodes both renders and asserts the payload is
+byte-identical to `infra/inference/`, and `tests/test_node_c_first_boot.py` pins
+the same property on every PR.
 
 ## Cloud-init: unified with the node bootstrap (task `t_5e9c9d96`)
 
@@ -156,8 +182,11 @@ Verify the render offline (no project, no credentials, no state):
 
 It renders all three nodes through the module and asserts: symlink identity, no
 `placeholder`/unresolved token, team key + sshd hardening + CA + config/token on
-every node, the llama.cpp block on Node C only, valid YAML, and that the same
-template still renders through envsubst.
+every node, the llama.cpp block on Node C only, valid YAML, that the same
+template still renders through envsubst — and (task `t_359ed606`) that Node C's
+first boot carries the inference **front door** with a byte-exact payload, that
+the non-inference nodes carry none of it, and that the first-boot backend is the
+shipped `gemini-proxy`.
 
 ## Re-enabling the GPU (after a billing upgrade)
 
@@ -301,7 +330,7 @@ Offline (no cloud) checks that need no credentials:
 ```bash
 terraform fmt -check -recursive
 terraform init -backend=false && terraform validate
-bash -n provision.sh verify.sh teardown.sh verify-cloud-init.sh cloud-init/llama-serve.sh tools/cleanup-verify.sh && shellcheck -S warning *.sh cloud-init/llama-serve.sh tools/*.sh
+bash -n provision.sh verify.sh teardown.sh verify-cloud-init.sh cloud-init/llama-serve.sh cloud-init/node-c-serve-block.sh tools/cleanup-verify.sh && shellcheck -S warning *.sh cloud-init/*.sh tools/*.sh
 jq -e . inventory.schema.json examples/inventory.example.json
 ./verify-cloud-init.sh                          # renders + asserts the unified cloud-init
 ```

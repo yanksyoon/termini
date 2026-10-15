@@ -50,10 +50,24 @@ for n in node-a node-b node-c; do
 done
 
 echo "== 3. no placeholder / unresolved token remains"
+# The template's OWN variables (node-bootstrap.yaml.tftpl). This list — not a bare
+# `\$\{` regex — is the right test: the injected Node C shell blocks legitimately
+# contain shell self-defaults like ${INTENT_PORT:-8090} and
+# ${FRONT_DOOR_SRC:-/usr/local/src/termini-inference}, which a plain
+# "${ + letter" scan reports as unresolved (it did, on main, until this list made
+# the check precise — the scripts are not template variables).
+TEMPLATE_VARS="node_name role_hint underlay_ip underlay_gw seed_ip controller_url \
+controller_ca_pubkey telemetry_interval_ms team_ssh_pubkey enrollment_token \
+image_alias image_version ssh_authorized_keys_block extra_write_files extra_runcmd"
 for n in node-a node-b node-c; do
   absent "grep -qi placeholder '$WORK/$n.yaml'" "$n: no 'placeholder' string"
   absent "grep -q '%{' '$WORK/$n.yaml'" "$n: no Terraform directive"
-  absent "grep -qE '\\\$\{[A-Za-z_]' '$WORK/$n.yaml'" "$n: no unresolved \${var}"
+  for v in $TEMPLATE_VARS; do
+    if grep -qF "\${$v}" "$WORK/$n.yaml"; then
+      bad "$n: unresolved template variable \${$v}"
+    fi
+  done
+  ok "$n: no unresolved template variable (checked $(printf '%s' "$TEMPLATE_VARS" | wc -w))"
   absent "grep -qE '__[A-Z][A-Z_]*__' '$WORK/$n.yaml'" "$n: no '__TOKEN__' left"
 done
 
@@ -123,6 +137,46 @@ if python3 -c 'import yaml' >/dev/null 2>&1; then
     bad "provision.sh node-c: invalid YAML"
   fi
 fi
+
+CHECKER="$HERE/cloud-init/node_c_front_door_check.py"
+
+echo "== 8. Node C's FIRST BOOT ships the inference front door (t_359ed606)"
+for pair in "terraform:$WORK/node-c.yaml" "provision.sh:$WORK/prov/node-c.yaml"; do
+  renderer="${pair%%:*}"; f="${pair#*:}"
+  if python3 "$CHECKER" "$f" >/dev/null 2>&1; then
+    ok "$renderer render: front door + byte-exact payload"
+  else
+    bad "$renderer render: front door check FAILED"
+    python3 "$CHECKER" "$f" 2>&1 | sed 's/^/        /'
+  fi
+done
+if python3 "$CHECKER" --expect none "$WORK/node-a.yaml" "$WORK/node-b.yaml" \
+     "$WORK/prov/node-a.yaml" "$WORK/prov/node-b.yaml" >/dev/null 2>&1; then
+  ok "non-inference nodes carry no serve block (all renders)"
+else
+  bad "a non-inference node carries (part of) Node C's serve block"
+fi
+# The card's requirement 2, asserted on the RENDERED user-data: what a fresh node
+# serves, and that the CPU path is one variable away.
+if python3 "$CHECKER" --backend gemini-proxy "$WORK/node-c.yaml" >/dev/null 2>&1; then
+  ok "first-boot backend is the shipped default (gemini-proxy)"
+else
+  bad "first-boot backend is not gemini-proxy in the Terraform render"
+fi
+if python3 "$CHECKER" --backend local "$WORK/node-c.yaml" >/dev/null 2>&1; then
+  bad "the render does not actually pin the backend (a 'local' expectation passed too)"
+else
+  ok "the backend in the render is pinned (a 'local' expectation is rejected)"
+fi
+for pair in "terraform:$WORK/node-c.yaml" "provision.sh:$WORK/prov/node-c.yaml"; do
+  f="${pair#*:}"
+  sz="$(wc -c < "$f")"
+  if [ "$sz" -lt 204800 ]; then
+    ok "${pair%%:*} node-c user-data is ${sz} bytes (< 200 KiB of the 256 KiB metadata limit)"
+  else
+    bad "${pair%%:*} node-c user-data is ${sz} bytes — over the 256 KiB GCE metadata value limit"
+  fi
+done
 
 echo
 if [ "$FAIL" = "0" ]; then

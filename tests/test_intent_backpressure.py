@@ -14,9 +14,11 @@ Two properties are tested, because either alone is not a fix:
 
 1. **The shipped model server must serve more than one slot** with the full
    16,384-token context per slot. This is the condition that removes the mutual
-   exclusion, and it is what the live fix changed
-   (`infra/gcp/cloud-init/llama-serve.sh`). The test fails on the old
-   `--parallel 1` flags — it is the regression that would have caught Defect A.
+   exclusion, and it is what the live fix changed (`infra/gcp/cloud-init/
+   llama-serve.sh` then; that loopback worker unit now ships from
+   `infra/inference/install-inference-proxy.sh`, which Node C's first boot calls
+   — task t_359ed606). The test fails on the old `--parallel 1` flags — it is the
+   regression that would have caught Defect A.
 2. **The controller must always answer with a status code**, even when the model
    is saturated: the extraction bound is the intent path's own
    (`TERMINI_INTENT_MODEL_TIMEOUT_S`), not the operator's minutes-long
@@ -187,17 +189,29 @@ class _StubModel:
 
 
 class ShippedModelServerSlotsTest(unittest.TestCase):
-    """Node-c must not serve the operator and the user from one model instance."""
+    """Node-c must not serve the operator and the user from one model instance.
+
+    Since t_359ed606 the DECISION instance is the loopback worker written by
+    `infra/inference/install-inference-proxy.sh` (the single source of truth for
+    the front door's units — Node C's first boot calls it), and the serve script
+    writes the intent instance. Both are read here, so the pin follows the flags
+    wherever they ship.
+    """
 
     def setUp(self):
         self.script = (REPO / "infra/gcp/cloud-init/llama-serve.sh").read_text()
+        self.installer = (REPO / "infra/inference/install-inference-proxy.sh").read_text()
         # Parse the ACTUAL service invocations, not the prose around them (the
         # comments deliberately discuss the old `--parallel 1` flags).
         self.exec_lines = [ln for ln in self.script.splitlines() if ln.startswith("ExecStart=")]
-        self.assertEqual(len(self.exec_lines), 2,
-                         "expected the decision instance and the intent instance")
-        self.decision_line = self.exec_lines[0]
-        self.intent_line = self.exec_lines[1]
+        self.decision_exec_lines = [ln for ln in self.installer.splitlines()
+                                    if ln.startswith("ExecStart=")]
+        self.assertEqual(len(self.exec_lines), 1,
+                         "expected the intent instance in the first-boot serve script")
+        self.assertEqual(len(self.decision_exec_lines), 1,
+                         "expected the decision instance (loopback worker) in the installer")
+        self.decision_line = self.decision_exec_lines[0]
+        self.intent_line = self.exec_lines[0]
 
     def test_the_decision_instance_has_more_than_one_slot(self):
         m = re.search(r"--parallel\s+(\d+)", self.decision_line)
@@ -244,7 +258,7 @@ class ShippedModelServerSlotsTest(unittest.TestCase):
 
     def test_the_two_instances_do_not_oversubscribe_the_node(self):
         threads = [int(re.search(r"--threads\s+(\d+)", ln).group(1))
-                   for ln in self.exec_lines]
+                   for ln in self.exec_lines + self.decision_exec_lines]
         self.assertLessEqual(sum(threads), 10,
                              "the node has 8 vCPUs; the intent instance must keep "
                              "a real thread budget without starving the decision")

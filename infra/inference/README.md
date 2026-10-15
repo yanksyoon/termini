@@ -12,16 +12,33 @@ This directory **owns the live inference endpoint**: proving that the
 host-exposed `llama.cpp` on **Node C** answers a request from **Node A** over the
 frozen underlay route, and reporting GPU device visibility honestly.
 
-## Termini-inference-proxy — Node C's front door (`t_f466824c`)
+## Termini-inference-proxy — Node C's front door (`t_f466824c`, first-boot `t_359ed606`)
 
 | | |
 |---|---|
 | Service | `termini-inference-proxy.service` — `0.0.0.0:8080`, the address nodes A/B already call |
 | Code | [`proxy.py`](proxy.py) (stdlib only — the node needs no new packages) |
-| Installer | [`install-inference-proxy.sh`](install-inference-proxy.sh) (on Node C, as root) |
-| Switch | [`termini-inference-switch.sh`](termini-inference-switch.sh) `gemini-proxy\|local\|legacy\|status` |
+| Installer | [`install-inference-proxy.sh`](install-inference-proxy.sh) — **the single source of truth for the front door's units and env files**, called by Node C's FIRST BOOT and runnable by hand on a running node |
+| Switch | [`termini-inference-switch.sh`](termini-inference-switch.sh) `gemini-proxy\|local\|legacy\|status` (installed by the installer at `/usr/local/sbin/termini-inference-switch`) |
 | Verify | [`verify-proxy.sh`](verify-proxy.sh) (from **Node A** — a peer, not localhost) |
 | Backend config | `/etc/termini/inference-proxy.env` → `TERMINI_INFERENCE_BACKEND=local\|gemini-proxy` |
+
+**A fresh node comes up on the front door — there is no manual installer step.**
+Node C's first boot (`infra/gcp/cloud-init/llama-serve.sh`) builds llama.cpp,
+fetches the pinned weights, starts the intent instance, and then CALLS this
+directory's `install-inference-proxy.sh` on the payload cloud-init staged
+(byte-identical to the committed file; rendered by
+`infra/gcp/cloud-init/node-c-serve-block.sh` for the gcloud paths and by the
+`infra/gcp/userdata` module for Terraform). What a fresh node serves is explicit:
+**`TERMINI_INFERENCE_BACKEND=gemini-proxy`** — the shipped demo configuration.
+Change it for the whole footprint with the `inference_backend` Terraform variable
+/ `INFERENCE_BACKEND` env in `provision.sh` and `tools/raise-standing-fleet.sh`,
+or on one running node with `termini-inference-switch local` (one command, no
+rebuild, no reinstall; `legacy` restores the pre-proxy host-exposed server).
+
+The installer also writes `/usr/lib/tmpfiles.d/termini-inference.conf` so
+`/run/termini` (the active-backend state file) is recreated for `termini-infer`
+after a reboot, since `/run` is a tmpfs.
 
 Two backends, chosen by configuration, no rebuild:
 
@@ -61,11 +78,13 @@ CPU path through the front door instead). The active backend is recorded in
 `termini-inference-switch status` — including `"is_gpu_inference": false`, because
 a node that emulates a GPU host must not claim to be one.
 
-> NOT YET WIRED: Node C's **first boot** (`infra/gcp/cloud-init/llama-serve.sh`)
-> still starts the host-exposed server on `:8080`; the proxy is installed on a
-> running node by the installer above. A fresh node therefore comes up on the
-> `legacy` path until the installer runs. Follow-up card: bake the proxy (and the
-> loopback-worker units) into the node image/first boot.
+> WIRED AS OF `t_359ed606`: Node C's **first boot** now installs the front door
+> itself — cloud-init stages the four files this directory owns and
+> `infra/gcp/cloud-init/llama-serve.sh` calls `install-inference-proxy.sh`, so a
+> node created from the image family serves `gemini-proxy` on `:8080` with no
+> manual step, and llama.cpp comes up as the loopback worker on `127.0.0.1:8081`.
+> The first-boot default is a variable (`inference_backend` / `INFERENCE_BACKEND`),
+> and on a running node it is `termini-inference-switch local|gemini-proxy`.
 
 ## Acceptance (verbatim)
 

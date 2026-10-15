@@ -77,9 +77,20 @@ variable "gpu_accelerator_count" {
 # --- Node C inference serving (CPU llama.cpp) ---------------------------------
 
 variable "serve_inference" {
-  description = "Provision a host-exposed CPU llama.cpp server on Node C at boot (pinned gemma GGUF = Gemma 3 4B IT, OpenAI-compatible on :8080). Set false to keep Node C activation-only."
+  description = "Provision the Node C inference endpoint at boot (pinned gemma GGUF = Gemma 3 4B IT, OpenAI-compatible on :8080) BENEATH the inference front door: first boot installs termini-inference-proxy on 0.0.0.0:8080 and moves llama.cpp to the loopback worker on 127.0.0.1:8081. Set false to keep Node C activation-only."
   type        = bool
   default     = true
+}
+
+variable "inference_backend" {
+  description = "Which backend a FRESH Node C serves through the front door: gemini-proxy (the shipped demo configuration — the forwarded managed model emulating the GPU node, labelled in-band) or local (this node's own CPU weights). Substituted into Node C's first boot as TERMINI_INFERENCE_BACKEND; on a running node the same choice is `termini-inference-switch local|gemini-proxy` (task t_359ed606)."
+  type        = string
+  default     = "gemini-proxy"
+
+  validation {
+    condition     = contains(["gemini-proxy", "local"], var.inference_backend)
+    error_message = "inference_backend must be gemini-proxy or local."
+  }
 }
 
 variable "inference_model_url" {

@@ -1,0 +1,52 @@
+########## raise node-c from family termini-node-os ##########
+started 2026-10-15T12:03:42Z
+--- branch head (the tree the render comes from)
+4c22371c36804f91da47b9c53c7ffd94bb2d9c93
+ M infra/gcp/tools/raise-standing-fleet.sh
+
+--- rendered node-c user-data (raise-standing-fleet.sh --render-only --only c)
+[raise-fleet] rendered /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_359ed606/live-render/node-c.yaml
+--- terraform-side render for the same node (cross-renderer equality)
+
+--- the front-door check on the file that will be booted
+PASS  /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_359ed606/live-render/node-c.yaml (front door + payload, 106923 bytes)
+--- sha256 of the rendered user-data
+4c61bc2cb966c4c4d8fe226a26ccd2199a1e51766a3377462f474278970f4267  /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_359ed606/live-render/node-c.yaml
+76765b1cb478fabdc6f481b60a6f111c018787067c26ce46421858a66a9d01af  /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_359ed606/live-render/terraform-node-c.yaml
+--- payload sha256 (repo files, the bytes cloud-init stages)
+929afeefe3adf4186536ad39d69192fe692d92cc11ace45b03f07457e8ce7fb5  infra/inference/install-inference-proxy.sh
+acf80f7c75dec188984258c16c85dbe93d423cf78354becc766588b8e8bdc671  infra/inference/proxy.py
+cb6bb64752a2f20de30f284bf0b7ce935e57944886562101713698b8e269fc70  infra/inference/termini-inference-proxy.service
+85b1c8226f0258b9771291f1f85b77d46bbfea07a704bb79f60d4aca33915629  infra/inference/termini-inference-switch.sh
+
+--- the family this node will boot
+termini-node-os-5	READY	2026-10-12T12:31:10.175-07:00
+--- instances BEFORE
+termini-controller	RUNNING	e2-standard-2	10.10.0.2
+termini-node-a	RUNNING	e2-standard-2	10.10.0.11
+termini-node-b	TERMINATED	n2-standard-2	10.10.0.12
+termini-node-c	RUNNING	e2-standard-8	10.10.0.13
+
+--- CREATE node-c (image-family termini-node-os, e2-standard-8: n2 is out of capacity in asia-south1-a)
+    --with-external-ip: the first boot's apt/build step needs a public mirror;
+    the access config is removed again at teardown (default posture unchanged).
+[raise-fleet] node-c: user-data 106949 bytes -> /home/ubuntu/.hermes/profiles/infra/cache/scratch/tmp.f9k8P9uPy1/node-c.yaml
+[raise-fleet] node-c: deleting existing termini-node-c (replaces the boot disk)
+Deleted [https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-node-c].
+[raise-fleet] node-c: --with-external-ip — an ephemeral public IP (first boot needs the Ubuntu mirror)
+[raise-fleet] node-c: creating termini-node-c (e2-standard-8, 10.10.0.13) from family termini-node-os
+Created [https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-node-c].
+WARNING: Some requests generated warnings:
+ - Disk size: '60 GB' is larger than image size: '20 GB'. You might need to resize the root repartition manually if the operating system does not support automatic resizing. See https://cloud.google.com/compute/docs/disks/add-persistent-disk#resize_pd for details.
+
+NAME            ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP   STATUS
+termini-node-c  asia-south1-a  e2-standard-8               10.10.0.13   8.231.98.148  RUNNING
+[raise-fleet] done — nodes created; waiting for first boot (node-c rebuilds llama.cpp + fetches the GGUF)
+
+--- instances AFTER
+termini-controller	RUNNING	e2-standard-2	10.10.0.2
+termini-node-a	RUNNING	e2-standard-2	10.10.0.11
+termini-node-b	TERMINATED	n2-standard-2	10.10.0.12
+termini-node-c	RUNNING	e2-standard-8	10.10.0.13
+https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/disks/termini-node-c	2026-10-15T05:04:42.169-07:00	termini-node-inference@termini-510609.iam.gserviceaccount.com
+raised 2026-10-15T12:04:56Z

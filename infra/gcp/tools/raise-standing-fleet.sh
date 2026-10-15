@@ -20,9 +20,23 @@
 # Usage:
 #   TOKEN_A=... TOKEN_C=... TEAM_SSH_PUBKEY_FILE=~/.ssh/team.pub \
 #     ./raise-standing-fleet.sh --raise                     # recreate a and c
+#   ... --raise --only c --with-external-ip                 # from-scratch node-c
 #   TOKEN_A=x TOKEN_C=y TEAM_SSH_PUBKEY_FILE=... \
 #     ./raise-standing-fleet.sh --render-only --render-out /tmp/ci
 #   ... --only a | --only c
+#
+# --with-external-ip: give the node an EPHEMERAL public IP for its lifetime.
+# Required for a FROM-SCRATCH node-c (t_359ed606): Node C's first boot installs
+# build-essential/cmake with apt and clones llama.cpp, and NEITHER the Ubuntu
+# mirror nor github.com is reachable without a public path (Private Google
+# Access covers Google APIs — storage.googleapis.com — not archive.ubuntu.com).
+# Without the flag a recreated node-c's cloud-init ends in
+# `status: error ... Runparts: 1 failures (runcmd)` with
+# "Cannot initiate the connection to asia-south1.gce.archive.ubuntu.com" and NO
+# inference endpoint comes up at all; the standing node-c only works because its
+# boot disk predates the external-IP removal and already carries the binary and
+# weights. Delete the access config once the node has booted (the default
+# posture for the standing fleet stays --no-address).
 #
 # Recreating an instance REPLACES its boot disk (image_family is a boot-disk
 # property). That is intended: the standing nodes carried the stock Ubuntu image,
@@ -45,6 +59,11 @@ CONTROLLER_URL="${CONTROLLER_URL:-http://10.10.0.2:8080}"
 TELEMETRY_INTERVAL_MS="${TELEMETRY_INTERVAL_MS:-1000}"
 NODE_IMAGE_VERSION="${NODE_IMAGE_VERSION:-2026.10.0}"
 INFERENCE_PORT="${INFERENCE_PORT:-8080}"
+# Which backend a FRESH node serves: gemini-proxy (the shipped demo
+# configuration — the forwarded managed model emulating the GPU node) or local
+# (the node's own CPU weights). On a running node the same choice is one command:
+# `termini-inference-switch local|gemini-proxy` (task t_359ed606).
+INFERENCE_BACKEND="${INFERENCE_BACKEND:-gemini-proxy}"
 INFERENCE_MODEL_URL="${INFERENCE_MODEL_URL:-https://storage.googleapis.com/termini-510609-models/gemma-3-4b-it-gguf/gemma-3-4b-it-Q4_K_M.gguf}"
 INFERENCE_MODEL_FILE="${INFERENCE_MODEL_FILE:-gemma-3-4b-it-Q4_K_M.gguf}"
 INFERENCE_MODEL_SHA256="${INFERENCE_MODEL_SHA256:-04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19}"
@@ -67,11 +86,18 @@ TEAM_SSH_PUBKEY_FILE="${TEAM_SSH_PUBKEY_FILE:-}"
 RENDER_ONLY=0
 RENDER_OUT=""
 ONLY=""
+# 1 = an ephemeral public IP on the created node (see the header: a from-scratch
+# node-c cannot install its build tools without a public path).
+EXTERNAL_IP="${EXTERNAL_IP:-0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GCP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 RENDER_CLOUD_INIT="$GCP_DIR/../bootstrap/render-cloud-init.sh"
 LLAMA_SERVE_SCRIPT="$GCP_DIR/cloud-init/llama-serve.sh"
+# ONE renderer for Node C's serve block (llama-serve.sh + the front-door payload),
+# shared with infra/gcp/provision.sh so the two gcloud raise paths cannot drift
+# (task t_359ed606). The Terraform path renders the same block natively.
+NODE_C_SERVE_BLOCK="$GCP_DIR/cloud-init/node-c-serve-block.sh"
 
 log() { printf '[raise-fleet] %s\n' "$*" >&2; }
 die() { printf '[raise-fleet] FATAL: %s\n' "$*" >&2; exit 1; }
@@ -82,6 +108,7 @@ while [ "$#" -gt 0 ]; do
     --render-only) RENDER_ONLY=1 ;;
     --render-out) RENDER_OUT="$2"; shift ;;
     --only) ONLY="$2"; shift ;;
+    --with-external-ip) EXTERNAL_IP=1 ;;
     -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -89,23 +116,21 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -f "$RENDER_CLOUD_INIT" ] || die "missing shared renderer: $RENDER_CLOUD_INIT"
+[ -f "$LLAMA_SERVE_SCRIPT" ] || die "missing $LLAMA_SERVE_SCRIPT"
+[ -x "$NODE_C_SERVE_BLOCK" ] || die "missing/not executable: $NODE_C_SERVE_BLOCK"
 
-# Node C's llama.cpp serve block — identical substitution to infra/gcp/provision.sh
-# (the Terraform path does the same through extra_write_files).
+# Node C's serve block — the shared renderer (llama-serve.sh + the front-door
+# payload), identical to infra/gcp/provision.sh's (the Terraform path does the
+# same through extra_write_files).
 llama_extra_write_files() {
-  local script
-  script="$(cat "$LLAMA_SERVE_SCRIPT")"
-  script="${script//__LLAMACPP_COMMIT__/$LLAMACPP_COMMIT}"
-  script="${script//__MODEL_URL__/$INFERENCE_MODEL_URL}"
-  script="${script//__MODEL_FILE__/$INFERENCE_MODEL_FILE}"
-  script="${script//__MODEL_SHA256__/$INFERENCE_MODEL_SHA256}"
-  script="${script//__MODEL_ALIAS__/$INFERENCE_MODEL_ALIAS}"
-  script="${script//__PORT__/$INFERENCE_PORT}"
-  printf '  - path: /usr/local/sbin/termini-llama-serve.sh\n'
-  printf '    permissions: %s\n' "'0755'"
-  printf '    owner: root:root\n'
-  printf '    content: |\n'
-  while IFS= read -r line; do printf '      %s\n' "$line"; done <<< "$script"
+  LLAMACPP_COMMIT="$LLAMACPP_COMMIT" \
+  MODEL_URL="$INFERENCE_MODEL_URL" \
+  MODEL_FILE="$INFERENCE_MODEL_FILE" \
+  MODEL_SHA256="$INFERENCE_MODEL_SHA256" \
+  MODEL_ALIAS="$INFERENCE_MODEL_ALIAS" \
+  PORT="$INFERENCE_PORT" \
+  INFERENCE_BACKEND="$INFERENCE_BACKEND" \
+    "$NODE_C_SERVE_BLOCK" --write-files
 }
 
 userdata() { # $1=node $2=role $3=underlay_ip $4=enrollment_token
@@ -113,7 +138,7 @@ userdata() { # $1=node $2=role $3=underlay_ip $4=enrollment_token
   local extra_write="" extra_runcmd=""
   if [ "$node" = "node-c" ]; then
     extra_write="$(llama_extra_write_files)"
-    extra_runcmd="  - [ /usr/local/sbin/termini-llama-serve.sh ]"
+    extra_runcmd="$("$NODE_C_SERVE_BLOCK" --runcmd)"
   fi
   controller_url="$CONTROLLER_URL" node_name="$node" \
     enrollment_token="$token" team_ssh_pubkey="$(cat "$TEAM_SSH_PUBKEY_FILE")" \
@@ -172,6 +197,12 @@ raise_node() { # $1=node
     log "$node: deleting existing $name (replaces the boot disk)"
     gcloud compute instances delete "$name" --zone "$ZONE" --project "$PROJECT" --quiet >/dev/null
   fi
+  local addr=()
+  if [ "$EXTERNAL_IP" != "1" ]; then
+    addr=(--no-address)
+  else
+    log "$node: --with-external-ip — an ephemeral public IP (first boot needs the Ubuntu mirror)"
+  fi
   log "$node: creating $name ($mtype, $ip) from family $IMAGE_FAMILY"
   gcloud compute instances create "$name" \
     --project "$PROJECT" --zone "$ZONE" \
@@ -182,7 +213,7 @@ raise_node() { # $1=node
     --private-network-ip "$ip" \
     --tags "termini-node,termini-${node}" \
     --labels "project=termini,managed-by=gcloud,workstream=infra,node=${node},role=$([ "$node" = node-c ] && echo inference || echo compute)" \
-    --no-shielded-secure-boot --no-address \
+    --no-shielded-secure-boot "${addr[@]}" \
     "${identity[@]}" \
     --metadata-from-file "user-data=$ud" --quiet
 }

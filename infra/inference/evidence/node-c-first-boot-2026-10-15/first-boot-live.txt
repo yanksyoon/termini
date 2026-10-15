@@ -1,0 +1,621 @@
+
+########## raise node-c (token t359ed606-raise-c2, fresh: the previous one was burned) ##########
+2026-10-15T12:03:42Z
+########## raise node-c from family termini-node-os ##########
+started 2026-10-15T12:03:42Z
+--- branch head (the tree the render comes from)
+4c22371c36804f91da47b9c53c7ffd94bb2d9c93
+ M infra/gcp/tools/raise-standing-fleet.sh
+
+--- rendered node-c user-data (raise-standing-fleet.sh --render-only --only c)
+[raise-fleet] rendered /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_359ed606/live-render/node-c.yaml
+--- terraform-side render for the same node (cross-renderer equality)
+
+--- the front-door check on the file that will be booted
+PASS  /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_359ed606/live-render/node-c.yaml (front door + payload, 106923 bytes)
+--- sha256 of the rendered user-data
+4c61bc2cb966c4c4d8fe226a26ccd2199a1e51766a3377462f474278970f4267  /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_359ed606/live-render/node-c.yaml
+76765b1cb478fabdc6f481b60a6f111c018787067c26ce46421858a66a9d01af  /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_359ed606/live-render/terraform-node-c.yaml
+--- payload sha256 (repo files, the bytes cloud-init stages)
+929afeefe3adf4186536ad39d69192fe692d92cc11ace45b03f07457e8ce7fb5  infra/inference/install-inference-proxy.sh
+acf80f7c75dec188984258c16c85dbe93d423cf78354becc766588b8e8bdc671  infra/inference/proxy.py
+cb6bb64752a2f20de30f284bf0b7ce935e57944886562101713698b8e269fc70  infra/inference/termini-inference-proxy.service
+85b1c8226f0258b9771291f1f85b77d46bbfea07a704bb79f60d4aca33915629  infra/inference/termini-inference-switch.sh
+
+--- the family this node will boot
+termini-node-os-5	READY	2026-10-12T12:31:10.175-07:00
+--- instances BEFORE
+termini-controller	RUNNING	e2-standard-2	10.10.0.2
+termini-node-a	RUNNING	e2-standard-2	10.10.0.11
+termini-node-b	TERMINATED	n2-standard-2	10.10.0.12
+termini-node-c	RUNNING	e2-standard-8	10.10.0.13
+
+--- CREATE node-c (image-family termini-node-os, e2-standard-8: n2 is out of capacity in asia-south1-a)
+    --with-external-ip: the first boot's apt/build step needs a public mirror;
+    the access config is removed again at teardown (default posture unchanged).
+[raise-fleet] node-c: user-data 106949 bytes -> /home/ubuntu/.hermes/profiles/infra/cache/scratch/tmp.f9k8P9uPy1/node-c.yaml
+[raise-fleet] node-c: deleting existing termini-node-c (replaces the boot disk)
+Deleted [https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-node-c].
+[raise-fleet] node-c: --with-external-ip — an ephemeral public IP (first boot needs the Ubuntu mirror)
+[raise-fleet] node-c: creating termini-node-c (e2-standard-8, 10.10.0.13) from family termini-node-os
+Created [https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-node-c].
+WARNING: Some requests generated warnings:
+ - Disk size: '60 GB' is larger than image size: '20 GB'. You might need to resize the root repartition manually if the operating system does not support automatic resizing. See https://cloud.google.com/compute/docs/disks/add-persistent-disk#resize_pd for details.
+
+NAME            ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP   STATUS
+termini-node-c  asia-south1-a  e2-standard-8               10.10.0.13   8.231.98.148  RUNNING
+[raise-fleet] done — nodes created; waiting for first boot (node-c rebuilds llama.cpp + fetches the GGUF)
+
+--- instances AFTER
+termini-controller	RUNNING	e2-standard-2	10.10.0.2
+termini-node-a	RUNNING	e2-standard-2	10.10.0.11
+termini-node-b	TERMINATED	n2-standard-2	10.10.0.12
+termini-node-c	RUNNING	e2-standard-8	10.10.0.13
+https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/disks/termini-node-c	2026-10-15T05:04:42.169-07:00	termini-node-inference@termini-510609.iam.gserviceaccount.com
+raised 2026-10-15T12:04:56Z
+
+########## wait for the node to come up by itself (no manual step): :8080/health ##########
+2026-10-15T12:04:56Z
+poll 1 (12:05:41Z): :8080/health -> 000000
+poll 2 (12:06:15Z): :8080/health -> 000000
+poll 3 (12:06:51Z): :8080/health -> 000000
+poll 4 (12:07:26Z): :8080/health -> 000000
+poll 5 (12:08:01Z): :8080/health -> 000000
+poll 6 (12:08:35Z): :8080/health -> 000000
+poll 7 (12:09:11Z): :8080/health -> 000000
+poll 8 (12:09:46Z): :8080/health -> 000000
+poll 9 (12:10:20Z): :8080/health -> 000000
+poll 10 (12:10:55Z): :8080/health -> 000000
+poll 11 (12:11:29Z): :8080/health -> 000000
+poll 12 (12:12:03Z): :8080/health -> 000000
+poll 13 (12:12:37Z): :8080/health -> 200
+front door on :8080 answered with HTTP 200 after poll 13
+
+########## wait for the llama.cpp worker (loopback :8081) to finish loading the 4B GGUF ##########
+2026-10-15T12:12:37Z
+worker poll 1 (12:12:41Z): :8081/health -> 200
+
+########## the acceptance (raw output) ##########
+2026-10-15T12:12:41Z
+
+########## 0. what is running, and WHY this node is a first-boot node ##########
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
++ hostname
+termini-node-c.asia-south1-a.c.termini-510609.internal
++ date -u +%FT%TZ
+2026-10-15T12:12:44Z
+image_alias=termini-510609/termini-node-os
+image_version=2026.10.0
++ cat /etc/termini/bootstrap-origin
++ uptime
+ 12:12:44 up 7 min,  1 user,  load average: 2.13, 3.02, 1.56
++ sudo journalctl -u cloud-init --no-pager -o short-iso
++ head -3
+2026-10-15T12:05:15+00:00 termini-node-c systemd[1]: Starting cloud-init.service - Cloud-init: Network Stage...
+2026-10-15T12:05:16+00:00 termini-node-c cloud-init[642]: Cloud-init v. 26.1-0ubuntu1~24.04.1 running 'init' at Thu, 15 Oct 2026 12:05:16 +0000. Up 12.29 seconds.
+2026-10-15T12:05:16+00:00 termini-node-c cloud-init[642]: ci-info: ++++++++++++++++++++++++++++++++++++++Net device info++++++++++++++++++++++++++++++++++++++
++ systemctl show -p ActiveEnterTimestamp termini-llama-server.service termini-inference-proxy.service termini-llama-intent.service
+ActiveEnterTimestamp=Thu 2026-10-15 12:12:12 UTC
+
+ActiveEnterTimestamp=Thu 2026-10-15 12:12:36 UTC
+
+ActiveEnterTimestamp=Thu 2026-10-15 12:12:11 UTC
++ stat -c '%n mtime=%y' /opt/termini/inference/proxy.py /usr/local/sbin/termini-inference-switch /etc/termini/inference-proxy.env /etc/termini/llama-worker.env
+/opt/termini/inference/proxy.py mtime=2026-10-15 12:12:11.231576851 +0000
+/usr/local/sbin/termini-inference-switch mtime=2026-10-15 12:12:11.455596040 +0000
+/etc/termini/inference-proxy.env mtime=2026-10-15 12:12:11.436594412 +0000
+/etc/termini/llama-worker.env mtime=2026-10-15 12:12:11.428593727 +0000
+--- the boot disk is the one created minutes ago (no manual install has run since)
++ echo '--- the boot disk is the one created minutes ago (no manual install has run since)'
++ ls -l --time-style=full-iso /opt/termini/inference/ /etc/termini/
++ head -20
+/etc/termini/:
+total 28
+-rw-r--r-- 1 root root   67 2026-10-15 12:05:16.928503356 +0000 bootstrap-origin
+-rw------- 1 root root  185 2026-10-15 12:05:16.924605870 +0000 config.yaml
+-rw-r--r-- 1 root root   26 2026-10-12 19:30:07.379367986 +0000 image-version
+-rw-r--r-- 1 root root 1029 2026-10-15 12:12:11.436594412 +0000 inference-proxy.env
+-rw-r--r-- 1 root root  416 2026-10-15 12:12:11.428593727 +0000 llama-worker.env
+-rw-r--r-- 1 root root   35 2026-10-12 19:29:53.696071198 +0000 lxd-snap.txt
+drwxr-xr-x 2 root root 4096 2026-10-15 12:05:16.927199672 +0000 ssh
+
+/opt/termini/inference/:
+total 52
+-rwxr-xr-x 1 root root 50846 2026-10-15 12:12:11.231576851 +0000 proxy.py
+
+########## 1. cloud-init ran the installer as part of FIRST BOOT (the log it wrote) ##########
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+624:[2026-10-15T12:12:11Z] installing the inference front door (backend=gemini-proxy) via install-inference-proxy.sh
+625:[install-inference-proxy] installed /opt/termini/inference/proxy.py
+626:[install-inference-proxy] termini-llama-server.service -> worker on 127.0.0.1:8081 (host-exposed :8080 released)
+627:[install-inference-proxy] installed /usr/local/sbin/termini-inference-switch (gemini-proxy|local|legacy|status)
+628:[install-inference-proxy] waiting for the front door on :8080
+629:[install-inference-proxy] front door answered after 2s
+630:[install-inference-proxy] active backend:
+632:[install-inference-proxy] install done — 'termini-inference-switch status' reports the active backend
+633:[2026-10-15T12:12:13Z] inference front door installed: :8080 is termini-inference-proxy (backend gemini-proxy)
+
+--- last lines of the first-boot log
+[2026-10-15T12:12:11Z] installing the inference front door (backend=gemini-proxy) via install-inference-proxy.sh
+[install-inference-proxy] installed /opt/termini/inference/proxy.py
+[install-inference-proxy] termini-llama-server.service -> worker on 127.0.0.1:8081 (host-exposed :8080 released)
+[install-inference-proxy] installed /usr/local/sbin/termini-inference-switch (gemini-proxy|local|legacy|status)
+[install-inference-proxy] waiting for the front door on :8080
+[install-inference-proxy] front door answered after 2s
+[install-inference-proxy] active backend:
+{"status": "ok", "model": "gemma", "backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "egress": "external", "served_model": "gemini-2.5-flash", "local_path": {"available": true, "upstream": "http://127.0.0.1:8081", "switch": "TERMINI_INFERENCE_BACKEND=local"}, "destination": "aiplatform.googleapis.com", "note": "forwarded managed model: requests are answered by gemini-2.5-flash at aiplatform.googleapis.com, not by local weights"}
+[install-inference-proxy] install done — 'termini-inference-switch status' reports the active backend
+[2026-10-15T12:12:13Z] inference front door installed: :8080 is termini-inference-proxy (backend gemini-proxy)
+[2026-10-15T12:12:13Z] terminus-llama-intent enabled (:8090): the POST /intents extraction endpoint
+{"status": "ok", "model": "gemma", "backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "egress": "external", "served_model": "gemini-2.5-flash", "local_path": {"available": true, "upstream": "http://127.0.0.1:8081", "switch": "TERMINI_INFERENCE_BACKEND=local"}, "destination": "aiplatform.googleapis.com", "note": "forwarded managed model: requests are answered by gemini-2.5-flash at aiplatform.googleapis.com, not by local weights"}
+
+########## 2. the units, the listeners, and the active-backend state file ##########
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
++ systemctl is-enabled termini-inference-proxy.service termini-llama-server.service termini-llama-intent.service
+enabled
+enabled
+enabled
++ systemctl is-active termini-inference-proxy.service termini-llama-server.service termini-llama-intent.service
+active
+active
+active
++ sudo ss -lntp
++ grep -E ':8080|:8081|:8090'
+LISTEN 0      512                   127.0.0.1:8081      0.0.0.0:*    users:(("llama-server",pid=16704,fd=3))                
+LISTEN 0      5                       0.0.0.0:8080      0.0.0.0:*    users:(("python3",pid=17804,fd=5))                     
+LISTEN 0      512                     0.0.0.0:8090      0.0.0.0:*    users:(("llama-server",pid=16537,fd=3))                
+--- /etc/termini/inference-proxy.env (the shipped first-boot backend)
++ echo '--- /etc/termini/inference-proxy.env (the shipped first-boot backend)'
++ grep -v '^#' /etc/termini/inference-proxy.env
++ grep -v '^$'
+TERMINI_INFERENCE_BACKEND=gemini-proxy
+TERMINI_INFERENCE_HOST=0.0.0.0
+TERMINI_INFERENCE_PORT=8080
+TERMINI_INFERENCE_ALIAS=gemma
+TERMINI_INFERENCE_UPSTREAM=http://127.0.0.1:8081
+TERMINI_INFERENCE_UPSTREAM_TIMEOUT_S=900
+TERMINI_GEMINI_HOST=aiplatform.googleapis.com
+TERMINI_GEMINI_LOCATION=global
+TERMINI_GEMINI_MODEL=gemini-2.5-flash
+TERMINI_GEMINI_PROJECT=
+TERMINI_GEMINI_TIMEOUT_S=30
+TERMINI_GEMINI_THINKING_BUDGET=0
+TERMINI_INFERENCE_STATE_FILE=/run/termini/inference-backend.json
+TERMINI_INFERENCE_LOG_FILE=/var/log/termini-inference-proxy.jsonl
+--- /etc/termini/llama-worker.env (the worker is LOOPBACK: :8080 is free for the front door)
++ echo '--- /etc/termini/llama-worker.env (the worker is LOOPBACK: :8080 is free for the front door)'
+LLAMA_HOST=127.0.0.1
+LLAMA_PORT=8081
+--- /run/termini/inference-backend.json (written by the proxy itself)
++ grep -v '^#' /etc/termini/llama-worker.env
++ grep -v '^$'
++ echo '--- /run/termini/inference-backend.json (written by the proxy itself)'
++ sudo cat /run/termini/inference-backend.json
+{
+  "active_unit": "termini-inference-proxy.service",
+  "alias": "gemma",
+  "answered_by": "forwarded-managed-model",
+  "backend": "gemini-proxy",
+  "destination": "aiplatform.googleapis.com",
+  "egress": "external",
+  "is_gpu_inference": false,
+  "listen": "0.0.0.0:8080",
+  "local_worker": "http://127.0.0.1:8081",
+  "note": "forwarded managed model emulating a GPU node",
+  "served_model": "gemini-2.5-flash",
+  "ts": "2026-10-15T12:12:36Z"
+}
+--- the state dir is boot-safe (tmpfiles.d)
+# Termini inference front door (task t_359ed606): the active-backend state file
+# lives in /run, which is a tmpfs. Recreate it, owned by the service user.
+d /run/termini 0755 termini-infer termini-infer -
++ echo '--- the state dir is boot-safe (tmpfiles.d)'
++ cat /usr/lib/tmpfiles.d/termini-inference.conf
++ systemd-tmpfiles --cat-config
++ grep -A0 run/termini
+d /run/termini 0755 termini-infer termini-infer -
+
+########## 3. the installed artifacts are the committed ones (sha256 vs the repo) ##########
+
+
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+acf80f7c75dec188984258c16c85dbe93d423cf78354becc766588b8e8bdc671  /opt/termini/inference/proxy.py
+85b1c8226f0258b9771291f1f85b77d46bbfea07a704bb79f60d4aca33915629  /usr/local/sbin/termini-inference-switch
+
+--- repo
+acf80f7c75dec188984258c16c85dbe93d423cf78354becc766588b8e8bdc671  /tmp/repo-proxy.py
+85b1c8226f0258b9771291f1f85b77d46bbfea07a704bb79f60d4aca33915629  /tmp/repo-switch
+--- local repo files
+acf80f7c75dec188984258c16c85dbe93d423cf78354becc766588b8e8bdc671  infra/inference/proxy.py
+85b1c8226f0258b9771291f1f85b77d46bbfea07a704bb79f60d4aca33915629  infra/inference/termini-inference-switch.sh
+
+########## 4. node-c: /health and /v1/models on the front door (:8080) and on the worker (loopback) ##########
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+--- GET /health
+{"status": "ok", "model": "gemma", "backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "egress": "external", "served_model": "gemini-2.5-flash", "local_path": {"available": true, "upstream": "http://127.0.0.1:8081", "switch": "TERMINI_INFERENCE_BACKEND=local"}, "destination": "aiplatform.googleapis.com", "note": "forwarded managed model: requests are answered by gemini-2.5-flash at aiplatform.googleapis.com, not by local weights"}
+HTTP=200
+--- GET /v1/models
+{"object": "list", "data": [{"id": "gemma", "object": "model", "created": 1792066398, "owned_by": "termini"}], "termini_backend": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "served_model": "gemini-2.5-flash", "egress": "external", "destination": "aiplatform.googleapis.com"}}
+--- the worker behind the door, loopback only
+worker /health HTTP=200
+
+########## 5. PEER acceptance from node-a (a request from Node A returns an answer) ##########
+
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+termini-node-a.asia-south1-a.c.termini-510609.internal
+10.10.0.11 10.174.247.1 fd42:340e:cc0f:2e68::1 
+Termini inference front door — peer acceptance, 2026-10-15T12:13:28Z
+caller: termini-node-a.asia-south1-a.c.termini-510609.internal (10.10.0.11)   endpoint: http://10.10.0.13:8080   expect backend: gemini-proxy
+
+===== 1. GET /health (from this peer) =====
+http_code=200
+body: {"status": "ok", "model": "gemma", "backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "egress": "external", "served_model": "gemini-2.5-flash", "local_path": {"available": true, "upstream": "http://127.0.0.1:8081", "switch": "TERMINI_INFERENCE_BACKEND=local"}, "destination": "aiplatform.googleapis.com", "note": "forwarded managed model: requests are answered by gemini-2.5-flash at aiplatform.googleapis.com, not by local weights"}
+
+===== 2. GET /v1/models =====
+{"object": "list", "data": [{"id": "gemma", "object": "model", "created": 1792066409, "owned_by": "termini"}], "termini_backend": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "served_model": "gemini-2.5-flash", "egress": "external", "destination": "aiplatform.googleapis.com"}}
+
+===== 3-6. requests (non-streaming, streaming, parameters, labels) =====
+PASS  peer: /health returns 200 — got 200
+PASS  /health reports a backend — backend='gemini-proxy'
+PASS  /health backend == gemini-proxy — reported 'gemini-proxy'
+PASS  /v1/models advertises the alias 'gemma' — ids=['gemma']
+      non-streaming: http=200 in 1.10s
+      response headers: X-Termini-Backend=gemini-proxy, X-Termini-Answered-By=forwarded-managed-model, X-Termini-Model=gemma, X-Termini-Model-Id=gemini-2.5-flash, X-Termini-Egress=external, X-Termini-Residency=resident, X-Termini-External-Destination=aiplatform.googleapis.com, X-Termini-Request-Id=01ACCEPT
+      body: {"id": "chatcmpl-01M4ZQPNQJTS42BZFJ5F58C2B2", "object": "chat.completion", "created": 1792066410, "model": "gemma", "choices": [{"index": 0, "message": {"role": "assistant", "content": "PROXI_OK"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 8, "completion_tokens": 4, "total_tokens": 12}, "timings": {"prompt_n": 8, "prompt_ms": 0.0, "predicted_n": 4, "predicted_ms": 1063.93, "predicted_per_token_ms": 265.983, "predicted_per_second": 3.76, "wall_ms": 1063.93}, "termini_backend": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "model": "gemini-2.5-flash", "alias": "gemma", "egress": "external", "destination": "aiplatform.googleapis.com", "forwarded": true, "note": "answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node"}}
+PASS  non-streaming returns HTTP 200 — got 200
+PASS  non-streaming returns non-empty content — 'PROXI_OK'
+PASS  the envelope names the model alias — model='gemma'
+PASS  the envelope carries the OpenAI id/object/created fields
+PASS  usage is reported — usage={'prompt_tokens': 8, 'completion_tokens': 4, 'total_tokens': 12}
+      label headers: X-Termini-Backend='gemini-proxy' X-Termini-Answered-By='forwarded-managed-model' X-Termini-Egress='external' X-Termini-External-Destination='aiplatform.googleapis.com'
+      in-band body label: {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "model": "gemini-2.5-flash", "alias": "gemma", "egress": "external", "destination": "aiplatform.googleapis.com", "forwarded": true, "note": "answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node"}
+PASS  the response labels its backend in-band — header='gemini-proxy' body='gemini-proxy'
+PASS  the label names what actually answered (answered_by) — header='forwarded-managed-model' body='forwarded-managed-model'
+PASS  no response claims GPU inference (word absent from body + headers)
+PASS  no response claims local weights for a forwarded call
+PASS  a forwarded answer is labelled answered_by=forwarded-managed-model — got 'forwarded-managed-model'
+PASS  a forwarded answer names its external destination — body='aiplatform.googleapis.com' header='aiplatform.googleapis.com'
+PASS  a forwarded answer is flagged egress=external — got 'external'
+PASS  a forwarded answer is NOT labelled as local weights
+PASS  max_tokens is honoured (8 requested) — completion_tokens=8
+      max_tokens=8 run: 1.01s, usage={'prompt_tokens': 11, 'completion_tokens': 8, 'total_tokens': 19}
+      streaming: http=200 deltas=2 first_token_s=0.738 total_s=0.82
+      assembled: 'One\nTwo\nThree\nFour\nFive'
+      final label: {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "model": "gemini-2.5-flash", "alias": "gemma", "egress": "external", "destination": "aiplatform.googleapis.com", "forwarded": true, "note": "answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node"} usage={'prompt_tokens': 11, 'completion_tokens': 9, 'total_tokens': 20} finish='stop'
+PASS  streaming returns HTTP 200 — got 200
+PASS  streaming yields >=2 incremental deltas — 2 deltas
+PASS  streaming terminates with [DONE]
+PASS  streaming assembled content is non-empty
+PASS  streaming reports usage when asked (include_usage) — usage={'prompt_tokens': 11, 'completion_tokens': 9, 'total_tokens': 20}
+PASS  streaming final chunk is labelled in-band — body={'backend': 'gemini-proxy', 'answered_by': 'forwarded-managed-model', 'model': 'gemini-2.5-flash', 'alias': 'gemma', 'egress': 'external', 'destination': 'aiplatform.googleapis.com', 'forwarded': True, 'note': 'answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node'} header='gemini-proxy'
+PASS  streaming from a forwarded backend names the destination — label={'backend': 'gemini-proxy', 'answered_by': 'forwarded-managed-model', 'model': 'gemini-2.5-flash', 'alias': 'gemma', 'egress': 'external', 'destination': 'aiplatform.googleapis.com', 'forwarded': True, 'note': 'answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node'} header='aiplatform.googleapis.com'
+
+      latency samples (s): [1.102]
+      median latency: 1.102s (backend reported by the endpoint: gemini-proxy)
+      NOTE: this compares the FRONT DOOR's own answer time; for the same
+      20-sample decision prompt the CPU path on this node is documented at
+      402 s (infra/cloudrun/evidence/node-c-gemma-decision-latency-2026-10-13.md).
+
+RESULT: PASS (drop-in envelope + labelled backend + parameters + streaming)
+
+===== RESULT =====
+RESULT: PASS — the front door is a drop-in and it labels what answered
+VERIFY_EXIT=0
+
+########## 6. a raw peer completion, no harness (Node A -> Node C)  ##########
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+{"id": "chatcmpl-01M4ZQPWGYYBR0DRZYXZ59S20K", "object": "chat.completion", "created": 1792066417, "model": "gemma", "choices": [{"index": 0, "message": {"role": "assistant", "content": "FIRSTBOOT_OK"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 8, "completion_tokens": 4, "total_tokens": 12}, "timings": {"prompt_n": 8, "prompt_ms": 0.0, "predicted_n": 4, "predicted_ms": 469.26, "predicted_per_token_ms": 117.315, "predicted_per_second": 8.524, "wall_ms": 469.26}, "termini_backend": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "model": "gemini-2.5-flash", "alias": "gemma", "egress": "external", "destination": "aiplatform.googleapis.com", "forwarded": true, "note": "answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node"}}
+HTTP=200 total=0.471467s
+--- the same request, streaming
+data: {"id": "chatcmpl-01M4ZQPXVK1PK45HNWXQN9AKE7", "object": "chat.completion.chunk", "created": 1792066418, "model": "gemma", "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-01M4ZQPXVK18Z3ZZ79FX03Z6RW", "object": "chat.completion.chunk", "created": 1792066418, "model": "gemma", "choices": [{"index": 0, "delta": {"content": "One,"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-01M4ZQPXWYATH0AVSPBSKB6CJP", "object": "chat.completion.chunk", "created": 1792066418, "model": "gemma", "choices": [{"index": 0, "delta": {"content": " two, three."}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-01M4ZQPXY3G40HAJZDSKY3W7NS", "object": "chat.completion.chunk", "created": 1792066418, "model": "gemma", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "timings": {"prompt_n": 5, "prompt_ms": 0.0, "predicted_n": 6, "predicted_ms": 1430.05, "predicted_per_token_ms": 238.342, "predicted_per_second": 4.196, "wall_ms": 1430.05}, "termini_backend": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "model": "gemini-2.5-flash", "alias": "gemma", "egress": "external", "destination": "aiplatform.googleapis.com", "forwarded": true, "note": "answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node"}}
+
+data: [DONE]
+
+
+########## 7. ONE COMMAND to the CPU path, then the same peer run (requirement 2: local stays one step away) ##########
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
++ sudo /usr/local/sbin/termini-inference-switch local
+[inference-switch] TERMINI_INFERENCE_BACKEND=local
+[inference-switch] ACTIVE BACKEND: local
+== node status: /etc/termini ==
+--- /etc/termini/inference-proxy.env
+TERMINI_INFERENCE_BACKEND=local
+TERMINI_INFERENCE_HOST=0.0.0.0
+TERMINI_INFERENCE_PORT=8080
+TERMINI_INFERENCE_ALIAS=gemma
+TERMINI_INFERENCE_UPSTREAM=http://127.0.0.1:8081
+TERMINI_INFERENCE_UPSTREAM_TIMEOUT_S=900
+TERMINI_GEMINI_HOST=aiplatform.googleapis.com
+TERMINI_GEMINI_LOCATION=global
+TERMINI_GEMINI_MODEL=gemini-2.5-flash
+TERMINI_GEMINI_PROJECT=
+TERMINI_GEMINI_TIMEOUT_S=30
+TERMINI_GEMINI_THINKING_BUDGET=0
+TERMINI_INFERENCE_STATE_FILE=/run/termini/inference-backend.json
+TERMINI_INFERENCE_LOG_FILE=/var/log/termini-inference-proxy.jsonl
+--- /etc/termini/llama-worker.env
+LLAMA_HOST=127.0.0.1
+LLAMA_PORT=8081
+
+== units ==
+termini-inference-proxy.service: enabled=enabled active=active
+termini-llama-server.service: enabled=enabled active=active
+
+== listeners ==
+LISTEN 0      512                   127.0.0.1:8081      0.0.0.0:*    users:(("llama-server",pid=16704,fd=3))                 
+LISTEN 0      5                       0.0.0.0:8080      0.0.0.0:*    users:(("python3",pid=24088,fd=5))                      
+
+== recorded active backend ==
+{
+  "active_unit": "termini-inference-proxy.service",
+  "alias": "gemma",
+  "answered_by": "local-weights",
+  "backend": "local",
+  "destination": "http://127.0.0.1:8081",
+  "egress": "in-vpc",
+  "is_gpu_inference": false,
+  "listen": "0.0.0.0:8080",
+  "local_worker": "http://127.0.0.1:8081",
+  "note": "local CPU weights (llama.cpp) on this node",
+  "served_model": "gemma",
+  "ts": "2026-10-15T12:13:45Z"
+}
+
+== :8080/health (what nodes A/B see) ==
+{"status": "ok", "model": "gemma", "backend": "local", "answered_by": "local-weights", "egress": "in-vpc", "served_model": "gemma", "local_path": {"available": true, "upstream": "http://127.0.0.1:8081", "switch": "TERMINI_INFERENCE_BACKEND=local"}, "destination": "http://127.0.0.1:8081", "note": "local weights served by llama.cpp on this node"}
+== :8081/health (the local worker, loopback only) ==
+{"status":"ok"}
++ sudo cat /run/termini/inference-backend.json
+{
+  "active_unit": "termini-inference-proxy.service",
+  "alias": "gemma",
+  "answered_by": "local-weights",
+  "backend": "local",
+  "destination": "http://127.0.0.1:8081",
+  "egress": "in-vpc",
+  "is_gpu_inference": false,
+  "listen": "0.0.0.0:8080",
+  "local_worker": "http://127.0.0.1:8081",
+  "note": "local CPU weights (llama.cpp) on this node",
+  "served_model": "gemma",
+  "ts": "2026-10-15T12:13:45Z"
+}
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+Termini inference front door — peer acceptance, 2026-10-15T12:13:49Z
+caller: termini-node-a.asia-south1-a.c.termini-510609.internal (10.10.0.11)   endpoint: http://10.10.0.13:8080   expect backend: local
+
+===== 1. GET /health (from this peer) =====
+http_code=200
+body: {"status": "ok", "model": "gemma", "backend": "local", "answered_by": "local-weights", "egress": "in-vpc", "served_model": "gemma", "local_path": {"available": true, "upstream": "http://127.0.0.1:8081", "switch": "TERMINI_INFERENCE_BACKEND=local"}, "destination": "http://127.0.0.1:8081", "note": "local weights served by llama.cpp on this node"}
+
+===== 2. GET /v1/models =====
+{"object": "list", "data": [{"id": "gemma", "object": "model", "created": 1792066429, "owned_by": "termini"}], "termini_backend": {"backend": "local", "answered_by": "local-weights", "served_model": "gemma", "egress": "in-vpc", "upstream": "http://127.0.0.1:8081"}}
+
+===== 3-6. requests (non-streaming, streaming, parameters, labels) =====
+PASS  peer: /health returns 200 — got 200
+PASS  /health reports a backend — backend='local'
+PASS  /health backend == local — reported 'local'
+PASS  /v1/models advertises the alias 'gemma' — ids=['gemma']
+      non-streaming: http=200 in 1.82s
+      response headers: X-Termini-Backend=local, X-Termini-Answered-By=local-weights, X-Termini-Model=gemma, X-Termini-Model-Id=gemma, X-Termini-Egress=in-vpc, X-Termini-Residency=resident, X-Termini-Request-Id=01ACCEPT
+      body: {"choices": [{"finish_reason": "stop", "index": 0, "message": {"role": "assistant", "content": "PROXI_OK\n"}}], "created": 1792066431, "model": "gemma", "system_fingerprint": "b1-7fe450e19", "object": "chat.completion", "usage": {"completion_tokens": 6, "prompt_tokens": 17, "total_tokens": 23, "prompt_tokens_details": {"cached_tokens": 0}}, "id": "chatcmpl-sDLaETmceMyMo41V5kON0DYWqNh5XFCw", "timings": {"cache_n": 0, "prompt_n": 17, "prompt_ms": 1130.255, "prompt_per_token_ms": 66.48558823529413, "prompt_per_second": 15.040853612680323, "predicted_n": 6, "predicted_ms": 643.684, "predicted_per_token_ms": 128.7368, "predicted_per_second": 7.7677866779351366}}
+PASS  non-streaming returns HTTP 200 — got 200
+PASS  non-streaming returns non-empty content — 'PROXI_OK\n'
+PASS  the envelope names the model alias — model='gemma'
+PASS  the envelope carries the OpenAI id/object/created fields
+PASS  usage is reported — usage={'completion_tokens': 6, 'prompt_tokens': 17, 'total_tokens': 23, 'prompt_tokens_details': {'cached_tokens': 0}}
+      label headers: X-Termini-Backend='local' X-Termini-Answered-By='local-weights' X-Termini-Egress='in-vpc' X-Termini-External-Destination=''
+      in-band body label: {}
+PASS  the response labels its backend in-band — header='local' body=None
+PASS  the label names what actually answered (answered_by) — header='local-weights' body=None
+PASS  no response claims GPU inference (word absent from body + headers)
+PASS  no response claims local weights for a forwarded call
+PASS  a local answer is labelled answered_by=local-weights — got 'local-weights'
+PASS  a local answer is flagged egress=in-vpc — got 'in-vpc'
+PASS  the local answer is llama.cpp's own envelope (byte-transparent passthrough)
+PASS  max_tokens is honoured (8 requested) — completion_tokens=8
+      max_tokens=8 run: 2.04s, usage={'completion_tokens': 8, 'prompt_tokens': 20, 'total_tokens': 28, 'prompt_tokens_details': {'cached_tokens': 1}}
+      streaming: http=200 deltas=9 first_token_s=2.295 total_s=2.30
+      assembled: 'One\nTwo\nThree\nFour\nFive'
+      final label: null usage={'completion_tokens': 10, 'prompt_tokens': 20, 'total_tokens': 30, 'prompt_tokens_details': {'cached_tokens': 1}} finish='stop'
+PASS  streaming returns HTTP 200 — got 200
+PASS  streaming yields >=2 incremental deltas — 9 deltas
+PASS  streaming terminates with [DONE]
+PASS  streaming assembled content is non-empty
+PASS  streaming reports usage when asked (include_usage) — usage={'completion_tokens': 10, 'prompt_tokens': 20, 'total_tokens': 30, 'prompt_tokens_details': {'cached_tokens': 1}}
+PASS  streaming final chunk is labelled in-band — body=None header='local'
+
+      latency samples (s): [1.824]
+      median latency: 1.824s (backend reported by the endpoint: local)
+      NOTE: this compares the FRONT DOOR's own answer time; for the same
+      20-sample decision prompt the CPU path on this node is documented at
+      402 s (infra/cloudrun/evidence/node-c-gemma-decision-latency-2026-10-13.md).
+
+RESULT: PASS (drop-in envelope + labelled backend + parameters + streaming)
+
+===== RESULT =====
+RESULT: PASS — the front door is a drop-in and it labels what answered
+VERIFY_EXIT=0
+
+########## 8. back to the shipped configuration (one command), peer run again ##########
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
++ sudo /usr/local/sbin/termini-inference-switch gemini-proxy
+[inference-switch] TERMINI_INFERENCE_BACKEND=gemini-proxy
+== node status: /etc/termini ==
+--- /etc/termini/inference-proxy.env
+[inference-switch] ACTIVE BACKEND: gemini-proxy
+TERMINI_INFERENCE_BACKEND=gemini-proxy
+TERMINI_INFERENCE_HOST=0.0.0.0
+TERMINI_INFERENCE_PORT=8080
+TERMINI_INFERENCE_ALIAS=gemma
+TERMINI_INFERENCE_UPSTREAM=http://127.0.0.1:8081
+TERMINI_INFERENCE_UPSTREAM_TIMEOUT_S=900
+TERMINI_GEMINI_HOST=aiplatform.googleapis.com
+TERMINI_GEMINI_LOCATION=global
+TERMINI_GEMINI_MODEL=gemini-2.5-flash
+TERMINI_GEMINI_PROJECT=
+TERMINI_GEMINI_TIMEOUT_S=30
+TERMINI_GEMINI_THINKING_BUDGET=0
+TERMINI_INFERENCE_STATE_FILE=/run/termini/inference-backend.json
+TERMINI_INFERENCE_LOG_FILE=/var/log/termini-inference-proxy.jsonl
+--- /etc/termini/llama-worker.env
+LLAMA_HOST=127.0.0.1
+LLAMA_PORT=8081
+
+== units ==
+termini-inference-proxy.service: enabled=enabled active=active
+termini-llama-server.service: enabled=enabled active=active
+
+== listeners ==
+LISTEN 0      512                   127.0.0.1:8081      0.0.0.0:*    users:(("llama-server",pid=16704,fd=3))                 
+LISTEN 0      5                       0.0.0.0:8080      0.0.0.0:*    users:(("python3",pid=24735,fd=5))                      
+
+== recorded active backend ==
+{
+  "active_unit": "termini-inference-proxy.service",
+  "alias": "gemma",
+  "answered_by": "forwarded-managed-model",
+  "backend": "gemini-proxy",
+  "destination": "aiplatform.googleapis.com",
+  "egress": "external",
+  "is_gpu_inference": false,
+  "listen": "0.0.0.0:8080",
+  "local_worker": "http://127.0.0.1:8081",
+  "note": "forwarded managed model emulating a GPU node",
+  "served_model": "gemini-2.5-flash",
+  "ts": "2026-10-15T12:14:01Z"
+}
+
+== :8080/health (what nodes A/B see) ==
+{"status": "ok", "model": "gemma", "backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "egress": "external", "served_model": "gemini-2.5-flash", "local_path": {"available": true, "upstream": "http://127.0.0.1:8081", "switch": "TERMINI_INFERENCE_BACKEND=local"}, "destination": "aiplatform.googleapis.com", "note": "forwarded managed model: requests are answered by gemini-2.5-flash at aiplatform.googleapis.com, not by local weights"}
+== :8081/health (the local worker, loopback only) ==
+{"status":"ok"}
++ sudo cat /run/termini/inference-backend.json
+{
+  "active_unit": "termini-inference-proxy.service",
+  "alias": "gemma",
+  "answered_by": "forwarded-managed-model",
+  "backend": "gemini-proxy",
+  "destination": "aiplatform.googleapis.com",
+  "egress": "external",
+  "is_gpu_inference": false,
+  "listen": "0.0.0.0:8080",
+  "local_worker": "http://127.0.0.1:8081",
+  "note": "forwarded managed model emulating a GPU node",
+  "served_model": "gemini-2.5-flash",
+  "ts": "2026-10-15T12:14:01Z"
+}
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+Termini inference front door — peer acceptance, 2026-10-15T12:14:06Z
+caller: termini-node-a.asia-south1-a.c.termini-510609.internal (10.10.0.11)   endpoint: http://10.10.0.13:8080   expect backend: gemini-proxy
+
+===== 1. GET /health (from this peer) =====
+http_code=200
+body: {"status": "ok", "model": "gemma", "backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "egress": "external", "served_model": "gemini-2.5-flash", "local_path": {"available": true, "upstream": "http://127.0.0.1:8081", "switch": "TERMINI_INFERENCE_BACKEND=local"}, "destination": "aiplatform.googleapis.com", "note": "forwarded managed model: requests are answered by gemini-2.5-flash at aiplatform.googleapis.com, not by local weights"}
+
+===== 2. GET /v1/models =====
+{"object": "list", "data": [{"id": "gemma", "object": "model", "created": 1792066446, "owned_by": "termini"}], "termini_backend": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "served_model": "gemini-2.5-flash", "egress": "external", "destination": "aiplatform.googleapis.com"}}
+
+===== 3-6. requests (non-streaming, streaming, parameters, labels) =====
+PASS  peer: /health returns 200 — got 200
+PASS  /health reports a backend — backend='gemini-proxy'
+PASS  /health backend == gemini-proxy — reported 'gemini-proxy'
+PASS  /v1/models advertises the alias 'gemma' — ids=['gemma']
+      non-streaming: http=200 in 0.80s
+      response headers: X-Termini-Backend=gemini-proxy, X-Termini-Answered-By=forwarded-managed-model, X-Termini-Model=gemma, X-Termini-Model-Id=gemini-2.5-flash, X-Termini-Egress=external, X-Termini-Residency=resident, X-Termini-External-Destination=aiplatform.googleapis.com, X-Termini-Request-Id=01ACCEPT
+      body: {"id": "chatcmpl-01M4ZQQTDCEZP6Q2M79ZRWK551", "object": "chat.completion", "created": 1792066447, "model": "gemma", "choices": [{"index": 0, "message": {"role": "assistant", "content": "PROXI_OK"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 8, "completion_tokens": 4, "total_tokens": 12}, "timings": {"prompt_n": 8, "prompt_ms": 0.0, "predicted_n": 4, "predicted_ms": 762.3, "predicted_per_token_ms": 190.575, "predicted_per_second": 5.247, "wall_ms": 762.3}, "termini_backend": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "model": "gemini-2.5-flash", "alias": "gemma", "egress": "external", "destination": "aiplatform.googleapis.com", "forwarded": true, "note": "answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node"}}
+PASS  non-streaming returns HTTP 200 — got 200
+PASS  non-streaming returns non-empty content — 'PROXI_OK'
+PASS  the envelope names the model alias — model='gemma'
+PASS  the envelope carries the OpenAI id/object/created fields
+PASS  usage is reported — usage={'prompt_tokens': 8, 'completion_tokens': 4, 'total_tokens': 12}
+      label headers: X-Termini-Backend='gemini-proxy' X-Termini-Answered-By='forwarded-managed-model' X-Termini-Egress='external' X-Termini-External-Destination='aiplatform.googleapis.com'
+      in-band body label: {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "model": "gemini-2.5-flash", "alias": "gemma", "egress": "external", "destination": "aiplatform.googleapis.com", "forwarded": true, "note": "answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node"}
+PASS  the response labels its backend in-band — header='gemini-proxy' body='gemini-proxy'
+PASS  the label names what actually answered (answered_by) — header='forwarded-managed-model' body='forwarded-managed-model'
+PASS  no response claims GPU inference (word absent from body + headers)
+PASS  no response claims local weights for a forwarded call
+PASS  a forwarded answer is labelled answered_by=forwarded-managed-model — got 'forwarded-managed-model'
+PASS  a forwarded answer names its external destination — body='aiplatform.googleapis.com' header='aiplatform.googleapis.com'
+PASS  a forwarded answer is flagged egress=external — got 'external'
+PASS  a forwarded answer is NOT labelled as local weights
+PASS  max_tokens is honoured (8 requested) — completion_tokens=8
+      max_tokens=8 run: 0.96s, usage={'prompt_tokens': 11, 'completion_tokens': 8, 'total_tokens': 19}
+      streaming: http=200 deltas=2 first_token_s=1.599 total_s=1.71
+      assembled: 'One\nTwo\nThree\nFour\nFive'
+      final label: {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "model": "gemini-2.5-flash", "alias": "gemma", "egress": "external", "destination": "aiplatform.googleapis.com", "forwarded": true, "note": "answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node"} usage={'prompt_tokens': 11, 'completion_tokens': 9, 'total_tokens': 20} finish='stop'
+PASS  streaming returns HTTP 200 — got 200
+PASS  streaming yields >=2 incremental deltas — 2 deltas
+PASS  streaming terminates with [DONE]
+PASS  streaming assembled content is non-empty
+PASS  streaming reports usage when asked (include_usage) — usage={'prompt_tokens': 11, 'completion_tokens': 9, 'total_tokens': 20}
+PASS  streaming final chunk is labelled in-band — body={'backend': 'gemini-proxy', 'answered_by': 'forwarded-managed-model', 'model': 'gemini-2.5-flash', 'alias': 'gemma', 'egress': 'external', 'destination': 'aiplatform.googleapis.com', 'forwarded': True, 'note': 'answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node'} header='gemini-proxy'
+PASS  streaming from a forwarded backend names the destination — label={'backend': 'gemini-proxy', 'answered_by': 'forwarded-managed-model', 'model': 'gemini-2.5-flash', 'alias': 'gemma', 'egress': 'external', 'destination': 'aiplatform.googleapis.com', 'forwarded': True, 'note': 'answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node'} header='aiplatform.googleapis.com'
+
+      latency samples (s): [0.801]
+      median latency: 0.801s (backend reported by the endpoint: gemini-proxy)
+      NOTE: this compares the FRONT DOOR's own answer time; for the same
+      20-sample decision prompt the CPU path on this node is documented at
+      402 s (infra/cloudrun/evidence/node-c-gemma-decision-latency-2026-10-13.md).
+
+RESULT: PASS (drop-in envelope + labelled backend + parameters + streaming)
+
+===== RESULT =====
+RESULT: PASS — the front door is a drop-in and it labels what answered
+VERIFY_EXIT=0
+
+########## DONE ##########
+2026-10-15T12:14:10Z
+
+########## PHASE DONE ##########
+2026-10-15T12:14:10Z
