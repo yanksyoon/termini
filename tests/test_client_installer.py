@@ -408,6 +408,18 @@ class ClientEnrollmentEndToEndTest(_ControllerCase):
         self.assertIsNotNone(self._token_state(token_1))
 
         # ... and the client's own view works with the NODE's credential only.
+        # `--wait` first: it is the path the customer's own one-liner runs. The
+        # daemon marks the node ONLINE at the registration acknowledgement and
+        # only then posts its first sample, so a snapshot taken the instant the
+        # state flips can land in that gap — on a node that also has LXD
+        # instances to inventory the gap is ~0.5 s, and an immediate read always
+        # sees zero samples. Measure what the product promises: registration
+        # acknowledged, then a first sample.
+        waited = subprocess.run([sys.executable, str(STATUS_HELPER), "--wait",
+                                 "--timeout", "60"], env=env,
+                                capture_output=True, text=True, timeout=90)
+        self.assertEqual(waited.returncode, 0, waited.stdout + waited.stderr)
+        self.assertIn("YOUR NODE IS REGISTERED", waited.stdout)
         show = subprocess.run([sys.executable, str(STATUS_HELPER), "--json"], env=env,
                               capture_output=True, text=True, timeout=60)
         self.assertEqual(show.returncode, 0, show.stdout + show.stderr)
