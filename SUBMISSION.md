@@ -61,9 +61,20 @@ Everything below is deployed and serving now. No local install is required.
 
 **https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token**
 
-> **The demo is paused by default**, so it does not bill GPU time while nobody is
-> looking at it: the seeder is stopped and the node VMs are terminated. In that
-> state the dashboard loads but shows **offline nodes and an empty operator log**.
+> **The demo is paused by default**, so it does not bill compute time while
+> nobody is looking at it: the seeder is stopped and the node VMs are terminated.
+> In that state the dashboard loads but shows **offline nodes and an empty
+> operator log**.
+>
+> **Paused is not the same as free.** Terminating an instance stops the vCPU/RAM
+> charge, but everything attached to it keeps billing, and so does the reserved
+> IP that *is* this demo's URL. Measured on 2026-10-15 with every instance
+> TERMINATED and Cloud Run at zero, the project still billed **$37.77/mo**:
+> 210 GiB of disks $25.20 + 60 GiB of node images $3.60 + the static IP
+> `34.93.190.64` $8.76 (billed as in-use while associated with the instance,
+> running or stopped) + the 10.37 GiB model bucket $0.21. After dropping the two
+> superseded images the idle floor is **$35.37/mo**. Letting the fleet sit
+> "stopped" is a hosting decision, not a zero-cost one.
 >
 > **Resume it for a judging session** (~30 s to come back):
 >
@@ -76,8 +87,27 @@ Everything below is deployed and serving now. No local install is required.
 > (`POST /v1/bootstrap-tokens`, loopback-only), so no hand-minted token is needed
 > and a restart — or a fresh take — just works.
 >
-> Pause again with `sudo systemctl stop termini-seeder`. The Cloud Run GPU scales to
-> zero on its own once traffic stops, so the pause costs nothing to maintain.
+> Pause again with `sudo systemctl stop termini-seeder`. The Cloud Run GPU scales
+> to zero on its own once traffic stops.
+>
+> **Pause vs full cleanup.** Two different operations, two different costs:
+>
+> * **`infra/gcp/teardown.sh --pause`** stops every instance and scales Cloud Run
+>   to zero, and **deletes nothing** — disks, images, the model bucket and the
+>   reserved IP stay, so the demo is re-raisable in ~30 s with no re-bake. The
+>   idle floor above still applies while it is paused.
+> * **`infra/gcp/teardown.sh --full`** deletes every billable resource —
+>   instances and their disks, the addresses and forwarding rules, the images
+>   (family included), the Cloud Run service and its revisions, the Artifact
+>   Registry repository, the model bucket with its objects and the
+>   non-Google-managed log buckets — and drives the idle spend to **$0**. It
+>   refuses to run while the demo retention freeze is active (through 6 Nov 2026)
+>   because `termini-controller-ip` is this published URL, and it exits non-zero
+>   if anything it meant to delete survives.
+> * **`infra/gcp/tools/cleanup-verify.sh`** is the check for both: it prints every
+>   billable-class resource with its class, region, size and whether it bills
+>   while idle, and exits non-zero while any of them is still there. Raw output
+>   of every run: `infra/gcp/evidence/cleanup-2026-10-15.md`.
 
 The query parameters are required (the app reads `apiBase`, `projectId`, `token`).
 What to look for:
