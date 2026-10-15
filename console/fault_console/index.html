@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Termini — operator fault console</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Operator fault console</h1>
+    <div class="tags">
+      <span class="tag danger">operator-only</span>
+      <span class="tag">project token required</span>
+      <span class="tag muted">not part of the client dashboard</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card" id="connect-card">
+      <h2>1 · Controller</h2>
+      <p class="hint">
+        This console injects and clears demo faults through
+        <code>POST/DELETE /v1/projects/{pid}/demo/faults</code> (controller-api.md §4.7).
+        It authenticates with the <strong>project token</strong> only — never a node token,
+        and nothing works without it. The token is kept in this browser tab
+        (<code>sessionStorage</code>) and is never served by the page.
+      </p>
+      <div class="grid">
+        <label>Controller base URL<input id="api-base" placeholder="http://127.0.0.1:8085" /></label>
+        <label>Project id<input id="project-id" placeholder="01J0DEM0WARM000000000000AB" /></label>
+        <label>Project token<input id="token" type="password" placeholder="paste the project token" /></label>
+        <div class="actions">
+          <button id="connect" class="primary">Connect</button>
+          <button id="forget" class="ghost">Forget token</button>
+        </div>
+      </div>
+      <div id="connect-status" class="status"></div>
+    </section>
+
+    <section class="card disabled" id="inject-card">
+      <h2>2 · Inject a fault</h2>
+      <div class="grid">
+        <label>Node<select id="node"></select></label>
+        <label>Scenario<select id="scenario"></select></label>
+        <label>Duration (s)<input id="duration" type="number" min="5" max="600" step="1" value="30" /></label>
+        <label>Target
+          <select id="target">
+            <option value="real">real node</option>
+            <option value="synthetic">synthetic seeder node</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button id="inject" class="primary">Inject fault</button>
+          <button id="clear-all" class="danger">Clear all on this project</button>
+        </div>
+      </div>
+      <div id="fleet-note" class="hint"></div>
+    </section>
+
+    <section class="card disabled" id="active-card">
+      <h2>3 · Active injections</h2>
+      <table id="injections">
+        <thead>
+          <tr>
+            <th>node</th><th>scenario</th><th>rule</th><th>target</th><th>state</th>
+            <th>ttl / expires</th><th>samples</th><th>recovery</th><th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="hint" id="no-injections">No injections recorded yet.</div>
+    </section>
+
+    <section class="card disabled" id="log-card">
+      <h2>4 · Console responses (raw)</h2>
+      <pre id="responses"></pre>
+    </section>
+  </main>
+
+  <footer>
+    <span>Guardrails: one open injection per (node, rule) · a remediation in flight for
+      the same (node, rule) is refused <code>409</code> · a fault is always clearable ·
+      an injection never outlives its TTL silently.</span>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

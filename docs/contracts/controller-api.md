@@ -765,6 +765,201 @@ treated as remote and refused `403`.
 
 ---
 
+## 4.7 Operator demo fault injection (operator-only)
+
+**Operator console, not a client surface.** These endpoints exist for the operator
+who runs the demo (`console/fault_console/`, served at `/console/`). They are
+authenticated with `project_token` only — like §4.2 — and they are **never** part
+of the client-facing dashboard: the route is not linked from the dashboard's
+navigation, and a request that presents a `node_token` (or no token at all) is
+refused. A client must not be able to inject a fault.
+
+**Why the route exists.** Fault injection used to be `console/seed_demo.py`: a CLI
+that registers two synthetic nodes and oscillates their telemetry. There was no way
+to trigger a *specific* fault, no way to target a chosen node, and no way to clear a
+running fault — so a demo run depended on the always-on seeder and on which half of
+its oscillation was on screen. These endpoints make injection an explicit,
+reversible operator action, and they make the seeder *optional* (it remains usable;
+nothing about the demo requires it — see `console/seed_demo.py`).
+
+**What an injection is.** There is no on-node fault agent in this build
+(`node-bootstrap.md` is specified, not shipped), so an injection is a
+**controller-owned telemetry series**: for its TTL the injector writes one sample
+per second for the target node through the *same* store path a node's own telemetry
+goes through (`telemetry_samples` / `telemetry_batches`, plus the `node.telemetry`
+stream). The charts, the frozen §8 rules and the AI-operator loop consume it exactly
+as if the node had reported it. Two consequences are normative:
+
+- **While an injection is open for a node, that node's own telemetry is
+  superseded.** A `POST /v1/nodes/{node_id}/telemetry` from that node is still
+  accepted at the transport level but stores **none** of its samples
+  (`202 {"accepted": 0, "rejected": <n>, "backpressure": "none"}`), so the injected
+  series is authoritative and the rule holds across its debounce count instead of
+  flapping between the fault and the node's healthy reports. Only one injection may
+  hold a node's series per (node, rule) — see the refusals below.
+- **The `demo_faults` row is the durable provenance** (migration `0014`), together
+  with the operator-log lines described below. The stored samples themselves are not
+  individually marked.
+
+### Scenarios
+
+The scenario set is the one the harness already implements (`chaos/chaos.json`), so
+an injected fault has the same signature the chaos runs prove.
+
+| `scenario`     | rule it drives     | injected signal |
+|----------------|--------------------|-----------------|
+| `oom`          | `oom-guard-01`     | host RAM → 97 % of `ram_total_bytes`, CPU raised, nested `lxd_instances[].ram_used_bytes` kept consistent |
+| `disk-degrade` | `disk-degrade-01`  | every `disk[].free_bytes` → 3 % of total, `write_latency_ms` → 80 |
+| `disk-fail`    | `disk-fail-01`     | every `disk[].mount_ro` → `true` (EXT4 remount-ro, Scenario B) |
+| `latency`      | `latency-01`       | every `net[].latency_ms` → 600 |
+
+`clear` is not a scenario: it is the `DELETE` below.
+
+### POST /v1/projects/{project_id}/demo/faults
+
+Start one injection. `project_token` auth, scoped to the token's project.
+
+Request:
+```json
+{ "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
+  "scenario": "oom",
+  "duration_s": 30,
+  "target": "real" }
+```
+
+- `node_id` must be a node of this project (the console offers the fleet listing,
+  `GET …/nodes`, including `?include=synthetic`).
+- `scenario` ∈ the table above.
+- `duration_s` is the injection's TTL, `5 ≤ duration_s ≤ 600` (default `30`).
+- `target` ∈ `real | synthetic` and must match the node's provenance
+  (`nodes.synthetic`); it exists so the operator states which kind of node they are
+  faulting, and a mismatch is refused rather than silently honoured.
+
+Response `201 Created`:
+```json
+{ "schema_version": "1.0",
+  "injection_id": "01M4349RQ3BM21NNW2A68CT3SQ",
+  "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
+  "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
+  "node_registration_id": "termini-node-a",
+  "node_role": "compute",
+  "scenario": "oom", "rule_id": "oom-guard-01", "target": "real",
+  "state": "active",
+  "duration_s": 30.0,
+  "started_at": "2026-10-04T07:49:00.000Z",
+  "expires_at": "2026-10-04T07:49:30.000Z",
+  "cleared_at": null, "cleared_by": null, "clear_reason": null,
+  "samples_written": 0, "recovery_samples": 0,
+  "clear_samples_needed": 3, "open": true }
+```
+
+`state` ∈ `active | recovering | cleared | expired`. `clear_samples_needed` is the
+number of consecutive healthy samples the driven rule's hysteresis needs to re-arm
+(`operator/detect.recovered`, per-rule `*_clear_consecutive`; 3 by default).
+
+### GET /v1/projects/{project_id}/demo/faults
+
+`project_token` auth. Query: `state=all|open` (default `all`), `limit` (as §4.2).
+Returns every injection this project has run, newest first:
+
+```json
+{ "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
+  "scenarios": ["oom", "disk-degrade", "disk-fail", "latency"],
+  "faults": [ { "…": "injection view as above" } ],
+  "open_count": 1 }
+```
+
+### DELETE /v1/projects/{project_id}/demo/faults/{injection_id}
+
+Clear one injection. `project_token` auth. Optional `?reason=<≤200 chars>`
+(default `cleared_by_operator`). Response `200 OK` with the injection view, whose
+`state` is now `recovering`:
+
+```json
+{ "injection_id": "01M4349RQ3BM21NNW2A68CT3SQ", "state": "recovering",
+  "clear_samples_needed": 3, "recovery_samples": 0,
+  "samples_written": 12, "open": true, "…": "…" }
+```
+
+Clearing **starts a recovery burst** rather than stopping: the injector keeps
+writing the node's healthy baseline for `clear_samples_needed` more samples (one per
+second) and then closes the episode, so the rule provably returns below its clear
+threshold and the operator log records the completion. Clearing an already-cleared
+injection is idempotent — `200` with `"status": "already_cleared"` (and
+`"already_expired"` for one closed by its TTL or a restart); an unknown
+`injection_id` is `404 NOT_FOUND`. A fault is always clearable: this endpoint never
+refuses on state.
+
+### POST /v1/projects/{project_id}/demo/faults/clear
+
+`project_token` auth. Clear every open injection, or just one node's. Body
+`{"node_id": "<id>", "reason": "<text>"}` (both optional) → `200`
+`{"cleared": [<injection view>…], "count": 2}`. This is the clear path for an
+environment whose reverse proxy drops `DELETE` (both are in the contract and both
+run the same recovery burst).
+
+### Refusals (both `409 CONFLICT`)
+
+| Condition | HTTP | `code` | `details[].reason` |
+|---|---|---|---|
+| An open injection already holds this `(node, rule)` while it is `active`/`recovering` | `409` | `CONFLICT` | `fault_already_active` (+ `injection_id`) |
+| A remediation for this `(node, rule)` is **in flight** | `409` | `CONFLICT` | `remediation_in_flight` (+ the shape: `pending_remediation` = the loop fired and its audit is not written yet, `recent_remediation` = an audit within the settle window) |
+| No telemetry and no hardware facts to build a baseline from | `409` | `CONFLICT` | `no_telemetry_baseline` |
+
+The second is safety rule §3 of the card: injecting onto a rule the operator is
+mid-remediation on would stack a second fault on the same episode. The settle window
+is `TERMINI_DEMO_FAULT_GUARD_S` (seconds, default `60`), configurable per
+environment — a demo that wants to re-inject the same scenario quickly lowers it.
+
+Malformed bodies are `422 INVALID_ARGUMENT` (unknown scenario, `duration_s` out of
+range, `target` missing or not matching the node's provenance, unknown `node_id` →
+`404 NOT_FOUND`). No token is `401 UNAUTHENTICATED`; a `node_token` is
+`403 PERMISSION_DENIED` — **the route is not reachable from a node context**.
+
+### TTL and restarts
+
+An injection may never outlive its TTL silently:
+
+- at `expires_at` the driver logs `fault TTL expired after <n>s — auto-clearing: …`
+  and runs the recovery burst (`state: recovering` → `cleared`,
+  `clear_reason: "ttl_expired"`);
+- an injection left `active`/`recovering` by a **previous controller process** is
+  swept at boot (`state: expired`, `cleared_by: "controller_restart"`) and logged —
+  the driver that owned it is gone, so reporting it as live would be a lie.
+
+Both are also events on the operator log (§7.2), which is where the client
+dashboard shows them.
+
+### Operator log (client-visible provenance)
+
+Every transition is appended to the project's operator log with `actor: "human"`, so
+the client dashboard's live AI-operator panel shows the injection the way
+`dashboard.md` §2.1 renders human-actor lines:
+
+```
+fault injected by operator: node termini-node-a scenario=oom rule=oom-guard-01
+  target=real ttl=30s (injection …, node telemetry superseded while active)
+node telemetry superseded by active fault injection … (warn, once per injection)
+fault cleared by operator: node termini-node-a scenario=oom rule=oom-guard-01 —
+  restoring the healthy series, 3 sample(s) to re-arm (injection …)
+fault cleared: node termini-node-a rule oom-guard-01 back below threshold after 3
+  healthy sample(s) (injection …)
+fault TTL expired after 30s — auto-clearing: … (injection …)
+```
+
+### Configuration
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `TERMINI_DEMO_FAULT_GUARD_S` | `60` | settle window during which a remediation for the same `(node, rule)` is treated as still in flight (the `409` above) |
+| `TERMINI_DEMO_FAULTS` | `on` | `off` disables the surface entirely (the endpoints then answer `503 INTERNAL` instead of pretending to inject) |
+
+Additive contract notes (§1.2): the `DELETE` verb is now part of the controller's
+CORS `Access-Control-Allow-Methods`, and the four routes above are added to §4.
+Nothing existing changed.
+
+---
+
 ## 5. Guardrail & Clamp Validator
 
 The deterministic choke point between "DeepSeek/Gemini recommends" and "LXD
@@ -1054,6 +1249,7 @@ uses a short-lived ticket — `dashboard.md` §3.1).
 | Command long-poll      | every 2 s, 25 s block   | WS push preferred |
 | WS telemetry snapshots | ≤ 1/s per node          | throttled from raw cadence |
 | AI operator log        | push on append          | ring buffer 10k lines |
+| Demo fault series      | 1 s while an injection is open | §4.7 — a controller-owned sample per second, superseding the node's own reports for the (node, rule) |
 | Metrics storage        | raw (1 s demo / 15 s default) → 5s/1m/5m downsample | charts read downsampled |
 
 During the demo the operator loop consumes telemetry at 1 s so a remediation can

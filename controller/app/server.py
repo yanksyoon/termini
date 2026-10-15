@@ -21,6 +21,10 @@ and dashboard.md §1–§4):
     GET  /v1/nodes/{nid}/telemetry/recent         (node_token)       -> 200
     GET  /v1/telemetry/recent?node=&limit=        (project_token)    -> 200
     POST /v1/operator/lease                       (project_token)    -> 200
+    POST /v1/projects/{pid}/demo/faults           (project_token)    -> 201   operator-only
+    GET  /v1/projects/{pid}/demo/faults           (project_token)    -> 200   operator-only
+    POST /v1/projects/{pid}/demo/faults/clear     (project_token)    -> 200   operator-only
+    DELETE /v1/projects/{pid}/demo/faults/{iid}   (project_token)    -> 200   operator-only
     GET  /v1/projects/{pid}/logs                  (SSE, token in ?token)
     GET  /stream/v1?token=...                     (WebSocket event stream)
     GET  /terminal/v1/nodes/{node_id}?token=...    (WebSocket terminal)
@@ -45,6 +49,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from . import db, errors, governance, health, inventory, registration, role, store, validate, ws as wsmod
 from . import commands as cmd_mod
+from . import demo_faults as demo_faults_mod
 from . import ulid
 from . import sshca as sshca_mod
 from .operator import store as opstore
@@ -85,7 +90,7 @@ class ControllerServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, addr, cfg, project, broker, operator_logs, inventory, terminal_manager,
-                 ca: sshca_mod.SSHCA):
+                 ca: sshca_mod.SSHCA, fault_injector=None):
         super().__init__(addr, ControllerHandler)
         self.cfg = cfg
         self.project = project
@@ -98,6 +103,35 @@ class ControllerServer(ThreadingHTTPServer):
         self.plans: dict[str, dict] = {}        # plan_id -> accepted plan (in-memory, demo)
         self._last_telemetry_at: dict[str, float] = {}
         self._last_status: dict[str, str] = {}
+        # Operator-only demo fault driver (controller-api.md §4.7). None when the
+        # controller runs with injection disabled — the endpoints then refuse 503
+        # rather than pretending to inject.
+        self.fault_injector = fault_injector
+
+    def publish_node_events(self, conn, node: dict, sample: dict | None) -> None:
+        """Push node.telemetry (≤1/s) and node.health_changed (on transition).
+
+        Server-level (not handler-level) because the demo fault driver fans its
+        injected samples out through the same path — an injected sample must light
+        the dashboard's live panels exactly like a node-reported one.
+        """
+        node_id = node["id"]
+        project_id = self.project["id"]
+        now_epoch = time.time()
+
+        status, _ = health.node_status_health(node, sample, now_epoch)
+        if self._last_status.get(node_id) != status:
+            self._last_status[node_id] = status
+            self.broker.publish(
+                "node.health_changed",
+                {"node_id": node_id, "status": status, "last_seen_at": node["last_seen_at"]},
+                project_id,
+            )
+
+        last = self._last_telemetry_at.get(node_id, 0.0)
+        if sample and now_epoch - last >= 1.0:
+            self._last_telemetry_at[node_id] = now_epoch
+            self.broker.publish("node.telemetry", sample, project_id)
 
 
 class ControllerHandler(BaseHTTPRequestHandler):
@@ -120,7 +154,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
         self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers",
                          "Authorization, Content-Type, Idempotency-Key, X-Termini-Version, Last-Event-ID")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 
     def _send_json(self, status: int, obj) -> None:
         if status == 204:
@@ -259,6 +293,18 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 return self._operator_decisions(conn)
         if method == "POST" and segs[:2] == ["v1", "operator"] and len(segs) == 3 and segs[2] == "lease":
             return self._operator_lease(conn)
+        # Operator-only demo fault injection (controller-api.md §4.7): project_token
+        # only — a node token never authenticates here (see §4.7 "not reachable
+        # from a node context"), and no token means 401.
+        if len(segs) >= 5 and segs[:2] == ["v1", "projects"] and segs[3:5] == ["demo", "faults"]:
+            if method == "POST" and len(segs) == 5:
+                return self._demo_fault_start(conn, segs[2])
+            if method == "GET" and len(segs) == 5:
+                return self._demo_fault_list(conn, segs[2])
+            if method == "POST" and len(segs) == 6 and segs[5] == "clear":
+                return self._demo_fault_clear_all(conn, segs[2])
+            if method == "DELETE" and len(segs) == 6:
+                return self._demo_fault_clear(conn, segs[2], segs[5])
         raise errors.not_found(f"no route: {method} {path}")
 
     def do_OPTIONS(self) -> None:
@@ -269,6 +315,12 @@ class ControllerHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         self._route("POST")
+
+    def do_DELETE(self) -> None:
+        # DELETE /v1/projects/{pid}/demo/faults/{injection_id} — clear one injection
+        # (controller-api.md §4.7). Only the demo-fault routes accept DELETE; the
+        # frozen REST surface is otherwise GET/POST.
+        self._route("DELETE")
 
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
@@ -1252,6 +1304,22 @@ class ControllerHandler(BaseHTTPRequestHandler):
             )
 
         now = store.now_iso()
+
+        # A running demo fault injection owns this node's series (controller-api.md
+        # §4.7): the injected samples are authoritative, so the node's own samples
+        # are recorded as received but not stored. Without this, a real node's
+        # healthy samples would interleave with the injected fault and the rule
+        # would flap instead of holding across its debounce count.
+        fault = demo_faults_mod.open_fault_for_node(conn, node["project_id"], node_id)
+        if fault is not None:
+            store.insert_batch(conn, clean, node_id, 0, len(samples), now)
+            conn.execute("UPDATE nodes SET last_seen_at = ? WHERE id = ?", (now, node_id))
+            injector = getattr(self.server, "fault_injector", None)
+            if injector is not None:
+                injector.supersede_log(conn, node, fault)
+            self._publish_node_events(conn, node, store.latest_sample(conn, node_id))
+            return 202, {"accepted": 0, "rejected": len(samples), "backpressure": "none"}
+
         inserted, dropped = store.insert_samples(conn, node_id, clean["call_id"], samples)
         store.insert_batch(conn, clean, node_id, inserted, dropped, now)
         conn.execute("UPDATE nodes SET last_seen_at = ? WHERE id = ?", (now, node_id))
@@ -1262,24 +1330,12 @@ class ControllerHandler(BaseHTTPRequestHandler):
         return 202, {"accepted": inserted, "rejected": dropped, "backpressure": "none"}
 
     def _publish_node_events(self, conn, node: dict, sample: dict | None) -> None:
-        """Push node.telemetry (≤1/s) and node.health_changed (on transition)."""
-        node_id = node["id"]
-        project_id = self.server.project["id"]
-        now_epoch = time.time()
+        """Push node.telemetry (≤1/s) and node.health_changed (on transition).
 
-        status, _ = health.node_status_health(node, sample, now_epoch)
-        if self.server._last_status.get(node_id) != status:
-            self.server._last_status[node_id] = status
-            self.server.broker.publish(
-                "node.health_changed",
-                {"node_id": node_id, "status": status, "last_seen_at": node["last_seen_at"]},
-                project_id,
-            )
-
-        last = self.server._last_telemetry_at.get(node_id, 0.0)
-        if sample and now_epoch - last >= 1.0:
-            self.server._last_telemetry_at[node_id] = now_epoch
-            self.server.broker.publish("node.telemetry", sample, project_id)
+        Delegates to the server so the demo fault driver fans an injected sample
+        out through the identical path (see ControllerServer.publish_node_events).
+        """
+        self.server.publish_node_events(conn, node, sample)
 
     def _node_recent(self, conn, node_id: str) -> tuple[int, dict]:
         self._require_node(conn, node_id)
@@ -1342,6 +1398,78 @@ class ControllerHandler(BaseHTTPRequestHandler):
             "acquired_at": lease["acquired_at"] if lease else None,
             "expires_at": lease["expires_at"] if lease else None,
         }
+
+    # ------------------------------------------------- operator fault console (§4.7)
+    def _fault_injector(self):
+        injector = getattr(self.server, "fault_injector", None)
+        if injector is None:
+            raise errors.err(503, "INTERNAL",
+                             "demo fault injection is not enabled on this controller")
+        return injector
+
+    def _demo_fault_start(self, conn, project_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/demo/faults — start one injection.
+
+        Operator-only: `project_token` auth, scoped to its own project. A request
+        with no token is `401 UNAUTHENTICATED`; a `node_token` (or any other
+        credential) is `403 PERMISSION_DENIED` — the route is not reachable from a
+        node context, and nothing here is public (controller-api.md §4.7).
+        """
+        self._require_project(conn, project_id)
+        body = self._read_body()
+        return 201, self._fault_injector().start_injection(conn, project_id, body)
+
+    def _demo_fault_list(self, conn, project_id: str) -> tuple[int, dict]:
+        """GET /v1/projects/{pid}/demo/faults — active + recent injections."""
+        self._require_project(conn, project_id)
+        injector = self._fault_injector()
+        q = self._query()
+        state = (q.get("state") or "all").strip().lower()
+        if state not in ("all", "open"):
+            raise errors.invalid_argument("state must be 'all' or 'open'")
+        faults = [
+            injector.view(row, store.get_node(conn, row["node_id"]),
+                          thresholds=injector.resolve_thresholds(conn))
+            for row in demo_faults_mod.list_faults(conn, project_id, limit=self._limit_param(50))
+        ]
+        if state == "open":
+            faults = [f for f in faults if f["open"]]
+        return 200, {
+            "project_id": project_id,
+            "scenarios": list(demo_faults_mod.SCENARIO_NAMES),
+            "faults": faults,
+            "open_count": sum(1 for f in faults if f["open"]),
+        }
+
+    def _demo_fault_clear(self, conn, project_id: str, injection_id: str) -> tuple[int, dict]:
+        """DELETE /v1/projects/{pid}/demo/faults/{injection_id} — clear one injection.
+
+        Idempotent and never refused on state: a fault must always be clearable
+        (§4.7 safety rule 2). Clearing starts the recovery burst — the driver keeps
+        writing the healthy baseline for as many samples as the rule's hysteresis
+        needs to re-arm — so the caller sees `state: recovering` and the next
+        `GET` reports `cleared`.
+        """
+        self._require_project(conn, project_id)
+        reason = (self._query().get("reason") or "cleared_by_operator")[:200]
+        return 200, self._fault_injector().clear(conn, project_id, injection_id, reason=reason)
+
+    def _demo_fault_clear_all(self, conn, project_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/demo/faults/clear — clear every open injection.
+
+        Body `{"node_id": "<id>", "reason": "<text>"}` (both optional). This is the
+        clear path for environments whose reverse proxy drops DELETE; both are in
+        the contract and both go through the same recovery burst.
+        """
+        self._require_project(conn, project_id)
+        body = self._read_body()
+        node_id = body.get("node_id")
+        if node_id is not None and not isinstance(node_id, str):
+            raise errors.invalid_argument("node_id must be a string when present")
+        reason = str(body.get("reason") or "cleared_by_operator")[:200]
+        return 200, self._fault_injector().clear_all(
+            conn, project_id, node_id=node_id, reason=reason
+        )
 
     def _limit_param(self, default: int = 50) -> int:
         raw = self._query().get("limit", str(default))
