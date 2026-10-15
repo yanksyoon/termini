@@ -85,6 +85,15 @@ resource "google_compute_subnetwork" "underlay" {
   region        = var.region
   network       = google_compute_network.vpc.id
   description   = "Single shared underlay subnet for Nodes A/B/C, CIDR ${var.network_cidr}."
+
+  # Task t_5a4a0f73: the nodes carry NO external IP and the project has no Cloud
+  # Router/Cloud NAT, so without this flag the nodes have no path to any Google
+  # API at all and the inference node's model traffic fails on DNS/TCP. Private
+  # Google Access routes Google API VIP traffic over Google's network and is free
+  # ($0/h, $0/GiB); Cloud NAT would cost ~$0.044/h + $0.045/GiB for the same
+  # reachability. Driven in Terraform so a future `apply` cannot silently revert
+  # the live setting (verified live 2026-10-15).
+  private_ip_google_access = true
 }
 
 # --- Static internal addresses (D2: .11 = A, .12 = B, .13 = C) ----------------
