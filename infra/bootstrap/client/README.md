@@ -10,7 +10,8 @@ You need three things, all of which your Termini provider gives you:
 2. an **enrollment credential** — a one-time code, one per node;
 3. a machine to install on: any x86-64 Linux box with `python3`, `curl` (or
    `wget`) and systemd. A machine booted from the Termini node image already
-   carries the node runtime; any other Linux machine gets it fetched for you.
+   carries the node runtime, `python3` and `curl`; any other Linux machine gets
+   the runtime fetched for you.
 
 You do **not** need — and will never be asked for — the controller's project
 token. That credential stays with the provider; the whole install works on your
@@ -76,6 +77,12 @@ This reads your node back through `GET /v1/nodes/<node_id>/telemetry/recent`
 using **the node's own credential** (`/var/lib/termini/identity/node.json`, mode
 `0600`, written by the controller at registration). It cannot see any other node,
 and it needs nothing from your provider.
+
+There is **no dashboard page for you to open**. The web dashboard is your
+provider's operator view, and every URL it takes carries *their* project token —
+the one credential you must never be given. Your confirmation surface is the
+command above, on the node itself. If you want a fleet-wide view, ask your
+provider to open theirs.
 
 ## 4. Installing a second node, and re-running the command
 
