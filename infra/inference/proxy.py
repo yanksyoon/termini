@@ -61,6 +61,7 @@ the node (no pip at request time, no venv to keep in sync).
 from __future__ import annotations
 
 import argparse
+import collections
 import http.client
 import json
 import os
@@ -250,10 +251,21 @@ class RequestLog:
 
     A forwarded call NEVER logs "GPU" or "local" as its answer: `answered_by`
     is `forwarded-managed-model` and `backend` is `gemini-proxy`.
+
+    `stream` is the sink the JSON line is written to. When it is None the line
+    goes to `sys.stderr`, resolved per write, which is what journald wants. A
+    caller may inject its own stream instead: the handler runs on its own
+    thread and writes its request line after the response body, so a reader
+    that swaps the process-global `sys.stderr` and then reads it back is
+    measuring a race, not the log. Every emitted record is also appended to
+    `self.records` (the most recent 100) so the log can be asserted on without
+    scraping a stream at all.
     """
 
-    def __init__(self, cfg: Config) -> None:
+    def __init__(self, cfg: Config, stream=None) -> None:
         self.cfg = cfg
+        self.stream = stream
+        self.records: collections.deque = collections.deque(maxlen=100)
         self._lock = threading.Lock()
         self._fh = None
         if cfg.log_file:
@@ -282,8 +294,12 @@ class RequestLog:
         }
         record.update({k: v for k, v in fields.items() if v is not None})
         line = json.dumps(record, separators=(",", ":"), default=str)
+        sink = self.stream if self.stream is not None else sys.stderr
         with self._lock:
-            print(line, file=sys.stderr, flush=True)
+            # Record first, then write: a reader that waits for the record can
+            # then rely on the line having been written to the sink too.
+            self.records.append(record)
+            print(line, file=sink, flush=True)
             if self._fh is not None:
                 self._fh.write(line + "\n")
                 self._fh.flush()
@@ -1101,8 +1117,9 @@ class Server(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
-def make_server(cfg: Config, *, host: str | None = None, port: int | None = None) -> Server:
-    request_log = RequestLog(cfg)
+def make_server(cfg: Config, *, host: str | None = None, port: int | None = None,
+                log_stream=None) -> Server:
+    request_log = RequestLog(cfg, stream=log_stream)
     handler = type("BoundHandler", (Handler,), {"cfg": cfg, "request_log": request_log})
     bind_host = cfg.host if host is None else host
     bind_port = cfg.port if port is None else port

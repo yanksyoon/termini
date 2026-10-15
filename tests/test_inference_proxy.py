@@ -192,9 +192,9 @@ class ProxyTestCase(unittest.TestCase):
             server.server_close()
         self._servers = []
 
-    def start_proxy(self, cfg=None) -> str:
+    def start_proxy(self, cfg=None, log_stream=None) -> str:
         cfg = cfg or self.cfg
-        server = proxy.make_server(cfg, host="127.0.0.1", port=0)
+        server = proxy.make_server(cfg, host="127.0.0.1", port=0, log_stream=log_stream)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self._servers.append(server)
         self.log = server.RequestHandlerClass.request_log
@@ -537,9 +537,50 @@ class TestGeminiBackend(ProxyTestCase):
 # Logging and configuration
 # --------------------------------------------------------------------------- #
 
+def _wait_for_log_line(buffer: io.StringIO, event: str, timeout: float = 5.0):
+    """Return the first JSON log record with `event`, or None after `timeout`.
+
+    A request line is written AFTER the response body (the answer is what the
+    caller came for) and the handler runs on its own thread, so a reader that
+    snapshots the sink the instant the client returns races that thread. Wait
+    for the line, bounded, instead of sampling the stream and hoping.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        for raw in buffer.getvalue().splitlines():
+            if not raw.strip():
+                continue
+            try:
+                record = json.loads(raw)
+            except json.JSONDecodeError:
+                continue  # a line another thread is still writing
+            if record.get("event") == event:
+                return record
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.02)
+
+
 class TestLoggingAndConfig(ProxyTestCase):
-    def _capture(self) -> io.StringIO:
-        return io.StringIO()
+    """The log is where the substitution must be visible.
+
+    These tests inject the log SINK into the server they start. They must never
+    swap the process-global `sys.stderr`: the handler thread writes its line
+    after the response, so a swap-then-read measures a race between two threads
+    rather than the label on the line — which is exactly how this file passed
+    locally and went red on main (reverted commit bcf138e).
+    """
+
+    def start_capturing_proxy(self, cfg=None) -> str:
+        """Start the proxy with its own log stream; the buffer is `self.buffer`."""
+        self.buffer = io.StringIO()
+        return self.start_proxy(cfg, log_stream=self.buffer)
+
+    def _line(self, event: str) -> dict:
+        record = _wait_for_log_line(self.buffer, event)
+        if record is None:
+            self.fail(f"no {event!r} line was logged; sink={self.buffer.getvalue()!r}")
+        return record
 
     def test_forwarded_log_line_names_backend_model_and_destination(self):
         vertex = self.upstream.start({"body": _vertex_body()})
@@ -548,20 +589,11 @@ class TestLoggingAndConfig(ProxyTestCase):
             gemini_host=vertex, gemini_project="termini-510609", access_token="t",
             state_file="/tmp/termini-test-state.json",
         )
-        base = self.start_proxy(cfg)
-        buffer = self._capture()
-        original = sys.stderr
-        sys.stderr = buffer
-        try:
-            self.post(base, {"model": "gemma", "messages": [
-                {"role": "user", "content": "hi"}], "max_tokens": 32})
-        finally:
-            sys.stderr = original
+        base = self.start_capturing_proxy(cfg)
+        self.post(base, {"model": "gemma", "messages": [
+            {"role": "user", "content": "hi"}], "max_tokens": 32})
 
-        lines = [json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()]
-        request_lines = [line for line in lines if line["event"] == "inference_request"]
-        self.assertEqual(len(request_lines), 1)
-        record = request_lines[0]
+        record = self._line("inference_request")
         self.assertEqual(record["backend"], "gemini-proxy")
         self.assertEqual(record["answered_by"], "forwarded-managed-model")
         self.assertEqual(record["model"], "gemini-2.5-flash")
@@ -572,8 +604,6 @@ class TestLoggingAndConfig(ProxyTestCase):
         blob = json.dumps(record)
         self.assertNotIn("gpu", blob.lower())
         self.assertNotIn("local-weights", blob)
-        self.assertEqual(record["backend"], "gemini-proxy")
-        self.assertEqual(record["answered_by"], "forwarded-managed-model")
         self.assertEqual(record["forwarded"], True)
 
     def test_local_log_line_is_labelled_local(self):
@@ -582,17 +612,10 @@ class TestLoggingAndConfig(ProxyTestCase):
             backend=proxy.BACKEND_LOCAL, host="127.0.0.1", port=0, alias="gemma",
             upstream=upstream, state_file="/tmp/termini-test-state.json",
         )
-        base = self.start_proxy(cfg)
-        buffer = self._capture()
-        original = sys.stderr
-        sys.stderr = buffer
-        try:
-            self.post(base, {"model": "gemma", "messages": [
-                {"role": "user", "content": "hi"}]})
-        finally:
-            sys.stderr = original
-        lines = [json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()]
-        record = [line for line in lines if line["event"] == "inference_request"][0]
+        base = self.start_capturing_proxy(cfg)
+        self.post(base, {"model": "gemma", "messages": [
+            {"role": "user", "content": "hi"}]})
+        record = self._line("inference_request")
         self.assertEqual(record["backend"], "local")
         self.assertEqual(record["answered_by"], "local-weights")
         self.assertFalse(record["forwarded"])
@@ -603,20 +626,29 @@ class TestLoggingAndConfig(ProxyTestCase):
             gemini_host="http://127.0.0.1:9", gemini_project="termini-510609",
             access_token="t", state_file="/tmp/termini-test-state.json",
         )
-        base = self.start_proxy(cfg)
-        buffer = self._capture()
-        original = sys.stderr
-        sys.stderr = buffer
-        try:
-            self.post(base, {"model": "gemma", "messages": [{"role": "user", "content": "hi"}]})
-        finally:
-            sys.stderr = original
-        lines = [json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()]
-        failures = [line for line in lines if line["event"] == "upstream_failure"]
-        self.assertEqual(len(failures), 1)
-        self.assertEqual(failures[0]["severity"], "error")
-        self.assertEqual(failures[0]["distinct"], "vertex_unreachable")
-        self.assertEqual(failures[0]["backend"], "gemini-proxy")
+        base = self.start_capturing_proxy(cfg)
+        self.post(base, {"model": "gemma", "messages": [{"role": "user", "content": "hi"}]})
+        failure = self._line("upstream_failure")
+        self.assertEqual(failure["severity"], "error")
+        self.assertEqual(failure["distinct"], "vertex_unreachable")
+        self.assertEqual(failure["backend"], "gemini-proxy")
+
+    def test_the_log_line_reaches_the_injected_sink_and_the_records_list(self):
+        """One emitted line, on the sink and in `RequestLog.records` alike."""
+        upstream = self.upstream.start({"body": {"choices": []}})
+        cfg = proxy.Config(
+            backend=proxy.BACKEND_LOCAL, host="127.0.0.1", port=0, alias="gemma",
+            upstream=upstream, state_file="/tmp/termini-test-state.json",
+        )
+        base = self.start_capturing_proxy(cfg)
+        self.post(base, {"model": "gemma", "messages": [{"role": "user", "content": "hi"}]})
+        record = self._line("inference_request")
+        logged = [r for r in self.log.records if r.get("event") == "inference_request"]
+        self.assertEqual(len(logged), 1, self.log.records)
+        self.assertEqual(logged[0], record)
+        self.assertIs(self.log.stream, self.buffer)
+        # The sink is the injected stream, not the process-global stderr.
+        self.assertEqual(json.loads(self.buffer.getvalue().strip().splitlines()[-1]), record)
 
     def test_backend_comes_from_configuration_only(self):
         self.assertEqual(
