@@ -15,6 +15,7 @@ emitted sample still passes the controller's ingest validator.
 """
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
 import pathlib
 import re
@@ -250,6 +251,64 @@ class BuildSampleTest(unittest.TestCase):
         self.assertTrue(sample["services"])
         _clean, errors = validate_sample(sample)
         self.assertEqual(errors, [])
+
+
+class VerifyToolTest(unittest.TestCase):
+    """The live-node acceptance tool (`infra/gcp/tools/verify-node-instances.py`).
+
+    Its whole value is that it FAILS when the data is not there, so the failure
+    paths are what is pinned here.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        path = REPO / "infra" / "gcp" / "tools" / "verify-node-instances.py"
+        loader = importlib.machinery.SourceFileLoader("verify_node_instances", str(path))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        cls.tool = importlib.util.module_from_spec(spec)
+        loader.exec_module(cls.tool)
+
+    def setUp(self):
+        self.vm_id = tb.vm_id_for_instance("agent-0")
+        self.expected = {self.vm_id: "agent-0"}
+        self.services = [{"name": "termini-bootstrap", "status": "running"}]
+
+    def _sample(self, instances, services=None):
+        s = {"seq": 1}
+        if instances is not None:
+            s["lxd_instances"] = instances
+        if services is not None:
+            s["services"] = services
+        return s
+
+    def test_matching_sample_passes(self):
+        sample = self._sample([{"vm_id": self.vm_id, "state": "running",
+                                "ram_used_bytes": 1, "ram_limit_bytes": 2,
+                                "disk_used_bytes": 3}], self.services)
+        self.assertEqual(self.tool.compare(self.expected, sample), [])
+
+    def test_absent_field_fails(self):
+        reasons = self.tool.compare(self.expected, self._sample(None, self.services))
+        self.assertTrue(any("absent" in r for r in reasons), reasons)
+
+    def test_running_instance_missing_from_the_sample_fails(self):
+        reasons = self.tool.compare(self.expected, self._sample([], self.services))
+        self.assertTrue(any("not in the stored sample" in r for r in reasons), reasons)
+
+    def test_invented_or_stopped_instance_fails(self):
+        invented = self._sample([{"vm_id": "01M4N827979BD9D2762EFE24A0", "state": "running"}],
+                                self.services)
+        reasons = self.tool.compare(self.expected, invented)
+        self.assertTrue(any("not a running instance" in r for r in reasons), reasons)
+
+        stopped = self._sample([{"vm_id": self.vm_id, "state": "stopped"}], self.services)
+        reasons = self.tool.compare(self.expected, stopped)
+        self.assertTrue(any("state='stopped'" in r for r in reasons), reasons)
+
+    def test_empty_services_fails(self):
+        sample = self._sample([{"vm_id": self.vm_id, "state": "running"}], [])
+        reasons = self.tool.compare(self.expected, sample)
+        self.assertTrue(any("services[]" in r for r in reasons), reasons)
 
 
 if __name__ == "__main__":
