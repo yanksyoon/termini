@@ -20,9 +20,23 @@
 # Usage:
 #   TOKEN_A=... TOKEN_C=... TEAM_SSH_PUBKEY_FILE=~/.ssh/team.pub \
 #     ./raise-standing-fleet.sh --raise                     # recreate a and c
+#   ... --raise --only c --with-external-ip                 # from-scratch node-c
 #   TOKEN_A=x TOKEN_C=y TEAM_SSH_PUBKEY_FILE=... \
 #     ./raise-standing-fleet.sh --render-only --render-out /tmp/ci
 #   ... --only a | --only c
+#
+# --with-external-ip: give the node an EPHEMERAL public IP for its lifetime.
+# Required for a FROM-SCRATCH node-c (t_359ed606): Node C's first boot installs
+# build-essential/cmake with apt and clones llama.cpp, and NEITHER the Ubuntu
+# mirror nor github.com is reachable without a public path (Private Google
+# Access covers Google APIs — storage.googleapis.com — not archive.ubuntu.com).
+# Without the flag a recreated node-c's cloud-init ends in
+# `status: error ... Runparts: 1 failures (runcmd)` with
+# "Cannot initiate the connection to asia-south1.gce.archive.ubuntu.com" and NO
+# inference endpoint comes up at all; the standing node-c only works because its
+# boot disk predates the external-IP removal and already carries the binary and
+# weights. Delete the access config once the node has booted (the default
+# posture for the standing fleet stays --no-address).
 #
 # Recreating an instance REPLACES its boot disk (image_family is a boot-disk
 # property). That is intended: the standing nodes carried the stock Ubuntu image,
@@ -72,6 +86,9 @@ TEAM_SSH_PUBKEY_FILE="${TEAM_SSH_PUBKEY_FILE:-}"
 RENDER_ONLY=0
 RENDER_OUT=""
 ONLY=""
+# 1 = an ephemeral public IP on the created node (see the header: a from-scratch
+# node-c cannot install its build tools without a public path).
+EXTERNAL_IP="${EXTERNAL_IP:-0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GCP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -91,6 +108,7 @@ while [ "$#" -gt 0 ]; do
     --render-only) RENDER_ONLY=1 ;;
     --render-out) RENDER_OUT="$2"; shift ;;
     --only) ONLY="$2"; shift ;;
+    --with-external-ip) EXTERNAL_IP=1 ;;
     -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -179,6 +197,12 @@ raise_node() { # $1=node
     log "$node: deleting existing $name (replaces the boot disk)"
     gcloud compute instances delete "$name" --zone "$ZONE" --project "$PROJECT" --quiet >/dev/null
   fi
+  local addr=()
+  if [ "$EXTERNAL_IP" != "1" ]; then
+    addr=(--no-address)
+  else
+    log "$node: --with-external-ip — an ephemeral public IP (first boot needs the Ubuntu mirror)"
+  fi
   log "$node: creating $name ($mtype, $ip) from family $IMAGE_FAMILY"
   gcloud compute instances create "$name" \
     --project "$PROJECT" --zone "$ZONE" \
@@ -189,7 +213,7 @@ raise_node() { # $1=node
     --private-network-ip "$ip" \
     --tags "termini-node,termini-${node}" \
     --labels "project=termini,managed-by=gcloud,workstream=infra,node=${node},role=$([ "$node" = node-c ] && echo inference || echo compute)" \
-    --no-shielded-secure-boot --no-address \
+    --no-shielded-secure-boot "${addr[@]}" \
     "${identity[@]}" \
     --metadata-from-file "user-data=$ud" --quiet
 }
