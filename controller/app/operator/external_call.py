@@ -41,17 +41,6 @@ The guard is destination-agnostic on purpose: it applies identically whether the
 model is the external Cloud Run service or llama.cpp on node C. Moving the model
 on-prem narrows the *blast radius* of an egress, it does not repeal the boundary
 (``governance.md`` §7 makes no exception for an on-prem endpoint).
-
-Where the answer came from is recorded, not assumed
----------------------------------------------------
-Every audit record now carries the **egress identity** of the endpoint that was
-called (``destination_class``, ``external_destination``, and the endpoint's own
-``egress`` block: backend, model, answered-by). The controller dials the node's
-underlay address in both cases, so the endpoint's own self-description is the only
-evidence for whether the tokens came from local weights or from a forwarded
-managed model. `app/operator/egress.py` obtains it (bounded ``/health`` probe);
-when it is unavailable the class is ``unknown`` or derived from the destination
-URL — never silently downgraded to "local, therefore inside the premises".
 """
 from __future__ import annotations
 
@@ -243,16 +232,7 @@ def _sample_iter(payload: Dict[str, Any]):
 
 @dataclass
 class ExternalCallAudit:
-    """One audit record for an ``externalModelCall()`` invocation (§8.2/§9.3).
-
-    `destination` is the endpoint the controller dialled (the node's underlay
-    address). It is **not** the whole story once the endpoint may forward: the
-    `egress` block records what that endpoint says it is — backend, model and the
-    external destination when the call leaves the premises — so a forwarded
-    managed model can never be read as local inference. When no egress identity is
-    available, `destination_class` is derived from `destination` alone (a public
-    URL is recorded as `external`); it is never assumed to be `in-vpc`.
-    """
+    """One audit record for an ``externalModelCall()`` invocation (§8.2/§9.3)."""
 
     request_id: str
     template_version: str
@@ -263,18 +243,12 @@ class ExternalCallAudit:
     substituted_fields: int = 0
     detail: str = ""
     violations: List[str] = field(default_factory=list)
-    destination_class: str = "unknown"
-    external_destination: str = ""
-    egress: Dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> Dict[str, Any]:
         return {
             "request_id": self.request_id,
             "template_version": self.template_version,
             "destination": self.destination,
-            "destination_class": self.destination_class,
-            "external_destination": self.external_destination,
-            "egress": dict(self.egress),
             "phase": self.phase,
             "outcome": self.outcome,
             "payload_sha256": self.payload_sha256,
@@ -309,28 +283,6 @@ class ExternalCallViolation(Exception):
         )
 
 
-def _normalise_egress(egress: Optional[Dict[str, Any]], destination: str) -> Dict[str, Any]:
-    """Normalise an observed endpoint identity into the audit's `egress` block.
-
-    Import is local: `egress` is a leaf module this one must not depend on at
-    import time (external_call is imported by the guard's own tests and by the
-    decision provider, which builds the identity).
-    """
-    from . import egress as egress_module  # noqa: PLC0415 - avoid an import cycle
-
-    if isinstance(egress, dict) and egress:
-        block = dict(egress)
-        block.setdefault("destination", "")
-        block.setdefault("backend", egress_module.CLASS_UNKNOWN)
-        if not block.get("destination_class") or block["destination_class"] == egress_module.CLASS_UNKNOWN:
-            block["destination_class"] = egress_module.classify_destination(
-                block.get("destination") or destination)
-        block.setdefault("answered_by", egress_module.CLASS_UNKNOWN)
-        block.setdefault("forwarded", block.get("backend") == egress_module.BACKEND_FORWARDED)
-        return block
-    return egress_module.classify_and_describe(destination)
-
-
 def external_model_call(
     payload: Any,
     send: Callable[[], Any],
@@ -340,21 +292,12 @@ def external_model_call(
     destination: str = "",
     request_id: str = "",
     audit_sink: Optional[Callable[[Dict[str, Any]], None]] = None,
-    egress: Optional[Dict[str, Any]] = None,
 ):
     """Assert, audit-before, call, audit-after — the §9.3 ``externalModelCall()``.
 
     ``payload`` is the request object (a :class:`DecisionInput` or its ``dict``
     form) whose fields are substituted into the prompt. ``send`` performs the
     actual transport and is called **only** when the assertion passes.
-
-    ``egress`` is the endpoint's own identity (see :mod:`app.operator.egress`):
-    what it says it is, and where a forwarded call leaves for. It is recorded on
-    BOTH audit records — the before record cannot know it from the response, so it
-    is passed in from the endpoint probe; the after record repeats it, so a run
-    whose endpoint changed identity mid-decision is visible as a difference rather
-    than as a single ambiguous line. This EXTENDS the §7.2 guard; the class
-    assertion itself is unchanged and still destination-agnostic.
 
     Returns whatever ``send`` returns. On a class violation it raises
     :class:`ExternalCallViolation` *without* calling ``send`` — the caller maps
@@ -381,19 +324,12 @@ def external_model_call(
     digest = _sha256(payload_dict) if isinstance(payload_dict, (dict, list)) else ""
     n_fields = _count_fields(payload_dict)
 
-    egress_block = _normalise_egress(egress, destination)
-    destination_class = egress_block["destination_class"]
-    external_destination = egress_block["destination"] if destination_class == "external" else ""
-
     def _audit(phase: str, outcome: str, detail: str = "",
                viol: Optional[List[str]] = None) -> None:
         record = ExternalCallAudit(
             request_id=request_id, template_version=actual, destination=destination,
             phase=phase, outcome=outcome, payload_sha256=digest,
             substituted_fields=n_fields, detail=detail, violations=viol or [],
-            destination_class=destination_class,
-            external_destination=external_destination,
-            egress=egress_block,
         )
         log.info("externalModelCall %s: %s", phase, record.as_dict())
         if audit_sink is not None:

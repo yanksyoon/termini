@@ -3,69 +3,9 @@
 Owner: kanban task **`t_95528ae8`** — *Expose host llama.cpp on GPU Node C over
 HTTP to Node A* (supersedes the duplicate W4 card `t_4ccb8ea7`). Workstream W3.
 
-**2026-10-15:** the endpoint is now fronted by
-[`termini-inference-proxy`](#termini-inference-proxy--node-cs-front-door-t_f466824c)
-(owner: `t_f466824c`) — the same address, the same contract, one extra hop. See
-that section before changing anything on Node C.
-
 This directory **owns the live inference endpoint**: proving that the
 host-exposed `llama.cpp` on **Node C** answers a request from **Node A** over the
 frozen underlay route, and reporting GPU device visibility honestly.
-
-## Termini-inference-proxy — Node C's front door (`t_f466824c`)
-
-| | |
-|---|---|
-| Service | `termini-inference-proxy.service` — `0.0.0.0:8080`, the address nodes A/B already call |
-| Code | [`proxy.py`](proxy.py) (stdlib only — the node needs no new packages) |
-| Installer | [`install-inference-proxy.sh`](install-inference-proxy.sh) (on Node C, as root) |
-| Switch | [`termini-inference-switch.sh`](termini-inference-switch.sh) `gemini-proxy\|local\|legacy\|status` |
-| Verify | [`verify-proxy.sh`](verify-proxy.sh) (from **Node A** — a peer, not localhost) |
-| Backend config | `/etc/termini/inference-proxy.env` → `TERMINI_INFERENCE_BACKEND=local\|gemini-proxy` |
-
-Two backends, chosen by configuration, no rebuild:
-
-* **`local`** — transparent passthrough to the llama.cpp **worker**, which moves to
-  loopback `127.0.0.1:8081` (this is also the frozen AR-4 shape: front door on
-  `:8080`, workers on loopback). The bytes that come back are llama.cpp's own.
-* **`gemini-proxy`** — the request is translated to Vertex AI `generateContent`
-  (`gemini-2.5-flash`) and the answer is returned in the SAME OpenAI envelope,
-  including `usage`/`timings`, honouring `max_tokens` and `temperature`.
-
-**This is a forwarded managed model emulating a GPU node — it is not GPU
-inference, not on-prem inference, and not Gemma.** Every forwarded response says
-so in-band (`X-Termini-*` headers plus a `termini_backend` body block:
-`backend=gemini-proxy`, `answered_by=forwarded-managed-model`,
-`destination=aiplatform.googleapis.com`), and so does every log line. The
-controller's `externalModelCall()` audit row records the same destination
-(`controller/app/operator/egress.py`), so a forwarded answer cannot be read as a
-local one.
-
-Auth is the node's **own identity**: an OAuth token minted per request from the
-GCE metadata server (`roles/aiplatform.user`, `cloud-platform` scope — the
-egress/identity card `t_5a4a0f73`). There is no service-account key on the node.
-
-Failure semantics: Vertex AI slow / rate-limited / unreachable / misconfigured
-produces a **distinct, loud** error (`upstream_failure` log at `error` severity
-with a `distinct` code such as `vertex_timeout`, `vertex_rate_limited`,
-`vertex_rejected`, `vertex_unreachable`, `metadata_token`) and a bounded HTTP
-status (`429 INFERENCE_BUSY` with `Retry-After`, `503 MODEL_UNAVAILABLE`,
-`504 INFERENCE_TIMEOUT`). The controller's decision path turns any non-2xx into
-`inference_unavailable` and falls back to the deterministic fast-path — it never
-hangs and never silently serves nothing.
-
-Reversibility: `termini-inference-switch legacy` restores the pre-proxy
-host-exposed `llama.cpp` on `0.0.0.0:8080` in one command (`local` serves the same
-CPU path through the front door instead). The active backend is recorded in
-`/run/termini/inference-backend.json` and reported by `/health` and
-`termini-inference-switch status` — including `"is_gpu_inference": false`, because
-a node that emulates a GPU host must not claim to be one.
-
-> NOT YET WIRED: Node C's **first boot** (`infra/gcp/cloud-init/llama-serve.sh`)
-> still starts the host-exposed server on `:8080`; the proxy is installed on a
-> running node by the installer above. A fresh node therefore comes up on the
-> `legacy` path until the installer runs. Follow-up card: bake the proxy (and the
-> loopback-worker units) into the node image/first boot.
 
 ## Acceptance (verbatim)
 
@@ -90,7 +30,7 @@ Both are proven against the live 3-node GCP footprint in
 | Engine | `llama-server` built from pinned commit `7fe450e19305b828c199d602c23a8337aaa1f03b` (`image/models.lock.json`), CPU-only (`GGML_CUDA=OFF`) |
 | Model | shipped resident **`gemma`** = **Gemma 3 4B IT** (`unsloth/gemma-3-4b-it-GGUF`) / `Q4_K_M` / 2,489,894,016 B / sha256 `04a43a22…a7d19` (from `image/models.lock.json`, delivered from `gs://termini-510609-models/gemma-3-4b-it-gguf/`). The `deepseek-flash` / `deepseek-v4-pro` catalog pins remain (t_ab18d582) |
 | Alias | `gemma` (a single-model deployment collapses the AR-4 router to a transparent passthrough — the documented case) |
-| Serve flags | `--host 0.0.0.0 --port 8080 --ctx-size 16384 --parallel 1 --threads 8 --reasoning-format none` (with the front door installed, the worker moves to loopback `:8081` — see the proxy section) |
+| Serve flags | `--host 0.0.0.0 --port 8080 --ctx-size 16384 --parallel 1 --threads 8 --reasoning-format none` |
 | Unit | `termini-llama-server.service` (enabled; `/var/log/termini-llama-serve.log`) |
 | Measured (n2-standard-8, CPU) | Gemma 3 4B: generation ≈ **8–10 tok/s**, prompt ≈ 33 tok/s (the prior 8B distill measured ≈ 6.2 tok/s / 12 tok/s) |
 

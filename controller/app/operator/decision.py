@@ -539,23 +539,13 @@ class ModelDecisionProvider:
                  allowed_actions: Iterable[str] | None = None,
                  instance_names: dict | None = None,
                  default_instance_name: str = "agent",
-                 audit_sink=None,
-                 egress_probe=None,
-                 egress_endpoint: str = ""):
+                 audit_sink=None):
         self.deterministic = deterministic
         self.decide_fn = decide_fn
         self.timeout_s = timeout_s
         # Optional sink for the `externalModelCall()` before/after audit records
         # (governance.md §9.3). None = audit to the log only.
         self.audit_sink = audit_sink
-        # Optional callable returning the model endpoint's egress identity
-        # (`app/operator/egress.py`). It labels WHERE the answer came from, so the
-        # audit row can distinguish local weights from a forwarded managed model.
-        # None = record the destination class derived from the URL alone.
-        self.egress_probe = egress_probe
-        # The endpoint URL the audit row names when the transport is injected
-        # (`decide_fn`); production uses the adapter's own config.base_url.
-        self.egress_endpoint = egress_endpoint
         self.guardrail = guardrail or Guardrail(
             min_confidence=min_confidence, allowed_actions=allowed_actions,
             instance_names=instance_names, default_instance_name=default_instance_name,
@@ -594,28 +584,17 @@ class ModelDecisionProvider:
 
     # ------------------------------------------------------------------ model
     def _call_model(self, decision_input: DecisionInput):
-        """Call the model through the guard — ALWAYS, whichever transport is used.
-
-        The `decide_fn`/adapter choice is only about *transport*: the §7.2 class
-        assertion, the before/after audit row and the egress labelling must apply
-        to both, or the audit would be bypassable by construction (the defect the
-        wiring test in `test_external_model_call.py` exists to catch).
-        """
         if self.decide_fn is not None:
-            transport = lambda: self.decide_fn(decision_input)  # noqa: E731
-            config = None
-        else:
-            # The adapter is imported lazily so deterministic mode never touches it.
-            try:
-                from termini.decision import DecisionModelConfig
-                from termini.decision import decide as adapter_decide
-            except ImportError as exc:
-                return DecisionError(
-                    "inference_unavailable", f"decision adapter unavailable: {exc}"
-                )
-            config = DecisionModelConfig.from_env().with_timeout(self.timeout_s)
-            transport = lambda: adapter_decide(decision_input, config=config)  # noqa: E731
-
+            return self.decide_fn(decision_input)
+        # The adapter is imported lazily so deterministic mode never touches it.
+        try:
+            from termini.decision import DecisionModelConfig
+            from termini.decision import decide as adapter_decide
+        except ImportError as exc:
+            return DecisionError(
+                "inference_unavailable", f"decision adapter unavailable: {exc}"
+            )
+        config = DecisionModelConfig.from_env().with_timeout(self.timeout_s)
         # governance.md §7.2/§9.3 (controller-api.md §117): every model call is
         # wrapped by `externalModelCall()`, which asserts the frozen template
         # version and the C-class of every substituted field BEFORE the call. A
@@ -628,27 +607,13 @@ class ModelDecisionProvider:
         # boundary (governance.md §7 makes no exception for an on-prem endpoint).
         from . import external_call
 
-        base_url = config.base_url if config is not None else (self.egress_endpoint or "")
-
-        # What the endpoint says it is (local weights vs a forwarded managed
-        # model). Probed before the call so the BEFORE audit record is labelled
-        # too; a probe failure is recorded as unknown, never as "local".
-        egress = None
-        if self.egress_probe is not None:
-            try:
-                egress = self.egress_probe()
-            except Exception as exc:  # noqa: BLE001 - labelling must not break the call
-                log.warning("egress probe failed (recording as unknown): %s", exc)
-                egress = None
-
         try:
             return external_call.external_model_call(
                 decision_input,
-                send=transport,
-                destination=base_url,
+                send=lambda: adapter_decide(decision_input, config=config),
+                destination=config.base_url,
                 request_id=decision_input.request_id,
                 audit_sink=self.audit_sink,
-                egress=egress,
             )
         except external_call.ExternalCallViolation as exc:
             log.warning("externalModelCall rejected the decision payload: %s", exc)
