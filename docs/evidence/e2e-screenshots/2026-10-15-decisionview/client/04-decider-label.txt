@@ -1,0 +1,64 @@
+# Sidecar for 04-decider-label.png (acceptance 04)
+# Purpose: the honest WHO-DECIDED label, derived from the egress record on the operator log stream, not hardcoded: forwarded managed model + backend/model/destination
+# Captured (UTC): 2026-10-15T16:27:27Z
+# Exact URL in the address bar: https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token
+# Window: 1280x900, headful Chromium in Xvfb :99, browser chrome included, no crop/annotation.
+# Raw text behind the pixels follows.
+
+## As rendered on the published page (read back out of the live DOM)
+decider: forwarded managed model · gemini-2.5-flashbackend=gemini-proxy · model=gemini-2.5-flash · egress=external · destination=aiplatform.googleapis.com · answered by=forwarded-managed-model · endpoint=http://10.10.0.13:8080the decision was not computed by local weights on this fleet: the operator's model call was answered by a forwarded managed model reached over egress
+
+## The egress record it is derived from
+The label is parsed from the `externalModelCall …` frames on the operator log stream
+(`GET /v1/projects/{pid}/logs`) — never hardcoded; when no record has been seen the
+panel says "decider unknown". Frames below are the last externalModelCall in the stream
+capture taken from that endpoint at 2026-10-15T16:21:00Z (see the provenance note at the
+bottom: the fetch could not be repeated at the screenshot instant, because by then the
+controller was gone). The retained tail it replayed runs 2026-10-11T17:19:08Z ..
+2026-10-15T16:19:39Z, 707 data frames, each carrying its own `ts`.
+
+{
+  "actor": "ai_operator",
+  "log_id": "01M505SCCFC7YTD5SVN4CM1K7V",
+  "message": "externalModelCall after endpoint=http://10.10.0.13:8080 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=returned request_id=01M505S8RBT2D0592GK427W32S",
+  "node_id": null,
+  "project_id": "01J0DEM0WARM000000000000AB",
+  "remediation": null,
+  "remediation_json": null,
+  "severity": "info",
+  "ts": "2026-10-15T16:19:39.023Z",
+  "truncated": false
+}
+
+Every field in the DOM text above (backend=gemini-proxy, model=gemini-2.5-flash,
+egress=external, destination=aiplatform.googleapis.com, answered_by=
+forwarded-managed-model, endpoint=http://10.10.0.13:8080) is present in this frame:
+the label is the record, not a caption.
+
+## The line in context (last lines of the same stream capture)
+
+# 2121 non-empty lines in the capture; last 12 shown
+id: 01M505S8ADDYMKPTEDKK5C7F5W
+event: log
+data: {"log_id": "01M505S8ADDYMKPTEDKK5C7F5W", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:34.861Z", "node_id": "01M4NZK46WXG5ZEFAGAAV5JRXM", "severity": "warn", "actor": "ai_operator", "message": "disk-degrade-01: instance.stop 01M4N7F8B8823D650DF40D614D -> error (target_missing: refused PUT /1.0/instances/01M4N7F8B8823D650DF40D614D/state \u2014 no LXD instance '01M4N7F8B8823D650DF40D614D' on https://10.10.0.11:8443 (probe GET /1.0/instances/01M4N7F8B8823D650DF40D614D -> not found)) (threshold: free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s)", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505S8RN3J3M58M61M92TEFP
+event: log
+data: {"log_id": "01M505S8RN3J3M58M61M92TEFP", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:35.317Z", "node_id": null, "severity": "info", "actor": "ai_operator", "message": "externalModelCall before endpoint=http://10.10.0.13:8080 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=ok request_id=01M505S8RBT2D0592GK427W32S", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505SCCFC7YTD5SVN4CM1K7V
+event: log
+data: {"log_id": "01M505SCCFC7YTD5SVN4CM1K7V", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:39.023Z", "node_id": null, "severity": "info", "actor": "ai_operator", "message": "externalModelCall after endpoint=http://10.10.0.13:8080 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=returned request_id=01M505S8RBT2D0592GK427W32S", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505SCDHE1XT768042BXT0PQ
+event: log
+data: {"log_id": "01M505SCDHE1XT768042BXT0PQ", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:39.057Z", "node_id": "01M4NZK474BVARFBXYQBMVA8GV", "severity": "warn", "actor": "ai_operator", "message": "oom-guard-01: instance.restart 01M4N827979BD9D2762EFE24A0 -> error (target_missing: refused PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state \u2014 no LXD instance '01M4N827979BD9D2762EFE24A0' on https://10.10.0.11:8443 (probe GET /1.0/instances/01M4N827979BD9D2762EFE24A0 -> not found)) (threshold: >= 95% of ram_total_bytes for 2 consecutive samples)", "remediation_json": null, "truncated": false, "remediation": null}
+
+## Provenance and caveats
+- The DOM text above is from the capture instant (2026-10-15T16:27:27Z); the egress
+  record below is from the same stream captured at 2026-10-15T16:21:00Z, because by
+  16:27:2x the standing fleet was being stopped for cost (operator decision, end of day)
+  and the stream could no longer be fetched.
+- That is also why this frame still shows the label: the panel keeps the last egress
+  record it observed rather than blanking it, so a viewer who reloads during an outage
+  still sees WHO had been deciding instead of "unknown". The decider chip in frame 03 is
+  the same label under the same conditions.
+- The two sources agree field for field, which is the claim under test: the rendered
+  label is read out of the response/stream, not written into the HTML.
