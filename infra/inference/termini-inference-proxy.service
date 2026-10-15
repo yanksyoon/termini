@@ -1,0 +1,31 @@
+[Unit]
+Description=Termini inference proxy (Node C :8080) — drop-in front door for the frozen inference contract
+Documentation=file:/opt/termini/inference/proxy.py
+After=network-online.target
+Wants=network-online.target
+# The local backend forwards to the llama.cpp worker; the forwarded backend needs
+# no worker at all, so this is a soft ordering only.
+After=termini-llama-server.service
+
+[Service]
+Type=simple
+User=termini-infer
+Group=termini-infer
+# Configuration decides the backend (local | gemini-proxy); nothing is compiled in.
+EnvironmentFile=-/etc/termini/inference-proxy.env
+ExecStart=/usr/bin/python3 /opt/termini/inference/proxy.py
+Restart=always
+RestartSec=3
+# The node's own identity is the only credential: the OAuth token is minted from
+# the metadata server per request. No key file, no static token anywhere.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/run/termini /var/log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=termini-inference-proxy
+
+[Install]
+WantedBy=multi-user.target
