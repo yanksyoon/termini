@@ -83,8 +83,18 @@ UNIT
 # hand-minted token silently became the one in effect and broke restarts.
 sudo systemctl daemon-reload
 sudo systemctl enable --now termini-seeder
+# …then RESTART, always. `enable --now` is a no-op on a unit that is already
+# active, so re-running this script after changing anything above (a new
+# `--lxd-instance`, a new controller URL) left the OLD argv running and the change
+# silently not in effect — the seeder kept advertising the previous target while
+# the unit file on disk said otherwise (measured on termini-controller,
+# 2026-10-15: `--lxd-instance demo-workload` was written and `systemctl is-active`
+# stayed `active` with the pre-change command line). A restart is what makes the
+# unit the single source of truth it claims to be.
+sudo systemctl restart termini-seeder
 sleep 10
 echo "seeder: $(systemctl is-active termini-seeder)"
+echo "seeder argv: $(ps -eo args | grep '[s]eed_demo.py')"
 sudo journalctl -u termini-seeder --no-pager -n 12 | tail -12
 echo "--- nodes seen by the controller ---"
 curl -sS -H "Authorization: Bearer ${PROJECT_TOKEN}" \
