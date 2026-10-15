@@ -125,7 +125,7 @@ field. Units are explicit and fixed.
   ],
   "inference": {
     "server_up": true,
-    "model": "deepseek-flash",
+    "model": "gemma",
     "active_requests": 3,
     "queue_depth": 0,
     "tokens_per_s": 48.0,
@@ -241,16 +241,16 @@ present the array is empty (governance's `gpu_present` is derivable: `gpu[].leng
 ### 4.7 Inference (llama.cpp) — C0 (extension)
 
 Present only on the node hosting the inference **service** (Node C, host-exposed
-per D5). `model` is the currently-served alias: `deepseek-flash` or
-`deepseek-v4-pro` (fixed decision — no other model wired). Under `dual` residency
-both aliases are served simultaneously (`agent-runtime.md` §11.2); `model` then
-reports the alias with in-flight activity, and full residency state is available
-via the router's `/v1/models` endpoint rather than this single field.
+per D5). `model` is the currently-served alias: today exactly `gemma` (Gemma 3 4B
+IT, resident). The image's catalog distills (`deepseek-flash`, `deepseek-v4-pro`)
+remain baked and stay legal in this field, but they are no longer wired for the
+agent or the operator; a node reporting one of them is reporting a catalog pin,
+not a served alias.
 
 | Field | Type | Unit | Range | Description |
 |-------|------|------|-------|-------------|
 | `server_up` | boolean | — | — | llama.cpp HTTP endpoint reachable |
-| `model` | string enum | — | `deepseek-flash|deepseek-v4-pro` | Active model |
+| `model` | string enum | — | `gemma|deepseek-flash|deepseek-v4-pro` | Active model (served alias; catalog pins remain legal) |
 | `active_requests` | integer | count | ≥ 0 | In-flight requests |
 | `queue_depth` | integer | count | ≥ 0 | Waiting requests |
 | `tokens_per_s` | number | tok/s | ≥ 0 | Generation throughput |

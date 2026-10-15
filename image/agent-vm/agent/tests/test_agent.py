@@ -23,8 +23,8 @@ node_id: 01J00000000000000000000002
 agent_image_version: agent-vm-2026.10.0
 inference:
   base_url: http://10.10.0.13:8080
-  default_model: deepseek-flash
-  allowed_models: [deepseek-flash, deepseek-v4-pro]
+  default_model: gemma
+  allowed_models: [gemma]
 broker:
   endpoint: http://10.20.1.1:7071
 logging:
@@ -32,7 +32,7 @@ logging:
 """
 
 BAD_HOST = GOOD.replace("http://10.10.0.13:8080", "https://api.openai.com/v1")
-BAD_MODEL = GOOD.replace("default_model: deepseek-flash", "default_model: gpt-4")
+BAD_MODEL = GOOD.replace("default_model: gemma", "default_model: gpt-4")
 
 
 def _write(text: str) -> Path:
@@ -46,8 +46,8 @@ class TestConfig(unittest.TestCase):
     def test_good_config_loads(self) -> None:
         cfg = load_config(_write(GOOD), dev_override=False)
         self.assertEqual(cfg.inference.base_url, "http://10.10.0.13:8080")
-        self.assertEqual(cfg.inference.default_model, "deepseek-flash")
-        self.assertIn("deepseek-v4-pro", cfg.inference.allowed_models)
+        self.assertEqual(cfg.inference.default_model, "gemma")
+        self.assertIn("gemma", cfg.inference.allowed_models)
 
     def test_off_prem_host_rejected(self) -> None:
         with self.assertRaises(ConfigError):
@@ -98,8 +98,11 @@ class TestInferenceRouting(unittest.TestCase):
 
         cfg = load_config(_write(GOOD), dev_override=False)
         client = InferenceClient(cfg)
-        self.assertEqual(client.resolve_model(None), "deepseek-flash")
-        self.assertEqual(client.resolve_model("deepseek-v4-pro"), "deepseek-v4-pro")
+        self.assertEqual(client.resolve_model(None), "gemma")
+        self.assertEqual(client.resolve_model("gemma"), "gemma")
+        # A retired catalog alias is refused, not silently substituted (AR-6).
+        with self.assertRaises(ModelNotAllowed):
+            client.resolve_model("deepseek-v4-pro")
         with self.assertRaises(ModelNotAllowed):
             client.resolve_model("gpt-4")
 

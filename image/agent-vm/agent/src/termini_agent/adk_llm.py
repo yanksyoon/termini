@@ -65,7 +65,7 @@ def _messages_from_request(llm_request: LlmRequest) -> list[dict[str, str]]:
 class LlamaCppLlm(BaseLlm):
     """ADK `BaseLlm` backed by the host-exposed llama.cpp OpenAI-compatible API."""
 
-    model: str  # ADK model name == the request alias (deepseek-flash / deepseek-v4-pro)
+    model: str  # ADK model name == the request alias (the alias Node C serves, e.g. gemma)
 
     # BaseLlm is a pydantic model; runtime wiring lives in private attributes so it
     # is not part of the (de)serialised model schema.

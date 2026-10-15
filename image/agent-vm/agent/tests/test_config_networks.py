@@ -19,8 +19,8 @@ node_id: 01J00000000000000000000002
 agent_image_version: agent-vm-2026.10.0
 inference:
   base_url: {base_url}
-{extra}  default_model: deepseek-flash
-  allowed_models: [deepseek-flash, deepseek-v4-pro]
+{extra}  default_model: gemma
+  allowed_models: [gemma]
 broker:
   endpoint: http://10.20.1.1:7071
 logging:
