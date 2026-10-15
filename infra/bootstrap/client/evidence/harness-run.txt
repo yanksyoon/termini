@@ -1,19 +1,24 @@
-# verify-client-install.sh — raw run (2026-10-15T16:34Z, ~79 s, exit 0, 27/27 checks)
+# verify-client-install.sh — raw run (2026-10-15T17:0xZ, ~80 s, exit 0, 28/28 checks)
 #
 # Hermetic: a real controller process + the real node daemon on loopback, no root,
 # no systemd, no cloud spend. The customer credential in §1 is a throwaway minted
 # against this run's temporary controller database and is REDACTED here; re-running
 # the harness prints a fresh one.
 #
+# The last check ("no leaked controller") is the regression guard for the harness's
+# own teardown: the first version recorded the wrapper subshell's PID as the
+# controller's, so the controller outlived the run holding its port. `exec` in the
+# launch subshell fixes it (see the script).
+#
 # Still to run in an approved live window (needs GCP): the same flow on a machine
 # booted from the termini-node-os image family, which is what covers the systemd
 # start path and the installer's own wait loop. Recipe: client-install-2026-10-15.md §6.
 
-=== controller: starting a real controller process on http://127.0.0.1:57423 ===
+=== controller: starting a real controller process on http://127.0.0.1:36449 ===
 PASS  controller ready (HTTP 200 on an authenticated route)
 
 === 1. provider handover: mint a single-use credential and print the customer command ===
-[issue-enrollment] install surface OK: http://127.0.0.1:57423/install/termini-node.sh -> HTTP 200 (1 credential(s) to hand over)
+[issue-enrollment] install surface OK: http://127.0.0.1:36449/install/termini-node.sh -> HTTP 200 (1 credential(s) to hand over)
 --- Termini node enrollment 1/1 ---
 credential (single-use, enrols ONE node; NOT the controller's project token):
   <REDACTED: throwaway credential minted against the harness's temporary controller>
@@ -21,14 +26,14 @@ credential (single-use, enrols ONE node; NOT the controller's project token):
 Command for the customer — run it ON the machine that becomes the node,
 as root (it installs the node and registers it):
 
-  curl -fsSL http://127.0.0.1:57423/install/termini-node.sh | sudo sh -s -- \
-      --controller http://127.0.0.1:57423 --token <REDACTED: throwaway credential> --name client-node
+  curl -fsSL http://127.0.0.1:36449/install/termini-node.sh | sudo sh -s -- \
+      --controller http://127.0.0.1:36449 --token <REDACTED: throwaway credential> --name client-node
 
 Re-running that command on the SAME machine reuses its node identity and
 does not consume another credential. This credential is spent by the first
 node that registers with it.
 
-[issue-enrollment] handover written 0600 to /home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-2/handover.txt
+[issue-enrollment] handover written 0600 to /home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-3/handover.txt
 [issue-enrollment] verified: the controller's project token appears nowhere in this handover.
 PASS  handover preflighted the public install surface
 PASS  handover printed the customer one-liner
@@ -36,13 +41,13 @@ PASS  the project token appears in neither the handover file nor its output
 PASS  handover carries a single-use credential
 
 === 2. the customer one-liner: curl | sh -s -- (installs this machine, no provider shell) ===
-[termini-node-install] controller:  http://127.0.0.1:57423
+[termini-node-install] controller:  http://127.0.0.1:36449
 [termini-node-install] node name:   client-node   role: auto
 [termini-node-install] node runtime: not present — installing it from the controller
 [termini-node-install] node runtime: termini-bootstrap installed
-[termini-node-install] client status helper: installed (/home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-2/node1/usr/local/bin/termini-node-status)
-[termini-node-install] enrollment credential stored (0600) at /home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-2/node1/var/lib/termini/enrollment.token
-[termini-node-install] --no-start: wrote /home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-2/node1/etc/termini/config.yaml; start termini-bootstrap.service to register.
+[termini-node-install] client status helper: installed (/home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-3/node1/usr/local/bin/termini-node-status)
+[termini-node-install] enrollment credential stored (0600) at /home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-3/node1/var/lib/termini/enrollment.token
+[termini-node-install] --no-start: wrote /home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-3/node1/etc/termini/config.yaml; start termini-bootstrap.service to register.
 PASS  the one-liner fetched the installer over HTTP and ran it
 PASS  it installed the node runtime from the controller
 PASS  it installed the client status helper
@@ -52,29 +57,29 @@ PASS  runtime + status helper installed under the node root
 
 === 3. registration and the client's own view of the node ===
 YOUR NODE IS REGISTERED
-  node_id        01M506MPHDZ7VEGEHXJCSKAW8Y
+  node_id        01M5073KSV2F2EYSZPP95D8PEA
   role           compute
   project        01J0DEM0WARM000000000000AB
-  registered_at  2026-10-15T16:34:34Z
-  register_ms    866 (controller acknowledgement)
+  registered_at  2026-10-15T16:42:42Z
+  register_ms    32 (controller acknowledgement)
 HEALTH (your node, read with your node's own credential)
-  seq=1 ts=2026-10-15T16:34:34Z cpu=99.19% ram=97.7% load1=55.40771484375 disk_free=45.7% ctrl_rtt=0.102ms
+  seq=1 ts=2026-10-15T16:42:42Z cpu=35.59% ram=95.6% load1=5.6142578125 disk_free=45.7% ctrl_rtt=0.057ms
 PASS  termini-node-status confirms the registration
 PASS  the client sees the node id
 PASS  the client sees the assigned role
 PASS  the client sees its first telemetry
 PASS  the node acknowledged the registration
-PASS  the controller lists the node (01M506MPHDZ7VEGEHXJCSKAW8Y)
+PASS  the controller lists the node (01M5073KSV2F2EYSZPP95D8PEA)
 
 === 4. re-run on the registered node: identity reused, no second credential burned ===
-[termini-node-install] controller:  http://127.0.0.1:57423
+[termini-node-install] controller:  http://127.0.0.1:36449
 [termini-node-install] node name:   client-node   role: auto
-[termini-node-install] this machine is already registered as node_id=01M506MPHDZ7VEGEHXJCSKAW8Y — reusing its persisted identity
+[termini-node-install] this machine is already registered as node_id=01M5073KSV2F2EYSZPP95D8PEA — reusing its persisted identity
 [termini-node-install] the enrollment credential you supplied is NOT used and is NOT consumed
 [termini-node-install]   (enrollment credentials are single-use; this node never needs another)
 [termini-node-install] node runtime: already present on this machine (nothing to install)
-[termini-node-install] client status helper: already installed (/home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-2/node1/usr/local/bin/termini-node-status)
-[termini-node-install] --no-start: wrote /home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-2/node1/etc/termini/config.yaml; start termini-bootstrap.service to register.
+[termini-node-install] client status helper: already installed (/home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-3/node1/usr/local/bin/termini-node-status)
+[termini-node-install] --no-start: wrote /home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-3/node1/etc/termini/config.yaml; start termini-bootstrap.service to register.
 PASS  the re-run recognised the persisted identity
 PASS  the re-run did not consume the new credential
 PASS  the unburned credential registered a second node
@@ -90,7 +95,7 @@ REGISTRATION FAILED: your enrollment credential was rejected by the controller
   * then ask your provider for a fresh enrollment credential and
     re-run the installer with it.
   registration_attempts=4
-  controller said: register failed: HTTP 401 UNAUTHENTICATED: {'error': {'code': 'UNAUTHENTICATED', 'message': 'unknown bootstrap token', 'details': [], 'request_id': '01M506N8CEP6TKMPEZNSC84X9S'}}
+  controller said: register failed: HTTP 401 UNAUTHENTICATED: {'error': {'code': 'UNAUTHENTICATED', 'message': 'unknown bootstrap token', 'details': [], 'request_id': '01M5073X5P0A00D24FQ3DEX5NS'}}
 PASS  rejected credential exits 3
 PASS  rejected credential message is actionable
 
@@ -104,7 +109,7 @@ REGISTRATION FAILED: this enrollment credential has already been used
   * If you are installing a DIFFERENT node, ask your provider
     for a new credential; this one cannot be reused.
   registration_attempts=4
-  controller said: register failed: HTTP 401 UNAUTHENTICATED: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M506NJEV0PFTYER28BMFYQN2'}}
+  controller said: register failed: HTTP 401 UNAUTHENTICATED: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M50745CNT8NCT3MC30GCSKRM'}}
 PASS  used credential exits 4
 PASS  used credential message is actionable
 
@@ -121,11 +126,12 @@ REGISTRATION FAILED: the controller could not be reached
 PASS  unreachable controller exits 5
 PASS  unreachable message is actionable
 PASS  the three failure messages are distinct
+PASS  no leaked controller (port 36449 released)
 
 === summary ===
-  checks passed: 27
+  checks passed: 28
   checks failed: 0
-  workdir:       /home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-2
+  workdir:       /home/ubuntu/.hermes/profiles/infra/cache/scratch/client-verify-3
   covered here:     handover + one-liner + registration + client view + re-run +
                     the three failure modes, against a real controller process
                     and the real node daemon on loopback.
@@ -133,7 +139,3 @@ PASS  the three failure messages are distinct
                     (`systemctl restart termini-bootstrap.service`) — run this
                     flow on a machine booted from the termini-node-os image in
                     the approved live window.
-
-real	1m19.156s
-user	0m5.111s
-sys	0m4.683s

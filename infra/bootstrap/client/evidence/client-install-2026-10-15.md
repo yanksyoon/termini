@@ -13,7 +13,7 @@ controller's project token. Self-service enrollment (option b) is out of scope.
 | Branch | `wt/t_70bd0f2b-client-installer` |
 | Commit | `383ca22` (`wt/t_70bd0f2b-client-installer`) |
 | PR | _see the kanban card / PR body_ |
-| Harness | `infra/bootstrap/client/verify-client-install.sh` — hermetic: a **real controller process** + the **real node daemon**, loopback, no root, no systemd, no cloud spend; 27 checks, ~79 s |
+| Harness | `infra/bootstrap/client/verify-client-install.sh` — hermetic: a **real controller process** + the **real node daemon**, loopback, no root, no systemd, no cloud spend; 28 checks, ~80 s |
 | Raw transcript | `harness-run.txt` (verbatim) |
 | Live (GCP) half | **NOT RUN — awaiting an approved live window.** The standing fleet is stopped by the operator's cost decision and the public controller URL currently answers `000`. Recipe: §6 |
 
@@ -38,7 +38,7 @@ controller's project token. Self-service enrollment (option b) is out of scope.
 | (d) evidence doc + PR through `scripts/land.sh` + commit/PR/merge_sha on the card | evidence doc = this file; PR/merge recorded on the card |
 | GUARDRAIL: the client never holds the project token | §4 — the token appears in no client artifact, doc, URL or handover |
 
-## 3. Raw output (`harness-run.txt`, 27/27 checks, exit 0)
+## 3. Raw output (`harness-run.txt`, 28/28 checks, exit 0)
 
 ### 3.1 the provider's handover
 
@@ -276,6 +276,6 @@ step 2 is spent exactly once.
 ## 7. Reproducing the offline half
 
 ```sh
-infra/bootstrap/client/verify-client-install.sh            # 27 checks, ~79 s, exit 0
+infra/bootstrap/client/verify-client-install.sh            # 28 checks, ~80 s, exit 0
 python3 -m unittest tests.test_client_installer -v         # 20 tests
 ```

@@ -44,10 +44,23 @@ need() { # need <condition-description> <output-file> <pattern>
 
 CONTROLLER_PID=""
 NODE_PID=""
+
+stop_node() {
+  if [ -n "$NODE_PID" ]; then kill "$NODE_PID" 2>/dev/null || true; fi
+  NODE_PID=""
+}
+
+stop_controller() {
+  if [ -n "$CONTROLLER_PID" ]; then
+    kill "$CONTROLLER_PID" 2>/dev/null || true
+    wait "$CONTROLLER_PID" 2>/dev/null || true
+  fi
+  CONTROLLER_PID=""
+}
+
 cleanup() {
-  [ -n "$NODE_PID" ] && kill "$NODE_PID" 2>/dev/null || true
-  [ -n "$CONTROLLER_PID" ] && kill "$CONTROLLER_PID" 2>/dev/null || true
-  wait 2>/dev/null || true
+  stop_node
+  stop_controller
 }
 trap cleanup EXIT
 
@@ -65,14 +78,18 @@ printf '%s\n' "$PROJECT_TOKEN" > "$WORK/project-token.txt"
 chmod 0600 "$WORK/project-token.txt"
 
 say "controller: starting a real controller process on $BASE"
-( cd "$REPO/controller" && \
-  TERMINI_HOST=127.0.0.1 TERMINI_PORT="$PORT" \
-  TERMINI_DB_PATH="$WORK/controller.db" \
-  TERMINI_BOOTSTRAP_TOKEN="harness-boot-1,harness-boot-2" \
-  TERMINI_PROJECT_ID="$PROJECT_ID" TERMINI_PROJECT_TOKEN="$PROJECT_TOKEN" \
-  TERMINI_OPERATOR_ENABLED=false TERMINI_LXD_AUTO_PROVISION=false \
-  python3 -m app.main >"$WORK/controller.log" 2>&1 & echo $! > "$WORK/controller.pid" )
-CONTROLLER_PID="$(cat "$WORK/controller.pid")"
+# `exec` matters: without it the PID captured by `$!` is the wrapper subshell, and
+# the controller survives the harness holding its listening port — the leaked
+# controller this script must never leave behind (kill it by explicit PID, never
+# `pkill -f`).
+( cd "$REPO/controller" && exec env \
+    TERMINI_HOST=127.0.0.1 TERMINI_PORT="$PORT" \
+    TERMINI_DB_PATH="$WORK/controller.db" \
+    TERMINI_BOOTSTRAP_TOKEN="harness-boot-1,harness-boot-2" \
+    TERMINI_PROJECT_ID="$PROJECT_ID" TERMINI_PROJECT_TOKEN="$PROJECT_TOKEN" \
+    TERMINI_OPERATOR_ENABLED=false TERMINI_LXD_AUTO_PROVISION=false \
+    python3 -m app.main ) > "$WORK/controller.log" 2>&1 &
+CONTROLLER_PID=$!
 for _ in $(seq 1 60); do
   code="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $PROJECT_TOKEN" \
           "$BASE/v1/projects/$PROJECT_ID/nodes" || true)"
@@ -251,6 +268,17 @@ distinct="$(cat "$WORK/fail-cred.out" "$WORK/fail-used.out" "$WORK/fail-net.out"
 [ "$distinct" -ge 3 ] && ok "the three failure messages are distinct" \
                        || bad "the three failure messages are not distinct ($distinct distinct lines)"
 stop_node
+
+# --------------------------------------------------------------------------- teardown
+stop_node
+stop_controller
+if command -v ss >/dev/null 2>&1; then
+  if ss -ltn 2>/dev/null | grep -q ":$PORT "; then
+    bad "the harness leaked its controller (port $PORT still listening)"
+  else
+    ok "no leaked controller (port $PORT released)"
+  fi
+fi
 
 # --------------------------------------------------------------------------- summary
 say "summary"
