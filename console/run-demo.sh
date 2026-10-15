@@ -172,9 +172,14 @@ echo "[run-demo] controller up"
 
 # --- 2. seed demo nodes + telemetry ----------------------------------------
 echo "[run-demo] seeding demo nodes…"
+# The seeder self-provisions its bootstrap tokens (`--bootstrap-mint 2`): it asks
+# the controller for two FRESH single-use tokens on every start instead of
+# hand-minting a fixed pair here. A fixed pair would be burned by the first
+# registration, so a second run against a persistent TERMINI_DEMO_STATE would die
+# `401 bootstrap token already used` exactly like the deployed seeder once did.
 python3 "$HERE/seed_demo.py" \
   --controller "http://127.0.0.1:$CONTROLLER_PORT" \
-  --token "$PROJECT_TOKEN" --bootstrap "$BOOTSTRAP" > "$STATE/seed.log" 2>&1 &
+  --token "$PROJECT_TOKEN" --bootstrap-mint 2 > "$STATE/seed.log" 2>&1 &
 pids+=("$!")
 sleep 1
 
