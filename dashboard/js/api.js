@@ -78,8 +78,30 @@ export class ApiClient {
     return parsed;
   }
 
-  listNodes() {
-    return this._request("GET", `/projects/${this._project()}/nodes`);
+  listNodes({ includeSynthetic = false } = {}) {
+    return this._request("GET", `/projects/${this._project()}/nodes`, {
+      // contract §1.1: `?include=synthetic` returns every row (labelled). The
+      // default view is the real fleet, so this is opt-in only.
+      query: includeSynthetic ? { include: "synthetic" } : undefined,
+    });
+  }
+
+  /**
+   * Operator decision log (operator-decision.md §11). Token-scoped, NOT
+   * project-scoped: GET /v1/operator/decisions.
+   */
+  operatorDecisions(limit = 50) {
+    return this._request("GET", "/operator/decisions", { query: { limit } });
+  }
+
+  /** The health events the decisions were made for (§5 trigger linkage). */
+  operatorEvents(limit = 50) {
+    return this._request("GET", "/operator/events", { query: { limit } });
+  }
+
+  /** The remediation audit rows: what was executed, against which endpoint. */
+  operatorAudits(limit = 50) {
+    return this._request("GET", "/operator/audits", { query: { limit } });
   }
 
   getNode(nodeId) {

@@ -23,6 +23,8 @@ export class LogPanel {
     this.filters = { severities: new Set(SEVERITIES), node: "", actor: "" };
     this.nodes = [];
     this.decided = new Set(); // command_ids with an in-flight human decision
+    this._pending = []; // rows awaiting the next batched flush (SSE backfill)
+    this._flushScheduled = false;
     this._buildSeverityChips();
     this._bind();
     this._renderEmpty();
@@ -110,18 +112,53 @@ export class LogPanel {
 
   addLine(line) {
     if (!line) return;
-    if (line.log_id) {
+    // §2.3: the control line the server emits when the requested cursor has
+    // fallen out of the ring buffer REUSES the oldest retained line's log_id.
+    // Registering that id would swallow the first real line of the replay, so
+    // control markers never enter the dedupe set.
+    if (line.log_id && !line.control) {
       if (this.seen.has(line.log_id)) return;
       this.seen.add(line.log_id);
     }
     this.lines = appendLines(this.lines, [line], this.max);
+    if (line.control) {
+      // the retained tail follows: say so instead of leaving the panel blank
+      this.setStreamState("open", "resumed from the oldest retained line");
+    }
     if (this._matches(line)) {
       this.dom.emptyEl.hidden = true;
-      this.dom.list.appendChild(this._row(line));
+      this._pending.push(line);
+      this._scheduleFlush();
+    } else {
+      this._updateCount();
+    }
+  }
+
+  /**
+   * Batched DOM flush. A cold-start backfill can deliver thousands of lines at
+   * once; appending one row per line would stall the page, so rows are appended
+   * in a single fragment on the next frame.
+   */
+  _scheduleFlush() {
+    if (this._flushScheduled) return;
+    this._flushScheduled = true;
+    const run = () => {
+      this._flushScheduled = false;
+      const pending = this._pending;
+      this._pending = [];
+      if (pending.length === 0) {
+        this._updateCount();
+        return;
+      }
+      const frag = document.createDocumentFragment();
+      for (const line of pending) frag.appendChild(this._row(line));
+      this.dom.list.appendChild(frag);
       this._pruneDom();
       if (this.autoScroll) this._scrollToBottom();
-    }
-    this._updateCount();
+      this._updateCount();
+    };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+    else setTimeout(run, 16);
   }
 
   /** Replace the whole buffer (used on Clear + initial backfill). */
@@ -129,7 +166,7 @@ export class LogPanel {
     this.lines = [];
     this.seen.clear();
     for (const l of lines || []) {
-      if (l && l.log_id) {
+      if (l && l.log_id && !l.control) {
         if (this.seen.has(l.log_id)) continue;
         this.seen.add(l.log_id);
       }
@@ -147,6 +184,7 @@ export class LogPanel {
 
   render() {
     clear(this.dom.list);
+    this._pending = []; // a full rebuild supersedes anything queued
     const visible = this.lines.filter((l) => this._matches(l));
     if (visible.length === 0) {
       this.dom.emptyEl.hidden = false;
@@ -176,15 +214,16 @@ export class LogPanel {
     const rem = line.remediation;
     const cells = [
       el("span", { class: "log-time", text: line.ts ? clock(line.ts) : "—" }),
-      el("span", { class: `badge sev-${line.severity}`, text: line.severity }),
+      el("span", { class: `badge sev-${line.severity}`, text: line.control ? "stream" : line.severity }),
       el("span", { class: "log-node", text: line.node_id ? shortId(line.node_id) : "project" }),
       el("span", { class: "log-msg" }, [
-        line.truncated ? el("span", { class: "truncated", text: "⟳ " }) : null,
+        line.control ? el("span", { class: "truncated", text: "⟳ " }) : null,
         el("span", { text: line.actor === "human" ? `[human] ${line.message}` : line.message }),
       ]),
     ];
     cells.push(this._remediationCell(rem));
-    return el("li", { class: `log-row sev-${line.severity}`, dataset: { logId: line.log_id || "" } }, cells);
+    const cls = line.control ? "log-row log-control" : `log-row sev-${line.severity}`;
+    return el("li", { class: cls, dataset: { logId: line.log_id || "" } }, cells);
   }
 
   _remediationCell(rem) {
@@ -221,8 +260,14 @@ export class LogPanel {
   }
 
   _updateCount() {
-    const shown = this.dom.list.childElementCount;
-    this.dom.countEl.textContent = `${shown} shown / ${this.lines.length} buffered`;
+    const rows = Array.from(this.dom.list.children);
+    const shown = rows.length;
+    const buffered = this.lines.length;
+    // "0 lines" was the defect this panel was reported with: always state both
+    // the rendered rows and what the stream delivered.
+    this.dom.countEl.textContent = shown === 0
+      ? `${buffered} buffered · none match the filters`
+      : `${shown} shown / ${buffered} buffered`;
   }
 
   _renderEmpty() {

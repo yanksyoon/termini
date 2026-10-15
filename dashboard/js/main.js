@@ -6,13 +6,15 @@
 import { $ } from "./ui/dom.js";
 import { ApiClient, ApiError } from "./api.js";
 import { LogStream } from "./stream.js";
-import { resolveConfig } from "./core/config.js";
+import { resolveConfig, apiUrl } from "./core/config.js";
 import { CHART_GROUPS, windowQuery, metricsQuery } from "./core/series.js";
+import { parseEgressLine, annotationsForNode, sourceMeta } from "./core/decisions.js";
 import { renderOverview } from "./ui/overview.js";
 import { LogPanel } from "./ui/logs.js";
+import { DecisionsPanel } from "./ui/decisions.js";
 import { MetricsPanel } from "./ui/metrics.js";
 import { ControlsPanel } from "./ui/controls.js";
-import { confirmDialog } from "./ui/modal.js";
+import { confirmDialog, detailDialog } from "./ui/modal.js";
 import { showBanner, hideBanner } from "./ui/banner.js";
 import { ok as toastOk, err as toastErr, warn as toastWarn } from "./ui/toast.js";
 import { formatError } from "./ui/errors.js";
@@ -46,7 +48,15 @@ const dom = {
   chartNode: $("#chart-node"),
   windowButtons: $("#window-buttons"),
   allMetrics: $("#all-metrics"),
+  includeSynthetic: $("#include-synthetic"),
   charts: $("#charts"),
+  decisionFilters: $("#decision-filters"),
+  decisionsUpdated: $("#decisions-updated"),
+  decisionsCount: $("#decisions-count"),
+  decisionsEmpty: $("#decisions-empty"),
+  decisionList: $("#decision-list"),
+  decisionViewport: $("#decision-viewport"),
+  decider: $("#decider"),
   controlsTarget: $("#controls-target"),
   controlsNodeLabel: $("#controls-node-label"),
   rebootBtn: $("#btn-reboot"),
@@ -69,22 +79,44 @@ const dom = {
 const state = {
   nodes: [],
   samples: new Map(),
+  metricsByNode: new Map(), // node_id -> last /metrics payload (threshold resolution)
   selectedNodeId: null,
   window: "15m",
   includeAll: false,
+  includeSynthetic: false,
   loading: true,
   now: Date.now(),
   backend: { fails: 0, lastOk: null, lastError: null },
   pending: new Map(),
+  decisionsReady: false,
 };
 
 let cfg = resolveConfig(readInputs());
+// `?synthetic=1` starts with the demo/seeder nodes revealed (contract §1.1).
+state.includeSynthetic = !!cfg.includeSynthetic;
 let api = new ApiClient(cfg);
 let stream = null;
 let pollTimer = null;
 let metricsTimer = null;
+let decisionTimer = null;
 
 const metricsPanel = new MetricsPanel(dom.charts);
+
+const decisionsPanel = new DecisionsPanel(
+  {
+    list: dom.decisionList,
+    emptyEl: dom.decisionsEmpty,
+    countEl: dom.decisionsCount,
+    updatedEl: dom.decisionsUpdated,
+    deciderEl: dom.decider,
+    filterHost: dom.decisionFilters,
+  },
+  {
+    onAudit: (row) => showAuditDetail(row),
+    onSample: (row) => showSampleDetail(row),
+    onChart: (row) => showOnChart(row),
+  },
+);
 const logPanel = new LogPanel(
   {
     list: dom.logList,
@@ -173,6 +205,13 @@ function streamHandlers() {
     onLine: (line) => {
       logPanel.addLine(line);
       trackRemediation(line);
+      // The egress record (`externalModelCall … backend=… model=… destination=…`)
+      // is how the dashboard learns WHO answered the decision-step call. It is
+      // read off the stream — never hardcoded.
+      const egress = parseEgressLine(line.message);
+      if (egress && (!decisionsPanel.decider || egress.phase !== "before" || decisionsPanel.decider.phase !== "after")) {
+        decisionsPanel.setDecider(egress);
+      }
     },
     onStatus: ({ state: st, detail }) => {
       logPanel.setStreamState(st, detail);
@@ -189,7 +228,7 @@ function streamHandlers() {
 async function refreshNodes() {
   if (missingConfig()) return; // the config banner already explains what to do
   try {
-    const list = await backend.api.listNodes();
+    const list = await backend.api.listNodes({ includeSynthetic: state.includeSynthetic });
     const nodes = (list && list.nodes) || [];
     state.nodes = nodes;
     state.backend.fails = 0;
@@ -209,6 +248,7 @@ async function refreshNodes() {
     state.now = Date.now();
     renderOverview(dom.overview, state, overviewHandlers());
     logPanel.setNodes(nodes);
+    decisionsPanel.setNodes(nodes);
     syncNodeSelectors();
     updatePills();
     dom.overviewUpdated.textContent = `updated ${new Date().toLocaleTimeString("en-GB", { hour12: false })}`;
@@ -242,12 +282,23 @@ async function refreshMetrics() {
   const names = metricsQuery(metricsForView());
   try {
     const payload = await backend.api.getMetrics(nodeId, { ...q, metrics: names });
+    state.metricsByNode.set(nodeId, seriesIndex(payload));
+    metricsPanel.setAnnotations(annotationsForNode(decisionsPanel.rows, nodeId));
     metricsPanel.update(payload);
     state.backend.fails = 0;
     hideBanner();
   } catch (e) {
     handleBackendError(e);
   }
+}
+
+/** node_id -> { metricName: seriesEntry } for threshold resolution. */
+function seriesIndex(payload) {
+  const out = {};
+  for (const s of (payload && payload.series) || []) {
+    if (s && typeof s.name === "string") out[s.name] = s;
+  }
+  return out;
 }
 
 function metricsForView() {
@@ -291,13 +342,172 @@ function startPolling() {
   metricsTimer = setInterval(() => {
     if (document.visibilityState === "visible") refreshMetrics();
   }, cfg.pollMs);
+  // The decision surface has no SSE transport — poll it at its own cadence
+  // (contract 2-5 s for the dashboards' live views).
+  decisionTimer = setInterval(() => {
+    if (document.visibilityState === "visible") refreshDecisions();
+  }, cfg.decisionMs);
 }
 
 function stopPolling() {
   if (pollTimer) clearInterval(pollTimer);
   if (metricsTimer) clearInterval(metricsTimer);
+  if (decisionTimer) clearInterval(decisionTimer);
   pollTimer = null;
   metricsTimer = null;
+  decisionTimer = null;
+}
+
+/* ---------------------------------------------------- operator decisions */
+
+/**
+ * Poll the decision surface (contract has no SSE for it): decisions + the
+ * health events they were made for + the audit rows that record what executed.
+ * The three are separate endpoints and are joined client-side.
+ */
+async function refreshDecisions() {
+  if (missingConfig()) return;
+  try {
+    const [dec, ev, aud] = await Promise.all([
+      backend.api.operatorDecisions(cfg.decisionLimit),
+      backend.api.operatorEvents(cfg.decisionLimit),
+      backend.api.operatorAudits(cfg.decisionLimit),
+    ]);
+    decisionsPanel.update({
+      decisions: (dec && dec.decisions) || [],
+      events: (ev && ev.events) || [],
+      audits: (aud && aud.audits) || [],
+      seriesByNode: seriesByNodeIndex(),
+    });
+    state.decisionsReady = true;
+  } catch (e) {
+    // A 404 means this controller build has no operator-decision surface at all.
+    // Say that, instead of showing an empty panel as if nothing had been decided.
+    decisionsPanel.setUnavailable(e);
+  }
+}
+
+/** node_id -> { metricName: seriesEntry } for every node we have plotted. */
+function seriesByNodeIndex() {
+  const out = {};
+  for (const [nodeId, series] of state.metricsByNode) out[nodeId] = series;
+  return out;
+}
+
+function showAuditDetail(row) {
+  const a = row.audit;
+  if (!a) {
+    detailDialog({
+      title: "No audit row for this decision",
+      subtitle: row.auditMissing
+        ? `The decision exists (${row.id}) but its audit row is not in the last ${row.auditWindow} audits fetched — widen the fetch or open the API directly.`
+        : `The decision exists (${row.id}) but produced no audit row.`,
+      rows: [
+        ["decision", row.id],
+        ["event", row.eventId],
+        ["rule", row.ruleId],
+        ["action", row.actionKind],
+        ["decided at", row.decidedAt],
+      ],
+      url: apiUrl(cfg, "/operator/audits", { limit: cfg.decisionLimit }),
+      json: row.audit || { decision: row.id, note: "no audit row returned by /v1/operator/audits" },
+    });
+    return;
+  }
+  detailDialog({
+    title: `Audit ${a.id}`,
+    subtitle: `${a.action_kind || row.actionKind} on ${row.nodeId} — result ${a.result}`,
+    url: apiUrl(cfg, "/operator/audits", { limit: cfg.decisionLimit }),
+    rows: [
+      ["decision", a.decision_id],
+      ["health event", a.event_id],
+      ["node", a.node_id],
+      ["rule", a.rule_id],
+      ["action", a.action_kind],
+      ["result", a.result],
+      ["executed at", a.executed_at],
+      ["endpoint", a.lxd_endpoint],
+      ["LXD call", `${a.lxd_method || ""} ${a.lxd_path || ""}`.trim()],
+      ["idempotency key", a.idempotency_key],
+      ["dry run", a.dry_run ? "yes" : "no"],
+      ["detail", a.detail],
+    ],
+    json: a,
+  });
+}
+
+function showSampleDetail(row) {
+  const ev = row.event;
+  if (!ev) {
+    detailDialog({
+      title: "Telemetry event not in the fetched window",
+      subtitle: `Decision ${row.id} references health event ${row.eventId || "(none)"}, which /v1/operator/events did not return.`,
+      rows: [["decision", row.id], ["event", row.eventId], ["rule", row.ruleId]],
+      url: apiUrl(cfg, "/operator/events", { limit: cfg.decisionLimit }),
+      json: { decision_id: row.id, event_id: row.eventId, note: "event row not returned" },
+    });
+    return;
+  }
+  const samples = Array.isArray(ev.evidence) ? ev.evidence : [];
+  const firing = samples.find((s) => s && s.seq === ev.evidence_seq_end) || samples[samples.length - 1] || null;
+  const start = ev.breach_started_at || ev.fired_at;
+  const end = ev.fired_at ? new Date(Date.parse(ev.fired_at) + 120000).toISOString() : undefined;
+  const url = apiUrl(
+    cfg,
+    `/projects/${encodeURIComponent(cfg.projectId)}/nodes/${encodeURIComponent(row.nodeId)}/metrics`,
+    { start, end, resolution: "5s", metrics: ev.metric || undefined },
+  );
+  detailDialog({
+    title: `Telemetry that fired ${ev.rule_id}`,
+    subtitle: `health event ${ev.id} — the sample the decision was made on`,
+    url,
+    rows: [
+      ["metric", ev.metric],
+      ["value at trigger", `${ev.value}${ev.metric && ev.metric.includes("bytes") ? ` (${row.breach ? row.breach.valueText : ""})` : ""}`],
+      ["threshold", ev.threshold],
+      ["fired at", ev.fired_at],
+      ["breach started", ev.breach_started_at],
+      ["sample seq", `${ev.evidence_seq_start} → ${ev.evidence_seq_end}`],
+      ["firing sample ts", firing ? firing.ts : null],
+      ["firing sample", firing ? JSON.stringify({ ...firing, disk: undefined, net: undefined, gpu: undefined, lxd_instances: undefined }) : null],
+      ["node", ev.node_id],
+      ["event type", ev.type],
+    ],
+    json: { event: ev, sample: firing },
+  });
+}
+
+/**
+ * Cause-and-effect view: plot the breaching metric for the decision's own node
+ * with the decision marker and the threshold line, so a viewer sees the fault
+ * rise, the decision land, and the fleet answer. Demo (synthetic) nodes are
+ * revealed by the documented `?include=synthetic` listing and labelled.
+ */
+async function showOnChart(row) {
+  if (!row.breach || !row.breach.metric) {
+    toastWarn("Nothing to plot", "This decision has no health event in the fetched window.");
+    return;
+  }
+  if (!state.includeSynthetic) {
+    state.includeSynthetic = true;
+    if (dom.includeSynthetic) dom.includeSynthetic.checked = true;
+    await refreshNodes();
+  }
+  state.window = "15m";
+  for (const c of dom.windowButtons.children) c.classList.toggle("on", c.textContent === state.window);
+  selectNode(row.nodeId);
+  await refreshMetrics();
+  const group = CHART_GROUPS.find((g) => g.metrics.includes(row.breach.metric));
+  const card = group ? dom.charts.querySelector(`[data-chart="${group.id}"]`) : null;
+  if (card) {
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.classList.add("flash");
+    setTimeout(() => card.classList.remove("flash"), 2500);
+  }
+  toastOk(
+    "Fault view",
+    `${row.breach.metric} on ${row.nodeId} — ${row.ruleId} decided at ${row.decidedAt || "?"}`,
+  );
 }
 
 /* ------------------------------------------------------------------ UI sync */
@@ -593,6 +803,14 @@ function bindUi() {
     metricsPanel.setIncludeAll(state.includeAll);
     refreshMetrics();
   });
+  if (dom.includeSynthetic) {
+    dom.includeSynthetic.addEventListener("change", (e) => {
+      // Contract §1.1: the default view is the REAL fleet; `?include=synthetic`
+      // is the opt-in that reveals seeder-fabricated rows, labelled "demo".
+      state.includeSynthetic = e.target.checked;
+      refreshNodes().then(() => refreshDecisions());
+    });
+  }
   dom.settingsBtn.addEventListener("click", () => {
     dom.setApi.value = cfg.apiBase || "";
     dom.setProject.value = cfg.projectId || "";
@@ -646,6 +864,7 @@ function init() {
   state.window = cfg.windows[cfg.defaultWindow] ? cfg.defaultWindow : Object.keys(cfg.windows)[0];
   buildWindowButtons();
   dom.allMetrics.checked = state.includeAll;
+  if (dom.includeSynthetic) dom.includeSynthetic.checked = state.includeSynthetic;
 
   // One-click web terminal: revealed only when the composed console injected a
   // terminal base (console/serve.py); a standalone dashboard hides it.
@@ -672,7 +891,10 @@ function init() {
   stream = backend.streamFactory();
   stream.start();
 
-  refreshNodes().then(() => refreshMetrics());
+  refreshNodes().then(() => {
+    refreshMetrics();
+    refreshDecisions();
+  });
   startPolling();
 }
 

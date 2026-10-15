@@ -380,7 +380,26 @@ class Handler(BaseHTTPRequestHandler):
 
         m = re.fullmatch(r"/v1/projects/([^/]+)/nodes/?", path)
         if m:
-            self._json(200, {"nodes": [w.view(n) for n in w.nodes]})
+            # dashboard.md §1.1 amendment: the default listing is the REAL fleet;
+            # `?include=synthetic` adds the seeder-fabricated rows (labelled).
+            listing = [w.view(n) for n in w.nodes]
+            if (query.get("include") or "") == "synthetic":
+                listing = listing + [fx.synthetic_node(m.group(1))]
+            self._json(200, {"nodes": listing})
+            return
+
+        # Operator decision surface (operator-decision.md §11). Token-scoped, not
+        # project-scoped — mirrors the controller's /v1/operator/* routes.
+        m = re.fullmatch(r"/v1/operator/(decisions|events|audits)/?", path)
+        if m:
+            bundle = fx.operator_decisions(w.nodes)
+            kind = m.group(1)
+            payload = bundle[kind]
+            try:
+                limit = max(1, min(500, int(query.get("limit", "50"))))
+            except (TypeError, ValueError):
+                limit = 50
+            self._json(200, {kind: payload[:limit]})
             return
 
         m = re.fullmatch(r"/v1/projects/([^/]+)/nodes/([^/]+)/metrics/?", path)

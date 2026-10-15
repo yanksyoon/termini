@@ -38,6 +38,28 @@
       <div id="overview" class="overview-grid" aria-live="polite"></div>
     </section>
 
+    <section class="panel panel-decisions" aria-labelledby="h-decisions">
+      <div class="panel-head">
+        <h2 id="h-decisions">Operator decisions</h2>
+        <div class="panel-tools">
+          <span class="chipgroup" id="decision-filters" role="group" aria-label="decision source filter"></span>
+          <span class="muted" id="decisions-updated">—</span>
+        </div>
+      </div>
+      <div class="decider" id="decider" aria-live="polite">
+        <span class="decider-label">decider: unknown</span>
+      </div>
+      <p class="muted small decision-note">
+        telemetry breach &rarr; who decided &rarr; action &rarr; what the fleet answered, joined live from
+        <code>GET /v1/operator/decisions</code>, <code>/events</code> and <code>/audits</code>.
+      </p>
+      <div id="decision-viewport" class="decision-viewport" tabindex="0" aria-label="operator decisions">
+        <div id="decisions-empty" class="empty">Waiting for operator decisions…</div>
+        <ol id="decision-list" class="decision-list"></ol>
+      </div>
+      <div class="decision-count muted" id="decisions-count">0 decisions</div>
+    </section>
+
     <section class="panel panel-logs" aria-labelledby="h-logs">
       <div class="panel-head">
         <h2 id="h-logs">Live AI-operator log</h2>
@@ -78,6 +100,9 @@
             <select id="chart-node"></select>
           </label>
           <div class="chipgroup" id="window-buttons" role="group" aria-label="time window"></div>
+          <label class="toggle" title="show rows the demo seeder fabricated (?include=synthetic)">
+            <input type="checkbox" id="include-synthetic" /> <span>demo nodes</span>
+          </label>
           <label class="toggle"><input type="checkbox" id="all-metrics" /> <span>all metrics</span></label>
         </div>
       </div>

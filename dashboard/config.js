@@ -34,6 +34,12 @@ window.TERMINI_CONFIG = {
   // Overview grid + metrics poll cadence (ms). Contract §1.5: 5 s.
   pollMs: 5000,
 
+  // Operator-decisions poll cadence (ms). The decision surface has no SSE.
+  decisionMs: 3000,
+
+  // How many decisions/events/audits to fetch per poll (newest first).
+  decisionLimit: 50,
+
   // Chart window buttons. Keys are labels, values are seconds.
   windows: { "5m": 300, "15m": 900, "1h": 3600, "6h": 21600 },
   defaultWindow: "15m",
@@ -44,4 +50,8 @@ window.TERMINI_CONFIG = {
   // When true the app never talks to the network and uses bundled fixtures.
   // Useful for a projector demo with no backend at all.
   offline: false,
+
+  // Start with `?include=synthetic` (label demo/seeder nodes). Off by default:
+  // the standing fleet a viewer sees is the real hardware.
+  includeSynthetic: false,
 };
