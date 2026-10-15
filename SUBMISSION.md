@@ -131,10 +131,20 @@ curl -N "https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/lo
 
 ### The model endpoints
 
-**Shipped decider — Node C (on-prem).** The operator's decision model is Gemma 3 4B served by
-`llama.cpp` on `termini-node-c` (CPU-only), alias `gemma`, reachable only over the VPC underlay
-at `http://10.10.0.13:8080`. It is the same code path as the ADK/agent clients — no public
-exposure at all.
+**Agent-facing — Node C (on-prem, LOCAL weights).** Client/agent inference is served by Gemma 3 4B
+running under `llama.cpp` on `termini-node-c` (CPU-only), alias `gemma`, reachable only over the VPC
+underlay at `http://10.10.0.13:8080`. Since the inference split that port runs `backend=local`: it
+answers from that node's own weights and offers **no forwarded backend**, so agent traffic cannot
+leave the premises. It is the same code path as the ADK/agent clients — no public exposure at all.
+It is also CPU-slow (≈8–10 tok/s), which is stated rather than hidden.
+
+**Provider-only — the controller (Gemini).** The operator's **diagnosis** runs on the controller
+against a loopback listener (`http://127.0.0.1:8085`, `backend=gemini-proxy` →
+`aiplatform.googleapis.com`, answered by `gemini-2.5-flash`). The substituted prompt is C0 telemetry
+only (rule/metric context plus the instance inventory — no workload payloads) and the user decided on
+2026-10-15 that this prompt may leave the premises as part of the managed service. The fleet has no
+route to that listener; it exists only for the diagnosis, which is why the demo's model decision is
+seconds rather than the minutes the CPU node needs.
 
 **Managed reference — Cloud Run.** The same Gemma 3 4B is also deployed on Cloud Run with
 `--no-allow-authenticated` — deliberately, so an LLM is never exposed publicly for demo
@@ -150,7 +160,8 @@ gcloud run services proxy termini-gemma --region asia-southeast1 --project termi
 
 | Requirement | What we used | Where |
 |---|---|---|
-| **Google AI model** | **Gemma 3 4B** (`unsloth/gemma-3-4b-it-GGUF`, Google open weights) — the shipped operator's decider, served by **llama.cpp** | **Node C** (`termini-node-c`, GCE `n2-standard-8`, CPU-only), alias `gemma`, `10.10.0.13:8080`; weights from `gs://termini-510609-models/gemma-3-4b-it-gguf/` |
+| **Google AI model** | **Gemma 3 4B** (`unsloth/gemma-3-4b-it-GGUF`, Google open weights) — the **agent-facing** model, served by **llama.cpp** (`backend=local`) | **Node C** (`termini-node-c`, GCE `n2-standard-8`, CPU-only), alias `gemma`, `10.10.0.13:8080`; weights from `gs://termini-510609-models/gemma-3-4b-it-gguf/` |
+| **Provider diagnosis (Gemini)** | **`gemini-2.5-flash`** on **Vertex AI `aiplatform.googleapis.com`** — the operator's diagnosis call only | the controller's loopback listener `127.0.0.1:8085` (`backend=gemini-proxy`); audit row `egress=external destination=aiplatform.googleapis.com` |
 | **Managed reference model** | the same Gemma 3 4B served by **vLLM** | Cloud Run GPU, `1× NVIDIA L4`, `asia-southeast1` — deployed, not the shipped decider |
 | **Deployed on Cloud Run** | the reference model service `termini-gemma` | `https://termini-gemma-tylgzp65ma-as.a.run.app` |
 | **Deployed on Firebase** | the operator dashboard | Firebase Hosting — `https://termini-510609.web.app` |

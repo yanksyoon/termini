@@ -1,0 +1,204 @@
+################################################################################
+# t_aa7a70f9 — inference surface split: OFFLINE verification
+# commit: 600c9c5da6f0ed71316f6f5ef6678c55eacb08ca
+# date:   2026-10-15T16:48:03Z
+# host:   Linux 6.8.0-142-generic x86_64
+################################################################################
+
+### 1. the split's own test file
+$ python3 -m unittest tests.test_inference_surfaces -v
+The controller's listener has NO worker behind it — say so. ... ok
+test_the_installer_default_backend_is_local (tests.test_inference_surfaces.NodeCAgentSurfaceIsLocalTest.test_the_installer_default_backend_is_local) ... ok
+test_the_rendered_first_boot_pins_local (tests.test_inference_surfaces.NodeCAgentSurfaceIsLocalTest.test_the_rendered_first_boot_pins_local) ... ok
+test_the_renderer_default_is_local_when_unset (tests.test_inference_surfaces.NodeCAgentSurfaceIsLocalTest.test_the_renderer_default_is_local_when_unset) ... ok
+test_it_refuses_without_allow_unsplit (tests.test_inference_surfaces.PreSplitScriptRefusesTest.test_it_refuses_without_allow_unsplit) ... ok
+test_it_states_the_way_back (tests.test_inference_surfaces.PreSplitScriptRefusesTest.test_it_states_the_way_back) ... ok
+test_the_dropin_sends_the_diagnosis_to_the_loopback_provider (tests.test_inference_surfaces.ProviderSurfaceRenderTest.test_the_dropin_sends_the_diagnosis_to_the_loopback_provider) ... ok
+test_the_dropin_still_names_node_c (tests.test_inference_surfaces.ProviderSurfaceRenderTest.test_the_dropin_still_names_node_c)
+The split is what makes the explicit placement exclusion necessary. ... ok
+test_the_provider_listener_carries_no_key_file (tests.test_inference_surfaces.ProviderSurfaceRenderTest.test_the_provider_listener_carries_no_key_file) ... ok
+test_the_provider_listener_is_gemini_on_loopback (tests.test_inference_surfaces.ProviderSurfaceRenderTest.test_the_provider_listener_is_gemini_on_loopback) ... ok
+test_the_rendered_proxy_is_the_committed_proxy (tests.test_inference_surfaces.ProviderSurfaceRenderTest.test_the_rendered_proxy_is_the_committed_proxy) ... ok
+test_the_unit_is_the_provider_surface (tests.test_inference_surfaces.ProviderSurfaceRenderTest.test_the_unit_is_the_provider_surface) ... ok
+test_breaking_one_surface_leaves_the_other_serving (tests.test_inference_surfaces.SurfacesAreIndependentTest.test_breaking_one_surface_leaves_the_other_serving) ... {"ts":"2026-10-15T16:48:05Z","event":"upstream_failure","severity":"error","service":"termini-inference-proxy","backend":"local","model":"gemma","alias":"gemma","answered_by":"local-weights","egress":"in-vpc","destination":"http://127.0.0.1:9","distinct":"local_unreachable","status":503,"request_id":"req-01M507DEF1SV1CCB19HJ90FX4K","latency_ms":0.4,"upstream":"http://127.0.0.1:9","detail":"[Errno 111] Connection refused"}
+/home/ubuntu/.hermes/tools/python-3.14.7+20260901-linux-x64/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 503: 'Service Unavailable'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+ok
+test_each_surface_reports_its_own_backend (tests.test_inference_surfaces.SurfacesAreIndependentTest.test_each_surface_reports_its_own_backend) ... ok
+test_serving_on_one_surface_does_not_change_the_other (tests.test_inference_surfaces.SurfacesAreIndependentTest.test_serving_on_one_surface_does_not_change_the_other) ... {"ts":"2026-10-15T16:48:06Z","event":"inference_request","severity":"info","service":"termini-inference-proxy","backend":"local","model":"gemma","alias":"gemma","answered_by":"local-weights","egress":"in-vpc","destination":"http://127.0.0.1:38383","path":"/v1/chat/completions","stream":false,"status":200,"request_id":"req-01M507DFYH9X8TPV0559WACA8X","forwarded":false,"latency_ms":3.2,"upstream":"http://127.0.0.1:38383"}
+ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 3.214s
+
+OK
+
+### 2. the surfaces' renderer, run with no privileges (--render-dir)
+$ bash infra/inference/setup-inference-surfaces.sh --render-dir $TMP
+[setup-inference-surfaces] RENDER ONLY — artifacts go under /home/ubuntu/.hermes/profiles/infra/cache/scratch/termini-render-EJwq9S, the system is not touched
+[setup-inference-surfaces] installed /opt/termini/inference/proxy.py
+[setup-inference-surfaces] wrote /etc/termini/inference-proxy.env (backend=gemini-proxy, bind=127.0.0.1:8085)
+[setup-inference-surfaces] installed /etc/systemd/system/termini-inference-provider.service
+[setup-inference-surfaces] wrote /etc/systemd/system/termini-controller.service.d/zz-inference-surfaces.conf
+[setup-inference-surfaces] rendered artifacts:
+  etc/systemd/system/termini-controller.service.d/zz-inference-surfaces.conf
+  etc/systemd/system/termini-inference-provider.service
+  etc/termini/inference-proxy.env
+  opt/termini/inference/proxy.py
+  usr/lib/tmpfiles.d/termini-inference.conf
+[setup-inference-surfaces] render done — nothing was installed
+
+### 2a. rendered provider env file (what the controller's listener reads)
+$ cat $TMP/etc/termini/inference-proxy.env
+# The PROVIDER-ONLY surface (D9). THIS is the diagnosis listener's backend, and
+# the only listener in the footprint that is meant to forward.
+#   gemini-proxy : translate to Vertex AI gemini-2.5-flash and label the substitution
+#   local        : would be a passthrough to a llama.cpp worker — there is none on
+#                  the controller, which is why the provider surface is always
+#                  gemini-proxy and the agent surface is always local.
+TERMINI_INFERENCE_BACKEND=gemini-proxy
+# LOOPBACK ONLY. The agent fleet has no route here; a caller on the controller is
+# the only possible client.
+TERMINI_INFERENCE_HOST=127.0.0.1
+TERMINI_INFERENCE_PORT=8085
+TERMINI_INFERENCE_ALIAS=gemma
+# No worker exists on this host. The value is kept for shape only, and /health
+# reports the truth (local_path.available=false) by MEASURING it, not asserting it.
+TERMINI_INFERENCE_UPSTREAM=http://127.0.0.1:8081
+TERMINI_INFERENCE_UPSTREAM_TIMEOUT_S=900
+# Vertex AI. The project id is read from the instance metadata server when empty
+# (no project constant baked in), and the access token is minted per request from
+# the same metadata server — there is no key file on the controller.
+TERMINI_GEMINI_HOST=aiplatform.googleapis.com
+TERMINI_GEMINI_LOCATION=global
+TERMINI_GEMINI_MODEL=gemini-2.5-flash
+TERMINI_GEMINI_PROJECT=
+TERMINI_GEMINI_TIMEOUT_S=30
+TERMINI_GEMINI_THINKING_BUDGET=0
+TERMINI_INFERENCE_STATE_FILE=/run/termini/provider-backend.json
+TERMINI_INFERENCE_LOG_FILE=/var/log/termini-inference-provider.jsonl
+
+### 2b. rendered controller drop-in (where the diagnosis goes)
+$ cat $TMP/etc/systemd/system/termini-controller.service.d/zz-inference-surfaces.conf
+[Service]
+# --- the PROVIDER surface (D9): the diagnosis leaves from THIS host ----------
+# Loopback. Node C's :8080 is the AGENT surface and no longer answers this call.
+Environment=TERMINI_OPERATOR_ENABLED=true
+Environment=TERMINI_OPERATOR_DECISION_MODE=model
+Environment=TERMINI_INFERENCE_BASE_URL=http://127.0.0.1:8085
+Environment=TERMINI_INFERENCE_MODEL=gemma
+# A provider round-trip is seconds; a hung upstream must not hold the operator
+# loop for the CPU-era 900 s budget it used to need.
+Environment=TERMINI_INFERENCE_TIMEOUT_S=120
+Environment=TERMINI_OPERATOR_DECISION_TIMEOUT_S=120
+# --- the AGENT surface is still Node C --------------------------------------
+# User-facing intent extraction keeps the dedicated small-context llama.cpp
+# instance on Node C (:8090) — the same node, still served from local weights.
+Environment=TERMINI_INTENT_INFERENCE_BASE_URL=http://10.10.0.13:8090
+Environment=TERMINI_INTENT_MODEL_TIMEOUT_S=120
+# 'TERMINI_INFERENCE_BASE_URL' now names loopback, so it can no longer identify
+# the node that serves the model. Node C is named EXPLICITLY, otherwise it would
+# silently become a candidate for auto agent placement (controller-api.md §5.2
+# step 5) — a compute node running llama.cpp for the whole fleet must not take
+# agent workloads.
+Environment=TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS=10.10.0.13
+
+### 2c. rendered provider unit
+$ cat $TMP/etc/systemd/system/termini-inference-provider.service
+[Unit]
+# The PROVIDER-ONLY half of the inference split (docs/contracts/infra-decisions.md
+# D9). This unit runs on the CONTROLLER, bound to loopback, in `gemini-proxy`
+# mode: it is the surface the operator's DIAGNOSIS call uses, and the only place
+# in the footprint where a model request may leave for
+# aiplatform.googleapis.com.
+#
+# It is deliberately NOT a second copy of Node C's front door: Node C's `:8080`
+# serves the AGENT surface from that node's local weights and must never forward.
+# Same proxy code, different env file, different address, different guarantee.
+Description=Termini inference provider listener (controller loopback :8085) — diagnosis via Gemini ONLY
+Documentation=file:/opt/termini/inference/proxy.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=termini-infer
+Group=termini-infer
+# Configuration decides the backend (gemini-proxy here, always); nothing is
+# compiled in, and no other value is shipped for this unit.
+EnvironmentFile=-/etc/termini/inference-proxy.env
+ExecStart=/usr/bin/python3 /opt/termini/inference/proxy.py
+Restart=always
+RestartSec=3
+# The controller's OWN identity is the only credential: the OAuth token is minted
+# from the metadata server per request (roles/aiplatform.user + cloud-platform).
+# There is no service-account key file, and none may be added.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/run/termini /var/log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=termini-inference-provider
+
+[Install]
+WantedBy=multi-user.target
+
+### 2d. the rendered proxy is the committed proxy, byte for byte
+$ cmp infra/inference/proxy.py $TMP/opt/termini/inference/proxy.py
+identical (6aebb74ee02f8923c365d14ab2d545dec8c024ea47ba0691afaf82b0cd7eade1)
+
+### 3. Node C's shipped first-boot default is local (rendered user-data fragment)
+$ INFERENCE_BACKEND=local infra/gcp/cloud-init/node-c-serve-block.sh --write-files \
+      | grep BACKEND=   (env: the pins from infra/gcp/variables.tf)
+34:      #   infra/inference/install-inference-proxy.sh (staged by cloud-init at
+49:      # full 16,384 tokens. See install-inference-proxy.sh for that unit.
+83:      BACKEND="local"
+171:      # install-inference-proxy.sh writes BOTH units and both env files, enables them
+180:      if [ ! -x "$FRONT_DOOR_SRC/install-inference-proxy.sh" ]; then
+181:        echo "FATAL: $FRONT_DOOR_SRC/install-inference-proxy.sh missing — cloud-init did not"
+186:      echo "[$(date -u +%FT%TZ)] installing the inference front door (backend=$BACKEND) via install-inference-proxy.sh"
+196:        "$FRONT_DOOR_SRC/install-inference-proxy.sh" --backend "$BACKEND"
+202:  - path: /usr/local/src/termini-inference/install-inference-proxy.sh
+
+### 3a. the installer's own default (no --backend given)
+51:BACKEND="${BACKEND:-local}"
+
+### 4. the pre-split script refuses to run without --allow-unsplit
+$ bash infra/cloudrun/setup-operator-node-c.sh ; echo exit=$?
+setup-operator-node-c.sh: REFUSING — this is the PRE-SPLIT wiring and it undoes
+the inference split (infra-decisions.md D9, kanban t_aa7a70f9).
+
+It would point the operator's DIAGNOSIS at Node C's :8080, which is now the
+AGENT-facing surface and is pinned to backend=local: the diagnosis would be
+answered by CPU weights (≈402 s for the 20-sample prompt) instead of Gemini, and
+would stop leaving the premises.
+
+For the shipped split (diagnosis on the controller's provider-only listener),
+run instead:
+
+    sudo infra/inference/setup-inference-surfaces.sh
+
+If a fully on-prem decision path is genuinely what you want, re-run with
+--allow-unsplit; this script then also disables the split's controller drop-in.
+exit=2
+
+### 5. the whole unit suite (this checkout)
+$ python3 -m unittest discover -s tests
+Ran 742 tests in 167.378s
+
+OK
+<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=4>
+
+### 6. repo checks
+$ python3 scripts/check-doc-ulids.py
+all example identifiers are 26-char ULIDs
+$ python3 scripts/check-readme-links.py
+repo root: /home/ubuntu/.hermes/kanban/boards/termini/workspaces/t_aa7a70f9/repo
+checked 58 unique link/path target(s)
+all README links and repo paths resolve
+$ shellcheck -S warning <changed shell scripts>
+shellcheck: clean (rc=0)
+
+### DONE

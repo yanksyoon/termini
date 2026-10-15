@@ -39,6 +39,23 @@ The backend is chosen by CONFIGURATION, not code (`TERMINI_INFERENCE_BACKEND`):
                                   "answered_by": "forwarded-managed-model",
                                   "egress": "external" }
 
+**WHICH OF THE TWO SURFACES THIS PROCESS IS (D9)**
+
+The same file runs both halves of the inference split
+(`docs/contracts/infra-decisions.md` **D9**); the difference is configuration:
+
+* the **agent-facing** surface is Node C's front door on `0.0.0.0:8080` with
+  `TERMINI_INFERENCE_BACKEND=local` — client/agent traffic is answered by that
+  node's own weights and the port offers nothing else;
+* the **provider-only** surface is the CONTROLLER's listener on `127.0.0.1:8085`
+  with `TERMINI_INFERENCE_BACKEND=gemini-proxy` — the operator's diagnosis call
+  leaves for `aiplatform.googleapis.com`, the listener is bound to loopback (the
+  fleet has no route to it), and it is where a diagnosis is allowed to originate.
+
+Flipping one does not touch the other: separate env file, separate unit, separate
+address. Neither backend stops existing — the split is about which one is offered
+WHERE.
+
 FAILURE SEMANTICS
 -----------------
 The forwarded path fails LOUDLY and FAST, and never hangs the caller: a distinct
@@ -49,10 +66,13 @@ the deterministic fast-path — a request is never silently answered by nobody.
 
 AUTH
 ----
-The node's OWN identity: an OAuth access token minted per call from the GCE
-metadata server (`aiplatform.googleapis.com` needs `cloud-platform`). No service
-account key file exists on the node and none is needed. `TERMINI_GEMINI_ACCESS_TOKEN`
-exists only so tests can inject one.
+The HOST's OWN identity: an OAuth access token minted per call from the GCE
+metadata server (`aiplatform.googleapis.com` needs `cloud-platform`). On Node C
+that is the node's least-privilege identity (task `t_5a4a0f73`); on the controller
+it is the controller's dedicated provider service account (D9). **No
+service-account key file exists on either host and none may be added** — the
+metadata identity is the only credential. `TERMINI_GEMINI_ACCESS_TOKEN` exists
+only so tests can inject one.
 
 Stdlib only: the node image has Python but the proxy must not add a dependency to
 the node (no pip at request time, no venv to keep in sync).
@@ -612,6 +632,42 @@ class Handler(BaseHTTPRequestHandler):
             self._not_found(request_id, path)
 
     # -- endpoints ---------------------------------------------------------- #
+    def _local_worker_reachable(self, timeout_s: float = 0.5) -> bool:
+        """Is a LOCAL llama.cpp worker actually reachable at `upstream` right now?
+
+        The two surfaces of the split (`docs/contracts/infra-decisions.md` D9) run
+        the SAME proxy code with different backends, and only ONE of them has a
+        local worker behind it:
+
+          * the agent-facing front door on Node C — the worker is there, so a
+            caller can switch this listener to `local` in one command;
+          * the provider-only listener on the controller — there is no worker on
+            that host at all, and a `/health` that claimed a reachable local path
+            would be a false statement about the very thing the split is about.
+
+        So the field is MEASURED, not asserted. Bounded and best-effort: a health
+        probe must never become a slow request.
+        """
+        try:
+            host, port = self.cfg.upstream_host_port()
+        except (ValueError, OSError):
+            return False
+        conn = None
+        try:
+            conn = http.client.HTTPConnection(host, port, timeout=timeout_s)
+            conn.request("GET", "/health")
+            resp = conn.getresponse()
+            resp.read()
+            return resp.status < 500
+        except Exception:  # noqa: BLE001 — unreachable IS the answer
+            return False
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
     def _health(self, request_id: str) -> None:
         cfg = self.cfg
         body = {
@@ -622,7 +678,7 @@ class Handler(BaseHTTPRequestHandler):
             "egress": cfg.egress,
             "served_model": cfg.served_model,
             "local_path": {
-                "available": True,
+                "available": self._local_worker_reachable(),
                 "upstream": cfg.upstream,
                 "switch": "TERMINI_INFERENCE_BACKEND=local",
             },

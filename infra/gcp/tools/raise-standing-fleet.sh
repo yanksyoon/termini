@@ -59,11 +59,11 @@ CONTROLLER_URL="${CONTROLLER_URL:-http://10.10.0.2:8080}"
 TELEMETRY_INTERVAL_MS="${TELEMETRY_INTERVAL_MS:-1000}"
 NODE_IMAGE_VERSION="${NODE_IMAGE_VERSION:-2026.10.0}"
 INFERENCE_PORT="${INFERENCE_PORT:-8080}"
-# Which backend a FRESH node serves: gemini-proxy (the shipped demo
-# configuration — the forwarded managed model emulating the GPU node) or local
-# (the node's own CPU weights). On a running node the same choice is one command:
-# `termini-inference-switch local|gemini-proxy` (task t_359ed606).
-INFERENCE_BACKEND="${INFERENCE_BACKEND:-gemini-proxy}"
+# Which backend a FRESH node serves: local (the shipped configuration since the
+# inference split — D9: this port is the AGENT surface, answered from the node's
+# own CPU weights) or gemini-proxy. On a running node the same choice is one
+# command: `termini-inference-switch local|gemini-proxy` (task t_359ed606).
+INFERENCE_BACKEND="${INFERENCE_BACKEND:-local}"
 INFERENCE_MODEL_URL="${INFERENCE_MODEL_URL:-https://storage.googleapis.com/termini-510609-models/gemma-3-4b-it-gguf/gemma-3-4b-it-Q4_K_M.gguf}"
 INFERENCE_MODEL_FILE="${INFERENCE_MODEL_FILE:-gemma-3-4b-it-Q4_K_M.gguf}"
 INFERENCE_MODEL_SHA256="${INFERENCE_MODEL_SHA256:-04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19}"
