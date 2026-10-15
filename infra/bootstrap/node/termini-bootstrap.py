@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import http.client
 import json
 import os
 import platform
@@ -882,10 +883,45 @@ CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 VM_ID_LEN = 26
 VM_ID_PREFIX = "termini-vm-id:"
 
-# Wall-clock ceiling for the local `lxc list` probe. One sample per second means
+# Wall-clock ceiling for the local LXD inventory probe. One sample per second means
 # a hung LXD must not hold the telemetry loop; a probe that does not answer in
 # time is reported as "no inventory this sample", never as an empty node.
 LXD_INVENTORY_TIMEOUT_S = float(os.environ.get("TERMINI_LXD_INVENTORY_TIMEOUT_S", "5") or 5)
+
+# LXD's own unix socket, in probe order. The REST API over this socket answers the
+# same `GET /1.0/instances?recursion=1` view `lxc list --format=json` renders, and
+# it needs no privilege escalation — which is the whole point (see
+# `lxd_instance_inventory`).
+LXD_UNIX_SOCKETS = (
+    "/var/snap/lxd/common/lxd/unix.socket",
+    "/var/lib/lxd/unix.socket",
+    "/run/lxd/unix.socket",
+)
+
+# How long the `lxc` CLI is left alone after it has failed once. The agent samples
+# every second, so an unguarded retry of a probe that cannot succeed (the CLI is
+# blocked by the unit's own hardening — see below) costs a subprocess per sample
+# AND writes a journal line per sample.
+LXD_CLI_BACKOFF_S = 60.0
+
+# monotonic of the last "inventory unavailable" log line (rate limited) and the
+# monotonic until which the `lxc` CLI is not retried at all.
+_INVENTORY_WARN_AT = 0.0
+_INVENTORY_CLI_DEAD_UNTIL = 0.0
+
+
+def _warn_inventory_unavailable(reason: str) -> None:
+    """Say once a minute that this node is reporting no inventory — and why.
+
+    Rate limited on purpose: at 1 Hz an unguarded line here floods the journal
+    with thousands of identical entries while the operator's guardrail quietly
+    has nothing to resolve a target against.
+    """
+    global _INVENTORY_WARN_AT
+    now = time.monotonic()
+    if now - _INVENTORY_WARN_AT >= LXD_CLI_BACKOFF_S:
+        _INVENTORY_WARN_AT = now
+        log(f"lxd inventory unavailable: {reason}")
 
 # LXD's status strings -> the contract's enum (`node-telemetry.md` §4.6).
 _LXD_STATE = {
@@ -940,39 +976,135 @@ def _instance_cpu_pct(name: str, usage_ns: object, now: float) -> float | None:
     return round(min(100.0, max(0.0, pct)), 2)
 
 
-def lxd_instance_inventory(cfg: dict) -> list | None:
-    """`lxd_instances[]` for this node, from its OWN LXD (contract §4.6).
+class _LxdUnixConnection(http.client.HTTPConnection):
+    """An HTTP connection to LXD over its own unix socket.
 
-    Reads the local LXD through the `lxc` CLI (`lxc list --format=json`), which
-    resolves the unix socket the daemon owns — no network, no trust prompt, and
-    the same view LXD itself serves over the REST API.
-
-    Returns None when the inventory cannot be read (no `lxc` binary, LXD not
-    initialised, a probe that times out or answers junk) so the caller OMITS the
-    field: "this node did not report an inventory" is the truth, whereas an empty
-    list would claim a node with no instances and would make every model-chosen
-    target unresolvable. `lxd_inventory: 0` in config.yaml disables it explicitly.
+    `http.client` speaks to a TCP host; this subclass only replaces the socket it
+    connects, which is the whole difference between `http://localhost:8443` and
+    the daemon's local socket.
     """
-    if str(cfg.get("lxd_inventory", "1")).strip().lower() in ("0", "false", "no", "off"):
-        return None
+
+    def __init__(self, socket_path: str, timeout: float):
+        super().__init__("localhost", timeout=timeout)
+        self._socket_path = socket_path
+
+    def connect(self) -> None:  # noqa: D102 (http.client API)
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self._socket_path)
+        self.sock = sock
+
+
+def _lxd_instances_over_socket() -> tuple[list | None, str]:
+    """`GET /1.0/instances?recursion=2` over LXD's unix socket -> (items, why-not).
+
+    This is the transport that actually works on a deployed node, and the reason
+    is worth recording: the unit runs with `NoNewPrivileges=true`, so the `lxc`
+    CLI — a snap wrapper that needs to change its AppArmor profile for the exec —
+    dies with `cannot change profile for the next exec call: Operation not
+    permitted` (measured on termini-node-a, 2026-10-15). The agent then reported
+    NO `lxd_instances[]` at all, which is invisible in the dashboard and leaves
+    the operator's guardrail with nothing to resolve a target against. Talking to
+    the daemon's own socket needs no privilege at all.
+
+    `recursion=2`, not `1`: LXD only attaches per-instance `state` (memory, CPU,
+    disk) at depth 2. At depth 1 every instance comes back with no state at all,
+    which would report a running workload as `ram_used_bytes: 0` — telemetry that
+    reads as "idle" for the instance the fault is actually in, and that the
+    operator's heaviest-instance rule would then rank below an empty one.
+    Measured on node-a: depth 2 carries `state.memory.usage`; depth 1 does not.
+    """
+    last = "no LXD unix socket found"
+    for path in LXD_UNIX_SOCKETS:
+        if not os.path.exists(path):
+            continue
+        conn = None
+        try:
+            conn = _LxdUnixConnection(path, timeout=LXD_INVENTORY_TIMEOUT_S)
+            conn.request("GET", "/1.0/instances?recursion=2")
+            resp = conn.getresponse()
+            raw = resp.read()
+            status = resp.status
+        except (OSError, http.client.HTTPException) as e:
+            last = f"{path}: {type(e).__name__}: {e}"
+            continue
+        finally:
+            if conn is not None:
+                conn.close()
+        if status != 200:
+            last = f"{path}: HTTP {status}"
+            continue
+        try:
+            payload = json.loads(raw or b"{}")
+        except json.JSONDecodeError as e:
+            last = f"{path}: non-JSON answer: {e}"
+            continue
+        items = payload.get("metadata") if isinstance(payload, dict) else None
+        if isinstance(items, list):
+            return items, ""
+        last = f"{path}: unexpected body shape"
+    return None, last
+
+
+def _lxd_instances_over_cli() -> tuple[list | None, str]:
+    """`lxc list --format=json` -> (items, why-not). Fallback transport.
+
+    Kept for a node whose agent can run the CLI (no `NoNewPrivileges`, or an
+    `lxc` that is a plain binary rather than the snap wrapper). It renders the
+    same REST view `_lxd_instances_over_socket` does.
+    """
     try:
         proc = subprocess.run(
             ["lxc", "list", "--format=json"],
             capture_output=True, text=True, timeout=LXD_INVENTORY_TIMEOUT_S, check=False,
         )
     except (OSError, subprocess.SubprocessError) as e:
-        log(f"lxd inventory unavailable: {type(e).__name__}: {e}")
-        return None
+        return None, f"lxc list: {type(e).__name__}: {e}"
     if proc.returncode != 0:
-        log("lxd inventory unavailable: lxc list exit "
-            f"{proc.returncode}: {(proc.stderr or '').strip()[:200]}")
-        return None
+        return None, (f"lxc list exit {proc.returncode}: "
+                      f"{(proc.stderr or '').strip()[:200]}")
     try:
         items = json.loads(proc.stdout or "[]")
     except json.JSONDecodeError as e:
-        log(f"lxd inventory unavailable: lxc list returned non-JSON: {e}")
-        return None
+        return None, f"lxc list returned non-JSON: {e}"
     if not isinstance(items, list):
+        return None, "lxc list returned a non-list"
+    return items, ""
+
+
+def lxd_instance_inventory(cfg: dict) -> list | None:
+    """`lxd_instances[]` for this node, from its OWN LXD (contract §4.6).
+
+    Reads the local LXD through its unix socket, falling back to the `lxc` CLI —
+    no network, no trust prompt, and the same view LXD itself serves over the REST
+    API (the node's own daemon, not the controller's copy of it).
+
+    Returns None when the inventory cannot be read (no socket, no `lxc` binary,
+    LXD not initialised, a probe that times out or answers junk) so the caller
+    OMITS the field: "this node did not report an inventory" is the truth, whereas
+    an empty list would claim a node with no instances and would make every
+    model-chosen target unresolvable. `lxd_inventory: 0` in config.yaml disables
+    it explicitly.
+    """
+    if str(cfg.get("lxd_inventory", "1")).strip().lower() in ("0", "false", "no", "off"):
+        return None
+
+    global _INVENTORY_CLI_DEAD_UNTIL
+    items, reason = _lxd_instances_over_socket()
+    if items is None:
+        if time.monotonic() >= _INVENTORY_CLI_DEAD_UNTIL:
+            cli_items, cli_reason = _lxd_instances_over_cli()
+            if cli_items is None:
+                # Do not pay for a subprocess (or a journal line) every single
+                # sample while the CLI is known to be blocked.
+                _INVENTORY_CLI_DEAD_UNTIL = time.monotonic() + LXD_CLI_BACKOFF_S
+                reason = f"{reason}; {cli_reason}"
+            else:
+                items = cli_items
+        else:
+            reason = f"{reason}; lxc CLI not retried yet (last attempt failed)"
+    if items is None:
+        _warn_inventory_unavailable(reason)
         return None
 
     now = time.monotonic()
