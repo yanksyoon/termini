@@ -1,0 +1,61 @@
+# Sidecar for 03-log-panel-events.png (acceptance 03)
+# Purpose: the log panel rendering events (not the reported 0-lines empty state) on the plain published URL - the same URL the README/SUBMISSION hand to a viewer
+# Captured (UTC): 2026-10-15T16:27:15Z
+# Exact URL in the address bar: https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token
+# Window: 1280x900, headful Chromium in Xvfb :99, browser chrome included, no crop/annotation.
+# Raw text behind the pixels follows.
+
+## As rendered on the published page (read back out of the live DOM)
+{"url":"https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token","title":"Termini — Operations Dashboard","logRows":750,"logState":"Live AI-operator log reconnecting · stream interrupted Pause scroll Clear","decisionsCount":"0 decisions","deciderText":"decider: forwarded managed model · gemini-2.5-flashbackend=gemini-proxy · model=gemini-2.5-flash · egress=external · destination=aiplatform.googleapis.com · answered by=forwarded-managed-model · endpoint=http://10.10.0.13:8080the decision was not computed by local weights on this fleet: the operator's model call was answered by a forwarded managed model reached over egress","streamState":"Live AI-operator log reconnecting · stream interrupted Pause scroll Clear"}
+
+## The stream the panel consumes (first connect sends the contract-free cursor)
+curl -N "https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/logs?token=$DEMO_TOKEN&since=00000000000000000000000000"   (last lines)
+
+# 2121 non-empty lines in the capture; last 25 shown
+data: {"log_id": "01M505RRQ382G5138ZJ17HCN4S", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:18.883Z", "node_id": null, "severity": "info", "actor": "ai_operator", "message": "externalModelCall before endpoint=http://10.10.0.13:8080 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=ok request_id=01M505RRPP3YYAR33NJ1A5MWJY", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505RV0XQNFD0Q6T4FM2RNJ6
+event: log
+data: {"log_id": "01M505RV0XQNFD0Q6T4FM2RNJ6", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:21.245Z", "node_id": null, "severity": "info", "actor": "ai_operator", "message": "externalModelCall after endpoint=http://10.10.0.13:8080 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=returned request_id=01M505RRPP3YYAR33NJ1A5MWJY", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505RV1YTT2RVTE53J015N7G
+event: log
+data: {"log_id": "01M505RV1YTT2RVTE53J015N7G", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:21.278Z", "node_id": "01M4NZK474BVARFBXYQBMVA8GV", "severity": "warn", "actor": "ai_operator", "message": "oom-guard-01: instance.restart 01M4N827979BD9D2762EFE24A0 -> error (target_missing: refused PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state \u2014 no LXD instance '01M4N827979BD9D2762EFE24A0' on https://10.10.0.11:8443 (probe GET /1.0/instances/01M4N827979BD9D2762EFE24A0 -> not found)) (threshold: >= 95% of ram_total_bytes for 2 consecutive samples)", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505S6TQK8G1CN83NHMWAXPC
+event: log
+data: {"log_id": "01M505S6TQK8G1CN83NHMWAXPC", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:33.335Z", "node_id": null, "severity": "info", "actor": "ai_operator", "message": "externalModelCall before endpoint=http://10.10.0.13:8080 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=ok request_id=01M505S6TE6PAF18Z35QWBXWW1", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505S89DRSRREQQMY6YSC1W3
+event: log
+data: {"log_id": "01M505S89DRSRREQQMY6YSC1W3", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:34.829Z", "node_id": null, "severity": "info", "actor": "ai_operator", "message": "externalModelCall after endpoint=http://10.10.0.13:8080 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=returned request_id=01M505S6TE6PAF18Z35QWBXWW1", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505S8ADDYMKPTEDKK5C7F5W
+event: log
+data: {"log_id": "01M505S8ADDYMKPTEDKK5C7F5W", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:34.861Z", "node_id": "01M4NZK46WXG5ZEFAGAAV5JRXM", "severity": "warn", "actor": "ai_operator", "message": "disk-degrade-01: instance.stop 01M4N7F8B8823D650DF40D614D -> error (target_missing: refused PUT /1.0/instances/01M4N7F8B8823D650DF40D614D/state \u2014 no LXD instance '01M4N7F8B8823D650DF40D614D' on https://10.10.0.11:8443 (probe GET /1.0/instances/01M4N7F8B8823D650DF40D614D -> not found)) (threshold: free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s)", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505S8RN3J3M58M61M92TEFP
+event: log
+data: {"log_id": "01M505S8RN3J3M58M61M92TEFP", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:35.317Z", "node_id": null, "severity": "info", "actor": "ai_operator", "message": "externalModelCall before endpoint=http://10.10.0.13:8080 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=ok request_id=01M505S8RBT2D0592GK427W32S", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505SCCFC7YTD5SVN4CM1K7V
+event: log
+data: {"log_id": "01M505SCCFC7YTD5SVN4CM1K7V", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:39.023Z", "node_id": null, "severity": "info", "actor": "ai_operator", "message": "externalModelCall after endpoint=http://10.10.0.13:8080 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=returned request_id=01M505S8RBT2D0592GK427W32S", "remediation_json": null, "truncated": false, "remediation": null}
+id: 01M505SCDHE1XT768042BXT0PQ
+event: log
+data: {"log_id": "01M505SCDHE1XT768042BXT0PQ", "project_id": "01J0DEM0WARM000000000000AB", "ts": "2026-10-15T16:19:39.057Z", "node_id": "01M4NZK474BVARFBXYQBMVA8GV", "severity": "warn", "actor": "ai_operator", "message": "oom-guard-01: instance.restart 01M4N827979BD9D2762EFE24A0 -> error (target_missing: refused PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state \u2014 no LXD instance '01M4N827979BD9D2762EFE24A0' on https://10.10.0.11:8443 (probe GET /1.0/instances/01M4N827979BD9D2762EFE24A0 -> not found)) (threshold: >= 95% of ram_total_bytes for 2 consecutive samples)", "remediation_json": null, "truncated": false, "remediation": null}
+
+## Provenance and caveats
+- The PNG was captured 2026-10-15T16:26:55Z from the published URL. The page had loaded
+  seconds earlier while the controller was still up, and on that cold load the panel
+  rendered the retained tail - 750 lines, nothing typed, nothing pre-seeded. That is the
+  defect this card fixes: before the fix, the same cold load read "0 lines - Waiting for
+  operator events..." while the stream was delivering events to anyone who asked for the
+  tail.
+- The status chip in the same frame reads "reconnecting - stream interrupted" and the
+  "Controller error (NETWORK)" banner is up, because the standing demo fleet was being
+  STOPPED for cost at exactly that moment (operator decision, end of day: all three
+  compute instances terminated, CPUS usage 0.0). The panel still shows what it had
+  already rendered, which is the point of the screenshot - but a reader should know the
+  fleet went away during the capture and not read the banner as "the panel is empty".
+- The raw stream block above was fetched from the same endpoint minutes before
+  (2026-10-15T16:21:00Z, see the per-frame `ts`); the direct fetch at 16:26:5x could not
+  connect (curl: connection timed out after 8s). Both are the same stream; the two
+  moments are labelled so they cannot be confused.
+- Nothing in this capture was taken from the mock/offline dashboard mode: the page under
+  test is https://termini-510609.web.app serving the deployed bundle (sha256 of
+  /js/main.js = 3d33b36a056c572de95669a44a4ded34de82b9b7bc22f9e4a720416ac2f1248c,
+  byte-identical to dashboard/js/main.js at origin/main 5941029c56f83e594f3d2500294ba3d2cea448ca).
