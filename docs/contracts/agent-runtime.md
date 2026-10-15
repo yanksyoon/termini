@@ -12,7 +12,7 @@
 1. The **pre-baked agentic OS image** (`agent-vm`) — its contents, versioning, and launch-time configuration.
 2. The **LXD/VM launch contract** the controller uses to materialize an `AllocationPlan` into agent VMs (and, day-2, inference workloads).
 3. The **agent runtime** — how an agent inside a VM receives work, calls inference, emits logs, and exposes status without breaching the governance boundary.
-4. The **on-prem llama.cpp GPU inference service** on Node C — endpoint, health, explicit model routing (`deepseek-flash` / `deepseek-v4-pro`), request/response and streaming schema, GPU expectations, and failure/fallback rules.
+4. The **on-prem llama.cpp GPU inference service** on Node C — endpoint, health, explicit model routing (alias **`gemma`**), request/response and streaming schema, GPU expectations, and failure/fallback rules.
 
 Nothing here is a TBD. Where a value is not fixed below, the default in the referenced section applies.
 
@@ -29,7 +29,7 @@ Nothing here is a TBD. Where a value is not fixed below, the default in the refe
 | AR-3 | In-VM runtime `termini-agent` (systemd, unprivileged `agent`) + node-side `termini-agent-broker`. Fixed in §5–§6. | agents calling the controller directly, sidecar per agent |
 | AR-4 | Inference is an **OpenAI-compatible router** on `http://10.10.0.13:8080` fronting one-or-more **llama.cpp workers** bound to loopback. | one monolithic llama.cpp on :8080 with no routing (cannot serve two aliases) |
 | AR-5 | Model routing is **explicit**: request `model` selects the alias; no silent substitution except opted-in `X-Termini-Allow-Degrade`. §9. | implicit "pick a model" router, auto-upgrade/downgrade without consent |
-| AR-6 | Only two aliases are wired: **`deepseek-flash`** (resident) and **`deepseek-v4-pro`** (lazy). Residency policy §11. | more models, external model fallback |
+| AR-6 | The agent resolves its inference model against the alias set the Node C endpoint actually serves, and refuses any alias outside it (`ModelNotAllowed`) — no silent substitution. Today that set is exactly **`gemma`** (Gemma 3 4B IT, resident; `image/models.lock.json` `shipped_resident_alias`). The image's catalog pins (`deepseek-flash`, `deepseek-v4-pro`) remain baked as documented reference distills and stay valid in telemetry, but they are **no longer the agent's wired aliases**. Residency policy §11. | more models, external model fallback |
 | AR-7 | Deterministic failure/fallback matrix with named error codes; fail-closed to `503`, never silent partial answers. §12. | blind retries, silent model substitution |
 | AR-8 | Agents receive work from an **on-node broker**; the controller delivers tasks over the node command channel. §7. | agents polling GCP, inbound push to agents |
 | AR-9 | Agent application logs are **local-only**. Only C0 aggregates egress, via the node bootstrap daemon. §13. | forwarding raw agent logs to the controller |
@@ -134,7 +134,7 @@ Invariants (restated as testable in §15):
     "network": { "name": "lxdbr0" },
     "profile": "termini-agent",
     "cloud_init": { "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
-                    "inference_default_model": "deepseek-flash" },
+                    "inference_default_model": "gemma" },
     "idempotency_key": "01M4349RPVPP8X0W99R3TNZXW7"
   },
   "issued_by": "system",
@@ -183,7 +183,7 @@ Config applied through the LXD API (JSON), the canonical form:
   "config": {
     "limits.cpu": "2",
     "limits.memory": "4GiB",
-    "cloud-init.user-data": "#cloud-config\nwrite_files:\n  - path: /etc/termini/agent.yaml\n    permissions: '0600'\n    content: |\n      project_id: 01M4349RPSZFTB60AVJEG0ZZY9\n      vm_id: 01M4349RPXWDC52ZDAVMPCMJSH\n      node_id: 01M4349RPTT29RNTC6VBCXQ0RC\n      inference:\n        base_url: http://10.10.0.13:8080\n        default_model: deepseek-flash\n        allowed_models: [deepseek-flash, deepseek-v4-pro]\n        token_file: /etc/termini/inference.token\n        stream: true\n        connect_timeout_s: 2\n        request_timeout_s: 120\n      broker:\n        endpoint: http://10.20.1.1:7071\n        pull_interval_s: 1\n        max_concurrent_tasks: 2\n      logging:\n        sink: /var/log/termini/agent.jsonl\n        local_only: true\n      governance:\n        telemetry_class: C0\n        egress: deny\nruncmd:\n  - [ systemctl, enable, --now, termini-agent.service ]\n"
+    "cloud-init.user-data": "#cloud-config\nwrite_files:\n  - path: /etc/termini/agent.yaml\n    permissions: '0600'\n    content: |\n      project_id: 01M4349RPSZFTB60AVJEG0ZZY9\n      vm_id: 01M4349RPXWDC52ZDAVMPCMJSH\n      node_id: 01M4349RPTT29RNTC6VBCXQ0RC\n      inference:\n        base_url: http://10.10.0.13:8080\n        default_model: gemma\n        allowed_models: [gemma]\n        token_file: /etc/termini/inference.token\n        stream: true\n        connect_timeout_s: 2\n        request_timeout_s: 120\n      broker:\n        endpoint: http://10.20.1.1:7071\n        pull_interval_s: 1\n        max_concurrent_tasks: 2\n      logging:\n        sink: /var/log/termini/agent.jsonl\n        local_only: true\n      governance:\n        telemetry_class: C0\n        egress: deny\nruncmd:\n  - [ systemctl, enable, --now, termini-agent.service ]\n"
   },
   "devices": {
     "root": { "type": "disk", "pool": "local", "path": "/", "size": "8GiB" },
@@ -216,8 +216,8 @@ Rendered by cloud-init; the **only** inputs the agent runtime reads at start. Sc
 | `vm_id` | yes | ULID | Identity presented to the broker and inference router. |
 | `node_id` | yes | ULID | Owning node. |
 | `inference.base_url` | yes | URL | `http://10.10.0.13:8080` (frozen; D5). |
-| `inference.default_model` | yes | enum | `deepseek-flash` (default). |
-| `inference.allowed_models` | yes | array | `[deepseek-flash, deepseek-v4-pro]`; the runtime refuses any other alias. |
+| `inference.default_model` | yes | enum | `gemma` (default; the alias the Node C endpoint serves). |
+| `inference.allowed_models` | yes | array | `[gemma]`; the runtime refuses any other alias (`ModelNotAllowed`). |
 | `inference.token_file` | yes | path | Per-project scoped bearer for the router. |
 | `inference.stream` | no | bool | Default `true`. |
 | `inference.connect_timeout_s` | no | int | Default `2`. |
@@ -299,7 +299,7 @@ On `SIGTERM` (from `vm.stop`, `vm.resize`, `node.drain`, or node shutdown): stop
   "ended_at": "2026-10-04T07:49:41Z",
   "duration_ms": 39012,
   "steps": 6,
-  "model_calls": [ { "model": "deepseek-flash", "tokens_in": 812, "tokens_out": 340, "degraded": false } ],
+  "model_calls": [ { "model": "gemma", "tokens_in": 812, "tokens_out": 340, "degraded": false } ],
   "error_code": null
 }
 ```
@@ -338,7 +338,7 @@ Two channels, deliberately asymmetric:
 }
 ```
 
-`kind` ∈ `agent.run | agent.control` (only `agent.control`, carrying no C2, is permitted to be issued autonomously by the AI operator). `model_preference` ∈ `auto | deepseek-flash | deepseek-v4-pro`; `auto` = the runtime's default alias.
+`kind` ∈ `agent.run | agent.control` (only `agent.control`, carrying no C2, is permitted to be issued autonomously by the AI operator). `model_preference` ∈ `auto | gemma`; `auto` = the runtime's default alias. A `model_preference` naming a retired alias (a catalog distill) is refused with `ModelNotAllowed` — it is not silently substituted.
 
 Delivery is at-least-once; `task_id` is the dedup key. The broker keeps a bounded per-VM queue (default 64 tasks) and applies backpressure (`429` on claim overflow).
 
@@ -386,27 +386,27 @@ local op tooling ─────┴──► termini-infer-router  :8080  (0.0.0
 
 - **Liveness** — `/health` returns `200 {"status":"ok"}` iff the router can accept connections. It does **not** depend on workers.
 - **Readiness** — `/health?model=<alias>`:
-  - `200 {"status":"ready","model":"deepseek-flash","residency":"resident"}` — serving now;
-  - `200 {"status":"ready","model":"deepseek-v4-pro","residency":"lazy"}` — loadable on demand;
-  - `503 {"status":"unavailable","model":"…","reason":"worker_failed|gpu_unavailable|not_wired"}` — cannot serve.
-- The router is **not** considered started until `deepseek-flash` is resident (systemd `ExecStartPost` gate). A worker crash flips that alias to `unavailable` and raises telemetry `inference.server_up=false` → trigger `gpu-oos-01` (node-telemetry §5).
+  - `200 {"status":"ready","model":"gemma","residency":"resident"}` — serving now;
+  - `503 {"status":"unavailable","model":"…","reason":"worker_failed|gpu_unavailable|not_wired"}` — cannot serve. A retired catalog alias (`deepseek-flash`, `deepseek-v4-pro`) answers `not_wired`; no lazy alias is wired today, so there is no `residency":"lazy"` case.
+- The router is **not** considered started until `gemma` is resident (systemd `ExecStartPost` gate). A worker crash flips that alias to `unavailable` and raises telemetry `inference.server_up=false` → trigger `gpu-oos-01` (node-telemetry §5).
 
 ---
 
 ## 9. Model routing (explicit)
 
-Only two aliases are wired (AR-4/AR-6). The request `model` field **always** selects the alias.
+The wired alias set today is exactly **`{gemma}`** (AR-6): the shipped single-model deployment on Node C. The request `model` field **always** selects the alias; the two-alias rows below document the router's *capability* and are NOT wired in this deployment. Examples elsewhere in this document that name a catalog distill illustrate the wire format, not the current wiring.
 
 | Alias | Workload | Default residency | Max parallel | Default context | Notes |
 |-------|----------|-------------------|--------------|-----------------|-------|
-| `deepseek-flash` | Intent extraction, task routing, short agent turns, summaries | resident | 4 | 8192 | The floor model; the router never falls back *from* it. |
-| `deepseek-v4-pro` | Heavy reasoning, code generation, long multi-step agent tasks | lazy | 1 | 16384 (max 32768 if VRAM allows) | Loaded on demand; evicts flash under `single-heavy` policy (§11). |
+| `gemma` | **Wired today (AR-6)** — Gemma 3 4B IT, Q4_K_M, `models.lock.json` `shipped_resident_alias`; serves the operator's decision step and the agents | resident | 4 | 16384 | The shipped model; a single-model deployment collapses the router to a passthrough. |
+| `deepseek-flash` | Catalog pin — **not wired** (AR-6); kept in the image and legal in telemetry | resident (catalog) | 4 | 8192 | Retired as an agent/operator alias; a request for it is `404 MODEL_NOT_FOUND`. |
+| `deepseek-v4-pro` | Catalog pin — **not wired** (AR-6); kept in the image and legal in telemetry | lazy (catalog) | 1 | 16384 (max 32768 if VRAM allows) | Retired as an agent/operator alias; a request for it is `404 MODEL_NOT_FOUND`. |
 
 Routing rules:
 
-1. `model` not in the wired set → `404 MODEL_NOT_FOUND` (no implicit routing).
-2. `model` wired but worker unavailable → `503 MODEL_UNAVAILABLE` **unless** the request sets `X-Termini-Allow-Degrade: true` **and** the alias is `deepseek-v4-pro`; then the router serves `deepseek-flash`, sets `X-Termini-Degraded: true` and returns `"model": "deepseek-flash"` in the body so the caller can see what actually ran (§12).
-3. `auto` is a **client-side** convenience only: `termini-agent` resolves `auto` → `inference.default_model` and (if the task requests long reasoning) may explicitly pick `deepseek-v4-pro`. The router never receives `auto`; if it does, it is `400 INVALID_ARGUMENT`.
+1. `model` not in the wired set (today: anything but `gemma`) → `404 MODEL_NOT_FOUND` (no implicit routing). A catalog distill is refused here rather than substituted.
+2. `model` wired but its worker unavailable → `503 MODEL_UNAVAILABLE` (§12). **The cross-alias degrade path is INERT today**: it needs two wired aliases and only one is wired, so a degrade-enabled request has no target and is refused like any other — stated here rather than implied, because "there is a fallback" would otherwise be false. Trade this amendment makes: reproducibility is kept, the second alias is surrendered.
+3. `auto` is a **client-side** convenience only: `termini-agent` resolves `auto` → `inference.default_model` (= `gemma`); no long-reasoning escalation alias is wired today. The router never receives `auto`; if it does, it is `400 INVALID_ARGUMENT`.
 4. Exactly one alias serves a given request; no fan-out, no ensembling, no external model (governance §7).
 
 ---
@@ -419,7 +419,7 @@ The wire format is the OpenAI Chat Completions shape plus Termini **headers** (s
 
 ```json
 {
-  "model": "deepseek-flash",
+  "model": "gemma",
   "messages": [
     { "role": "system", "content": "You are a Termini ops agent." },
     { "role": "user", "content": "Summarize this host's health." }
@@ -435,7 +435,7 @@ The wire format is the OpenAI Chat Completions shape plus Termini **headers** (s
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `model` | yes | `deepseek-flash` or `deepseek-v4-pro` (§9). |
+| `model` | yes | the wired alias (`gemma`), or a catalog alias, which is refused (§9). |
 | `messages` | yes | 1..64 items; `role ∈ system|user|assistant`; `content` is a string. |
 | `stream` | no | default `false`. |
 | `max_tokens` | no | default 1024; clamped to the alias context budget. |
@@ -443,7 +443,7 @@ The wire format is the OpenAI Chat Completions shape plus Termini **headers** (s
 | `top_p` | no | default 0.95. |
 | `stop` | no | ≤ 4 strings. |
 | `seed` | no | integer; deterministic sampling where the backend supports it. |
-| `tools` | no | passthrough only; if present with `deepseek-flash` the router returns `400 INVALID_ARGUMENT` (tools require `deepseek-v4-pro`). |
+| `tools` | no | passthrough only; if present the router returns `400 INVALID_ARGUMENT` (tools require an alias that supports them, and none is wired today) (§9). |
 
 **Request headers**
 
@@ -463,7 +463,7 @@ The wire format is the OpenAI Chat Completions shape plus Termini **headers** (s
   "id": "chatcmpl-01M4349RQ09HMAX6RC9YPYQH4W",
   "object": "chat.completion",
   "created": 1791101000,
-  "model": "deepseek-flash",
+  "model": "gemma",
   "choices": [
     { "index": 0, "message": { "role": "assistant", "content": "Host healthy: CPU 31%, RAM 57%, GPU 88%." },
       "finish_reason": "stop" }
@@ -479,13 +479,13 @@ The wire format is the OpenAI Chat Completions shape plus Termini **headers** (s
 `Content-Type: text/event-stream`. One `data:` line per chunk, terminated by `data: [DONE]`.
 
 ```
-data: {"id":"chatcmpl-01H4KZ…","object":"chat.completion.chunk","created":1791101000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+data: {"id":"chatcmpl-01H4KZ…","object":"chat.completion.chunk","created":1791101000,"model":"gemma","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-01H4KZ…","object":"chat.completion.chunk","created":1791101000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"content":"Host "},"finish_reason":null}]}
+data: {"id":"chatcmpl-01H4KZ…","object":"chat.completion.chunk","created":1791101000,"model":"gemma","choices":[{"index":0,"delta":{"content":"Host "},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-01H4KZ…","object":"chat.completion.chunk","created":1791101000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"content":"healthy"},"finish_reason":null}]}
+data: {"id":"chatcmpl-01H4KZ…","object":"chat.completion.chunk","created":1791101000,"model":"gemma","choices":[{"index":0,"delta":{"content":"healthy"},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-01H4KZ…","object":"chat.completion.chunk","created":1791101000,"model":"deepseek-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":42,"completion_tokens":31,"total_tokens":73}}
+data: {"id":"chatcmpl-01H4KZ…","object":"chat.completion.chunk","created":1791101000,"model":"gemma","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":42,"completion_tokens":31,"total_tokens":73}}
 
 data: [DONE]
 ```
@@ -496,7 +496,7 @@ data: [DONE]
 - **First-token deadline: 30 s.** If exceeded, the router emits one error chunk (§10.5) with `code: INFERENCE_TIMEOUT` and closes the stream.
 - **Max stream duration: 300 s**; on exceed → error chunk `INFERENCE_TIMEOUT`, close.
 - Client disconnect cancels generation and frees the slot immediately.
-- `usage` is emitted in the final chunk when the request sets `stream_options.include_usage: true` (and always in the `finish_reason` chunk for `deepseek-v4-pro`).
+- `usage` is emitted in the final chunk when the request sets `stream_options.include_usage: true`.
 - No binary frames; UTF-8 text only.
 
 ### 10.5 Error envelope
@@ -504,7 +504,7 @@ data: [DONE]
 ```json
 {
   "error": {
-    "message": "model deepseek-v4-pro is not resident and could not be loaded",
+    "message": "model gemma is not resident and could not be loaded",
     "type": "termini_error",
     "code": "MODEL_UNAVAILABLE",
     "param": "model",
@@ -536,7 +536,8 @@ VRAM required by an alias ≈ `weights + KV_cache(ctx, parallel)` + `~1 GiB` ove
 
 | Alias | Quant | Weights (approx) | KV @ default ctx | Default total budget | Max parallel |
 |-------|-------|------------------|------------------|----------------------|--------------|
-| `deepseek-flash` | Q4_K_M | ~6 GiB | ~2.5 GiB | **~9 GiB** | 4 |
+| `gemma` | Q4_K_M | ~2.32 GiB | ~2 GiB | **~5 GiB** | 4 |
+| `deepseek-flash` (catalog) | Q4_K_M | ~6 GiB | ~2.5 GiB | **~9 GiB** | 4 |
 | `deepseek-v4-pro` | Q4_K_M | ~18 GiB | ~3 GiB | **~22 GiB** | 1 |
 
 (Target demo GPU: NVIDIA **L4 24 GiB**; T4 16 GiB is supported with `deepseek-v4-pro` unavailable — see §12.)
@@ -544,6 +545,8 @@ VRAM required by an alias ≈ `weights + KV_cache(ctx, parallel)` + `~1 GiB` ove
 ### 11.2 Residency policy (metric-driven, observable)
 
 Let `T = gpu_vram_total_bytes` on Node C (from telemetry, node C only).
+
+**Wiring note (AR-6).** Exactly one alias is wired today (`gemma`, resident); the policies below describe the router's *capability* and are not exercised until a second alias is wired.
 
 - **`dual`** (`T ≥ flash_budget + pro_budget + 1 GiB`): both resident, no swaps.
 - **`single-heavy`** (otherwise): `deepseek-flash` resident at rest; a `deepseek-v4-pro` request triggers **lazy load** — the router drains flash requests, unloads `llama-cpp@deepseek-flash`, loads `llama-cpp@deepseek-v4-pro`, serves, and after `pro_idle_ttl_s` (default **300 s**) of no pro traffic unloads pro and restores flash.
@@ -608,7 +611,7 @@ Agent status reaches the controller **only** as C0 counters folded into node tel
       "queue_depth": 0,
       "tasks_completed": 12,
       "tasks_failed": 1,
-      "model_in_use": "deepseek-flash",
+      "model_in_use": "gemma",
       "last_task_at": "2026-10-04T07:49:41Z" }
   ]
 }
@@ -621,7 +624,7 @@ Agent status reaches the controller **only** as C0 counters folded into node tel
 | `current_task_id` | C0 | ULID\|null | Non-content. |
 | `queue_depth` | C0 | int | ≥ 0. |
 | `tasks_completed` / `tasks_failed` | C0 | int | Monotonic counters. |
-| `model_in_use` | C0 | enum\|null | `deepseek-flash|deepseek-v4-pro`. |
+| `model_in_use` | C0 | enum\|null | `gemma` (served alias; catalog pins remain legal, matching `node-telemetry.md` §4.7). |
 | `last_task_at` | C0 | RFC3339\|null | Timestamp. |
 
 No field carries content. This block is an **extension registration** item (see §17).
@@ -645,11 +648,11 @@ Authorization: Bearer <inference_token>
 X-Termini-Request-Id: <ULID>
 ```
 
-with `model: "deepseek-flash"`, a **static, versioned extraction template**, and a **grammar/JSON-schema constraint** so output parses directly as an `AllocationRequest` (`vm-allocation.schema.json`). The prompt and the model output are on-prem; only the resulting structured JSON (counts, vcpus, ram_gb, target_node — non-sensitive) proceeds to the guardrail validator.
+with `model: "gemma"`, a **static, versioned extraction template**, and a **grammar/JSON-schema constraint** so output parses directly as an `AllocationRequest` (`vm-allocation.schema.json`). The prompt and the model output are on-prem; only the resulting structured JSON (counts, vcpus, ram_gb, target_node — non-sensitive) proceeds to the guardrail validator.
 
 ```json
 {
-  "model": "deepseek-flash",
+  "model": "gemma",
   "messages": [
     { "role": "system", "content": "Extract an AllocationRequest JSON. Schema: {...}. Output JSON only." },
     { "role": "user", "content": "<customer prompt; C2; on-prem only>" }
@@ -742,19 +745,19 @@ All commands run **from inside an agent VM** unless noted.
    ```bash
    curl -sS http://10.10.0.13:8080/health | jq .
    curl -sS -H "Authorization: Bearer $TOK" http://10.10.0.13:8080/v1/models | jq '.data[].id'
-   # -> "deepseek-flash", "deepseek-v4-pro"
+   # -> "gemma"
    ```
 3. **Non-streaming chat:**
    ```bash
    curl -sS -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
      -H "X-Termini-Request-Id: 01M4349RQ09HMAX6RC9YPYQH4W" -H "X-Termini-Vm-Id: $VMID" \
-     -d '{"model":"deepseek-flash","messages":[{"role":"user","content":"ping"}],"max_tokens":8}' \
+     -d '{"model":"gemma","messages":[{"role":"user","content":"ping"}],"max_tokens":8}' \
      http://10.10.0.13:8080/v1/chat/completions | jq '.choices[0].message.content'
    ```
 4. **Streaming (SSE):**
    ```bash
    curl -N -sS -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' \
-     -d '{"model":"deepseek-flash","messages":[{"role":"user","content":"count to 5"}],"stream":true}' \
+     -d '{"model":"gemma","messages":[{"role":"user","content":"count to 5"}],"stream":true}' \
      http://10.10.0.13:8080/v1/chat/completions | tail -2
    # last two events: a finish chunk, then "data: [DONE]"
    ```
@@ -776,7 +779,7 @@ All commands run **from inside an agent VM** unless noted.
    #             metrics_latest.agents[] states, gpu[0].util_pct
    ```
 
-**Acceptance** holds when: an agent VM boots from the pre-baked image and is task-ready in < 10 s; it can run a streaming completion against `deepseek-flash` and a lazy `deepseek-v4-pro` call; an unknown/ unavailable model is reported explicitly (never substituted silently); the VM cannot reach GCP; and the controller sees agent status **only** as C0 counters.
+**Acceptance** holds when: an agent VM boots from the pre-baked image and is task-ready in < 10 s; it can run a streaming completion against the wired alias `gemma` (a request for a retired catalog alias is refused explicitly, never substituted); an unknown/ unavailable model is reported explicitly (never substituted silently); the VM cannot reach GCP; and the controller sees agent status **only** as C0 counters.
 
 ---
 
@@ -792,7 +795,7 @@ All commands run **from inside an agent VM** unless noted.
 | Agent broker (per node) | `http://10.20.<n>.1:7071` | this doc §6 |
 | Controller REST | `https://<controller-host>/v1` | controller-api §1.1 |
 | Node guest bridges | `10.20.1.0/24`, `10.20.2.0/24`, `10.20.3.0/24` | D2 |
-| Wired model aliases | `deepseek-flash`, `deepseek-v4-pro` | governance §7.1 |
+| Wired model aliases | `gemma` (AR-6); catalog distills remain baked, not wired | governance §7.1 |
 
 ### 19.2 `/etc/termini/agent.yaml` (canonical example)
 
@@ -803,8 +806,8 @@ node_id: 01M4349RPTT29RNTC6VBCXQ0RC
 agent_image_version: agent-vm-2026.10.0+g1ab2c3d
 inference:
   base_url: http://10.10.0.13:8080
-  default_model: deepseek-flash
-  allowed_models: [deepseek-flash, deepseek-v4-pro]
+  default_model: gemma
+  allowed_models: [gemma]
   token_file: /etc/termini/inference.token
   stream: true
   connect_timeout_s: 2
@@ -827,10 +830,10 @@ governance:
 {
   "object": "list",
   "data": [
-    { "id": "deepseek-flash", "object": "model", "created": 1791100000,
-      "owned_by": "termini", "residency": "resident", "context_length": 8192 },
-    { "id": "deepseek-v4-pro", "object": "model", "created": 1791100000,
-      "owned_by": "termini", "residency": "lazy", "context_length": 16384 }
+    { "id": "gemma", "object": "model", "created": 1791100000,
+      "owned_by": "termini", "residency": "resident", "context_length": 16384 }
   ]
 }
 ```
+The listing contains **only wired aliases** (AR-6), so today it is exactly this one entry. The
+catalog distills are baked in the image but are not served, so they do not appear here.
