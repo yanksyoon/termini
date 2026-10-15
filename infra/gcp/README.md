@@ -281,6 +281,21 @@ accelerator**; every node SSH-reachable; Node C has no accelerator device
 (`lspci`); and Node A can reach `http://10.10.0.13:8080/health` on Node C over
 the underlay. `--wait SECONDS` (default 1800) waits for the first-boot CPU build.
 
+The **egress + identity** probe (task `t_5a4a0f73`) is separate, because the
+nodes have no external IP and can only reach Google APIs through Private Google
+Access (`private_ip_google_access = true` on `termini-underlay`, encoded in
+`main.tf`); Cloud NAT was deliberately **not** used — it costs money and Google
+API traffic reached over PGA never touches the NAT meter:
+
+```bash
+./tools/verify-node-c-egress.sh    # PGA flag, least-privilege SA + cloud-platform
+                                   # scope, no egress deny rules, then a real
+                                   # metadata-token Vertex AI call FROM the node
+```
+
+It adds a temporary ephemeral external IP only to open the SSH transport (the
+node is `--no-address`) and removes it again on exit.
+
 Offline (no cloud) checks that need no credentials:
 
 ```bash

@@ -51,6 +51,16 @@ INFERENCE_MODEL_SHA256="${INFERENCE_MODEL_SHA256:-04a43a22e8d2003deda5acc262f68e
 INFERENCE_MODEL_ALIAS="${INFERENCE_MODEL_ALIAS:-gemma}"
 LLAMACPP_COMMIT="${LLAMACPP_COMMIT:-7fe450e19305b828c199d602c23a8337aaa1f03b}"
 
+# Least-privilege identity for the inference node (task t_5a4a0f73).
+# node-c must NOT run as the project's default compute SA (roles/editor): it only
+# needs to call Vertex AI and write logs/metrics. The role bindings
+# (roles/aiplatform.user, roles/logging.logWriter, roles/monitoring.metricWriter)
+# are applied out-of-band by infra/gcp/tools/verify-node-c-egress.sh's companion
+# setup; this variable is what makes a RECREATE keep the identity. Leave empty to
+# fall back to the legacy default-SA behaviour.
+INFERENCE_SERVICE_ACCOUNT="${INFERENCE_SERVICE_ACCOUNT:-termini-node-inference@${PROJECT}.iam.gserviceaccount.com}"
+INFERENCE_SCOPES="${INFERENCE_SCOPES:-cloud-platform}"
+
 TOKEN_A="${TOKEN_A:-}"
 TOKEN_C="${TOKEN_C:-}"
 TEAM_SSH_PUBKEY_FILE="${TEAM_SSH_PUBKEY_FILE:-}"
@@ -152,6 +162,10 @@ raise_node() { # $1=node
   [ -n "$token" ] || die "$node needs its single-use enrollment token (TOKEN_A / TOKEN_C)"
   name="termini-${node}"
   local ud="$WORKDIR/${node}.yaml"
+  local identity=()
+  if [ "$node" = "node-c" ] && [ -n "$INFERENCE_SERVICE_ACCOUNT" ]; then
+    identity=(--service-account "$INFERENCE_SERVICE_ACCOUNT" --scopes "$INFERENCE_SCOPES")
+  fi
   render_node "$node" > "$ud"
   log "$node: user-data $(wc -c <"$ud") bytes -> $ud"
   if gcloud compute instances describe "$name" --zone "$ZONE" --project "$PROJECT" >/dev/null 2>&1; then
@@ -169,6 +183,7 @@ raise_node() { # $1=node
     --tags "termini-node,termini-${node}" \
     --labels "project=termini,managed-by=gcloud,workstream=infra,node=${node},role=$([ "$node" = node-c ] && echo inference || echo compute)" \
     --no-shielded-secure-boot --no-address \
+    "${identity[@]}" \
     --metadata-from-file "user-data=$ud" --quiet
 }
 
