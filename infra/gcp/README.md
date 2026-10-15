@@ -286,17 +286,139 @@ Offline (no cloud) checks that need no credentials:
 ```bash
 terraform fmt -check -recursive
 terraform init -backend=false && terraform validate
-bash -n provision.sh verify.sh teardown.sh verify-cloud-init.sh cloud-init/llama-serve.sh && shellcheck -S warning *.sh cloud-init/llama-serve.sh
+bash -n provision.sh verify.sh teardown.sh verify-cloud-init.sh cloud-init/llama-serve.sh tools/cleanup-verify.sh && shellcheck -S warning *.sh cloud-init/llama-serve.sh tools/*.sh
 jq -e . inventory.schema.json examples/inventory.example.json
 ./verify-cloud-init.sh                          # renders + asserts the unified cloud-init
 ```
 
-## Teardown
+## Teardown — `--pause` vs `--full` (`teardown.sh`)
+
+`teardown.sh` has **two explicit modes and no default mode**, and it refuses to
+run without an explicit `--project/--region/--zone`. (The previous version
+defaulted to `us-central1`/`us-central1-a` while the footprint lives in
+`asia-south1`/`asia-south1-a`: every `describe` failed, every branch printed
+`<name> absent`, and it ended with `teardown complete` **having deleted
+nothing**.)
+
+### "Instances terminated" is NOT "no cost" — the measured idle floor
+
+Measured on the live project `termini-510609` on **2026-10-15**: all four GCE
+instances (`termini-controller`, `termini-node-a/b/c`) were TERMINATED and
+Cloud Run `termini-gemma` had scaled to zero — and the project still billed
+**$37.77/mo**:
+
+| idle resource | size / count | rate | $/mo |
+|---|---|---|---|
+| 4 `pd-balanced` disks (30+60+60+60) | 210 GiB | $0.120/GiB·mo | $25.20 |
+| image storage `termini-node-os-1/3/5` | 60 GiB | $0.060/GiB·mo | $3.60 |
+| static IP `termini-controller-ip` `34.93.190.64` | 1 | $0.012/h × 730 h | $8.76 |
+| `gs://termini-510609-models` (Singapore) | 10.37 GiB | $0.020/GiB·mo | $0.21 |
+| **idle floor while "stopped"** | | | **$37.77** |
+
+A TERMINATED instance keeps billing every disk and image attached to it, and
+Google bills an external static IP as IN USE while it is associated with a VM
+**whether that instance is running or stopped** — which is why
+`termini-controller-ip` bills while the controller is down.
+
+Retention freeze through **6 Nov 2026** (user decision, kanban `t_59831eb3`):
+the superseded images `termini-node-os-1` and `-3` were deleted (the family now
+resolves to `termini-node-os-5`), so the idle floor today is **$35.37/mo** —
+disks $25.20 + image 20 GiB $1.20 + static IP $8.76 + GCS $0.21. The static IP
+*is* the published demo URL (`https://34-93-190-64.sslip.io/...`), so the demo
+set stays until that date; `--full` refuses to touch it before then.
+
+### Modes
 
 ```bash
 cd infra/gcp
-terraform destroy                               # or: PROJECT=my-project ./teardown.sh --remove-inventory
+# PAUSE — stop what bills by the hour, keep everything expensive to rebuild
+./teardown.sh --pause --project termini-510609 --region asia-south1 --zone asia-south1-a
+
+# FULL — delete every billable resource (refuses while the demo freeze is active)
+./teardown.sh --full  --project termini-510609 --region asia-south1 --zone asia-south1-a
+
+# See every decision first; changes nothing:
+./teardown.sh --full --dry-run --project ... --region ... --zone ...
 ```
+
+**`--pause`** stops RUNNING instances (an already-TERMINATED one is left alone —
+no mutation) and sets Cloud Run `min-instances=0` only when it is not already
+zero. It deletes nothing: disks, images, the bucket and the reserved IP stay, so
+the fleet is re-raisable without re-baking or re-fetching. Verified after a
+`--pause`: the family `termini-node-os-5` still resolves, the model bucket still
+holds its 17 objects, `tools/raise-standing-fleet.sh` still renders its
+user-data, and a paused node restarts from its retained boot disk in 15 s.
+
+**`--full`** deletes instances (including `termini-controller`) and their disks,
+regional + global addresses and forwarding rules, images (every version of every
+family, family pointer included), snapshots, machine images, reservations,
+instance templates, the Cloud Run service and its revisions, the Artifact
+Registry repository (drained first when it holds images), GCS buckets with their
+objects, and non-Google-managed log buckets. It then re-runs the enumerator and
+exits **2** if anything it intended to delete survived — a cleanup whose success
+path cannot fail is not evidence.
+
+Fail-loud semantics (`--full` **and** `--pause`):
+
+* a `describe` that fails for any reason other than `NOT_FOUND` (403, disabled
+  API, quota, malformed zone) **aborts the run** — it is never read as "absent";
+* a declared zone/region that holds none of the project's instances/disks aborts
+  the run and names where they actually live (`--allow-empty-scope` overrides);
+* `--full` refuses to delete the protected demo set while the freeze is active
+  (`--allow-protected-demo`, only with recorded user approval);
+* there is no `|| true`, and every deletion is followed by a `describe` that must
+  confirm the resource is gone.
+
+Flags whose default is the conservative one: `--name-filter ERE` (scope a run,
+e.g. `^termini-verify-`, safely), `--dry-run`, `--allow-empty-scope`,
+`--allow-protected-demo`, `--delete-quota-preferences`, `--include-network`,
+`--remove-inventory`, `--services-region`.
+
+Known, API-bound limits — reported explicitly, never silently dropped:
+
+* `_Default` and `_Required` log buckets are Google-managed and cannot be
+  deleted;
+* a log bucket with retained logs moves to `DELETE_REQUESTED` and is reclaimed
+  when its retention window closes; no API lever removes it sooner, and it
+  accepts no further logs;
+* quota preference records are not billable, and `termini-cpus-all-regions`
+  carries the granted `CPUS-ALL-REGIONS=12` the fleet depends on, so they go only
+  with `--delete-quota-preferences`;
+* VPC / subnet / firewall rules are free and are kept unless `--include-network`.
+
+### The enumerator — pre-check AND post-check
+
+`tools/cleanup-verify.sh` prints every billable-class resource in the project
+with its class, region, size and whether it bills while idle, and exits:
+
+| exit | meaning |
+|---|---|
+| 0 | nothing in the classes `--full` removes is present (within the filter scope) |
+| 1 | such a resource is still present — the cleanup is NOT complete |
+| 2 | an instrument failed: the answer is UNKNOWN, and never reported as clean |
+| 3 | 0 in-remit, but a billable resource **outside** `--full`'s remit exists (Cloud SQL, GKE, Filestore, Redis, Dataproc, Vertex endpoints) |
+
+```bash
+cd infra/gcp
+./tools/cleanup-verify.sh --project termini-510609 --region asia-south1 --zone asia-south1-a
+./tools/cleanup-verify.sh ... --name-filter '^termini-verify-'   # scope a verification
+```
+
+It is also the positive control: run it against a project where resources exist
+and it must report them (a zero from an enumerator that was never seen to report
+a hit proves nothing). Cloud Logging buckets expose **no size instrument**, so
+the tool prints `size=unknown` for them rather than a fabricated `0`.
+
+Raw output of every run recorded for this work (throwaway end-to-end, the
+`DELETE_REQUESTED` log-bucket case, the falsification battery, the real-project
+dry run and the post-run footprint check) is in
+`evidence/cleanup-2026-10-15.md`.
+
+The Terraform path is unchanged and complementary: `terraform destroy` removes
+only the three VMs (and their boot disks) that `*.tf` owns. It knows nothing
+about the node images, `gs://…-models`, the Cloud Run service, the Artifact
+Registry repository or the reserved IP — which is exactly the gap
+`teardown.sh --full` closes.
 
 ## Prerequisites (out of band)
 
@@ -312,6 +434,14 @@ terraform destroy                               # or: PROJECT=my-project ./teard
 
 > No credentials are stored in this repo. Pass them via the standard Google auth
 > chain (ADC file, `GOOGLE_APPLICATION_CREDENTIALS`, or an attached service account).
+
+`teardown.sh --full` and `tools/cleanup-verify.sh` need the same credentials
+plus read/delete on the services they enumerate: `compute.*`,
+`storage.buckets.*` + `storage.objects.*`, `run.services.*`, `artifactregistry.repositories.*`,
+`logging.buckets.*` (+ `logging.buckets.delete`) and, for
+`--delete-quota-preferences`, `cloudquotas.quotas.update`/`delete`. A missing
+permission makes the run **abort** (exit 1/2) — it is never reported as "already
+clean".
 
 ## Live deployment record (task `t_f2173236`, CPU-only re-provision)
 
