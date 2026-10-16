@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import queue
 import shutil
 import sys
 import tempfile
@@ -429,6 +430,124 @@ class AgentTaskRouteTest(_Base):
         self.assertEqual(st, 503, body)
         self.assertEqual(body["error"]["code"], "NODE_OFFLINE")
         self.assertEqual(self.lxd.exec_requests(VM), [])
+
+
+class ObservedByTheClientTest(_Base):
+    """The two read paths a UI uses once a task is running.
+
+    Required work #2 (progress a UI can render) and #4/(c) (audited and retrievable
+    through the controller API) — read through the client's own surfaces rather than
+    the database: `/stream/v1` relays the `EventBroker` envelope verbatim, and the
+    operator-log lines are replayed on the SSE log stream the dashboard consumes.
+    """
+
+    def test_event_stream_renders_queued_running_done_and_never_carries_content(self):
+        release = threading.Event()
+        self.mount.service._client = FakeInference(release=release)
+        sub = self.broker.subscribe()
+        self.addCleanup(self.broker.unsubscribe, sub)
+
+        st, task = self._post_task({"prompt": "Reply with exactly: pong"})
+        self.assertEqual(st, 202, task)
+        task_id = task["task_id"]
+
+        def collect(until_state: str) -> list[dict]:
+            seen: list[dict] = []
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                try:
+                    msg = sub.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                if not str(msg.get("event", "")).startswith("task."):
+                    continue
+                seen.append(msg)
+                if (msg.get("data") or {}).get("state") == until_state:
+                    return seen
+            return seen
+
+        # The model call is parked, so the task is genuinely `running` when polled.
+        events = collect("running")
+        self.assertIn("task.queued", [e["event"] for e in events], events)
+        self.assertTrue(any(e["event"] == "task.state_changed"
+                            and e["data"]["state"] == "running" for e in events), events)
+        self.assertEqual(events[0]["event"], "task.queued")
+
+        release.set()
+        events += collect("done")
+        self.assertEqual(events[-1]["event"], "task.completed")
+        self.assertEqual(events[-1]["data"]["state"], "done")
+        self.assertEqual(events[-1]["data"]["model"], "gemma")
+        self.assertIn("duration_ms", events[-1]["data"])
+
+        for e in events:
+            self.assertEqual(e["data"]["task_id"], task_id)
+            self.assertEqual(e["data"]["vm_id"], VM)
+            blob = json.dumps(e)
+            self.assertNotIn("Reply with exactly", blob)   # never the prompt
+            self.assertNotIn("pong", blob)                 # never the answer
+
+        done = self._get_task(task_id)[1]
+        self.assertEqual(done["state"], "done")
+        self.assertEqual(done["answer"], "pong")
+
+    def test_submission_is_human_audited_and_readable_on_the_client_log_stream(self):
+        lines: list[dict] = []
+        stop = threading.Event()
+
+        def reader():
+            url = (f"http://127.0.0.1:{self.port}/v1/projects/{PROJECT_ID}/logs"
+                   f"?token={PROJECT_TOKEN}")
+            try:
+                # The controller polls the agent every 2 s, so the gap between the
+                # dispatch line and the completion line is a couple of seconds of
+                # silence on the wire: the read timeout must sit above that, not
+                # below it, or the reader gives up mid-task.
+                with urllib.request.urlopen(urllib.request.Request(url),
+                                            timeout=8.0) as resp:
+                    for raw in resp:
+                        if stop.is_set():
+                            break
+                        text = raw.decode("utf-8", "replace").strip()
+                        if text.startswith("data: "):
+                            lines.append(json.loads(text[len("data: "):]))
+            except Exception:  # noqa: BLE001 — a closed/slow stream is not the assertion
+                return
+
+        thread = threading.Thread(target=reader, daemon=True)
+        thread.start()
+        deadline = time.time() + 5
+        while time.time() < deadline and self.broker.subscriber_count < 1:
+            time.sleep(0.02)
+        self.assertGreaterEqual(self.broker.subscriber_count, 1,
+                                "the log stream never subscribed")
+
+        st, task = self._post_task({"prompt": "Reply with exactly: pong",
+                                    "actor": "human:ops"})
+        self.assertEqual(st, 202, task)
+        task_id = task["task_id"]
+        self._wait(task_id)
+
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if any(f"agent task {task_id}" in (ln.get("message") or "") for ln in lines):
+                break
+            time.sleep(0.1)
+        stop.set()
+        thread.join(timeout=3)
+
+        messages = [ln.get("message", "") for ln in lines]
+        self.assertTrue(any("agent.dispatch_task issued" in m for m in messages), messages)
+        self.assertTrue(any(f"agent task {task_id}" in m and "done" in m
+                            for m in messages), messages)
+        audit = [ln for ln in lines
+                 if "agent task" in (ln.get("message") or "")
+                 or "dispatch_task" in (ln.get("message") or "")]
+        self.assertTrue(audit, lines)
+        self.assertEqual({ln["actor"] for ln in audit}, {"human"}, audit)
+        for m in messages:
+            self.assertNotIn("Reply with exactly", m)   # never the prompt
+            self.assertNotIn("pong", m)                 # never the answer
 
 
 class ResolveAgentTest(_Base):
