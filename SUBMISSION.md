@@ -59,7 +59,14 @@ Everything below is deployed and serving now. No local install is required.
 
 ### Dashboard (start here — no account needed)
 
-**https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token**
+**https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB**
+
+> **No credential in the URL, on purpose.** Open the link, then use
+> **Settings → sign in** once with the project token: it is sent in the
+> `Authorization` header from then on and kept for that browser tab only, so any
+> link you copy carries no credential. A legacy `?token=…` link is *refused* —
+> the dashboard strips the parameter out of the address bar and asks you to sign
+> in instead (task `t_5649d117`).
 
 > **The demo is paused by default**, so it does not bill compute time while
 > nobody is looking at it: the seeder is stopped and the node VMs are terminated.
@@ -124,9 +131,10 @@ What to look for:
 curl -sS -H "Authorization: Bearer demo-project-token" \
   https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/nodes
 
-# The AI-operator event stream (SSE — note the token is a query param here,
-# because EventSource cannot set headers)
-curl -N "https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/logs?token=demo-project-token"
+# The AI-operator event stream (SSE). The dashboard reads this with `fetch()`
+# and an Authorization header — no credential in the URL (task t_5649d117).
+curl -N -H "Authorization: Bearer demo-project-token" \
+  https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/logs
 ```
 
 ### The model endpoints

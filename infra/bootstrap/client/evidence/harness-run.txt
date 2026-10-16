@@ -1,0 +1,140 @@
+# verify-client-install.sh — raw run (2026-10-15T16:53Z, ~28 s, exit 0, 28/28 checks)
+#
+# Hermetic: a real controller process + the real node daemon on loopback, no root,
+# no systemd, no cloud spend. The customer credential in §1 is a throwaway minted
+# against this run's temporary controller database and is REDACTED here; re-running
+# the harness prints a fresh one.
+#
+# The last check ("no leaked controller") is the regression guard for the harness's
+# own teardown: the first version recorded the wrapper subshell's PID as the
+# controller's, so the controller outlived the run holding its port. `exec` in the
+# launch subshell fixes it (see the script).
+#
+# Still to run in an approved live window (needs GCP): the same flow on a machine
+# booted from the termini-node-os image family, which is what covers the systemd
+# start path and the installer's own wait loop. Recipe: client-install-2026-10-15.md §6.
+=== controller: starting a real controller process on http://127.0.0.1:45857 ===
+PASS  controller ready (HTTP 200 on an authenticated route)
+
+=== 1. provider handover: mint a single-use credential and print the customer command ===
+[issue-enrollment] install surface OK: http://127.0.0.1:45857/install/termini-node.sh -> HTTP 200 (1 credential(s) to hand over)
+--- Termini node enrollment 1/1 ---
+credential (single-use, enrols ONE node; NOT the controller's project token):
+  <REDACTED: throwaway credential minted against the harness's temporary controller>
+
+Command for the customer — run it ON the machine that becomes the node,
+as root (it installs the node and registers it):
+
+  curl -fsSL http://127.0.0.1:45857/install/termini-node.sh | sudo sh -s -- \
+      --controller http://127.0.0.1:45857 --token <REDACTED: throwaway credential> --name client-node
+
+Re-running that command on the SAME machine reuses its node identity and
+does not consume another credential. This credential is spent by the first
+node that registers with it.
+
+[issue-enrollment] handover written 0600 to <workdir>/handover.txt
+[issue-enrollment] verified: the controller's project token appears nowhere in this handover.
+PASS  handover preflighted the public install surface
+PASS  handover printed the customer one-liner
+PASS  the project token appears in neither the handover file nor its output
+PASS  handover carries a single-use credential
+
+=== 2. the customer one-liner: curl | sh -s -- (installs this machine, no provider shell) ===
+[termini-node-install] controller:  http://127.0.0.1:45857
+[termini-node-install] node name:   client-node   role: auto
+[termini-node-install] node runtime: not present — installing it from the controller
+[termini-node-install] node runtime: termini-bootstrap installed
+[termini-node-install] client status helper: installed (<workdir>/node1/usr/local/bin/termini-node-status)
+[termini-node-install] enrollment credential stored (0600) at <workdir>/node1/var/lib/termini/enrollment.token
+[termini-node-install] --no-start: wrote <workdir>/node1/etc/termini/config.yaml; start termini-bootstrap.service to register.
+PASS  the one-liner fetched the installer over HTTP and ran it
+PASS  it installed the node runtime from the controller
+PASS  it installed the client status helper
+PASS  it stored the credential 0600
+PASS  the installer never echoed the credential
+PASS  runtime + status helper installed under the node root
+
+=== 3. registration and the client's own view of the node ===
+YOUR NODE IS REGISTERED
+  node_id        01M507PHBFT6H2XG20QCFBHQNN
+  role           compute
+  project        01J0DEM0WARM000000000000AB
+  registered_at  2026-10-15T16:53:02Z
+  register_ms    51 (controller acknowledgement)
+HEALTH (your node, read with your node's own credential)
+  seq=1 ts=2026-10-15T16:53:02Z cpu=53.33% ram=84.8% load1=4.25927734375 disk_free=45.6% ctrl_rtt=0.095ms
+PASS  termini-node-status confirms the registration
+PASS  the client sees the node id
+PASS  the client sees the assigned role
+PASS  the client sees its first telemetry
+PASS  the node acknowledged the registration
+PASS  the controller lists the node (01M507PHBFT6H2XG20QCFBHQNN)
+
+=== 4. re-run on the registered node: identity reused, no second credential burned ===
+[termini-node-install] controller:  http://127.0.0.1:45857
+[termini-node-install] node name:   client-node   role: auto
+[termini-node-install] this machine is already registered as node_id=01M507PHBFT6H2XG20QCFBHQNN — reusing its persisted identity
+[termini-node-install] the enrollment credential you supplied is NOT used and is NOT consumed
+[termini-node-install]   (enrollment credentials are single-use; this node never needs another)
+[termini-node-install] node runtime: already present on this machine (nothing to install)
+[termini-node-install] client status helper: already installed (<workdir>/node1/usr/local/bin/termini-node-status)
+[termini-node-install] --no-start: wrote <workdir>/node1/etc/termini/config.yaml; start termini-bootstrap.service to register.
+PASS  the re-run recognised the persisted identity
+PASS  the re-run did not consume the new credential
+PASS  the unburned credential registered a second node
+
+=== 5a. a rejected credential ===
+REGISTRATION FAILED: your enrollment credential was rejected by the controller
+  The controller does not recognise the credential (single-use and
+  scoped to one registration).
+  * Check the whole token was copied — no missing characters and no
+    shell quoting damage;
+  * check it is the credential your provider issued for THIS node
+    (every node needs its own);
+  * then ask your provider for a fresh enrollment credential and
+    re-run the installer with it.
+  registration_attempts=4
+  controller said: register failed: HTTP 401 UNAUTHENTICATED: {'error': {'code': 'UNAUTHENTICATED', 'message': 'unknown bootstrap token', 'details': [], 'request_id': '01M507PV437S7710ZBWHQ6MRVR'}}
+PASS  rejected credential exits 3
+PASS  rejected credential message is actionable
+
+=== 5b. an already-used credential (the same one that registered node1) ===
+REGISTRATION FAILED: this enrollment credential has already been used
+  Enrollment credentials are single-use: the first node that
+  registers with one consumes it.
+  * If THIS machine is already registered, re-run the installer
+    WITHOUT a credential — it reuses the node's persisted
+    identity and never needs one again.
+  * If you are installing a DIFFERENT node, ask your provider
+    for a new credential; this one cannot be reused.
+  registration_attempts=4
+  controller said: register failed: HTTP 401 UNAUTHENTICATED: {'error': {'code': 'UNAUTHENTICATED', 'message': 'bootstrap token already used', 'details': [], 'request_id': '01M507Q2PSSG2SKSTCRATSDTSN'}}
+PASS  used credential exits 4
+PASS  used credential message is actionable
+
+=== 5c. an unreachable controller (config points at a black hole) ===
+REGISTRATION FAILED: the controller could not be reached
+  * Check the controller URL is exact (scheme, host, port, no path);
+  * check this machine has outbound access to it (port 443/80) and
+    that no proxy or firewall strips the connection;
+  * check the controller is running.
+  The node daemon keeps retrying while its service runs; the
+  installer can simply be re-run once the controller answers.
+  registration_attempts=4
+  controller said: register unreachable (connection refused): [Errno 111] Connection refused
+PASS  unreachable controller exits 5
+PASS  unreachable message is actionable
+PASS  the three failure messages are distinct
+PASS  no leaked controller (port 45857 released)
+
+=== summary ===
+  checks passed: 28
+  checks failed: 0
+  workdir:       <workdir>
+  covered here:     handover + one-liner + registration + client view + re-run +
+                    the three failure modes, against a real controller process
+                    and the real node daemon on loopback.
+  covered live:     the systemd start path and the installer's own wait loop
+                    (`systemctl restart termini-bootstrap.service`) — run this
+                    flow on a machine booted from the termini-node-os image in
+                    the approved live window.

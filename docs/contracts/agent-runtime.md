@@ -410,7 +410,7 @@ Delivery is at-least-once; `task_id` is the dedup key. The broker keeps a bounde
 
 ### 7.4 Task submission through the controller — decision **AT-1** (card `t_1a2c913c`)
 
-The client-facing route (shapes in `controller-api.md` §4.8):
+The client-facing route (shapes in `controller-api.md` §4.9):
 
 ```
 POST /v1/projects/{project_id}/agents/{vm_id}/tasks      → 202 + the task record
@@ -849,7 +849,7 @@ landed** in the integration pass (t_5fb81d14, `docs/architecture.md` §8):
 3. **`node-telemetry.md` §4.6 / `governance.md` §4.1.1** — the `agents[]` C0 extension (§13.2) registered in the egress allowlist (same treatment as `lxd_instances[]`/`inference`/`services`). ✅
 4. **`governance.md` §12** — invariant **G-AR-1/G-AR-2** ratified: the node→controller direction never carries C2; the controller carries task content only transiently (no persistence, no external model call). ✅
 5. **`infra-decisions.md` D5** — `:8080` realized as an OpenAI-compatible **router** fronting llama.cpp workers (single-model deployments collapse to passthrough); endpoint, port, and scope unchanged. ✅
-6. **`controller-api.md` §4.8 / §7.1 / §3** — the three agent-task routes, the `task.*` events and the task error codes, added by `t_1a2c913c` in the same PR as this section. ✅ The one place this card NARROWS an invariant: **G-AR-2** ("the controller never persists task content") is implemented as "the controller never logs task content, never hands it to an external model, and keeps it only in the project's own task record, which is the project-token holder's documented read path". Flagged for ratification in `governance.md` §12 — the alternative (no record at all) leaves the client unable to read back its own answer, which is the capability the card exists to deliver.
+6. **`controller-api.md` §4.9 / §7.1 / §3** — the three agent-task routes, the `task.*` events and the task error codes, added by `t_1a2c913c` in the same PR as this section. ✅ The one place this card NARROWS an invariant: **G-AR-2** ("the controller never persists task content") is implemented as "the controller never logs task content, never hands it to an external model, and keeps it only in the project's own task record, which is the project-token holder's documented read path". Flagged for ratification in `governance.md` §12 — the alternative (no record at all) leaves the client unable to read back its own answer, which is the capability the card exists to deliver.
 
 The node redactor treats the `agents[]` keys as C0 allowlist entries per the registered
 group in `governance.md` §4.1.1.
