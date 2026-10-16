@@ -288,5 +288,89 @@ class ContractMirrorTest(unittest.TestCase):
         self.assertIn("`state_age_sec` is **structurally absent**", doc)
 
 
+class MetricExpansionCollectorTest(unittest.TestCase):
+    """The §4.12–§4.14 collectors, checked against the contract and the C2 rules.
+
+    `tests/test_bootstrap_telemetry.py` pins the parsing (fixture, omission,
+    bounds); this class pins the two boundaries that are about the *contract*
+    rather than any one value: every key the collector can emit is a field the
+    contract declares, and the collectors never read a C2 path — the conntrack
+    table, a process `cmdline`, an environment or an `exe` link.
+    """
+
+    def test_every_collected_key_is_a_contract_field(self):
+        host = tb.pressure_facts() or {}
+        self.assertTrue(set(host) <= set(F.PRESSURE_FIELDS),
+                        f"outside §4.12: {sorted(set(host) - set(F.PRESSURE_FIELDS))}")
+        for group, allowed in (
+            (tb.memory_pressure_scalars(), set(F.SAMPLE_FIELDS)),
+            (tb.transport_scalars(), set(F.SAMPLE_FIELDS)),
+            (tb.instance_cgroup_facts("demo-node-a"), set(F.LXD_INSTANCE_FIELDS)),
+        ):
+            self.assertTrue(set(group) <= allowed,
+                            f"emitted key outside the contract: {sorted(set(group) - allowed)}")
+        for row in tb.disk_facts():
+            self.assertTrue(set(row) <= set(F.DISK_FIELDS),
+                            f"outside §4.3/§4.13: {sorted(set(row) - set(F.DISK_FIELDS))}")
+        for row in tb.net_facts({"controller_url": "http://127.0.0.1:9"}, "lo"):
+            self.assertTrue(set(row) <= set(F.NET_FIELDS),
+                            f"outside §4.4/§4.13: {sorted(set(row) - set(F.NET_FIELDS))}")
+
+    def test_no_c2_field_name_is_emitted(self):
+        keys = set(tb.memory_pressure_scalars()) | set(tb.transport_scalars())
+        keys |= set(tb.instance_cgroup_facts("demo-node-a"))
+        for row in tb.disk_facts():
+            keys |= set(row)
+        for key in keys:
+            self.assertFalse(governance.is_c2_field_name(key),
+                             f"{key} is a C2 field name (§4.3)")
+
+    def test_the_collectors_never_read_a_c2_path(self):
+        # A behavioural proof rather than a source grep: every path the new
+        # collectors ask for is recorded, and the conntrack TABLE, any `cmdline`,
+        # `environ`, `exe` or `cwd` must not be among them. `process_facts()` is
+        # included so the whole collector surface is covered.
+        reads: list = []
+        original = tb._read_text
+
+        def spy(path):
+            reads.append(path)
+            return original(path)
+
+        tb._read_text = spy
+        try:
+            tb.pressure_facts()
+            tb.memory_pressure_scalars()
+            tb.transport_scalars()
+            tb.disk_facts()
+            tb.net_facts({"controller_url": "http://127.0.0.1:9"}, "lo")
+            tb.instance_cgroup_facts("demo-node-a")
+            tb.process_facts()
+        finally:
+            tb._read_text = original
+        # Positive control: the spy really does see the reads that happen.
+        self.assertIn("/proc/vmstat", reads)
+        self.assertIn("/proc/pressure/memory", reads)
+        for path in reads:
+            stripped = path.replace("nf_conntrack_count", "").replace("nf_conntrack_max", "")
+            self.assertNotIn("nf_conntrack", stripped,
+                             "the conntrack TABLE is C2 and must never be read")
+            for forbidden in ("cmdline", "environ", "/exe", "cwd", "user-data"):
+                self.assertNotIn(forbidden, path)
+
+    def test_a_collected_sample_passes_the_real_c2_scan(self):
+        sample = _sample(
+            pressure=tb.pressure_facts(),
+            disk=tb.disk_facts(),
+        )
+        sample.update(tb.memory_pressure_scalars())
+        sample.update(tb.transport_scalars())
+        if sample["pressure"] is None:
+            del sample["pressure"]
+        clean, errors = validate_sample(sample)
+        self.assertEqual(errors, [])
+        self.assertEqual(governance.scan_c2(clean), [])
+
+
 if __name__ == "__main__":
     unittest.main()

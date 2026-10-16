@@ -410,7 +410,19 @@ def _probe_disk(path: str) -> tuple[float | None, bool]:
 
 
 def disk_facts() -> list:
+    """`disk[]` (§4.3) plus the §4.13 extension (metric expansion, t_cae0dfa8).
+
+    Rows are kept in `_DISK_MOUNTS` order and capped at `DISK_MAX` — the ceiling
+    is asserted by test, so a growing probe list cannot silently grow the sample.
+    The extension fields are added only where the source actually answered:
+    `inode_used`/`inode_total` from the same `statvfs` that produced the byte
+    figures, and `io_in_flight`/`io_ticks_ms` from the block device behind the
+    mount (`_block_io_of`). A mount whose device cannot be resolved ships the
+    §4.3 fields and omits the §4.13 ones — never a `0` that would read as "no
+    I/O happening".
+    """
     out = []
+    majmin = _mount_majmin()   # one /proc/self/mountinfo read for every mount
     for dev, path in _DISK_MOUNTS:
         try:
             st = os.statvfs(path)
@@ -425,18 +437,29 @@ def disk_facts() -> list:
             latency = _DISK_WRITE_LATENCY_LAST.get(path, 0.0)
         else:
             _DISK_WRITE_LATENCY_LAST[path] = latency
-        out.append({
+        entry = {
             "path": dev,
             "total_bytes": total,
             "free_bytes": free,
             "write_latency_ms": latency,
             "mount_ro": mount_ro,
-        })
+        }
+        # §4.13 inode exhaustion: a full inode table fails writes while
+        # `free_bytes` still looks healthy. Both fields or neither — a
+        # filesystem that reports no inode table (f_files < 1) gets an honest
+        # omission, not a `0` total that division by would turn into a lie.
+        if st.f_files >= 1:
+            entry["inode_total"] = st.f_files
+            entry["inode_used"] = max(0, st.f_files - st.f_ffree)
+        io = _block_io_of(path, majmin)
+        if io is not None:
+            entry["io_in_flight"], entry["io_ticks_ms"] = io
+        out.append(entry)
     if not out:
         out.append({"path": "/dev/root", "total_bytes": 1, "free_bytes": 0,
                     "write_latency_ms": _DISK_WRITE_LATENCY_LAST.get("/", 0.0),
                     "mount_ro": False})
-    return out
+    return out[:DISK_MAX]
 
 
 def net_facts(cfg: dict, ifname: str) -> list:
@@ -454,7 +477,18 @@ def net_facts(cfg: dict, ifname: str) -> list:
         rtt = _NET_LATENCY_LAST.get(ifname, 0.0)
     else:
         _NET_LATENCY_LAST[ifname] = rtt
-    return [{"iface": ifname, "rx_bytes": rx, "tx_bytes": tx, "latency_ms": rtt}]
+    entry = {"iface": ifname, "rx_bytes": rx, "tx_bytes": tx, "latency_ms": rtt}
+    # §4.13 NIC error/drop counters (metric expansion, t_cae0dfa8): they are what
+    # split "slow network" from "lossy network" for latency-01. Each is omitted
+    # when its statistics file is unreadable — unlike `rx_bytes` above, which
+    # has always fallen back to 0, a NEW field must never invent a clean
+    # interface on a node that could not look.
+    for counter in _NET_ERROR_COUNTERS:
+        value = _iface_counter(ifname, counter)
+        if value is not None:
+            entry[counter] = value
+    # One row per sample, the configured interface only (`NET_MAX`, §4.4/§4.13).
+    return [entry][:NET_MAX]
 
 
 def inference_snapshot(cfg: dict) -> dict | None:
@@ -900,6 +934,314 @@ def process_facts() -> list | None:
     return [entry for _pct, _ram, _pid, entry in rows[:PROCESSES_MAX]]
 
 
+# --------------------------------------------- §4.12–§4.14 metric expansion
+# The metric-expansion contract (node-telemetry.md §4.12–§4.14, research card
+# t_cae0dfa8) adds three groups and extends three existing arrays. Every field is
+# a plain C0 number sourced from /proc, /sys or an instance cgroup:
+#
+#   §4.12  `pressure{}` + `oom_kill_count` / `pgmajfault_count` /
+#          `mem_available_bytes`;
+#   §4.13  `disk[]` io_ticks_ms / io_in_flight / inode_used / inode_total,
+#          `net[]` rx_errors / tx_errors / rx_dropped / tx_dropped, and the flat
+#          `tcp_retransmit_segs` / `conntrack_count` / `conntrack_max`;
+#   §4.14  `lxd_instances[]` oom_kill_count / pgmajfault_count (instance cgroup).
+#
+# Two rules hold for all of them, and they are the reason this card exists:
+#
+#   1. OMIT, NEVER FABRICATE. When the source is unreadable the field is absent —
+#      never a `0`, and never a partially-filled row that reads as complete (the
+#      §4.11 journal-count rule). "could not ask" and "asked, and it is zero" are
+#      different facts, and only the second may ever be reported as `0`.
+#   2. NOTHING C2 LEAVES. The conntrack *table* (`/proc/net/nf_conntrack`, a list
+#      of per-flow peer addresses and ports) is C2 and is never opened: only the
+#      two count files are read (governance.md §4.1.1's count-only rule). Nothing
+#      here reads `cmdline`, `environ`, `exe`, `cwd` or a file path, and the LXD
+#      `config`/`expanded_config` object (which carries an enrollment token, file
+#      paths and a MAC — research card §3, headline finding) is never read
+#      either; `process_facts()` above is the reference for that denial.
+#
+# The three roots are module constants so these collectors run against the
+# committed real-shaped fixture tree (`tests/fixtures/telemetry/`) exactly as
+# they run against a live host — the fixture is a copy of what this host's
+# /proc, /sys and cgroup hierarchy actually printed.
+PROC_ROOT = "/proc"
+SYS_ROOT = "/sys"
+CGROUP_ROOT = os.path.join(SYS_ROOT, "fs", "cgroup")
+
+
+def _kv_int(text: str | None, key: str) -> int | None:
+    """The integer on the `<key> <int>` line of a /proc- or cgroup-style text.
+
+    /proc/vmstat, /proc/meminfo and cgroup `memory.events`/`memory.stat` are all
+    `name value` tables, so they share one reader. A key that is absent (or a
+    value that is not an integer) yields None: the caller then OMITS the field
+    rather than reporting a `0` it never measured.
+    """
+    if not text:
+        return None
+    for line in text.splitlines():
+        parts = line.split()
+        if parts and parts[0] == key:
+            return _int_or_none(parts[1]) if len(parts) > 1 else None
+    return None
+
+
+# `/proc/pressure/<resource>` line kinds. CPU and IO expose `some` (at least one
+# task stalled); only memory exposes `full` (every task stalled). The contract's
+# four scalars are exactly CPU/IO/MEM `some` + MEM `full`, 10 s averages (§4.12).
+_PSI_SOURCES = (
+    ("cpu_some_avg10", "cpu", "some"),
+    ("io_some_avg10", "io", "some"),
+    ("memory_some_avg10", "memory", "some"),
+    ("memory_full_avg10", "memory", "full"),
+)
+
+
+def _psi_avg10(resource: str, kind: str) -> float | None:
+    """The `avg10` percentage on the `<kind>` line of /proc/pressure/<resource>.
+
+    Returns None when the file is unreadable, the line is absent or the value is
+    outside the contract's 0–100 range — an out-of-range number is not a
+    measurement of stall and must not be shipped as one.
+    """
+    text = _read_text(os.path.join(PROC_ROOT, "pressure", resource))
+    if not text:
+        return None
+    for line in text.splitlines():
+        parts = line.split()
+        if not parts or parts[0] != kind:
+            continue
+        for token in parts[1:]:
+            if token.startswith("avg10="):
+                try:
+                    value = float(token.split("=", 1)[1])
+                except ValueError:
+                    return None
+                return round(value, 2) if 0.0 <= value <= 100.0 else None
+    return None
+
+
+def pressure_facts() -> dict | None:
+    """`pressure{}` (§4.12) — the four PSI scalars, or None when unavailable.
+
+    All four keys or nothing: the object is a fixed four-key one, so a
+    partially-filled object would read as "no stall" for whichever key the node
+    could not measure. A measured `0.0` **is** reported (no stall observed is a
+    real measurement); None means the source itself could not be read, and the
+    caller then omits `pressure{}` entirely rather than shipping `{}` or zeros.
+    """
+    out: dict = {}
+    for field, resource, kind in _PSI_SOURCES:
+        value = _psi_avg10(resource, kind)
+        if value is None:
+            return None
+        out[field] = value
+    return out
+
+
+def memory_pressure_scalars() -> dict:
+    """§4.12's three flat scalars, each omitted (never `0`) when unreadable.
+
+    `oom_kill_count` / `pgmajfault_count` are cumulative kernel counters from
+    /proc/vmstat; `mem_available_bytes` is the kernel's own reclaimable-memory
+    estimate from /proc/meminfo — the honest "free" that `MemFree` overcounts,
+    which is why it is a *separate* field from `ram_used_bytes` rather than a
+    replacement for the existing `_mem_available()` arithmetic.
+    """
+    out: dict = {}
+    vmstat = _read_text(os.path.join(PROC_ROOT, "vmstat"))
+    for field, key in (("oom_kill_count", "oom_kill"),
+                       ("pgmajfault_count", "pgmajfault")):
+        value = _kv_int(vmstat, key)
+        if value is not None and value >= 0:
+            out[field] = value
+    available_kb = _kv_int(
+        _read_text(os.path.join(PROC_ROOT, "meminfo")), "MemAvailable:")
+    if available_kb is not None and available_kb >= 0:
+        out["mem_available_bytes"] = available_kb * 1024
+    return out
+
+
+def tcp_retransmit_segs() -> int | None:
+    """Cumulative TCP retransmits, from /proc/net/snmp's `Tcp:` row (§4.13).
+
+    /proc/net/snmp is a labels line followed by its values line, so the value is
+    read by the **index of the `RetransSegs` label** rather than by a fixed
+    column. A kernel that inserts a counter therefore cannot silently shift this
+    field onto a different number — the failure mode a positional read has.
+    """
+    text = _read_text(os.path.join(PROC_ROOT, "net", "snmp"))
+    if not text:
+        return None
+    rows = [line.split() for line in text.splitlines() if line.startswith("Tcp:")]
+    if len(rows) < 2:
+        return None
+    labels, values = rows[0][1:], rows[1][1:]
+    if "RetransSegs" not in labels:
+        return None
+    index = labels.index("RetransSegs")
+    if index >= len(values):
+        return None
+    value = _int_or_none(values[index])
+    return value if value is not None and value >= 0 else None
+
+
+def conntrack_facts() -> dict:
+    """`conntrack_count` / `conntrack_max` (§4.13) — the COUNT files only.
+
+    The conntrack *table* (`/proc/net/nf_conntrack`) is C2 — a list of per-flow
+    5-tuples (peer IPs and ports) — and is never read for telemetry. This
+    function must never grow a third read (governance.md §4.1.1 / §4.3; contract
+    §4.13 pins the constraint so a future collector cannot drift onto it).
+
+    `conntrack_max` is a table capacity and the contract's range is ≥ 1, so a
+    `0` there is a file that says nothing usable: it is omitted, not emitted
+    out of range.
+    """
+    out: dict = {}
+    base = os.path.join(PROC_ROOT, "sys", "net", "netfilter")
+    count = _int_or_none(_read_text(os.path.join(base, "nf_conntrack_count")))
+    if count is not None and count >= 0:
+        out["conntrack_count"] = count
+    maximum = _int_or_none(_read_text(os.path.join(base, "nf_conntrack_max")))
+    if maximum is not None and maximum >= 1:
+        out["conntrack_max"] = maximum
+    return out
+
+
+def transport_scalars() -> dict:
+    """§4.13's flat scalars: retransmits + the two conntrack counters."""
+    out: dict = {}
+    retransmit = tcp_retransmit_segs()
+    if retransmit is not None:
+        out["tcp_retransmit_segs"] = retransmit
+    out.update(conntrack_facts())
+    return out
+
+
+# `disk[]` bound (§4.3/§4.13): one row per probed mount, kept in `_DISK_MOUNTS`
+# order — the probe list is the rank, exactly as `process_facts()` ranks by RSS,
+# and never the order a filesystem happens to enumerate in. `_DISK_MOUNTS` holds
+# the two mounts the rules care about (`/` first, then the data mount); the cap
+# below is the array's bound and the tail is dropped, so a node that grows that
+# list cannot silently grow the sample.
+DISK_MAX = 8
+
+# `net[]` bound (§4.4/§4.13): one row per sample — the CONFIGURED interface
+# (`cfg["iface"]`), never an enumeration of every interface on the node. A node
+# hosting a hundred containers carries a hundred `veth*` peers, none of which is
+# the path to the controller; the cap is the bound and the rule is "the
+# configured interface only".
+NET_MAX = 1
+
+_MAJMIN_RE = re.compile(r"^\d+:\d+$")
+
+
+def _mount_majmin() -> dict[str, str]:
+    """Mount point → `major:minor` for every block-backed mount, in ONE read.
+
+    /proc/self/mountinfo serves every path in `_DISK_MOUNTS`, so the device
+    lookup costs one file read per sample rather than one subprocess per mount
+    (`findmnt`/`df` would each be a subprocess — see the §4.8 `systemctl show`
+    note for why that matters at a 1 s cadence). A mount whose line carries no
+    `major:minor` (tmpfs, sysfs, overlay) simply does not appear, and its device
+    counters are then omitted rather than read from another device's files.
+    """
+    text = _read_text(os.path.join(PROC_ROOT, "self", "mountinfo"))
+    if not text:
+        return {}
+    out: dict = {}
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) < 5 or not _MAJMIN_RE.match(fields[2]):
+            continue
+        out[fields[4]] = fields[2]
+    return out
+
+
+def _block_io_of(mount_point: str, majmin: dict[str, str]) -> tuple[int, int] | None:
+    """`(io_in_flight, io_ticks_ms)` for the device backing `mount_point`, or None.
+
+    `/sys/dev/block/<major:minor>/stat` is the block device's own counter set and
+    it also exists for a partition, so a mount on `/dev/sda1` is measured on
+    sda1 rather than on the whole disk behind it. The kernel has frozen this
+    table's column order at 11 fields (a 17-field variant appends discard and
+    flush counters *after* them), so field 9 is I/Os in flight and field 10 is ms
+    spent doing I/O — contract §4.13's sources. A shorter read is not a
+    measurement and yields None, which omits both fields.
+
+    The device is chosen by LONGEST matching mount point, so a nested mount
+    (e.g. `/var/lib/termini` on its own volume) is measured on its own device
+    and not on the root filesystem's.
+    """
+    key = None
+    for mount in sorted(majmin, key=len, reverse=True):
+        if mount_point == mount or mount_point.startswith(mount.rstrip("/") + "/"):
+            key = majmin[mount]
+            break
+    if key is None:
+        return None
+    fields = (_read_text(os.path.join(SYS_ROOT, "dev", "block", key, "stat")) or "").split()
+    if len(fields) < 10:
+        return None
+    in_flight = _int_or_none(fields[8])
+    ticks = _int_or_none(fields[9])
+    if in_flight is None or ticks is None or in_flight < 0 or ticks < 0:
+        return None
+    return in_flight, ticks
+
+
+# The four NIC counters §4.13 adds, in the contract's order.
+_NET_ERROR_COUNTERS = ("rx_errors", "tx_errors", "rx_dropped", "tx_dropped")
+
+
+def _iface_counter(ifname: str, counter: str) -> int | None:
+    """One `/sys/class/net/<iface>/statistics/<counter>` value, or None."""
+    value = _int_or_none(
+        _read_text(os.path.join(SYS_ROOT, "class", "net", ifname, "statistics", counter)))
+    return value if value is not None and value >= 0 else None
+
+
+# §4.14: per-instance OOM / major-fault attribution, read from the instance's OWN
+# CGROUP — not from the LXD API, whose `/1.0/instances/<name>` state object
+# exposes neither counter. `lxc.payload.<name>` is the cgroup LXD itself creates
+# per instance; the research card verified the path on this fleet's host
+# (fixture `cgroup-lxd-probe.txt`, t_cae0dfa8).
+#
+# Two file reads per instance per sample — the same cost class as the existing
+# `memory.current` read, so there is no sweep here to cache (the journal counts
+# and the LXD inventory, which ARE expensive, keep their own refresh rules).
+#
+# The instance name is used ONLY to build this local path: it never reaches the
+# wire (`vm_id` is derived, §4.6) and the C2 `config` object is never read.
+_LXC_CGROUP_TEMPLATE = "lxc.payload.{name}"
+# LXD instance names are DNS-ish; the name is untrusted input used to build a
+# filesystem path below, so anything else is refused rather than joined in.
+_LXC_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$")
+
+
+def instance_cgroup_facts(name: str) -> dict:
+    """`lxd_instances[]`'s §4.14 counters for one instance, or `{}`.
+
+    Both are cumulative cgroup counters: `oom_kill` (memory.events) and
+    `pgmajfault` (memory.stat). Each is omitted — never `0` — when its file is
+    unreadable, so an instance LXD runs under a different cgroup path (or a
+    reader that cannot see the hierarchy) ships no counter instead of a zero
+    that would claim nothing was ever killed.
+    """
+    if not isinstance(name, str) or not _LXC_NAME_RE.match(name):
+        return {}
+    base = os.path.join(CGROUP_ROOT, _LXC_CGROUP_TEMPLATE.format(name=name))
+    out: dict = {}
+    killed = _kv_int(_read_text(os.path.join(base, "memory.events")), "oom_kill")
+    if killed is not None and killed >= 0:
+        out["oom_kill_count"] = killed
+    faults = _kv_int(_read_text(os.path.join(base, "memory.stat")), "pgmajfault")
+    if faults is not None and faults >= 0:
+        out["pgmajfault_count"] = faults
+    return out
+
+
 # --------------------------------------------------------------------------- http
 def http_json(method: str, url: str, body=None, token: str | None = None,
               timeout: float = 15) -> tuple[int, object]:
@@ -1259,6 +1601,17 @@ def build_sample(cfg: dict, seq: int) -> dict:
     procs = process_facts()
     if procs is not None:
         sample["processes"] = procs
+    # §4.12–§4.14 (metric expansion, research card t_cae0dfa8). Each group is
+    # OMITTED, never zero-filled, when its source cannot be read: a node that
+    # cannot see /proc/pressure reports no pressure object rather than "no
+    # stall", and a node that cannot see the conntrack counters reports neither
+    # rather than `0/0`. The flat scalars are independent of each other, so a
+    # node missing one source still ships the others.
+    pressure = pressure_facts()
+    if pressure is not None:
+        sample["pressure"] = pressure
+    sample.update(memory_pressure_scalars())
+    sample.update(transport_scalars())
     return sample
 
 
@@ -1672,6 +2025,10 @@ def lxd_instance_inventory(cfg: dict) -> list | None:
         pct = _instance_cpu_pct(name, cpu.get("usage"), now)
         if pct is not None:
             entry["cpu_util_pct"] = pct
+        # §4.14 per-instance OOM / major-fault attribution, from this instance's
+        # own cgroup (not the LXD API, which exposes neither). Both are omitted
+        # when the cgroup files are unreadable (metric expansion, t_cae0dfa8).
+        entry.update(instance_cgroup_facts(name))
         # Operational fields (§4.6, t_957956e5): how long the instance has been in
         # this state, and how many restarts this daemon has observed. Both are
         # omitted when the underlying fact is unavailable rather than guessed.
