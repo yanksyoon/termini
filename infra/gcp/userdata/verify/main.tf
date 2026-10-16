@@ -51,7 +51,7 @@ module "ud" {
   inference_model_sha256 = "04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19"
   inference_model_alias  = "gemma"
   inference_port         = 8080
-  inference_backend      = "local"
+  inference_backend      = "gemini-proxy"
 }
 
 output "node_user_data" {

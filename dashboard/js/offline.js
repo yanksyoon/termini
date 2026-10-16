@@ -311,8 +311,9 @@ function randomLine(backend) {
     {
       severity: "info",
       message:
-        "externalModelCall after endpoint=http://127.0.0.1:8080 backend=local egress=in-vpc " +
-        "model=gemma answered_by=local-weights outcome=returned request_id=" + ulidish(),
+        "externalModelCall after endpoint=http://127.0.0.1:8085 backend=gemini-proxy " +
+        "egress=external destination=aiplatform.googleapis.com model=gemini-2.5-flash " +
+        "answered_by=forwarded-managed-model outcome=returned request_id=" + ulidish(),
     },
     { severity: "warn", message: `disk-degrade-01 fired on ${node.registration_id}: write_latency_ms ≥ 50 (sample), flag + alert only.` },
     { severity: "error", message: `oom-guard-01 fired on ${node.registration_id}: ram_used_bytes ≥ 95% ×2, advising vm.resize (auto).`, remediation: { type: "vm.resize", status: "succeeded", command_id: ulidish() } },

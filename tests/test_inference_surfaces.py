@@ -1,21 +1,25 @@
-"""Unit tests for the INFERENCE SURFACE SPLIT (kanban `t_aa7a70f9`, D9).
+"""Unit tests for the INFERENCE SURFACES (kanban `t_aa7a70f9`, D9 — with the
+agent-facing half SUPERSEDED by kanban `t_957956e5` / `t_3fcee90b`).
 
-The decision this locks down: the footprint has TWO inference surfaces with
-different guarantees, and neither may stand in for the other.
+The footprint has TWO inference listeners with different guarantees, and neither
+may stand in for the other:
 
-  * **agent-facing** — Node C's `:8080`, `backend=local`, answered from that
-    node's own weights. Client/agent traffic must not be forwarded, and the
-    forwarded backend is no longer offered on that port;
+  * **agent-facing** — Node C's `10.10.0.13:8080`, the frozen address the
+    controller hands to agents. Since the pivot (`t_3fcee90b`) it SHIPS
+    `backend=gemini-proxy`: the request is answered by the managed model through
+    the proxy's `generateContent` translation and labelled in-band, because the
+    live-GPU path is blocked by the L4 quota and this node's own CPU weights
+    measured 402 s on the operator's prompt. `backend=local` — this node's own
+    weights, forwarding nothing — stays the one-variable fallback;
   * **provider-only** — the CONTROLLER's `127.0.0.1:8085`, `backend=gemini-proxy`
     → `aiplatform.googleapis.com`. The operator's diagnosis runs there, it is
-    reachable from the controller only, and it is the only listener in the
-    footprint that is allowed to leave the premises.
+    reachable from the controller only, and it is never advertised to an agent.
 
 What is asserted here, with no GCP and no live fleet:
 
-  * the shipped Node C default is `local` (in the installer and in the rendered
-    first-boot user-data), so a rebuilt node cannot hand agent traffic to a
-    forwarded managed model;
+  * the shipped Node C default is `gemini-proxy` (in the installer and in the
+    rendered first-boot user-data), so a rebuilt node cannot silently come up on
+    the pre-pivot local pin — and `local` is still one variable away;
   * the provider surface renders loopback-only, in `gemini-proxy` mode, with no
     key file anywhere (the metadata identity is the only credential);
   * the controller's drop-in sends the DIAGNOSIS to the loopback provider
@@ -146,27 +150,38 @@ def _start_stub() -> tuple[ThreadingHTTPServer, str]:
 
 
 # --------------------------------------------------------------------------- #
-# 1. The agent surface: Node C is pinned to LOCAL weights
+# 1. The agent surface: Node C ships the managed-model proxy
 # --------------------------------------------------------------------------- #
 
-class NodeCAgentSurfaceIsLocalTest(unittest.TestCase):
-    def test_the_installer_default_backend_is_local(self):
-        text = NODE_C_INSTALLER.read_text(encoding="utf-8")
-        self.assertIn('BACKEND="${BACKEND:-local}"', text)
-        self.assertNotIn('BACKEND="${BACKEND:-gemini-proxy}"', text)
+class NodeCAgentSurfaceShipsTheProxyTest(unittest.TestCase):
+    """Pivot t_3fcee90b: :8080 answers from the managed model, not local weights."""
 
-    def test_the_rendered_first_boot_pins_local(self):
+    def test_the_installer_default_backend_is_gemini_proxy(self):
+        text = NODE_C_INSTALLER.read_text(encoding="utf-8")
+        self.assertIn('BACKEND="${BACKEND:-gemini-proxy}"', text)
+        self.assertNotIn('BACKEND="${BACKEND:-local}"', text)
+
+    def test_the_rendered_first_boot_pins_gemini_proxy(self):
         env = dict(RENDER_ENV)
-        env["INFERENCE_BACKEND"] = "local"
+        env["INFERENCE_BACKEND"] = "gemini-proxy"
         out = subprocess.run([str(NODE_C_RENDERER), "--write-files"], env=env,
                              cwd=REPO_ROOT, capture_output=True, text=True)
         self.assertEqual(0, out.returncode, out.stderr)
-        self.assertIn('BACKEND="local"', out.stdout)
+        self.assertIn('BACKEND="gemini-proxy"', out.stdout)
         # The agent surface still fronts the loopback worker — the AR-4 shape.
         self.assertIn('PROXY_PORT="8080"', out.stdout)
 
-    def test_the_renderer_default_is_local_when_unset(self):
+    def test_the_renderer_default_is_gemini_proxy_when_unset(self):
         out = subprocess.run([str(NODE_C_RENDERER), "--write-files"], env=RENDER_ENV,
+                             cwd=REPO_ROOT, capture_output=True, text=True)
+        self.assertEqual(0, out.returncode, out.stderr)
+        self.assertIn('BACKEND="gemini-proxy"', out.stdout)
+
+    def test_the_local_fallback_is_still_one_variable_away(self):
+        """The on-prem path did not disappear with the pivot — it is opt-in now."""
+        env = dict(RENDER_ENV)
+        env["INFERENCE_BACKEND"] = "local"
+        out = subprocess.run([str(NODE_C_RENDERER), "--write-files"], env=env,
                              cwd=REPO_ROOT, capture_output=True, text=True)
         self.assertEqual(0, out.returncode, out.stderr)
         self.assertIn('BACKEND="local"', out.stdout)

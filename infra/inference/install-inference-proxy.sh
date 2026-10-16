@@ -33,14 +33,14 @@
 #      there and `/run` is a tmpfs, so without this a REBOOTED node would answer
 #      `/health` from a proxy that cannot record what it is serving.
 #
-# Backend default: `local` — the shipped configuration since the inference split
-# (docs/contracts/infra-decisions.md D9, kanban t_aa7a70f9). :8080 is the
-# AGENT-facing surface: client/agent traffic is answered by THIS node's own CPU
-# weights and the port offers nothing else. The forwarded backend (`gemini-proxy`)
-# is not offered here any more — it is the CONTROLLER's provider-only listener
-# (infra/inference/setup-inference-surfaces.sh) and remains selectable here with
-# `termini-inference-switch gemini-proxy` if a node is deliberately configured
-# that way.
+# Backend default: `gemini-proxy` — the SHIPPED configuration (kanban t_957956e5 /
+# t_3fcee90b, which rolls back the inference split of docs/contracts/infra-decisions.md
+# D9): :8080 is the AGENT-facing surface and it is answered by the forwarded managed
+# model, labelled in-band so a client can always tell where its tokens came from.
+# The GPU path is blocked by the L4 quota and this node's own CPU weights measured
+# 402 s on the operator's prompt. `local` stays one step away and is the on-prem
+# fallback (this node's own CPU weights, forwarding nothing):
+# `termini-inference-switch local`, no rebuild.
 #
 # Run ON Node C as root, on a node whose first boot already built llama.cpp and
 # fetched the pinned weights (infra/gcp/cloud-init/llama-serve.sh):
@@ -48,7 +48,7 @@
 #   sudo ./install-inference-proxy.sh [--backend local|gemini-proxy]
 set -euo pipefail
 
-BACKEND="${BACKEND:-local}"
+BACKEND="${BACKEND:-gemini-proxy}"
 ALIAS="${ALIAS:-gemma}"
 PROXY_PORT="${PROXY_PORT:-8080}"
 WORKER_PORT="${WORKER_PORT:-8081}"

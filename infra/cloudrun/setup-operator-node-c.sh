@@ -4,35 +4,40 @@
 #
 # >>> SUPERSEDED FOR THE SHIPPED DEPLOYMENT — READ BEFORE RUNNING <<<
 # -----------------------------------------------------------------
-# Since the two inference surfaces were split (`docs/contracts/infra-decisions.md`
-# **D9**, kanban `t_aa7a70f9`):
+# The inference surfaces were split (`docs/contracts/infra-decisions.md` **D9**,
+# kanban `t_aa7a70f9`); that split was then rolled back for the agent surface
+# (kanban **`t_957956e5` / `t_3fcee90b`):
 #
-#   * Node C's `:8080` is the **AGENT** surface and is pinned to
-#     `TERMINI_INFERENCE_BACKEND=local` — it answers from that node's own weights
-#     and forwards nothing;
+#   * Node C's `:8080` is the **AGENT** surface and now **ships
+#     `TERMINI_INFERENCE_BACKEND=gemini-proxy`** — the forwarded managed model,
+#     labelled in-band (`backend`, `answered_by`, `served_model`,
+#     `is_gpu_inference:false`). `local` (that node's own CPU weights, forwarding
+#     nothing) is the one-variable fallback;
 #   * the operator's **DIAGNOSIS** runs on the CONTROLLER, against the
 #     provider-only listener on `127.0.0.1:8085` (`gemini-proxy` →
 #     `aiplatform.googleapis.com`), installed by
 #     `infra/inference/setup-inference-surfaces.sh`.
 #
 # This script does the OPPOSITE of D9: it points the diagnosis at Node C's agent
-# surface. On the shipped footprint that means the diagnosis would be answered by
-# CPU weights instead of Gemini — minutes instead of seconds (see LATENCY below),
-# and the diagnosis would no longer leave the premises. That is a legitimate
-# configuration to WANT (a fully on-prem decision path), but it must be a
-# deliberate choice, not a stale script run by hand: it now REFUSES to run unless
-# you pass `--allow-unsplit`, and it disables the split's controller drop-in when
-# it does (so the run is not silently half-applied).
+# surface. On the shipped footprint that means the diagnosis leaves the premises
+# through **the node** rather than the controller's provider listener, and it is
+# answered at whatever latency that node's backend has — provider-seconds in the
+# shipped `gemini-proxy` mode, minutes in `local` mode (see LATENCY below). Routing
+# the on-prem decision path through the node is a legitimate configuration to WANT,
+# but it must be a deliberate choice, not a stale script run by hand: it now
+# REFUSES to run unless you pass `--allow-unsplit`, and it disables the split's
+# controller drop-in when it does (so the run is not silently half-applied).
 #
 # LATENCY — READ THIS BEFORE RUNNING IT
 # -------------------------------------
-# Node C is CPU-only. MEASURED on `n2-standard-8` (8 threads, `gemma` = Gemma 3 4B
-# IT Q4_K_M): a decision over the operator's real prompt takes **minutes, not
-# seconds** — ≈84 s with a one-sample evidence window and ≈6.7 min (402 s) with
-# the real 20-sample window (prefill ≈33 tok/s, generation ≈8–10 tok/s). The real
-# 20-sample request is 12,748 prompt tokens under Gemma's tokenizer and fits the
-# 16,384-token slot. This is exactly why the shipped diagnosis path uses the
-# provider surface and the local surface is reserved for the client's agents.
+# In `local` mode Node C is CPU-only. MEASURED on `n2-standard-8` (8 threads,
+# `gemma` = Gemma 3 4B IT Q4_K_M): a decision over the operator's real prompt takes
+# **minutes, not seconds** — ≈84 s with a one-sample evidence window and ≈6.7 min
+# (402 s) with the real 20-sample window (prefill ≈33 tok/s, generation ≈8–10
+# tok/s). The real 20-sample request is 12,748 prompt tokens under Gemma's
+# tokenizer and fits the 16,384-token slot. This is one of the two reasons the
+# shipped diagnosis path uses the controller's provider listener: it is the only
+# surface that cannot be switched to the 402-second path.
 #
 # Node C MUST serve more than one slot (`--ctx-size 32768 --parallel 2` in
 # `infra/gcp/cloud-init/llama-serve.sh`). With `--parallel 1` the server is a
@@ -64,20 +69,23 @@ NODE_C="${NODE_C:-10.10.0.13}"
 [ "$ALLOW_UNSPLIT" = "1" ] || {
   cat >&2 <<'REFUSE'
 setup-operator-node-c.sh: REFUSING — this is the PRE-SPLIT wiring and it undoes
-the inference split (infra-decisions.md D9, kanban t_aa7a70f9).
+the inference split (infra-decisions.md D9, kanban t_aa7a70f9; the agent half of
+that split was itself rolled back by kanban t_957956e5 / t_3fcee90b).
 
-It would point the operator's DIAGNOSIS at Node C's :8080, which is now the
-AGENT-facing surface and is pinned to backend=local: the diagnosis would be
-answered by CPU weights (≈402 s for the 20-sample prompt) instead of Gemini, and
-would stop leaving the premises.
+It would point the operator's DIAGNOSIS at Node C's :8080, which is the
+AGENT-facing surface. Whether that is the CPU path depends on the node's backend:
+shipped `gemini-proxy` forwards the diagnosis out through the node; only a node
+explicitly switched to `local` answers it from CPU weights (≈402 s for the
+20-sample prompt) and keeps it on the premises.
 
-For the shipped split (diagnosis on the controller's provider-only listener),
+For the shipped wiring (diagnosis on the controller's provider-only listener),
 run instead:
 
     sudo infra/inference/setup-inference-surfaces.sh
 
-If a fully on-prem decision path is genuinely what you want, re-run with
---allow-unsplit; this script then also disables the split's controller drop-in.
+If routing the decision through Node C's front door is genuinely what you want,
+re-run with --allow-unsplit; this script then also disables the split's
+controller drop-in.
 REFUSE
   exit 2
 }

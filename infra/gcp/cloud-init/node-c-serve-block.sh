@@ -23,7 +23,7 @@
 # Usage — stdout is the fragment the shared cloud-init template inserts:
 #
 #   LLAMACPP_COMMIT=... MODEL_URL=... MODEL_FILE=... MODEL_SHA256=... \
-#   MODEL_ALIAS=gemma PORT=8080 INFERENCE_BACKEND=local \
+#   MODEL_ALIAS=gemma PORT=8080 INFERENCE_BACKEND=gemini-proxy \
 #     node-c-serve-block.sh --write-files   # write_files list entries (indent 2)
 #   ... node-c-serve-block.sh --runcmd      # the runcmd list entry
 #
@@ -44,12 +44,13 @@ MODEL_FILE="${MODEL_FILE:-}"
 MODEL_SHA256="${MODEL_SHA256:-}"
 MODEL_ALIAS="${MODEL_ALIAS:-}"
 PORT="${PORT:-8080}"
-# The backend a FRESH node serves. `local` is the shipped configuration since the
-# inference split (D9): this port is the AGENT surface and must answer from the
-# node's own CPU weights. `gemini-proxy` remains available as configuration (and
-# is what the CONTROLLER's provider-only listener runs), but on this port it would
-# hand agent traffic to a forwarded managed model.
-INFERENCE_BACKEND="${INFERENCE_BACKEND:-local}"
+# The backend a FRESH node serves. `gemini-proxy` is the SHIPPED configuration:
+# the roll-back of the inference split (D9) by kanban t_957956e5 / t_3fcee90b —
+# the GPU path is blocked by the L4 quota and this node's own CPU weights measured
+# 402 s on the operator's prompt, so the forwarded managed model is the path that
+# works today. `local` stays one env var away (this node's own CPU weights, the
+# D9 agent surface, forwarding nothing — and not interactive at 8–10 tok/s).
+INFERENCE_BACKEND="${INFERENCE_BACKEND:-gemini-proxy}"
 
 # Where cloud-init stages the front-door payload ON THE NODE. llama-serve.sh
 # defaults FRONT_DOOR_SRC to the same path — keep the two in step.

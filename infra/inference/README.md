@@ -30,32 +30,39 @@ directory's `install-inference-proxy.sh` on the payload cloud-init staged
 (byte-identical to the committed file; rendered by
 `infra/gcp/cloud-init/node-c-serve-block.sh` for the gcloud paths and by the
 `infra/gcp/userdata` module for Terraform). What a fresh node serves is explicit:
-**`TERMINI_INFERENCE_BACKEND=local`** — this node's own CPU weights, because
-`:8080` is the **agent-facing** surface of the inference split (D9, below).
+**`TERMINI_INFERENCE_BACKEND=gemini-proxy`** — the forwarded managed model,
+answered by Google AI and labelled in-band. That is the pivot (`t_957956e5` /
+`t_3fcee90b`) rolling back the inference split of D9: the live-GPU path is blocked
+by the L4 quota and this node's own CPU weights measured 402 s.
 Change it for the whole footprint with the `inference_backend` Terraform variable
 / `INFERENCE_BACKEND` env in `provision.sh` and `tools/raise-standing-fleet.sh`,
-or on one running node with `termini-inference-switch gemini-proxy` (one command,
+or on one running node with `termini-inference-switch local` (one command,
 no rebuild, no reinstall; `legacy` restores the pre-proxy host-exposed server).
+`local` is the on-prem fallback, not the shipped value.
 
-## Two inference surfaces (D9, `t_aa7a70f9`)
+## Two inference surfaces (D9, `t_aa7a70f9` — agent half superseded by `t_3fcee90b`)
 
 The footprint runs the same proxy code twice, on purpose, with **different
-guarantees** — and neither listener may stand in for the other:
+guarantees** — and neither listener may stand in for the other. Since the pivot
+(`t_957956e5` / `t_3fcee90b`) both ship `gemini-proxy`; what separates them is
+**who may reach them and who may be told they exist**, not which backend they run:
 
 | | **Agent-facing** (this directory's front door) | **Provider-only** |
 |---|---|---|
 | Address | `http://10.10.0.13:8080` — Node C, underlay | `http://127.0.0.1:8085` — the CONTROLLER, loopback |
-| Backend | **`local`** (shipped) — worker on `127.0.0.1:8081` | **`gemini-proxy`** → `aiplatform.googleapis.com` |
-| Answers from | this node's own weights (alias `gemma`) | `gemini-2.5-flash`, a forwarded managed model |
-| Egress | `in-vpc` — nothing leaves the premises | `external` — the request leaves for Google |
+| Backend | **`gemini-proxy`** (shipped since the pivot) → `aiplatform.googleapis.com`; `local` (worker on `127.0.0.1:8081`) is the one-variable fallback | **`gemini-proxy`** → `aiplatform.googleapis.com` |
+| Answers from | `gemini-2.5-flash`, a forwarded managed model — or this node's own weights (alias `gemma`) when the `local` fallback is selected | `gemini-2.5-flash`, a forwarded managed model |
+| Egress | `external` — the request leaves for Google (that is the shipped posture; `local` restores `in-vpc`) | `external` — the request leaves for Google |
 | Who calls it | agent VMs, the controller's intent extraction, any OpenAI client on the underlay | the operator's **diagnosis**, and nothing else |
 | Unit | `termini-inference-proxy.service` | `termini-inference-provider.service` |
 | Env | `/etc/termini/inference-proxy.env` | `/etc/termini/inference-proxy.env` (on the controller — a different host) |
 | Installer | [`install-inference-proxy.sh`](install-inference-proxy.sh) (first boot calls it) | [`setup-inference-surfaces.sh`](setup-inference-surfaces.sh) |
 
-The agent port **offers no forwarded backend**: a request to `10.10.0.13:8080`
-can only be answered by that node's weights. The provider listener **offers no
-local backend** — there is no worker on the controller, and `/health` says so by
+The agent port **offers the forwarded backend too** — a request to
+`10.10.0.13:8080` is answered by the managed model unless the node was explicitly
+configured with the `local` fallback — and every answer says which one answered,
+so a client never has to guess. The provider listener **offers no local backend**
+— there is no worker on the controller, and `/health` says so by
 **measuring** it (`local_path.available: false`) rather than asserting a local
 path exists. Each surface has its own env file, unit and address, so flipping one
 leaves the other's `/health` byte-identical; `tests/test_inference_surfaces.py`
@@ -70,13 +77,14 @@ Two backends, chosen by configuration, no rebuild:
 * **`local`** — transparent passthrough to the llama.cpp **worker**, which moves to
   loopback `127.0.0.1:8081` (this is also the frozen AR-4 shape: front door on
   `:8080`, workers on loopback). The bytes that come back are llama.cpp's own.
-  **This is the shipped value on Node C**, because this listener is the
-  agent-facing surface.
+  **This is the on-prem FALLBACK on Node C** — opt-in since the pivot
+  (`termini-inference-switch local`, one command, no rebuild).
 * **`gemini-proxy`** — the request is translated to Vertex AI `generateContent`
   (`gemini-2.5-flash`) and the answer is returned in the SAME OpenAI envelope,
   including `usage`/`timings`, honouring `max_tokens` and `temperature`. **This is
-  the provider listener's value** on the controller (`127.0.0.1:8085`), and the
-  operator's diagnosis is the traffic it exists for.
+  the shipped value on BOTH listeners since the pivot**: Node C's agent front door
+  (`:8080`, kanban `t_3fcee90b`) and the controller's provider listener
+  (`127.0.0.1:8085`), where the operator's diagnosis is the traffic it exists for.
 
 **A forwarded answer says so in-band — it is not GPU inference, not on-prem
 inference, and not Gemma.** Every forwarded response states it (headers
@@ -87,7 +95,7 @@ body `termini_backend`: `backend=gemini-proxy`, `answered_by=forwarded-managed-m
 `egress=external`, `destination=aiplatform.googleapis.com`), and so does every log
 line. The controller's `externalModelCall()` audit row records the same destination
 (`controller/app/operator/egress.py`), so a forwarded answer cannot be read as a
-local one — and on the agent-facing port there is no forwarded answer to read.
+local one — on either port.
 On the **local** surface the labelling moves to the headers plus the JSON log line
 (the body is llama.cpp's own bytes, relayed verbatim).
 
@@ -107,9 +115,10 @@ decision prompt measured **402 s** on `n2-standard-8`
 prompt on the provider surface takes **≈1.8 s**.
 
 So: **agent tasks served locally are not interactive until the GPU quota lands** —
-short turns are seconds-to-minutes. That is the price of the agent path being
-genuinely on-prem, and it is the reason the diagnosis runs on the provider surface
-instead. Neither number is a surprise; both are in this file on purpose.
+short turns are seconds-to-minutes. That is the price of the on-prem `local`
+fallback, and it is exactly why the shipped default since `t_3fcee90b` is the
+forwarded backend (and why the diagnosis runs on the provider surface). Neither
+number is a surprise; both are in this file on purpose.
 
 Failure semantics: Vertex AI slow / rate-limited / unreachable / misconfigured
 produces a **distinct, loud** error (`upstream_failure` log at `error` severity
@@ -130,17 +139,25 @@ a node that emulates a GPU host must not claim to be one.
 > WIRED AS OF `t_359ed606`: Node C's **first boot** now installs the front door
 > itself — cloud-init stages the four files this directory owns and
 > `infra/gcp/cloud-init/llama-serve.sh` calls `install-inference-proxy.sh`, so a
-> node created from the image family serves `local` on `:8080` with no
+> node created from the image family serves the front door on `:8080` with no
 > manual step, and llama.cpp comes up as the loopback worker on `127.0.0.1:8081`.
 > The first-boot default is a variable (`inference_backend` / `INFERENCE_BACKEND`),
-> and on a running node it is `termini-inference-switch local|gemini-proxy`.
+> and on a running node it is `termini-inference-switch gemini-proxy|local`.
 
-> WIRED AS OF `t_aa7a70f9` (the inference split, **D9**): the shipped default is
-> `local` (above), and the forwarded backend moved to the controller's
-> provider-only listener — `setup-inference-surfaces.sh` installs it on
-> `127.0.0.1:8085` and writes the controller drop-in that points the diagnosis
-> there. Evidence and the live acceptance commands:
+> WIRED AS OF `t_aa7a70f9` (the inference split, **D9**): the forwarded backend
+> used to be the controller's provider-only listener — `setup-inference-surfaces.sh`
+> installs it on `127.0.0.1:8085` and writes the controller drop-in that points the
+> diagnosis there. Evidence and the live acceptance commands:
 > [`evidence/split-surfaces-2026-10-15.md`](evidence/split-surfaces-2026-10-15.md).
+
+> **SUPERSEDED AS OF `t_957956e5` / `t_3fcee90b` (2026-10-16):** D9's split is
+> rolled back for the **agent** surface. A FRESH Node C ships
+> `TERMINI_INFERENCE_BACKEND=gemini-proxy` — the forwarded managed model on the
+> agent port, labelled in-band — because the live-GPU path is blocked by the L4
+> quota and the local path D9 chose measured 402 s. `local` remains the
+> one-variable fallback. The provider-only listener above is unchanged and still
+> exists; what it no longer is, is a guarantee that the agent port cannot forward.
+> See `docs/contracts/infra-decisions.md` D9 → *Superseded*.
 
 ## Acceptance (verbatim)
 
@@ -153,9 +170,9 @@ Both are proven against the live 3-node GCP footprint in
 
 | | |
 |---|---|
-| Frozen decisions | `docs/contracts/infra-decisions.md` **D2** (underlay routing, no overlay), **D5** (host-exposed `llama.cpp`, OpenAI-compatible), **D9** (two inference surfaces: agents local on Node C, diagnosis provider-only on the controller) |
-| Interface | `docs/contracts/agent-runtime.md` **AR-4** (OpenAI-compatible router on `:8080`, local-only) / **AR-6** (alias `gemma` resident, shipped) |
-| Endpoint | `http://10.10.0.13:8080` — Node C's **underlay** IP, bound `0.0.0.0` on the host. **Agent-facing**, `backend=local` |
+| Frozen decisions | `docs/contracts/infra-decisions.md` **D2** (underlay routing, no overlay), **D5** (host-exposed `llama.cpp`, OpenAI-compatible), **D9** (two inference surfaces — the agent half **superseded by `t_3fcee90b`**: agents ship the forwarded managed model on Node C, and `local` is the fallback; the diagnosis stays provider-only on the controller) |
+| Interface | `docs/contracts/agent-runtime.md` **AR-4** (OpenAI-compatible router on `:8080`, shipped `gemini-proxy` with in-band labels, `local` as the one-variable fallback) / **AR-6** (alias `gemma` resident, shipped) |
+| Endpoint | `http://10.10.0.13:8080` — Node C's **underlay** IP, bound `0.0.0.0` on the host. **Agent-facing**, shipped `backend=gemini-proxy` |
 | Provider endpoint | `http://127.0.0.1:8085` — the **controller's** loopback listener, `backend=gemini-proxy`. Never a node address, never handed to an agent |
 | Reachability | GCP firewall allows `tcp/8080` from `10.10.0.0/24` **only** (never public); the provider listener is loopback and has no firewall rule because the fleet has no route to it |
 

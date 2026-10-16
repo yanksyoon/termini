@@ -22,16 +22,19 @@ gpu_accelerator_count  = 0
 # Node C serves the pinned gemma GGUF on CPU through the inference FRONT DOOR on
 # the frozen contract port (image/models.lock.json, t_ab18d582; front door from
 # t_359ed606). inference_backend picks what a FRESH node serves through it:
-#   local          (shipped) this node's own CPU weights behind the front door —
-#                  the AGENT surface, forwarding nothing (inference split, D9)
-#   gemini-proxy             the forwarded managed model, labelled in-band; since
-#                            D9 that belongs on the CONTROLLER's provider-only
-#                            listener (infra/inference/setup-inference-surfaces.sh)
-# On a RUNNING node the same choice is `termini-inference-switch local|gemini-proxy`.
+#   gemini-proxy   (shipped) the forwarded managed model, answered by Google AI
+#                  and labelled in-band (`backend`, `answered_by`, `served_model`,
+#                  `is_gpu_inference:false`). This is the roll-back of D9's split
+#                  (kanban t_957956e5 / t_3fcee90b): the GPU path is blocked by the
+#                  L4 quota and the node's own CPU weights measured 402 s.
+#   local                    the one-variable fallback: this node's own CPU weights
+#                            behind the front door — the D9 agent surface, which
+#                            forwards nothing and is not interactive at 8–10 tok/s.
+# On a RUNNING node the same choice is `termini-inference-switch gemini-proxy|local`.
 # Override inference_model_url / _file / _sha256 / _alias to serve a different
 # weight (the .sha256 must match or first boot aborts).
 serve_inference        = true
-inference_backend      = "local"
+inference_backend      = "gemini-proxy"
 inference_port         = 8080
 inference_model_file   = "gemma-3-4b-it-Q4_K_M.gguf"
 inference_model_sha256 = "04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19"

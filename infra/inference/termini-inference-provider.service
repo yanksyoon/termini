@@ -6,7 +6,10 @@
 # aiplatform.googleapis.com.
 #
 # It is deliberately NOT a second copy of Node C's front door: Node C's `:8080`
-# serves the AGENT surface from that node's local weights and must never forward.
+# serves the AGENT surface — and since the pivot (`t_957956e5` / `t_3fcee90b`) that
+# surface ships `gemini-proxy` too, with `local` (that node's own weights) as the
+# one-variable fallback. What still separates this listener is reachability, not
+# backend: it is loopback-only and is never advertised to an agent.
 # Same proxy code, different env file, different address, different guarantee.
 Description=Termini inference provider listener (controller loopback :8085) — diagnosis via Gemini ONLY
 Documentation=file:/opt/termini/inference/proxy.py
