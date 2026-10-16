@@ -2,12 +2,15 @@
 # place-agent-image.sh — pre-distribute the baked agent VM image to Termini nodes.
 #
 # Card: t_7c40f9a3 ("Template Agent VM as LXD image and place across Nodes A/B").
+# Alias: t_94303203 republished the image as `agent-os/w5` (the §5.6 task surface +
+# the `gemma` alias the node serves). `agent-os/w4` is deliberately NOT deleted on
+# the nodes, so a switch back is `--node-alias agent-os/w4`.
 #
 # For each node this script:
 #   1. (idempotently) ensures the node's stock LXD is initialised: a `local`
 #      storage pool and the `lxdbr0` guest bridge (10.20.<n>.0/24, D2).
 #   2. imports the baked image tarball into the node's *local* image store under
-#      the alias `agent-os/w4`. Nothing is pulled from a registry/remote: the
+#      the alias `agent-os/w5`. Nothing is pulled from a registry/remote: the
 #      tarball is copied in and imported, so the alias resolves locally.
 #   3. creates the `termini-agent` LXD profile and renders the launch-time
 #      cloud-init user-data (project SSH key) to /root/agent-user-data.yaml.
@@ -15,14 +18,14 @@
 # Idempotent and safe to re-run after a node is rebuilt. The documented launch
 # command then needs no network at all:
 #
-#   lxc launch agent-os/w4 agent-test -p termini-agent \
+#   lxc launch agent-os/w5 agent-test -p termini-agent \
 #     -c cloud-init.user-data="$(cat /root/agent-user-data.yaml)"
 #
 # Usage:
 #   place-agent-image.sh [options]
 #     --nodes "N1 N2"        nodes to place onto (default: demo-node-a demo-node-b)
 #     --host-alias ALIAS     source image alias on this host (default agent-vm/2026.10.0)
-#     --node-alias ALIAS     alias to create on each node (default agent-os/w4)
+#     --node-alias ALIAS     alias to create on each node (default agent-os/w5)
 #     --profile NAME         profile to create (default termini-agent)
 #     --pool NAME            storage pool name to ensure (default local)
 #     --tarball PATH         use a prebuilt image tarball instead of exporting
@@ -35,7 +38,7 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOST_ALIAS="${TERMINI_HOST_IMAGE_ALIAS:-agent-vm/2026.10.0}"
-NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w4}"
+NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w5}"
 PROFILE="${TERMINI_AGENT_PROFILE:-termini-agent}"
 POOL="${TERMINI_POOL:-local}"
 NODES_STR="${TERMINI_NODES:-demo-node-a demo-node-b}"

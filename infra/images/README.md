@@ -13,7 +13,7 @@ There are two pre-baked images:
 | Role | Host alias | Per-node alias | What it is |
 |---|---|---|---|
 | host node image | `agentic-os/w3` | — (the node *is* it) | the OS a node boots (image/ pipeline) |
-| agent VM image | `agent-vm/2026.10.0` | `agent-os/w4` | the workload image a node launches agent VMs from (image/agent-vm) |
+| agent VM image | `agent-vm/2026.10.0` | `agent-os/w5` | the workload image a node launches agent VMs from (image/agent-vm) |
 
 ---
 
@@ -21,7 +21,7 @@ There are two pre-baked images:
 
 | Card acceptance criterion | How it is met | Command |
 |---|---|---|
-| the required image artifacts are present on disk **on each node** (A/B/C) | `prewarm-images.sh` caches both image tarballs under `/var/lib/termini/images/` on every node (sha256 sidecars) and imports `agent-os/w4` into each node's local LXD store from that on-disk tarball | `infra/images/prewarm-images.sh` |
+| the required image artifacts are present on disk **on each node** (A/B/C) | `prewarm-images.sh` caches both image tarballs under `/var/lib/termini/images/` on every node (sha256 sidecars) and imports `agent-os/w5` into each node's local LXD store from that on-disk tarball | `infra/images/prewarm-images.sh` |
 | a fresh agent VM **launches from the local image without egress** (egress blocked / zero downloads) | `verify-image-residency.sh` drops the node's default route + off-lab egress, launches a fresh VM from the local alias, and proves the boot needed no network (egress still blocked after launch **and** the image's own first-boot evidence reports `network_downloads_at_boot: 0`) | `infra/images/verify-image-residency.sh` |
 
 ## 2. What was found (the gap this closes)

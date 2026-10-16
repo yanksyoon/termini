@@ -1,0 +1,2 @@
+pkg= /opt/termini/venv/lib/python3.12/site-packages/termini_agent
+has_taskapi= True

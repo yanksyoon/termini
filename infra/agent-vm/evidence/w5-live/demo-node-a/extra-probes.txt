@@ -1,0 +1,121 @@
+--- GET /v1/tasks AFTER the submitted task (enumeration) ---
+{"tasks": [{"task_id": "01M52V40DZS7YXMZCXPWZXMHWA", "state": "error", "actor": null, "model_preference": null, "model": null, "max_tokens": 256, "temperature": 0.2, "submitted_at": "2026-10-16T17:10:56Z", "started_at": "2026-10-16T17:10:56Z", "ended_at": "2026-10-16T17:10:58Z", "duration_ms": 2022, "tokens": null, "usage": {}, "provenance": {}, "error": {"code": "INFERENCE_UNREACHABLE", "message": "inference endpoint http://10.10.0.13:8080 is unreachable: timed out", "actionable": "the on-prem inference endpoint is not answering at all: check that node C is up and that inference.base_url names its underlay address"}, "result_ref": null}], "count": 1, "bound": 2}
+--- agent log tail (C0 counters only; no task content) ---
+{"ts":"2026-10-16T17:10:56+0000","level":"info","logger":"termini_agent.taskapi","msg":"task accepted","task_id":"01M52V40DZS7YXMZCXPWZXMHWA","state":"queued","actor":null,"max_tokens":256,"prompt_bytes":24,"in_flight":1}
+{"ts":"2026-10-16T17:10:56+0000","level":"info","logger":"termini_agent.taskapi","msg":"task running","task_id":"01M52V40DZS7YXMZCXPWZXMHWA","state":"running"}
+{"ts":"2026-10-16T17:10:58+0000","level":"warning","logger":"termini_agent.taskapi","msg":"task failed","task_id":"01M52V40DZS7YXMZCXPWZXMHWA","state":"error","code":"INFERENCE_UNREACHABLE"}
+--- /status (content-free task counters) ---
+{"schema_version": "1.0", "kind": "termini.agent_status", "vm_id": "01J00000000000000000000001", "project_id": "01J00000000000000000000000", "agent_image_version": "agent-vm-2026.10.0", "state": "idle", "pid": 660, "started_at": 1792170650, "broker_reachable": false, "inflight": 0, "stats": {"completed": 0, "failed": 0, "requeued": 0}, "governance": {"egress": "deny", "telemetry_class": "C0", "local_only": true}, "config": {"project_id": "01J00000000000000000000000", "vm_id": "01J00000000000000000000001", "node_id": "01J00000000000000000000002", "agent_image_version": "agent-vm-2026.10.0", "inference": {"base_url": "http://10.10.0.13:8080", "default_model": "gemma", "allowed_models": ["gemma"], "allowed_networks": ["10.10.0.0/24"], "stream": true}, "broker": {"endpoint": "http://10.20.1.1:7071", "max_concurrent_tasks": 2}, "tasks": {"max_concurrent": 2, "result_sink": "/var/lib/termini/agent/results"}, "logging": {"sink": "/var/log/termini/agent.jsonl", "local_only": true}}, "tasks": {"bound": 2, "in_flight": 0, "queued": 0, "completed": 0, "failed": 1, "tasks_completed_total": 0, "tasks_failed_total": 1, "last_task_id": "01M52V40DZS7YXMZCXPWZXMHWA"}, "status_time": 1792170730, "last_broker_error": "[Errno 111] Connection refused"}
+--- result/task dirs (sink per agent-runtime.md 7.3) ---
+total 8
+drwxr-x--- 2 agent agent 4096 Oct 16 17:05 .
+drwxr-xr-x 4 root  root  4096 Oct 16 17:05 ..
+total 8
+drwxr-x--- 2 agent agent 4096 Oct 16 17:05 .
+drwxr-xr-x 4 root  root  4096 Oct 16 17:05 ..
+--- first-boot evidence (offline bake) ---
+{
+  "schema_version": "1.0",
+  "kind": "termini.agent_first_boot_preflight",
+  "image_version": null,
+  "checks": [
+    {
+      "name": "agent_deps_importable",
+      "ok": true,
+      "detail": "termini-agent selfcheck ok (runtime + 3 framework venvs)"
+    },
+    {
+      "name": "agent_config_valid",
+      "ok": true,
+      "detail": "config validates against the on-prem allow-list"
+    }
+  ],
+  "deps": [
+    {
+      "module": "openai",
+      "status": "ok"
+    },
+    {
+      "module": "httpx",
+      "status": "ok"
+    },
+    {
+      "module": "pydantic",
+      "status": "ok"
+    },
+    {
+      "module": "yaml",
+      "status": "ok"
+    },
+    {
+      "module": "tenacity",
+      "status": "ok"
+    },
+    {
+      "module": "structlog",
+      "status": "ok"
+    },
+    {
+      "module": "langchain_core",
+      "status": "ok"
+    },
+    {
+      "module": "langgraph",
+      "status": "ok"
+    },
+    {
+      "module": "google.adk",
+      "status": "ok"
+    }
+  ],
+  "selfcheck": {
+    "kind": "termini.agent_selfcheck",
+    "agent_version": "2026.10.0",
+    "python": "3.12.3",
+    "runtime_imports": {
+      "openai": "ok",
+      "httpx": "ok",
+      "pydantic": "ok",
+      "yaml": "ok",
+      "tenacity": "ok",
+      "structlog": "ok",
+      "langchain_core": "ok",
+      "langgraph": "ok",
+      "google.adk": "ok"
+    },
+    "framework_venvs": {
+      "langchain": "ok",
+      "crewai": "ok",
+      "autogen": "ok"
+    },
+    "config": {
+      "path": "/etc/termini/agent.yaml",
+      "status": "valid",
+      "inference_base_url": "http://10.10.0.13:8080",
+      "default_model": "gemma",
+      "allowed_models": [
+        "gemma"
+      ]
+    },
+    "ok": true
+  },
+  "verdict": "pass",
+  "network": {
+    "method": "proc_net_dev",
+    "source": "/proc/net/dev",
+    "measured": true,
+    "allowance_bytes": 8192,
+    "rx_bytes": 3386,
+    "tx_bytes": 3804,
+    "rx_packets": 33,
+    "tx_packets": 41,
+    "nonloopback_interfaces": [
+      "eth0"
+    ],
+    "nonloopback_interface_count": 1,
+    "downloaded_bytes": 0
+  },
+  "network_downloads_at_boot": 0,
+  "verified_offline": true
+}
+

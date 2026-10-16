@@ -16,7 +16,7 @@ TERMINI_OUT_DIR=/var/lib/termini/build image/agent-vm/verify-agent-image.sh
 | `selfcheck.json` | `termini-agent selfcheck` | every runtime + framework import `ok`; `/etc/termini/agent.yaml` valid |
 | `status.json` | `curl 127.0.0.1:9101/status` | the runtime is live and `governance.egress: deny` |
 | `boot-journal.txt` | `journalctl -b -u termini-agent` | boot-time timeline (no fetch, no failure) |
-| `image-manifest.json` | `build-agent-image.sh` | alias, immutable tag, artifact sha256/size, all pins |
+| `image-manifest.json` | `build-agent-image.sh` | alias, immutable tag, artifact sha256/size, all pins — **refreshed 2026-10-16 by `t_94303203`** (`agent-vm-2026.10.0+g68763f60ef6d`, sha256 `eb7806…`); the per-check files above still describe the 2026-10-12 bake (`…+gb9f934d8f544`, sha256 `c3d039…`) |
 
 The key acceptance facts: the VM was launched with a profile that has **no
 network interface**, `termini-agent` reached `active`, `termini-agent selfcheck`

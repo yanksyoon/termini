@@ -1,0 +1,53 @@
+BEFORE (w4, the image this card replaces) — raw, 2026-10-16T17:0x UTC
+node: demo-node-a   instance: w4-before-probe (launched from agent-os/w4, fingerprint c3d039642a61)
+
+$ lxc exec demo-node-a -- lxc exec w4-before-probe -- systemctl is-active termini-agent
+active
+
+$ lxc exec demo-node-a -- lxc exec w4-before-probe -- cat /etc/termini/agent.yaml
+# Termini agent VM runtime config — BAKED DEFAULT.
+#
+# cloud-init renders the authoritative /etc/termini/agent.yaml at launch
+# (agent-runtime.md §4.4). This baked copy lets termini-agent.service start and
+# serve /status even before cloud-init runs (e.g. an offline bake-inspection boot).
+project_id: 01J00000000000000000000000
+vm_id: 01J00000000000000000000001
+node_id: 01J00000000000000000000002
+agent_image_version: agent-vm-2026.10.0
+inference:
+  base_url: http://10.10.0.13:8080
+  default_model: deepseek-flash                <-- retired alias (PR #164): refused with ModelNotAllowed
+  allowed_models: [deepseek-flash, deepseek-v4-pro]
+  token_file: /etc/termini/inference.token
+  stream: true
+  connect_timeout_s: 2
+  request_timeout_s: 120
+broker:
+  endpoint: http://10.20.1.1:7071
+  pull_interval_s: 1
+  max_concurrent_tasks: 2
+logging:
+  sink: /var/log/termini/agent.jsonl
+  local_only: true
+governance:
+  telemetry_class: C0
+  egress: deny
+                                             <-- no `tasks:` block at all
+
+$ lxc exec demo-node-a -- lxc exec w4-before-probe -- ss -ltnp
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
+LISTEN 0      5          127.0.0.1:9101      0.0.0.0:*    users:(("termini-agent",pid=713,fd=4))
+LISTEN 0      4096         0.0.0.0:22        0.0.0.0:*    users:(("systemd",pid=1,fd=71))
+LISTEN 0      4096   127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=153,fd=15))
+LISTEN 0      4096      127.0.0.54:53        0.0.0.0:*    users:(("systemd-resolve",pid=153,fd=17))
+LISTEN 0      4096            [::]:22           [::]:*    users:(("systemd",pid=1,fd=72))
+
+$ lxc exec demo-node-a -- lxc exec w4-before-probe -- curl -sS -o /dev/null -w 'http=%{http_code}\n' --max-time 5 http://127.0.0.1:9101/v1/tasks
+http=404                                      <-- no task surface in w4
+
+$ lxc exec demo-node-a -- lxc exec w4-before-probe -- curl -sS --max-time 5 http://127.0.0.1:9101/status
+{"schema_version": "1.0", "kind": "termini.agent_status", "vm_id": "01J00000000000000000000001", "project_id": "01J00000000000000000000000", "agent_image_version": "agent-vm-2026.10.0", "state": "idle", "pid": 713, "started_at": 1792170015, "broker_reachable": false, "inflight": 0, "stats": {"completed": 0, "failed": 0, "requeued": 0}, "governance": {"egress": "deny", "telemetry_class": "C0", "local_only": true}, "config": {"project_id": "01J00000000000000000000000", "vm_id": "01J00000000000000000000001", "node_id": "01J00000000000000000000002", "agent_image_version": "agent-vm-2026.10.0", "inference": {"base_url": "http://10.10.0.13:8080", "default_model": "deepseek-flash", "allowed_models": ["deepseek-flash", "deepseek-v4-pro"], "stream": true}, "broker": {"endpoint": "http://10.20.1.1:7071", "max_concurrent_tasks": 2}, "logging": {"sink": "/var/log/termini/agent.jsonl", "local_only": true}}, "status_time": 1792170038, "last_broker_error": "[Errno 111] Connection refused"}
+                                             <-- /status has no tasks{} counters
+
+The probe instance was deleted again:
+$ lxc exec demo-node-a -- lxc delete --force w4-before-probe

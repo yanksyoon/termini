@@ -1,0 +1,102 @@
+{
+  "kind": "termini.agent_image_republish",
+  "schema_version": "1.0",
+  "card": "t_94303203",
+  "built_at": "2026-10-16T17:08Z",
+  "built_on": "the control host of the emulated cluster (LXD 5.x, nested lab nodes)",
+  "recipe": "image/agent-vm/build-agent-image.sh --build --version 2026.10.0",
+  "built_from_commit": "68763f60ef6d6a3d375e4d50ac0dfae669d5cdcc",
+  "built_from_note": "origin/main (266fa55) merged with the agent task-surface change set of PR #170 (t_1a2c913c); that is the tree that carries agent/src/termini_agent/taskapi.py, the tasks: block in config/agent.yaml.template and the result-sink hook in provision/30-termini-agent.sh. Rebuild from main after #170 lands.",
+  "host_alias": "agent-vm/2026.10.0",
+  "fingerprint": "eb7806889646eb7b59bcd590b4d1ceae5c3b2ce211490426054e981381af12b1",
+  "fingerprint_short": "eb7806889646",
+  "immutable_tag": "agent-vm-2026.10.0+g68763f60ef6d",
+  "image_digest": "sha256:3aeaab4d16fa",
+  "artifact": {
+    "name": "agent-vm-2026.10.0-68763f60ef6d.tar.gz",
+    "size_bytes": 801808873,
+    "sha256": "eb7806889646eb7b59bcd590b4d1ceae5c3b2ce211490426054e981381af12b1"
+  },
+  "node_alias": "agent-os/w5",
+  "node_alias_previous": "agent-os/w4",
+  "rollback": {
+    "node_alias_w4_kept": true,
+    "w4_fingerprint": "c3d039642a619e100ddf680c3d60e4d2641e568f377f5ed9ef420ad886b181e4",
+    "previous_bake_still_on_host_as": "agent-vm-2026.10.0+gb9f934d8f544",
+    "switch_back": "infra/agent-vm/place-agent-image.sh --nodes \"<nodes>\" --host-alias agent-vm-2026.10.0+gb9f934d8f544 --node-alias agent-os/w4"
+  },
+  "why": [
+    "agent-runtime.md 5.6 / 7.4 (PR #170): the runtime exposes POST /v1/tasks on its loopback listener (127.0.0.1:9101) with a per-instance tasks.max_concurrent bound. The w4 bake has no such surface.",
+    "PR #164: the wired model alias is `gemma`; deepseek-flash / deepseek-v4-pro are retired and refused with ModelNotAllowed instead of being substituted. The w4 bake still names deepseek-flash."
+  ],
+  "placed_on": ["demo-node-a", "demo-node-b"],
+  "what_the_guest_now_ships": {
+    "image_identity_line": "agent-vm-2026.10.0+g68763f60ef6d sha256:3aeaab4d16fa",
+    "installed_package": "/opt/termini/venv/lib/python3.12/site-packages/termini_agent (taskapi.py present)",
+    "baked_config": {
+      "inference.default_model": "gemma",
+      "inference.allowed_models": ["gemma"],
+      "inference.base_url": "http://10.10.0.13:8080",
+      "tasks.max_concurrent": 2,
+      "tasks.result_sink": "/var/lib/termini/agent/results"
+    },
+    "in_image_selftest": "provision/35-agent-selftest ran the runtime's own suite inside the bake, including image/agent-vm/agent/tests/test_taskapi.py -> passed"
+  },
+  "acceptance": {
+    "ran_at": "2026-10-16T17:10Z",
+    "how": "infra/agent-vm/tools/run-w5-republish.sh (place on A/B -> FRESH `lxc launch agent-os/w5` per node -> infra/agent-vm/tools/accept-w5.sh). Nothing was copied into the instances.",
+    "points": [
+      {
+        "point": "1. termini-agent.service is active inside a newly created instance",
+        "node_a": "active",
+        "node_b": "active",
+        "raw": "w5-live/demo-node-a/service-active.txt, w5-live/demo-node-a/service-status.txt"
+      },
+      {
+        "point": "2. /etc/termini/agent.yaml names gemma, allowed_models [gemma] and a tasks.max_concurrent bound",
+        "observed": ["12:  default_model: gemma", "13:  allowed_models: [gemma]", "25:  max_concurrent: 2"],
+        "raw": "w5-live/demo-node-a/agent.yaml, w5-live/demo-node-a/config-assertions.txt"
+      },
+      {
+        "point": "3a. the task surface is loopback-only",
+        "observed": "LISTEN 0 5 127.0.0.1:9101 0.0.0.0:* users:((\"termini-agent\",pid=660,fd=4))",
+        "raw": "w5-live/demo-node-a/listeners.txt"
+      },
+      {
+        "point": "3b. and LIVE from inside the instance",
+        "observed": "GET /v1/tasks -> http=200 {\"tasks\": [], \"count\": 0, \"bound\": 2}",
+        "raw": "w5-live/demo-node-a/inside-tasks.txt"
+      },
+      {
+        "point": "3c. and REFUSED from outside the instance (from the node that hosts it)",
+        "observed": "curl: (7) Failed to connect to 10.20.1.187 port 9101 after 0 ms: Couldn't connect to server / http=000 (same for :9101/status)",
+        "raw": "w5-live/demo-node-a/outside-tasks.txt, w5-live/demo-node-a/outside-status.txt"
+      },
+      {
+        "point": "extra: the surface really runs a task (it cannot fake an answer)",
+        "observed": "POST /v1/tasks -> 202 {\"task_id\":\"01M52V40DZS7YXMZCXPWZXMHWA\",\"state\":\"queued\"}; then state=error, code=INFERENCE_UNREACHABLE after 2022 ms ('inference endpoint http://10.10.0.13:8080 is unreachable: timed out'), i.e. no on-prem inference in the lab; enumeration then reports count=1 and /status reports tasks.failed=1 while the log lines stay content-free (prompt_bytes only)",
+        "raw": "w5-live/demo-node-a/post-task.txt, post-task-id.txt, task-state.txt, extra-probes.txt"
+      },
+      {
+        "point": "extra: the bake still boots with zero network fetches",
+        "observed": "/var/log/termini/first-boot.json -> verdict=pass, config default_model=gemma, network_downloads_at_boot=0, verified_offline=true",
+        "raw": "w5-live/demo-node-a/extra-probes.txt"
+      }
+    ],
+    "before_contrast": "w5-live/before-w4.txt — the same probes against a fresh agent-os/w4 instance: config names deepseek-flash / [deepseek-flash, deepseek-v4-pro], no tasks: block, and GET /v1/tasks -> http=404."
+  },
+  "alias_policy": {
+    "decision": "Publish the rebuilt image on the nodes as agent-os/w5 and keep agent-os/w4 in place.",
+    "fleet_tooling_now_defaults_to": "agent-os/w5",
+    "tooling_switched": [
+      "infra/agent-vm/place-agent-image.sh (--node-alias default)",
+      "infra/agent-vm/verify-placement.sh (--node-alias default)",
+      "infra/agent-vm/verify-callpath.sh (--node-alias default)",
+      "infra/images/prewarm-images.sh (--node-alias default)",
+      "infra/images/verify-image-residency.sh (--node-alias default)",
+      "infra/warm/warm_cluster.sh (TERMINI_AGENT_IMAGE_ALIAS default)"
+    ],
+    "not_changed": "controller/app/config.py DEFAULT_LXD_WORKLOAD_IMAGE stays agent-vm/2026.10.0 (pinned by tests/test_workload_image_default.py to image/agent-vm/evidence/image-manifest.json). A controller driving a node's local store must carry TERMINI_LXD_WORKLOAD_IMAGE=agent-os/w5."
+  },
+  "cost": "no GCP compute started or created: the build ran on this host's LXD and the acceptance ran on the lab footprint (demo-node-a / demo-node-b, nested LXD containers)."
+}

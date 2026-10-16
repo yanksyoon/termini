@@ -2,10 +2,10 @@
 # verify-placement.sh — acceptance for card t_7c40f9a3.
 #
 # Proves, per node, the three acceptance criteria:
-#   (1) `lxc launch agent-os/w4 agent-test` succeeds on the node with egress
+#   (1) `lxc launch agent-os/w5 agent-test` succeeds on the node with egress
 #       blocked at the node and zero network downloads;
 #   (2) `ssh` into the launched instance works via the injected project key;
-#   (3) the `agent-os/w4` alias resolves locally on the node (fingerprint match,
+#   (3) the `agent-os/w5` alias resolves locally on the node (fingerprint match,
 #       no remote pull).
 #
 # Egress is blocked for the launch by dropping the node's default route *and*
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 NODES_STR="${TERMINI_NODES:-demo-node-a demo-node-b}"
-NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w4}"
+NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w5}"
 HOST_ALIAS="${TERMINI_HOST_IMAGE_ALIAS:-agent-vm/2026.10.0}"
 PROFILE="${TERMINI_AGENT_PROFILE:-termini-agent}"
 INST="${TERMINI_TEST_INSTANCE:-agent-test}"
