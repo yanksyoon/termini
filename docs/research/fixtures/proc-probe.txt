@@ -1,0 +1,177 @@
+=== host: hack  kernel: 6.8.0-142-generic ===
+
+### /proc file presence (readable = OK)
+OK    /proc/stat
+OK    /proc/vmstat
+OK    /proc/meminfo
+OK    /proc/loadavg
+OK    /proc/diskstats
+OK    /proc/swaps
+OK    /proc/uptime
+OK    /proc/crypto
+OK    /proc/modules
+OK    /proc/cpuinfo
+OK    /proc/mdstat
+OK    /proc/schedstat
+OK    /proc/interrupts
+OK    /proc/softirqs
+OK    /proc/buddyinfo
+OK    /proc/zoneinfo
+MISS  /proc/pagetypeinfo
+MISS  /proc/fs/file-nr
+OK    /proc/sys/fs/file-nr
+OK    /proc/pressure/cpu
+OK    /proc/pressure/io
+OK    /proc/pressure/memory
+OK    /proc/net/dev
+OK    /proc/net/snmp
+OK    /proc/net/netstat
+
+### /proc/stat (first 3 lines)
+cpu  23485375 30499 9629463 851348373 7264530 0 1527252 746832 0 0
+cpu0 2876486 4424 1207179 106060761 1228453 0 624954 97690 0 0
+cpu1 2923305 4277 1206543 106327827 1002393 0 268291 94591 0 0
+
+### /proc/loadavg
+3.84 2.72 1.84 6/1044 98373
+
+### /proc/meminfo (head)
+MemTotal:       20457208 kB
+MemFree:          396888 kB
+MemAvailable:    2092816 kB
+Buffers:          271436 kB
+Cached:          1382676 kB
+SwapCached:            0 kB
+Active:         11598464 kB
+Inactive:        6787488 kB
+
+### /proc/pressure/cpu
+some avg10=4.86 avg60=2.39 avg300=1.35 total=7376056954
+full avg10=0.00 avg60=0.00 avg300=0.00 total=0
+### /proc/pressure/io
+some avg10=0.39 avg60=0.21 avg300=0.15 total=12591397108
+full avg10=0.25 avg60=0.16 avg300=0.14 total=10934974770
+### /proc/pressure/memory
+some avg10=0.00 avg60=0.00 avg300=0.02 total=623457221
+full avg10=0.00 avg60=0.00 avg300=0.01 total=349457186
+
+### /proc/vmstat (head)
+nr_free_pages 99035
+nr_zone_inactive_anon 1386573
+nr_zone_active_anon 2803987
+nr_zone_inactive_file 310308
+nr_zone_active_file 95636
+nr_zone_unevictable 7846
+nr_zone_write_pending 1191
+nr_mlock 6846
+nr_bounce 0
+nr_zspages 0
+nr_free_cma 0
+nr_unaccepted 0
+
+### /proc/diskstats (head)
+   7       0 loop0 54841 0 4859900 202102 0 0 0 0 0 154451 202102 0 0 0 0 0 0
+   7       1 loop1 36994 0 2735270 286015 0 0 0 0 0 176983 286015 0 0 0 0 0 0
+   7       2 loop2 107741 0 8814668 1219801 0 0 0 0 0 379888 1219801 0 0 0 0 0 0
+   7       3 loop3 1353 331 31574 62 146 70 4084 333 0 376 715 0 0 0 0 79 318
+   7       4 loop4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+   7       5 loop5 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+### /proc/net/dev (head)
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 1821826625 9737035    0    0    0     0          0         0 1821826625 9737035    0    0    0     0       0          0
+enp5s0: 49765821675 67456739    0    0    0     0          0         0 46598217697 74306889    0    0    0     0       0          0
+tailscale0: 5060246791 47200364    0    0    0     0          0         0 10450327600 51608600    0    0    0     0       0          0
+lxdbr0: 7819529753 32014200    0    0    0     0          0     40322 11634606157 32579285    0    0    0     0       0          0
+
+### /proc/net/snmp (Tcp lines only)
+Ip: Forwarding DefaultTTL InReceives InHdrErrors InAddrErrors ForwDatagrams InUnknownProtos InDiscards InDelivers OutRequests OutDiscards OutNoRoutes ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates OutTransmits
+Ip: 1 64 123666538 0 5 1970790 0 0 121695401 163558836 6864 31 0 0 0 0 0 0 0 165517384
+Tcp: RtoAlgorithm RtoMin RtoMax MaxConn ActiveOpens PassiveOpens AttemptFails EstabResets CurrEstab InSegs OutSegs RetransSegs InErrs OutRsts InCsumErrors
+Tcp: 1 200 120000 -1 566366 4681508 144592 31198 28 106345803 126863573 295393 352 2397553 0
+Udp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors
+Udp: 15296714 2056 447 52203314 447 0 0 0 0
+
+### /proc/net/netstat (TcpExt retransmit lines)
+SyncookiesSent
+SyncookiesRecv
+SyncookiesFailed
+TCPLostRetransmit
+TCPFastRetrans
+TCPSlowStartRetrans
+TCPRetransFail
+TCPSynRetrans
+MPTCPRetrans
+
+### /proc/schedstat (head)
+version 15
+timestamp 5417747321
+cpu0 0 0 0 0 0 0 44668417610980 9395842839944 306576113
+
+### /proc/interrupts (head)
+           CPU0       CPU1       CPU2       CPU3       CPU4       CPU5       CPU6       CPU7       
+  0:         43          0          0          0          0          0          0          0   IO-APIC   2-edge      timer
+  1:          0          0          0          0          0          0          0          9   IO-APIC   1-edge      i8042
+  4:          0        866          0          0          0          0          0          0   IO-APIC   4-edge      ttyS0
+  8:          0          0          0          0          0          0          0          0   IO-APIC   8-edge      rtc0
+
+### /proc/softirqs (head)
+                    CPU0       CPU1       CPU2       CPU3       CPU4       CPU5       CPU6       CPU7       CPU8       CPU9       CPU10      CPU11      CPU12      CPU13      CPU14      CPU15      
+          HI:          0          0          0          0          0          0          0          4          0          0          0          0          0          0          0          0
+       TIMER:   20488694   13836685   13215037   12106525   11562896   11499011   11993185   14450670          0          0          0          0          0          0          0          0
+      NET_TX:        545        544        474        943        610        495        553       1069          0          0          0          0          0          0          0          0
+      NET_RX:   16781841   17040102   16783716   16862465   17022827   16864901   16872650   15705077          0          0          0          0          0          0          0          0
+
+### /proc/buddyinfo
+Node 0, zone      DMA      0      0      0      0      0      0      0      0      1      1      2 
+Node 0, zone    DMA32   1132    950    580    496    298    211    117      6      1      1      0 
+Node 0, zone   Normal    807   1453   1985   2074   1144    399     72      8      1      2      0 
+
+### /proc/zoneinfo (head)
+Node 0, zone      DMA
+  per-node stats
+      nr_inactive_anon 1386573
+      nr_active_anon 2804076
+      nr_inactive_file 310310
+      nr_active_file 95637
+
+### /proc/pagetypeinfo (head)
+head: cannot open '/proc/pagetypeinfo' for reading: Permission denied
+
+### /proc/swaps
+Filename				Type		Size		Used		Priority
+
+### /proc/uptime
+1123080.33 8513483.91
+
+### /proc/crypto (head)
+name         : curve25519
+driver       : curve25519-x86
+module       : curve25519_x86_64
+priority     : 200
+refcnt       : 1
+selftest     : passed
+
+### /proc/sys/fs/file-nr
+7424	0	9223372036854775807
+### /proc/fs/file-nr is a symlink?
+ls: cannot access '/proc/fs/file-nr': No such file or directory
+
+### /proc/mdstat
+Personalities : [raid0] [raid1] [raid6] [raid5] [raid4] [raid10] 
+unused devices: <none>
+
+### /proc/cpuinfo (first core block head)
+processor	: 0
+vendor_id	: GenuineIntel
+cpu family	: 6
+model		: 154
+model name	: 12th Gen Intel(R) Core(TM) i7-1260P
+stepping	: 3
+microcode	: 0x43b
+cpu MHz		: 2496.000
+cache size	: 16384 KB
+physical id	: 0
+siblings	: 8
+core id		: 0

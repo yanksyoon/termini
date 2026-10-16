@@ -1,0 +1,249 @@
+=== host: hack ===
+
+### lxc query /1.0/instances/demo-node-a?recursion=1  (state object)
+{
+	"architecture": "x86_64",
+	"backups": null,
+	"config": {
+		"cloud-init.user-data": "#cloud-config\nwrite_files:\n  - path: /etc/termini/config.yaml\n    permissions: '0600'\n    owner: root:root\n    content: |\n      controller_url: http://10.14.100.1:8085\n      node_name: demo-node-a\n      role_hint: compute\n      telemetry_interval_ms: 1000\n      inference_port: 8080\n      model_alias: deepseek-flash\n      image_version: 2026.10.0\n      project_id: 01J0DEM0WARM000000000000AB\n      gpu_vram_bytes: 0\n  - path: /var/lib/termini/enrollment.token\n    permissions: '0600'\n    owner: root:root\n    content: |\n      term-demo-boot-a\nruncmd:\n  - [ systemctl, restart, termini-bootstrap.service ]\n  - [ systemctl, restart, llama-cpp.service ]",
+		"image.architecture": "x86_64",
+		"image.description": "Ubuntu 24.04 LTS server (20260926)",
+		"image.os": "ubuntu",
+		"image.release": "noble",
+		"limits.cpu": "2",
+		"limits.memory": "1GiB",
+		"volatile.base_image": "500cbf91d336c468e3b157f47f90178b1614574ccdd1f38a18a5190ed103ce41",
+		"volatile.cloud-init.instance-id": "7dd7d6ba-12e8-44ad-baa0-df8391a93029",
+		"volatile.eth0.host_name": "vethd5621f93",
+		"volatile.eth0.hwaddr": "00:16:3e:44:f8:98",
+		"volatile.idmap.base": "0",
+		"volatile.idmap.current": "[{\"Isuid\":true,\"Isgid\":false,\"Hostid\":1000000,\"Nsid\":0,\"Maprange\":1000000000},{\"Isuid\":false,\"Isgid\":true,\"Hostid\":1000000,\"Nsid\":0,\"Maprange\":1000000000}]",
+		"volatile.idmap.next": "[{\"Isuid\":true,\"Isgid\":false,\"Hostid\":1000000,\"Nsid\":0,\"Maprange\":1000000000},{\"Isuid\":false,\"Isgid\":true,\"Hostid\":1000000,\"Nsid\":0,\"Maprange\":1000000000}]",
+		"volatile.last_state.idmap": "[]",
+		"volatile.last_state.power": "RUNNING",
+		"volatile.last_state.ready": "false",
+		"volatile.uuid": "f1de7de0-76cf-488f-b679-1e6c1014cc41",
+		"volatile.uuid.generation": "f1de7de0-76cf-488f-b679-1e6c1014cc41"
+	},
+	"created_at": "2026-10-04T11:03:43.782335962Z",
+	"description": "",
+	"devices": {
+		"scratch": {
+			"path": "/mnt/termini-scratch",
+			"pool": "default",
+			"source": "demo-scratch-a",
+			"type": "disk"
+		}
+	},
+	"ephemeral": false,
+	"expanded_config": {
+		"cloud-init.user-data": "#cloud-config\nwrite_files:\n  - path: /etc/termini/config.yaml\n    permissions: '0600'\n    owner: root:root\n    content: |\n      controller_url: http://10.14.100.1:8085\n      node_name: demo-node-a\n      role_hint: compute\n      telemetry_interval_ms: 1000\n      inference_port: 8080\n      model_alias: deepseek-flash\n      image_version: 2026.10.0\n      project_id: 01J0DEM0WARM000000000000AB\n      gpu_vram_bytes: 0\n  - path: /var/lib/termini/enrollment.token\n    permissions: '0600'\n    owner: root:root\n    content: |\n      term-demo-boot-a\nruncmd:\n  - [ systemctl, restart, termini-bootstrap.service ]\n  - [ systemctl, restart, llama-cpp.service ]",
+		"image.architecture": "x86_64",
+		"image.description": "Ubuntu 24.04 LTS server (20260926)",
+		"image.os": "ubuntu",
+		"image.release": "noble",
+		"limits.cpu": "2",
+		"limits.memory": "1GiB",
+		"volatile.base_image": "500cbf91d336c468e3b157f47f90178b1614574ccdd1f38a18a5190ed103ce41",
+		"volatile.cloud-init.instance-id": "7dd7d6ba-12e8-44ad-baa0-df8391a93029",
+		"volatile.eth0.host_name": "vethd5621f93",
+		"volatile.eth0.hwaddr": "00:16:3e:44:f8:98",
+		"volatile.idmap.base": "0",
+		"volatile.idmap.current": "[{\"Isuid\":true,\"Isgid\":false,\"Hostid\":1000000,\"Nsid\":0,\"Maprange\":1000000000},{\"Isuid\":false,\"Isgid\":true,\"Hostid\":1000000,\"Nsid\":0,\"Maprange\":1000000000}]",
+		"volatile.idmap.next": "[{\"Isuid\":true,\"Isgid\":false,\"Hostid\":1000000,\"Nsid\":0,\"Maprange\":1000000000},{\"Isuid\":false,\"Isgid\":true,\"Hostid\":1000000,\"Nsid\":0,\"Maprange\":1000000000}]",
+		"volatile.last_state.idmap": "[]",
+		"volatile.last_state.power": "RUNNING",
+		"volatile.last_state.ready": "false",
+		"volatile.uuid": "f1de7de0-76cf-488f-b679-1e6c1014cc41",
+		"volatile.uuid.generation": "f1de7de0-76cf-488f-b679
+
+### state keys present (jq-style, via python)
+state keys: ['cpu', 'disk', 'memory', 'network', 'pid', 'processes', 'status', 'status_code']
+started_at present: False
+state.started_at: <ABSENT>
+state.cpu keys: ['usage']
+state.memory keys: ['swap_usage', 'swap_usage_peak', 'total', 'usage', 'usage_peak']
+state.disk: {'root': {'total': 0, 'usage': 0}, 'scratch': {'total': 2147483648, 'usage': 0}}
+state.network keys: ['eth0', 'lo', 'lxdbr0']
+state.processes: 91
+state.status: Running
+state.status_code: 103
+expanded_config limits.memory: 1GiB
+expanded_config limits.cpu: 2
+config keys: ['cloud-init.user-data', 'image.architecture', 'image.description', 'image.os', 'image.release', 'limits.cpu', 'limits.memory', 'volatile.base_image', 'volatile.cloud-init.instance-id', 'volatile.eth0.host_name', 'volatile.eth0.hwaddr', 'volatile.idmap.base', 'volatile.idmap.current', 'volatile.idmap.next', 'volatile.last_state.idmap', 'volatile.last_state.power', 'volatile.last_state.ready', 'volatile.uuid', 'volatile.uuid.generation']
+status: Running
+last_used_at: 2026-10-09T05:59:27.648967825Z
+created_at: 2026-10-04T11:03:43.782335962Z
+
+### /1.0/events (type=instance, 3s window via lxc monitor --type=instance)
+
+### /1.0/storage-pools/default/resources (usage)
+{
+	"inodes": {
+		"total": 12976128,
+		"used": 1127663
+	},
+	"space": {
+		"total": 102888095744,
+		"used": 59390136320
+	}
+}
+
+
+
+### /1.0/resources (node-level resources from LXD)
+{
+	"cpu": {
+		"architecture": "x86_64",
+		"sockets": [
+			{
+				"cache": [
+					{
+						"level": 1,
+						"size": 32768,
+						"type": "Data"
+					},
+					{
+						"level": 1,
+						"size": 32768,
+						"type": "Instruction"
+					},
+					{
+						"level": 2,
+						"size": 4194304,
+						"type": "Unified"
+					},
+					{
+						"level": 3,
+						"size": 16777216,
+						"type": "Unified"
+					}
+				],
+				"cores": [
+					{
+						"core": 0,
+						"die": 0,
+						"threads": [
+							{
+								"id": 0,
+								"isolated": false,
+								"numa_node": 0,
+								"online": true,
+								"thread": 0
+							}
+						]
+					},
+					{
+						"core": 9,
+						"die": 0,
+						"threads": [
+							{
+								"id": 1,
+								"isolated": false,
+								"numa_node": 0,
+								"online": true,
+								"thread": 0
+							}
+						]
+					},
+					{
+						"core": 10,
+						"die": 0,
+						"threads": [
+							{
+								"id": 2,
+								"isolated": false,
+								"numa_node": 0,
+								"online": true,
+								"thread": 0
+							}
+						]
+					},
+					{
+						"core": 11,
+						"die": 0,
+						"threads": [
+							{
+								"id": 3,
+								"isolated": false,
+								"numa_node": 0,
+								"online": true,
+								"thread": 0
+							}
+						]
+					},
+					{
+						"core": 12,
+						"die": 0,
+						"threads": [
+							{
+								"id": 4,
+								"isolated": false,
+								"numa_node": 0,
+								"online": true,
+								"thread": 0
+							}
+						]
+					},
+					{
+						"core": 13,
+						"die": 0,
+						"threads": [
+							{
+								"id": 5,
+								"isolated": false,
+								"numa_node": 0,
+								"online": true,
+								"thread": 0
+							}
+						]
+					},
+					{
+						"core": 14,
+						"die": 0,
+						"threads": [
+							{
+								"id": 6,
+								"isolated": false,
+								"numa_node": 0,
+								"online": true,
+								"thread": 0
+							}
+						]
+					},
+					{
+						"core": 15,
+						"die": 0,
+						"threads": [
+							{
+								"id": 7,
+								"isolated": false,
+								"numa_node": 0,
+								"online": true,
+								"thread": 0
+							}
+						]
+					}
+				],
+				"name": "12th Gen Intel(R) Core(TM) i7-1260P",
+				"socket": 0,
+				"vendor": "GenuineIntel"
+			}
+		],
+		"total": 8
+	},
+	"gpu": {
+		"cards": [
+			{
+				"driver": "virtio-pci",
+				"driver_version": "1",
+				"drm": {
+					"card_device": "226:1",
+					"card_name": "card1",
+					"control_device": "226:1",
+					"control_name": "controlD65",
+					"id": 1,
+					"render_device": "226:128",
+					"render_name": "renderD128"
+				},
+				

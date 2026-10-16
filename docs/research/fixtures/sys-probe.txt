@@ -1,0 +1,111 @@
+=== host: hack ===
+
+### block devices
+loop0
+loop1
+loop2
+loop3
+loop4
+loop5
+loop6
+loop7
+sda
+
+### /sys/class/thermal
+cooling_device0
+cooling_device1
+cooling_device2
+cooling_device3
+cooling_device4
+cooling_device5
+cooling_device6
+cooling_device7
+
+### thermal zones
+/sys/class/thermal/thermal_zone*/type: cat: '/sys/class/thermal/thermal_zone*/type': No such file or directory
+
+### nvme devices
+ls: cannot access '/sys/class/nvme/': No such file or directory
+
+### edac
+mc
+power
+uevent
+power
+subsystem
+uevent
+
+### power/energy (intel-rapl)
+/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj: cat: '/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj': No such file or directory
+/sys/class/powercap/intel-rapl/intel-rapl:0/name: cat: '/sys/class/powercap/intel-rapl/intel-rapl:0/name': No such file or directory
+
+### block queue stats for sda (if any) and loop0
+/sys/block/sda/stat: 23625880  4465940 2098074812 14490627 122432091 217149632 4035234316 133006881        0 50829476 184192608 17384533        2 16975908168  4775026 37131291 31920072
+/sys/block/loop0/stat:    54841        0  4859900   202102        0        0        0        0        0   154451   202102        0        0        0        0        0        0
+MISS /sys/block/nvme0n1/stat
+
+### block device model / rotational / size (sda, nvme, vda)
+/sys/block/sda/size: 209715200
+
+### net error/drop counters (per-iface)
+-- enp5s0 --
+  rx_errors: 0
+  tx_errors: 0
+  rx_dropped: 0
+  tx_dropped: 0
+  rx_over_errors: 0
+  tx_carrier_errors: 0
+  rx_crc_errors: 0
+-- tailscale0 --
+  rx_errors: 0
+  tx_errors: 0
+  rx_dropped: 0
+  tx_dropped: 0
+  rx_over_errors: 0
+  tx_carrier_errors: 0
+  rx_crc_errors: 0
+-- lxdbr0 --
+  rx_errors: 0
+  tx_errors: 0
+  rx_dropped: 0
+  tx_dropped: 0
+  rx_over_errors: 0
+  tx_carrier_errors: 0
+  rx_crc_errors: 0
+-- lo --
+  rx_errors: 0
+  tx_errors: 0
+  rx_dropped: 0
+  tx_dropped: 0
+  rx_over_errors: 0
+  tx_carrier_errors: 0
+  rx_crc_errors: 0
+
+### mounts (df -hT)
+Filesystem     Type      Size  Used Avail Use% Mounted on
+tmpfs          tmpfs     2.0G  1.4M  2.0G   1% /run
+efivarfs       efivarfs  256K   68K  184K  28% /sys/firmware/efi/efivars
+/dev/sda1      ext4       96G   56G   41G  58% /
+tmpfs          tmpfs     9.8G     0  9.8G   0% /dev/shm
+tmpfs          tmpfs     5.0M     0  5.0M   0% /run/lock
+tmpfs          tmpfs      50M   15M   36M  29% /run/lxd_agent
+/dev/sda16     ext4      881M  117M  703M  15% /boot
+/dev/sda15     vfat      105M  6.2M   99M   6% /boot/efi
+tmpfs          tmpfs     2.0G   48K  2.0G   1% /run/user/1000
+tmpfs          tmpfs     1.0M     0  1.0M   0% /var/snap/lxd/common/ns
+
+### inode usage (df -i)
+Filesystem       Inodes   IUsed    IFree IUse% Mounted on
+tmpfs           2557151     915  2556236    1% /run
+efivarfs              0       0        0     - /sys/firmware/efi/efivars
+/dev/sda1      12976128 1127654 11848474    9% /
+tmpfs           2557151       1  2557150    1% /dev/shm
+tmpfs           2557151       3  2557148    1% /run/lock
+tmpfs           2557151      17  2557134    1% /run/lxd_agent
+/dev/sda16        58496     604    57892    2% /boot
+/dev/sda15            0       0        0     - /boot/efi
+tmpfs            511430      58   511372    1% /run/user/1000
+tmpfs           2557151       3  2557148    1% /var/snap/lxd/common/ns
+
+### md raid status via /sys
+ls: cannot access '/sys/block/md*': No such file or directory
