@@ -230,7 +230,8 @@ compose — same controller, same decision step, same audit trail.
 | Component | Where | Endpoint |
 |---|---|---|
 | Dashboard | Firebase Hosting | `https://termini-510609.web.app` |
-| Decision model | **Node C** (GCE VM `termini-node-c`) — CPU-only, `n2-standard-8`, `asia-south1-a` | `http://10.10.0.13:8080` (underlay only) — `llama.cpp`, alias `gemma` = Gemma 3 4B IT |
+| Agent-facing model | **Node C** (GCE VM `termini-node-c`) — CPU-only, `n2-standard-8`, `asia-south1-a` | `http://10.10.0.13:8080` (underlay only) — front door in `backend=local`: `llama.cpp`, alias `gemma` = Gemma 3 4B IT. Answers from that node's own weights; never forwards |
+| Provider-only diagnosis model | **same controller VM**, loopback | `http://127.0.0.1:8085` — the same proxy in `backend=gemini-proxy` → `aiplatform.googleapis.com` (`gemini-2.5-flash`). No agent route to it |
 | Controller | GCE VM `termini-controller` — `n2-standard-2`, `asia-south1-a` | `https://34-93-190-64.sslip.io` |
 | Telemetry seeder | systemd on the controller VM | — (fabricates `demo-node-a` / `demo-node-c`) |
 | Model weights | GCS | `gs://termini-510609-models/gemma-3-4b-it-gguf/gemma-3-4b-it-Q4_K_M.gguf` (2.49 GB, sha256-pinned); `gs://termini-510609-models/gemma-3-4b-it/` holds the HF safetensors for the Cloud Run reference |
@@ -238,36 +239,52 @@ compose — same controller, same decision step, same audit trail.
 
 The operator's decision step runs **model-driven** there
 (`TERMINI_OPERATOR_DECISION_MODE=model`): a fired threshold is diagnosed and
-remediated by **`llama.cpp` on Node C** (`n2-standard-8`, CPU-only, pinned
-`gemma` = Gemma 3 4B IT Q4_K_M), reached over the underlay
-at `http://10.10.0.13:8080`. The model chooses the action, the guardrail stack
-constrains it, the `externalModelCall()` guard asserts every substituted field is
-C0 / transformed-C1 before sending, and the deterministic provider remains the
-mandatory fallback — which decider acted is recorded per-decision in
+remediated by the **provider-only listener on the controller**
+(`http://127.0.0.1:8085`, `backend=gemini-proxy` → `aiplatform.googleapis.com`,
+answering with `gemini-2.5-flash`). The substituted prompt is **C0 telemetry
+only** — rule/metric context plus the instance inventory, never workload
+payloads — and the `externalModelCall()` guard asserts every substituted field is
+C0 / transformed-C1 before sending, so the audit row reads
+`egress=external destination=aiplatform.googleapis.com`. The model chooses the
+action, the guardrail stack constrains it, and the deterministic provider remains
+the mandatory fallback — which decider acted is recorded per-decision in
 `decision_source`.
 
-**Measured on Node C: a decision is minutes, not seconds.** A decision over the
+The **agents** are served by the other surface: Node C's `:8080`
+(`n2-standard-8`, CPU-only, pinned `gemma` = Gemma 3 4B IT Q4_K_M) over the
+underlay, in `backend=local` — client traffic is answered by that node's own
+weights and the port offers no forwarded backend. That path is CPU-slow
+(generation ≈8–10 tok/s; the operator's 20-sample prompt measured 402 s there),
+which is exactly why the diagnosis runs on the provider surface instead.
+
+**Measured on Node C: a local decision is minutes, not seconds.** A decision over the
 operator's real prompt takes **≈84 s at a one-sample evidence window and ≈6.7 min
 (402 s) at the real 20-sample window** (prefill ≈33 tok/s, generation ≈8–10 tok/s);
 the real 20-sample request is **12,748 prompt tokens** under Gemma's tokenizer and
-**fits** the shipped context (`--ctx-size 16384 --parallel 1`). The interactive
-on-screen moment is therefore served by the **deterministic fast-path**, not by the
-model. (It replaced a DeepSeek-R1 distill that was slower still — 156 s / 12 min,
-and whose 8,973-token request did not fit the old shipped context.)
+**fits** the shipped context (`--ctx-size 16384 --parallel 1`). That is the number
+behind the inference split: the shipped **diagnosis** runs on the provider-only
+surface (seconds), while the locally-served **agent** path keeps this latency and
+says so. The interactive on-screen moment is still carried by the
+**deterministic fast-path**. (It replaced a DeepSeek-R1 distill that was slower
+still — 156 s / 12 min, and whose 8,973-token request did not fit the old shipped
+context.)
 
 Two deliberate departures from the "everything on the customer's metal" shape,
 both recorded rather than implied:
 
-- **The model runs on-prem on Node C, CPU-only — and the latency is the trade.**
-  Node C has no accelerator (`n2-standard-8`), so a decision costs minutes, not
-  seconds; an L4 would bring it to seconds but is deferred (the project's free-tier
-  billing account rejects every non-TPU accelerator). Running the decision model
-  on-prem means the operator loop makes **no external egress at all** — a strictly
-  stronger data-residency position than the governed `Egress B` path it replaces
-  ([`docs/contracts/governance.md`](docs/contracts/governance.md) §7.1/§7.2). The
-  boundary hook `externalModelCall()` is enforced on the on-prem call too; hosting
-  the model on-prem narrows the blast radius of a mis-classified field but does not
-  repeal the boundary.
+- **The agent path runs on-prem on Node C, CPU-only — and the latency is the
+  trade.** Node C has no accelerator (`n2-standard-8`), so agent work served from
+  its weights costs seconds-to-minutes; an L4 would bring it to seconds but is
+  deferred (the project's free-tier billing account rejects every non-TPU
+  accelerator). The **diagnosis** is the one model call that leaves the premises:
+  it runs on the controller's loopback provider listener and its prompt is C0
+  telemetry only (rule/metric context + instance inventory, no workload payloads),
+  per the user's decision of 2026-10-15 and
+  [`docs/contracts/governance.md`](docs/contracts/governance.md) §7.1/§7.2 plus
+  [`infra-decisions.md`](docs/contracts/infra-decisions.md) **D9**. The boundary
+  hook `externalModelCall()` is enforced on that call and its audit row records
+  `egress=external destination=aiplatform.googleapis.com`, so the egress is
+  labelled rather than assumed away.
 - **The controller is a GCE VM, not Cloud Run** — it persists to SQLite, and
   Cloud Run's filesystem is ephemeral and per-instance, which would break the
   single-owner operator lease and leave audit provenance unverifiable across

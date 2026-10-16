@@ -1120,7 +1120,15 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
    holds the agents). The host is identified from the model address the controller
    already knows (`TERMINI_INFERENCE_BASE_URL`) matched against each node's
    reported LXD endpoint / source address, plus any operator-named hosts
-   (`TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`). The exclusion is dropped when it
+   (`TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`).
+   **Since the inference split (`infra-decisions.md` D9) the operator-named list is
+   the ONLY way to name the model host**: `TERMINI_INFERENCE_BASE_URL` is the
+   provider-only diagnosis listener on the controller's loopback
+   (`http://127.0.0.1:8085`), which matches no node at all. The deployed controller
+   therefore sets `TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS=<Node C underlay IP>`
+   explicitly (`infra/inference/setup-inference-surfaces.sh`); the derivation from
+   `TERMINI_INFERENCE_BASE_URL` is kept for the pre-split single-surface wiring and
+   is simply inert when the two disagree. The exclusion is dropped when it
    would leave **no** candidate at all, so a single-node / seeder-only demo stays
    placeable; an explicit `target_node` naming the model host is still honoured,
    because naming a node is not `auto`. This does **not** change role assignment.

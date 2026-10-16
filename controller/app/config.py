@@ -180,10 +180,15 @@ class Config:
     # LXD REST target + instance-name mapping.
     lxd_base_url: str
     # Agent placement policy (controller-api.md §5.2 step 5).
-    # `inference_base_url` is the address of the always-on model service; the node
-    # whose LXD endpoint/source IP matches its host serves the model and is kept
-    # out of `auto` agent placement. `agent_placement_exclude_hosts` lets an
-    # operator name additional hosts to exclude (comma-separated).
+    # `inference_base_url` is the address the OPERATOR'S DIAGNOSIS call dials.
+    # Since the two inference surfaces were split (infra-decisions.md D9) that
+    # address is the controller's own provider listener on loopback, which names
+    # no node at all — so the model SERVICE we must keep out of `auto` agent
+    # placement has to be named explicitly with
+    # `TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS` (comma-separated hosts,
+    # controller-api.md §5.2 step 5). The derivation from `inference_base_url`
+    # is kept for the pre-split single-surface wiring and costs nothing when the
+    # two disagree.
     inference_base_url: str
     # Natural-language intent extraction (termini.intent.extractor) runs as a
     # SYNCHRONOUS model round-trip inside POST /intents, and it shares the

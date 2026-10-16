@@ -83,9 +83,9 @@ variable "serve_inference" {
 }
 
 variable "inference_backend" {
-  description = "Which backend a FRESH Node C serves through the front door: gemini-proxy (the shipped demo configuration — the forwarded managed model emulating the GPU node, labelled in-band) or local (this node's own CPU weights). Substituted into Node C's first boot as TERMINI_INFERENCE_BACKEND; on a running node the same choice is `termini-inference-switch local|gemini-proxy` (task t_359ed606)."
+  description = "Which backend a FRESH Node C serves through the front door: local (the shipped demo configuration since the inference split — D9/kanban t_aa7a70f9: this port is the AGENT surface and answers from the node's own CPU weights, forwarding nothing) or gemini-proxy (the forwarded managed model; since D9 that belongs on the CONTROLLER's provider-only listener, not here). Substituted into Node C's first boot as TERMINI_INFERENCE_BACKEND; on a running node the same choice is `termini-inference-switch local|gemini-proxy` (task t_359ed606)."
   type        = string
-  default     = "gemini-proxy"
+  default     = "local"
 
   validation {
     condition     = contains(["gemini-proxy", "local"], var.inference_backend)

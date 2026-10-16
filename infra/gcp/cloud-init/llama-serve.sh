@@ -11,14 +11,17 @@
 # WHAT A FRESH NODE SERVES (explicit, task requirement 2)
 #   The first boot installs `termini-inference-proxy.service` on 0.0.0.0:8080 and
 #   moves llama.cpp to the LOOPBACK WORKER on 127.0.0.1:8081, with
-#   TERMINI_INFERENCE_BACKEND = __INFERENCE_BACKEND__ — `gemini-proxy` as shipped,
-#   i.e. the forwarded managed model that emulates the GPU node (labelled in-band
-#   on every response, log line and audit row). The CPU path is one env var / one
-#   command away on the running node:
+#   TERMINI_INFERENCE_BACKEND = __INFERENCE_BACKEND__ — **`local` as shipped**:
+#   this node's own CPU weights, because :8080 is the AGENT-facing surface of the
+#   inference split (D9) and agent/client traffic must not be forwarded. The
+#   forwarded backend is not offered on this port; the PROVIDER surface is the
+#   controller's own loopback listener
+#   (`infra/inference/setup-inference-surfaces.sh`). The other backend stays one
+#   env var / one command away on the running node:
 #
-#       termini-inference-switch local      # CPU weights through the front door
-#       termini-inference-switch legacy     # the pre-proxy host-exposed server
-#       termini-inference-switch status     # what is serving RIGHT NOW
+#       termini-inference-switch gemini-proxy   # the forwarded managed model
+#       termini-inference-switch legacy         # the pre-proxy host-exposed server
+#       termini-inference-switch status         # what is serving RIGHT NOW
 #
 #   Nothing on the node has to be reinstalled or rebuilt to move between them.
 #

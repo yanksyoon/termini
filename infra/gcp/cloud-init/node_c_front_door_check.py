@@ -99,7 +99,7 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def check_user_data(text: str, repo_root: pathlib.Path, *, backend: str = "gemini-proxy",
+def check_user_data(text: str, repo_root: pathlib.Path, *, backend: str = "local",
                     alias: str = "gemma", port: int = 8080) -> list[str]:
     """Return a list of failure strings ([] == this user-data is correct)."""
     fail: list[str] = []
@@ -166,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--expect", choices=["front-door", "none"], default="front-door",
                     help="front-door (Node C) or none (node-a/b)")
     ap.add_argument("--repo-root", default=str(pathlib.Path(__file__).resolve().parents[3]))
-    ap.add_argument("--backend", default="gemini-proxy")
+    ap.add_argument("--backend", default="local")
     ap.add_argument("--alias", default="gemma")
     ap.add_argument("--port", type=int, default=8080)
     args = ap.parse_args(argv)

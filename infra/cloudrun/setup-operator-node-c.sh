@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
-# Put the Termini operator into model mode, deciding on **Node C** (on-prem
-# llama.cpp, CPU-only) over the underlay — the on-prem counterpart of
-# `setup-operator-model.sh` (which points the same seam at the managed Cloud Run
-# GPU model).
+# [PRE-SPLIT / OPT-IN] Put the Termini operator into model mode, deciding on
+# **Node C** (on-prem llama.cpp, CPU-only) over the underlay.
 #
-# WHY THIS EXISTS
-# ---------------
-# The requirement is that Node C — the CPU-only inference node the footprint pays
-# for — actually hosts the model the operator's decision step calls, instead of
-# that call leaving the premises. This script is that wiring. It changes exactly
-# one thing: the decision adapter's base URL, from the loopback inference proxy
-# (`:8090`, Cloud Run) to Node C's llama.cpp service on the underlay.
+# >>> SUPERSEDED FOR THE SHIPPED DEPLOYMENT — READ BEFORE RUNNING <<<
+# -----------------------------------------------------------------
+# Since the two inference surfaces were split (`docs/contracts/infra-decisions.md`
+# **D9**, kanban `t_aa7a70f9`):
 #
-# The decision adapter builds `chat_url = TERMINI_INFERENCE_BASE_URL +
-# /v1/chat/completions`, so pointing the base URL at Node C is the whole change;
-# no controller or adapter code differs between the two destinations, and the
-# `externalModelCall()` boundary guard (governance.md §7.2/§9.3) applies to both.
+#   * Node C's `:8080` is the **AGENT** surface and is pinned to
+#     `TERMINI_INFERENCE_BACKEND=local` — it answers from that node's own weights
+#     and forwards nothing;
+#   * the operator's **DIAGNOSIS** runs on the CONTROLLER, against the
+#     provider-only listener on `127.0.0.1:8085` (`gemini-proxy` →
+#     `aiplatform.googleapis.com`), installed by
+#     `infra/inference/setup-inference-surfaces.sh`.
+#
+# This script does the OPPOSITE of D9: it points the diagnosis at Node C's agent
+# surface. On the shipped footprint that means the diagnosis would be answered by
+# CPU weights instead of Gemini — minutes instead of seconds (see LATENCY below),
+# and the diagnosis would no longer leave the premises. That is a legitimate
+# configuration to WANT (a fully on-prem decision path), but it must be a
+# deliberate choice, not a stale script run by hand: it now REFUSES to run unless
+# you pass `--allow-unsplit`, and it disables the split's controller drop-in when
+# it does (so the run is not silently half-applied).
 #
 # LATENCY — READ THIS BEFORE RUNNING IT
 # -------------------------------------
@@ -24,29 +31,63 @@
 # seconds** — ≈84 s with a one-sample evidence window and ≈6.7 min (402 s) with
 # the real 20-sample window (prefill ≈33 tok/s, generation ≈8–10 tok/s). The real
 # 20-sample request is 12,748 prompt tokens under Gemma's tokenizer and fits the
-# 16,384-token slot.
+# 16,384-token slot. This is exactly why the shipped diagnosis path uses the
+# provider surface and the local surface is reserved for the client's agents.
 #
 # Node C MUST serve more than one slot (`--ctx-size 32768 --parallel 2` in
 # `infra/gcp/cloud-init/llama-serve.sh`). With `--parallel 1` the server is a
 # single-slot queue, so a `POST /intents` extraction that arrives while the
 # operator is deciding waits behind the whole ~400 s decision and the request is
-# never answered (HTTP 000) — the seeder-driven operator log and a responsive
-# intent path were mutually exclusive. Two slots make them independent.
+# never answered (HTTP 000). Two slots make them independent.
 #
-# So: this makes the architecture faithful (the model is on-prem and the calls
-# reach Node C), but it does NOT make the decision step interactive. The
-# interactive demo moment is carried by the deterministic fast-path
-# (architecture.md R24). Budget `TERMINI_OPERATOR_DECISION_TIMEOUT_S` for the
-# slow path. The operator loop holds NO DB transaction across the call
+# The operator loop holds NO DB transaction across the call
 # (controller/app/operator/loop.py: detection commits before remediation), so
 # ingest continues while a decision is in flight.
 #
 # Usage (on the controller VM):
-#   sudo bash setup-operator-node-c.sh [NODE_C_HOST]
+#   sudo bash setup-operator-node-c.sh --allow-unsplit [NODE_C_HOST]
 #   NODE_C_HOST defaults to 10.10.0.13 (the frozen underlay address, D2).
 set -euo pipefail
 
-NODE_C="${1:-10.10.0.13}"
+ALLOW_UNSPLIT=0
+NODE_C=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --allow-unsplit) ALLOW_UNSPLIT=1 ;;
+    -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
+    -*) echo "unknown argument: $1" >&2; exit 2 ;;
+    *) [ -z "$NODE_C" ] || { echo "unexpected extra argument: $1" >&2; exit 2; }; NODE_C="$1" ;;
+  esac
+  shift
+done
+NODE_C="${NODE_C:-10.10.0.13}"
+[ "$ALLOW_UNSPLIT" = "1" ] || {
+  cat >&2 <<'REFUSE'
+setup-operator-node-c.sh: REFUSING — this is the PRE-SPLIT wiring and it undoes
+the inference split (infra-decisions.md D9, kanban t_aa7a70f9).
+
+It would point the operator's DIAGNOSIS at Node C's :8080, which is now the
+AGENT-facing surface and is pinned to backend=local: the diagnosis would be
+answered by CPU weights (≈402 s for the 20-sample prompt) instead of Gemini, and
+would stop leaving the premises.
+
+For the shipped split (diagnosis on the controller's provider-only listener),
+run instead:
+
+    sudo infra/inference/setup-inference-surfaces.sh
+
+If a fully on-prem decision path is genuinely what you want, re-run with
+--allow-unsplit; this script then also disables the split's controller drop-in.
+REFUSE
+  exit 2
+}
+
+SPLIT_DROPIN="/etc/systemd/system/termini-controller.service.d/zz-inference-surfaces.conf"
+if [ -f "$SPLIT_DROPIN" ]; then
+  echo "!! --allow-unsplit: disabling the split's drop-in ($SPLIT_DROPIN -> .disabled)"
+  sudo mv "$SPLIT_DROPIN" "$SPLIT_DROPIN.disabled"
+fi
+
 BASE_URL="http://${NODE_C}:8080"
 # A decision can legitimately take ~10 min on CPU; the default 30 s would make
 # every decision a timeout+fallback. Widen it on purpose.

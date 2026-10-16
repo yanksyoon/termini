@@ -53,7 +53,7 @@ RENDER_ENV = {
     "MODEL_SHA256": "04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19",
     "MODEL_ALIAS": "gemma",
     "PORT": "8080",
-    "INFERENCE_BACKEND": "gemini-proxy",
+    "INFERENCE_BACKEND": "local",
 }
 
 
@@ -105,15 +105,19 @@ class RenderedNodeCBlockTest(unittest.TestCase):
                              f"{dest} does not match {rel} byte-for-byte")
 
     def test_the_first_boot_default_backend_is_explicit(self):
-        """A fresh node serves the SHIPPED default, and it is visible in the render."""
-        self.assertIn('BACKEND="gemini-proxy"', CHECK.block_scalar(self.text, CHECK.SERVE_SCRIPT))
+        """A fresh node serves the SHIPPED default, and it is visible in the render.
+
+        The shipped default is `local` (test t_aa7a70f9 / D9): :8080 is the AGENT
+        surface and must answer from this node's own weights, never forward.
+        """
+        self.assertIn('BACKEND="local"', CHECK.block_scalar(self.text, CHECK.SERVE_SCRIPT))
         self.assertIn('PROXY_PORT="8080"', CHECK.block_scalar(self.text, CHECK.SERVE_SCRIPT))
 
     def test_the_backend_is_renderer_configurable(self):
-        """`local` is one variable away at render time (and one command on the node)."""
-        text = render("--write-files", {"INFERENCE_BACKEND": "local"})
-        self.assertIn('BACKEND="local"', CHECK.block_scalar(text, CHECK.SERVE_SCRIPT))
-        self.assertEqual([], CHECK.check_user_data(text, REPO, backend="local"))
+        """`gemini-proxy` is one variable away at render time (and one command on the node)."""
+        text = render("--write-files", {"INFERENCE_BACKEND": "gemini-proxy"})
+        self.assertIn('BACKEND="gemini-proxy"', CHECK.block_scalar(text, CHECK.SERVE_SCRIPT))
+        self.assertEqual([], CHECK.check_user_data(text, REPO, backend="gemini-proxy"))
 
     def test_an_invalid_backend_is_refused_at_render_time(self):
         import os

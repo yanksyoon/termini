@@ -23,6 +23,7 @@ This document answers every open **infrastructure** question in `project.md` and
 | D6 | Node ↔ controller control topology | **Outbound-only control channel from each node** (mTLS WebSocket); push telemetry; no inbound SSH required | Controller pulls/scrapes nodes, inbound SSH from internet |
 | D7 | Cluster storage | **Local `zfs` pool per member** (`local`); no shared storage in the demo | MicroCeph/Ceph, NFS shared pool |
 | D8 | Telemetry transport & cadence | **Push over the D6 channel**, demo cadence **1000 ms**, default 15000 ms, bounded local spool | Prometheus scrape, fixed slow polling |
+| D9 | One inference address, two surfaces | **Split them: agents are served by LOCAL weights on Node C (`10.10.0.13:8080`, `backend=local`); the operator's diagnosis is served by Gemini from the CONTROLLER only (`127.0.0.1:8085`, `backend=gemini-proxy`)** | One endpoint with a backend flag, a forwarded managed model on the agent port, a key file on either host |
 
 These choices share one bias: **maximise demo reliability and minimise the number of distributed systems that can fail live**, while keeping the architecture honest enough that the "your hardware, your data, our operations" story survives an adversarial read.
 
@@ -199,6 +200,9 @@ implemented as an **OpenAI-compatible router** (`termini-infer-router`) fronting
 or more loopback-bound `llama.cpp` workers (one per model alias). A single-model
 deployment collapses the router to a transparent passthrough. The endpoint, port,
 and firewall scope are unchanged.
+**Superseded in part by D9:** `:8080` is now the **agent-facing** surface and is
+served from the node's own weights (`backend=local`); the forwarded managed model
+moved to the controller's loopback provider listener. See D9.
 
 **Rationale.**
 - `project.md` adversarial note 3 explicitly recommends "expose `llama.cpp` directly on Node C's host IP ... without relying on complex OVN/Fan virtual bridges during a live presentation." Host exposure removes both the overlay AND the passthrough variables at once.
@@ -270,6 +274,104 @@ MicroCeph for cheap true live migration.
 
 ---
 
+## D9 — One inference address, two surfaces: LOCAL weights for agents, Gemini for the diagnosis
+
+- Owner: kanban **`t_aa7a70f9`** (infra), encoding the user's decisions of 2026-10-15.
+- Amends: D5 (which describes one inference address) and `docs/contracts/agent-runtime.md` AR-4/AR-6.
+
+**Decision.** The footprint runs **two inference listeners with different
+guarantees**, and neither may stand in for the other:
+
+| | Agent-facing surface | Provider-only surface |
+|---|---|---|
+| Address | `http://10.10.0.13:8080` (Node C, underlay) | `http://127.0.0.1:8085` (the CONTROLLER, loopback) |
+| Backend | `local` — llama.cpp worker on `127.0.0.1:8081` | `gemini-proxy` → `aiplatform.googleapis.com` |
+| Who calls it | agent VMs, the controller's intent extraction (`:8090`), any OpenAI client on the underlay | the operator's DIAGNOSIS call, and nothing else |
+| Answers bytes from | **this node's own weights** (alias `gemma`) | `gemini-2.5-flash` (forwarded managed model) |
+| Egress class | `in-vpc` — nothing leaves the premises | `external` — the request leaves for Google |
+| Identity | Node C's least-privilege SA (`t_5a4a0f73`), `cloud-platform` scope | the controller's dedicated provider SA (`roles/aiplatform.user`), `cloud-platform` scope |
+| Reachability | firewall: `tcp/8080` from `10.10.0.0/24` only | loopback only; the fleet has no route to it |
+| Credential | metadata identity, **no key file** | metadata identity, **no key file** |
+
+The agent port **offers no forwarded backend**: a request to `10.10.0.13:8080`
+can only be answered by that node's weights. The provider listener **offers no
+local backend** (there is no worker on the controller) and `/health` reports that
+by measuring it, not by asserting it.
+
+**Rationale.**
+- The client's agents must run on **local weights**: that is the whole on-prem
+  story, and agent traffic is the traffic the client cares about. A forwarded
+  managed model on that port would make the claim false.
+- The operator's **diagnosis** is a provider-side function: it runs over client
+  C0 telemetry (metrics + instance inventory, no workload payloads), and the user
+  decided on 2026-10-15 (Q1/Q1b) that this prompt **may leave the premises** as
+  part of the managed service and may involve Google's Gemini.
+- The two wants are about *different* traffic, so one address cannot satisfy both
+  without quietly downgrading one of them. Splitting is what makes each claim
+  separately true — and separately checkable.
+- Keeping the forwarded path on the **controller** rather than on a node also
+  puts the egress where the telemetry already lands: the box that decides is the
+  box that may leave.
+- Independence is a property, not a hope: separate listener, separate env file,
+  separate unit, separate address. Flipping one leaves the other's `/health`
+  byte-identical.
+- **No key file anywhere** (same rule as `t_5a4a0f73`): each host mints its token
+  per request from its own metadata server. A key file would be a long-lived,
+  copyable, unrevocable credential on a box we already trust less than the
+  metadata service.
+
+**Cost / performance note (stated, not hidden).** The local agent surface is
+**CPU-only** in this footprint (free-tier billing rejects the L4), and the local
+model is slow: the operator's 20-sample decision prompt measured **402 s** on
+`n2-standard-8` (prefill ≈33 tok/s, generation ≈8–10 tok/s; see
+`infra/cloudrun/setup-operator-node-c.sh` and
+`infra/cloudrun/evidence/node-c-gemma-decision-latency-2026-10-13.md`), against
+**≈1.8 s** for the same prompt served by the provider surface. **Agent tasks
+served locally are therefore not interactive until the GPU quota lands** — short
+turns are seconds-to-minutes, not milliseconds. The diagnosis is fast *because*
+it is the provider surface; the two facts belong in the same paragraph.
+
+**Rejected alternatives.**
+- **One endpoint with a backend flag** (the pre-split shape): the flag is set
+  once, per node, by whoever provisioned it, and it silently decides whether
+  agent traffic is answered locally. The demo would ship whichever value happened
+  to be set — the failure mode this decision exists to prevent.
+- **The forwarded managed model on Node C's `:8080`**: makes the agent-facing
+  endpoint forward while still *presenting* as a local inference server, i.e. the
+  one arrangement in which a client cannot tell where its tokens came from.
+- **The diagnosis on Node C**: correct on-prem behaviour, but it is what makes
+  the demo's model decision take minutes instead of seconds (above), and it
+  contradicts the user's Q1 (provider diagnosis may use Gemini).
+- **A service-account key file** on the controller or a node: rejected in
+  `t_5a4a0f73` and again here — the metadata identity is the only credential.
+- **A second address for the provider surface on a node**: needs a firewall
+  change and puts external-egress capability back on the client's fleet.
+
+**Consequences.**
+- Node C's first-boot default is `TERMINI_INFERENCE_BACKEND=local`
+  (`infra/gcp/variables.tf` `inference_backend`, `infra/gcp/provision.sh`,
+  `infra/gcp/cloud-init/node-c-serve-block.sh`,
+  `infra/inference/install-inference-proxy.sh`). One command on a running node
+  still moves it (`termini-inference-switch`), but a rebuilt node serves local.
+- The controller runs the provider listener under systemd from
+  `infra/inference/termini-inference-provider.service`, installed by
+  `infra/inference/setup-inference-surfaces.sh`.
+- `controller-api.md` §5.2 step 5: the controller's `TERMINI_INFERENCE_BASE_URL`
+  is now loopback, so it **cannot** identify the model host; the model host must
+  be named explicitly in `TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS` or Node C
+  becomes eligible for auto agent placement.
+- `agent-runtime.md` AR-4/AR-6: the agent's endpoint is the local surface; an
+  agent never speaks to the provider surface and is never told about it.
+- The pre-split script `infra/cloudrun/setup-operator-node-c.sh` refuses to run
+  without `--allow-unsplit`, because running it would move the diagnosis back onto
+  the agent surface.
+- The `externalModelCall()` audit row keeps saying **which** surface answered:
+  `egress=external destination=aiplatform.googleapis.com` for a diagnosis
+  (`external_call.py` + `egress.py` read the listener's own `/health`), so a
+  forwarded answer can never be read as a local one.
+
+---
+
 ## Crosswalk: every open infra question → answer
 
 | `project.md` open question | Answer |
@@ -284,7 +386,7 @@ MicroCeph for cheap true live migration.
 
 ## Cross-component invariants (other workstreams rely on these)
 
-1. **Addresses are static and frozen** per the D2 table. `INFERENCE_BASE_URL=http://10.10.0.13:8080` is the value the controller distributes to agents.
+1. **Addresses are static and frozen** per the D2 table. `INFERENCE_BASE_URL=http://10.10.0.13:8080` is the value the controller distributes to agents — it is the **agent-facing** surface and serves LOCAL weights (D9). The **provider-only** diagnosis surface is loopback on the controller (`http://127.0.0.1:8085`) and is never handed to an agent.
 2. **Node identity is the machine ID** (DMI UUID + `/etc/machine-id`); re-registration is an upsert (see `node-bootstrap.md` §10).
 3. **Only hardware/OS telemetry leaves a node**, always through the bootstrap daemon (governance boundary; enforced on the node side).
 4. **No private keys transit the controller** (user keys stay in the browser; node keys stay on the node; only CSRs and public keys move).
