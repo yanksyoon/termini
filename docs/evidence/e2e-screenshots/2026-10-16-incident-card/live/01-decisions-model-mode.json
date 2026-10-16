@@ -1,0 +1,58 @@
+{
+  "decisions": [
+    {
+      "action_kind": "instance.restart",
+      "action_params": {
+        "_vm_id": "01M53498RGHSYPBCFEZTBEP60Y",
+        "force": true,
+        "instance_name": "agent-c1",
+        "timeout_s": 30
+      },
+      "confidence": 0.9,
+      "decided_at": "2026-10-16T19:51:09.098Z",
+      "decision_source": "model",
+      "event_id": "01M5349C0H8DD73X8G4SSB5SXA",
+      "fallback_reason": null,
+      "id": "01M5349C2X88AW4GCNAH9QDF7J",
+      "incident_actions": [
+        {
+          "action_kind": "instance.restart",
+          "note": "instance.restart is the action the oom-guard-01 rule maps to; it removes the load named above",
+          "target": "01M53498RGHSYPBCFEZTBEP60Y"
+        }
+      ],
+      "incident_evidence": [
+        {
+          "field": "ram_used_bytes",
+          "seq": 3,
+          "ts": "2026-10-16T19:51:08.598Z",
+          "value": 66657892433
+        },
+        {
+          "field": "ram_total_bytes",
+          "seq": 3,
+          "ts": "2026-10-16T19:51:08.598Z",
+          "value": 68719476736
+        },
+        {
+          "field": "cpu_util_pct",
+          "seq": 3,
+          "ts": "2026-10-16T19:51:08.598Z",
+          "value": 92.0
+        },
+        {
+          "field": "lxd_instances.ram_used_bytes",
+          "seq": 3,
+          "value": 3650722201
+        }
+      ],
+      "incident_explanation": "ram_used_bytes is at 97.0% of ram_total_bytes, and one instance holds 5.3% of the node's RAM by itself. That points at a single workload rather than fleet-wide pressure, so acting on that instance addresses the breach without touching the node.",
+      "incident_generated": "model",
+      "incident_title": "Memory exhaustion on node 01M53499XAB360H6XQ325RJ9T2",
+      "node_id": "01M53499XAB360H6XQ325RJ9T2",
+      "playbook": "oom-guard-01",
+      "reason": "ram_used_bytes at 97.0 on node 01M53499XAB360H6XQ325RJ9T2 crossed the oom-guard-01 threshold; instance.restart on 01M53498RGHSYPBCFEZTBEP60Y reclaims it",
+      "rule_id": "oom-guard-01"
+    }
+  ]
+}

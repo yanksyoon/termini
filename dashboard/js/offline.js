@@ -121,6 +121,15 @@ export class OfflineBackend {
         decision_source: over.source,
         confidence: over.confidence ?? null,
         fallback_reason: over.fallback_reason ?? null,
+        // §4.2 incident record columns. All five are `null` for a
+        // deterministic-mode row (that mode writes no record at all, §8.1) —
+        // which is exactly the state the dashboard must render as
+        // "no incident record (deterministic mode)".
+        incident_title: over.incident_title ?? null,
+        incident_explanation: over.incident_explanation ?? null,
+        incident_evidence: over.incident_evidence ?? null,
+        incident_actions: over.incident_actions ?? null,
+        incident_generated: over.incident_generated ?? null,
       };
       const event = {
         id: event_id,
@@ -156,11 +165,55 @@ export class OfflineBackend {
       return { decision, event, audit };
     };
     const rows = [
-      mk(0, { node_id: c.node_id, rule_id: "disk-degrade-01", type: "disk_degrade", metric: "disk_write_latency_ms", value: 120, threshold: "free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s", action_kind: "instance.stop", action_params: { instance_name: instance, force: true }, reason: "disk write latency on /dev/sda is 120ms, exceeding the 50ms threshold; stopping the instance with the highest disk usage will reduce disk I/O.", source: "model", confidence: 0.85, result: "ok" }),
-      mk(1, { node_id: a.node_id, rule_id: "oom-guard-01", type: "oom", metric: "ram_used_bytes", value: 33114165248, threshold: ">= 95% of ram_total_bytes for 2 consecutive samples", action_kind: "instance.restart", action_params: { instance_name: instance, force: true, timeout_s: 30 }, reason: "host RAM at 96.4% of total with one instance holding 29%; restarting it reclaims memory.", source: "model", confidence: 0.9, result: "ok" }),
-      mk(2, { node_id: a.node_id, rule_id: "oom-guard-01", type: "oom", metric: "ram_used_bytes", value: 33000000000, threshold: ">= 95% of ram_total_bytes for 2 consecutive samples", action_kind: "instance.restart", action_params: { instance_name: instance, force: true, timeout_s: 30 }, reason: "playbook: restart the heaviest instance (RAM 96%)", source: "fallback", fallback_reason: "inference_unavailable", result: "error" }),
+      mk(0, { node_id: c.node_id, rule_id: "disk-degrade-01", type: "disk_degrade", metric: "disk_write_latency_ms", value: 120, threshold: "free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s", action_kind: "instance.stop", action_params: { instance_name: instance, force: true }, reason: "disk write latency on /dev/sda is 120ms, exceeding the 50ms threshold; stopping the instance with the highest disk usage will reduce disk I/O.", source: "model", confidence: 0.85, result: "ok",
+        // §4.2 record as the model returned it (generated: "model").
+        incident_generated: "model",
+        incident_title: "Disk write latency on /dev/sda",
+        incident_explanation: "write_latency_ms on /dev/sda reached 120 ms against a 50 ms threshold while free space stayed above the 5% floor, so this is I/O contention rather than a full disk. The single instance on this node holds the write path, so stopping it removes the load without draining the node.",
+        incident_evidence: [
+          { field: "disk_write_latency_ms", value: 120, seq: 1120, ts: new Date(now - 96_000).toISOString() },
+          { field: "disk_free_bytes", value: 74_000_000_000, seq: 1120 },
+        ],
+        incident_actions: [
+          { action_kind: "instance.stop", target: instance, note: "stop the instance holding the write path" },
+        ],
+      }),
+      mk(1, { node_id: a.node_id, rule_id: "oom-guard-01", type: "oom", metric: "ram_used_bytes", value: 33114165248, threshold: ">= 95% of ram_total_bytes for 2 consecutive samples", action_kind: "instance.restart", action_params: { instance_name: instance, force: true, timeout_s: 30 }, reason: "host RAM at 96.4% of total with one instance holding 29%; restarting it reclaims memory.", source: "model", confidence: 0.9, result: "ok",
+        incident_generated: "model",
+        incident_title: "Memory exhaustion on node a",
+        incident_explanation: "ram_used_bytes reached 96.4% of ram_total_bytes and stayed there for two consecutive samples, and one instance holds 29% of the node's RAM by itself. That is a single-instance leak rather than fleet-wide pressure, so restarting that instance reclaims the memory without touching the node.",
+        incident_evidence: [
+          { field: "ram_used_bytes", value: 33114165248, seq: 1110, ts: new Date(now - 192_000).toISOString() },
+          { field: "ram_total_bytes", value: 34359738368, seq: 1110, ts: new Date(now - 192_000).toISOString() },
+          { field: "lxd_instances.ram_used_bytes", value: 9_960_000_000, seq: 1110 },
+        ],
+        incident_actions: [
+          { action_kind: "instance.restart", target: instance, note: "restart the heaviest instance to reclaim its resident memory" },
+        ],
+      }),
+      mk(2, { node_id: a.node_id, rule_id: "oom-guard-01", type: "oom", metric: "ram_used_bytes", value: 33000000000, threshold: ">= 95% of ram_total_bytes for 2 consecutive samples", action_kind: "instance.restart", action_params: { instance_name: instance, force: true, timeout_s: 30 }, reason: "playbook: restart the heaviest instance (RAM 96%)", source: "fallback", fallback_reason: "inference_unavailable", result: "error",
+        // §8.1: the fallback writes a record too — built from the fired event's
+        // own C0 fields and LABELLED, so it is never rendered as model output.
+        incident_generated: "fallback",
+        incident_title: "oom on node a",
+        incident_explanation: `model unavailable (inference_unavailable); the deterministic playbook chose instance.restart on ${instance} for rule oom-guard-01`,
+        incident_evidence: [
+          { field: "ram_used_bytes", value: 33000000000, seq: 1122, ts: new Date(now - 288_000).toISOString() },
+        ],
+        incident_actions: [
+          { action_kind: "instance.restart", target: instance },
+        ],
+      }),
       mk(3, { node_id: c.node_id, rule_id: "latency-01", type: "latency", metric: "net_latency_ms", value: 240, threshold: "net_latency_ms >= 200 for 3 consecutive samples", action_kind: "instance.restart", action_params: { instance_name: instance }, reason: "network latency 240ms sustained; restart the agent instance.", source: "deterministic", result: "ok" }),
-      mk(4, { node_id: c.node_id, rule_id: "gpu-oos-01", type: "gpu_oos", metric: "gpu_vram_used_bytes", value: 27000000000, threshold: "gpu_vram_used_bytes >= 95% of gpu_vram_total_bytes", action_kind: "image.prune", action_params: {}, reason: "VRAM pressure surfaced only, no autonomous action.", source: "fallback", fallback_reason: "parse_error", result: "error" }),
+      mk(4, { node_id: c.node_id, rule_id: "gpu-oos-01", type: "gpu_oos", metric: "gpu_vram_used_bytes", value: 27000000000, threshold: "gpu_vram_used_bytes >= 95% of gpu_vram_total_bytes", action_kind: "image.prune", action_params: {}, reason: "VRAM pressure surfaced only, no autonomous action.", source: "fallback", fallback_reason: "parse_error", result: "error",
+        incident_generated: "fallback",
+        incident_title: "gpu_oos on node c",
+        incident_explanation: "model unavailable (parse_error); the deterministic playbook chose image.prune for rule gpu-oos-01",
+        incident_evidence: [
+          { field: "gpu_vram_used_bytes", value: 27000000000, seq: 986, ts: new Date(now - 384_000).toISOString() },
+        ],
+        incident_actions: [{ action_kind: "image.prune" }],
+      }),
     ];
     this._fixtures = rows;
     return rows;

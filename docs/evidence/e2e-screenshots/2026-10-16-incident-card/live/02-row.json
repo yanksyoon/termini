@@ -1,0 +1,39 @@
+{
+  "decisions": 2,
+  "found": true,
+  "row": {
+    "action_kind": "instance.restart",
+    "action_params": {
+      "_vm_id": "01M53498RGHSYPBCFEZTBEP60Y",
+      "force": true,
+      "instance_name": "agent-c1",
+      "timeout_s": 30
+    },
+    "confidence": null,
+    "decided_at": "2026-10-16T19:53:30.624Z",
+    "decision_source": "fallback",
+    "event_id": "01M534DP7FP0NC0S9A1055Q7BJ",
+    "fallback_reason": "inference_unavailable",
+    "id": "01M534DP8XZD6792QQEWVP9A0D",
+    "incident_actions": [
+      {
+        "action_kind": "instance.restart",
+        "target": "agent-c1"
+      }
+    ],
+    "incident_evidence": [
+      {
+        "field": "ram_used_bytes",
+        "seq": 31,
+        "value": 96.99999999866122
+      }
+    ],
+    "incident_explanation": "model unavailable (inference_unavailable); the deterministic playbook chose instance.restart on agent-c1 for rule oom-guard-01",
+    "incident_generated": "fallback",
+    "incident_title": "oom on node 01M53499XAB360H6XQ325RJ9T2",
+    "node_id": "01M53499XAB360H6XQ325RJ9T2",
+    "playbook": "oom-guard-01",
+    "reason": "host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.",
+    "rule_id": "oom-guard-01"
+  }
+}

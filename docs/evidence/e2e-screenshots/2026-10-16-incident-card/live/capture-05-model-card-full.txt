@@ -1,0 +1,65 @@
+DOM text read back out of the live page at capture time.
+Page: http://127.0.0.1:47711/?apiBase=http://127.0.0.1:42199/v1&projectId=01J0DEM0WARM000000000000AB
+window: 1500x1600 | decisions-count line: 3 shown / 3 decisions · model 1 · fallback 1 · incident records 2 (AI 1 · controller-generated 1) | decider band: decider: decider unknown no externalModelCall record on the operator log stream yet | log panel <details> open=False
+Nothing here was typed by hand: the page was loaded against the live controller and the DOM read back.
+
+Model row as rendered:
+19:51:09
+AI MODEL 0.90
+evidence-node-a-machine
+oom-guard-01
+→
+instance.restart agent-c1
+ERROR · 127.0.0.1:39659
+AI-GENERATED INCIDENT
+incident_generated: "model"
+AI model
+Memory exhaustion on node 01M53499XAB360H6XQ325RJ9T2
+
+ram_used_bytes is at 97.0% of ram_total_bytes, and one instance holds 5.3% of the node's RAM by itself. That points at a single workload rather than fleet-wide pressure, so acting on that instance addresses the breach without touching the node.
+
+EVIDENCE · 4 TELEMETRY FIELDS QUOTED
+ram_used_bytes
+=
+62.08 GiB
+seq 3
+19:51:08
+ram_total_bytes
+=
+64.00 GiB
+seq 3
+19:51:08
+cpu_util_pct
+=
+92.0%
+seq 3
+19:51:08
+lxd_instances.ram_used_bytes
+=
+3.40 GiB
+seq 3
+DECIDED · 1 ACTION NAMED IN THE RECORD (A DECISION, NOT AN OUTCOME)
+instance.restart
+01M53498RGHSYPBCFEZTBEP60Y
+instance.restart is the action the oom-guard-01 rule maps to; it removes the load named above
+EXECUTED · WHAT THE FLEET ANSWERED (REMEDIATION_AUDITS, JOINED BY DECISION ID)
+ERROR
+127.0.0.1:39659
+PUT /1.0/instances/agent-c1/state
+idempotency_key 01M53499XAB360H6XQ325RJ9T2:oom-guard-01:instance.restart:agent-c1:1
+operation still pending after 120.0s: /1.0/operations/01M5349C3FFJCZ446NXZTHDXJ8
+executed 19:51:09
+· audit 01M534D1PE…XE8B
+BREACH
+ram_used_bytes
+RAM used
+=
+97.00% of ram_total_bytes
+threshold: >= 95% of ram_total_bytes for 2 consecutive samples
+fired 19:51:09
+MODEL RATIONALE
+ram_used_bytes at 97.0 on node 01M53499XAB360H6XQ325RJ9T2 crossed the oom-guard-01 threshold; instance.restart on 01M53498RGHSYPBCFEZTBEP60Y reclaims it
+audit 01M534D1PE…XE8B
+telemetry sample
+show on chart
+decision 01M5349C2X…DF7J

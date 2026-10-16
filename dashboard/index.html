@@ -84,7 +84,7 @@
 
     <section class="panel panel-decisions" aria-labelledby="h-decisions">
       <div class="panel-head">
-        <h2 id="h-decisions">Operator decisions</h2>
+        <h2 id="h-decisions">AI operator — incident view</h2>
         <div class="panel-tools">
           <span class="chipgroup" id="decision-filters" role="group" aria-label="decision source filter"></span>
           <span class="muted" id="decisions-updated">—</span>
@@ -94,8 +94,11 @@
         <span class="decider-label">decider: unknown</span>
       </div>
       <p class="muted small decision-note">
-        telemetry breach &rarr; who decided &rarr; action &rarr; what the fleet answered, joined live from
+        one card per decision: <strong>what happened</strong> (title), <strong>why</strong> (explanation),
+        <strong>on what evidence</strong> (the telemetry fields quoted), <strong>what was decided</strong> and
+        <strong>what the fleet answered</strong> (the audit row), joined live from
         <code>GET /v1/operator/decisions</code>, <code>/events</code> and <code>/audits</code>.
+        The raw log stream is the secondary view (collapsed, further down the page).
       </p>
       <div id="decision-viewport" class="decision-viewport" tabindex="0" aria-label="operator decisions">
         <div id="decisions-empty" class="empty">Waiting for operator decisions…</div>
@@ -104,14 +107,20 @@
       <div class="decision-count muted" id="decisions-count">0 decisions</div>
     </section>
 
-    <section class="panel panel-logs" aria-labelledby="h-logs">
-      <div class="panel-head">
+    <!-- Secondary surface (REQUIRED WORK 2.4): the raw AI-operator log stream
+         stays available, collapsed, so the incident card above is what a reader
+         sees first. Native <details> = a real keyboard-accessible toggle with no
+         JS state to keep in sync with the stream. -->
+    <details class="panel panel-logs" id="log-panel">
+      <summary class="panel-head log-summary" id="log-summary">
         <h2 id="h-logs">Live AI-operator log</h2>
-        <div class="panel-tools log-tools">
-          <span class="stream-state" id="log-state"><span class="dot dot-muted"></span>connecting…</span>
-          <button class="btn btn-ghost" id="btn-log-pause" type="button" title="Pause auto-scroll">Pause scroll</button>
-          <button class="btn btn-ghost" id="btn-log-clear" type="button">Clear</button>
-        </div>
+        <span class="badge sec-badge">secondary — raw log lines</span>
+        <span class="muted small log-summary-hint">collapsed by default; expand for the unparsed operator stream</span>
+      </summary>
+      <div class="panel-tools log-tools">
+        <span class="stream-state" id="log-state"><span class="dot dot-muted"></span>connecting…</span>
+        <button class="btn btn-ghost" id="btn-log-pause" type="button" title="Pause auto-scroll">Pause scroll</button>
+        <button class="btn btn-ghost" id="btn-log-clear" type="button">Clear</button>
       </div>
       <div class="filters" id="log-filters">
         <div class="chipgroup" id="severity-filters" role="group" aria-label="severity filter"></div>
@@ -133,7 +142,7 @@
         <div id="log-empty" class="empty">Waiting for operator events…</div>
         <ol id="log-list" class="log-list"></ol>
       </div>
-    </section>
+    </details>
 
     <section class="panel panel-metrics" aria-labelledby="h-metrics">
       <div class="panel-head">

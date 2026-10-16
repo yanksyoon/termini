@@ -279,7 +279,7 @@ textarea { width: 100%; resize: vertical; }
 .decision-note { margin-bottom: 8px; }
 .decision-note code { color: var(--fg-dim); }
 .decision-viewport {
-  max-height: 520px; overflow-y: auto; background: #090d15; border: 1px solid var(--line);
+  max-height: 700px; overflow-y: auto; background: #090d15; border: 1px solid var(--line);
   border-radius: 9px; padding: 6px; scrollbar-color: #33405a transparent;
 }
 .decision-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -322,6 +322,66 @@ textarea { width: 100%; resize: vertical; }
 }
 .linklike:disabled { color: var(--muted); cursor: default; text-decoration: none; }
 .decision-count { margin-top: 8px; font-size: .82rem; }
+
+/* -------------------------------------------------- incident card (§4.2) */
+/* The primary AI surface: what happened / why / on what evidence / what it
+   decided vs what the fleet answered. Provenance is a first-class element —
+   model output, the §8.1 controller-generated fallback and an unlabelled record
+   must never look alike. */
+.incident-card {
+  border: 1px solid var(--line-2); border-radius: 9px; background: #0b1220;
+  padding: 9px 11px; display: flex; flex-direction: column; gap: 7px;
+  border-left-width: 3px;
+}
+.incident-card.inc-model { border-left-color: var(--accent); }
+.incident-card.inc-fallback { border-left-color: var(--warn); background: #1a1710; }
+.incident-card.inc-bug { border-left-color: #ff5f56; background: #1f1113; }
+.incident-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.badge.inc-model { color: #9fe0ff; border-color: #2b83c0; background: #10283a; }
+.badge.inc-fallback { color: #ffdca8; border-color: #8a6a1f; background: #2a2010; }
+.badge.inc-bug { color: #ffc0bb; border-color: #8a2f28; background: #2a1311; }
+.incident-prov { font-family: ui-monospace, monospace; font-size: .74rem; }
+.incident-prov-null { color: #ffc0bb; font-weight: 600; }
+.incident-title { margin: 0; font-size: .95rem; line-height: 1.35; }
+.incident-explanation { margin: 0; font-size: .85rem; color: #cbd5e6; line-height: 1.45; }
+.incident-block { display: flex; flex-direction: column; gap: 3px; }
+.inc-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.inc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.inc-evidence-list, .inc-decided-list, .inc-executed-list { font-size: .82rem; }
+.inc-evidence-row, .inc-decided-row, .inc-executed-row, .inc-idem, .inc-detail, .inc-at {
+  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+}
+.inc-field, .inc-kind, .inc-call { font-family: ui-monospace, monospace; font-size: .78rem; color: #9fe0ff; }
+.inc-eq { color: var(--muted); }
+.inc-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+.inc-seq, .inc-ts { font-size: .76rem; }
+.inc-target { font-family: ui-monospace, monospace; font-size: .78rem; color: var(--fg-dim); }
+.inc-note { color: var(--fg-dim); font-style: italic; }
+.inc-endpoint { font-family: ui-monospace, monospace; font-size: .78rem; color: var(--fg-dim); }
+.inc-idem, .inc-detail, .inc-at { font-size: .78rem; }
+.inc-detail { color: #ffdca8; }
+.incident-executed-none .inc-label { color: var(--muted); }
+/* The no-record state: a line that says why, never an empty card. */
+.incident-none {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  border: 1px dashed var(--line-2); border-radius: 9px; padding: 7px 10px;
+  background: #0a0f1a;
+}
+.badge.inc-none-badge { color: var(--muted); }
+.incident-none-text { font-size: .82rem; color: var(--muted); }
+
+/* The log stream is the SECONDARY surface: collapsed by default, expanded with
+   a native disclosure so no JS has to keep a toggle in sync with the stream. */
+details.panel > summary.panel-head { margin-bottom: 0; cursor: pointer; list-style: none; }
+details.panel > summary.panel-head::-webkit-details-marker { display: none; }
+details.panel > summary.panel-head::before {
+  content: "▸"; color: var(--muted); font-size: .8rem; flex: 0 0 auto;
+}
+details.panel[open] > summary.panel-head { margin-bottom: 12px; }
+details.panel[open] > summary.panel-head::before { content: "▾"; }
+details.panel > summary.panel-head h2 { margin: 0; font-size: 1rem; }
+.badge.sec-badge { color: #e3c6ff; border-color: #6b3f8f; background: #241333; }
+.log-summary-hint { flex: 1 1 100%; }
 .log-row.log-control { background: #101725; }
 .log-row.log-control .log-msg { color: var(--warn); font-style: italic; }
 

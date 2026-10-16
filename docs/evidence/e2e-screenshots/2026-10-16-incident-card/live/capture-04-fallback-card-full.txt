@@ -1,0 +1,49 @@
+DOM text read back out of the live page at capture time.
+Page: http://127.0.0.1:47711/?apiBase=http://127.0.0.1:42199/v1&projectId=01J0DEM0WARM000000000000AB
+window: 1500x1600 | decisions-count line: 3 shown / 3 decisions · model 1 · fallback 1 · incident records 2 (AI 1 · controller-generated 1) | decider band: decider: decider unknown no externalModelCall record on the operator log stream yet | log panel <details> open=False
+Nothing here was typed by hand: the page was loaded against the live controller and the DOM read back.
+
+Fallback row as rendered:
+19:53:30
+FALLBACK
+evidence-node-a-machine
+oom-guard-01
+→
+instance.restart agent-c1
+ERROR · 127.0.0.1:39659
+CONTROLLER-GENERATED · MODEL UNAVAILABLE
+incident_generated: "fallback"
+controller-generated, model unavailable
+oom on node 01M53499XAB360H6XQ325RJ9T2
+
+model unavailable (inference_unavailable); the deterministic playbook chose instance.restart on agent-c1 for rule oom-guard-01
+
+EVIDENCE · 1 TELEMETRY FIELD QUOTED
+ram_used_bytes
+=
+97 B
+seq 31
+DECIDED · 1 ACTION NAMED IN THE RECORD (A DECISION, NOT AN OUTCOME)
+instance.restart
+agent-c1
+EXECUTED · WHAT THE FLEET ANSWERED (REMEDIATION_AUDITS, JOINED BY DECISION ID)
+ERROR
+127.0.0.1:39659
+PUT /1.0/instances/agent-c1/state
+idempotency_key 01M53499XAB360H6XQ325RJ9T2:oom-guard-01:instance.restart:agent-c1:2
+operation still pending after 120.0s: /1.0/operations/01M534DP9AJ9EE4BM1M653FM9S
+executed 19:53:30
+· audit 01M534HBWB…HQZJ
+BREACH
+ram_used_bytes
+RAM used
+=
+97.00% of ram_total_bytes
+threshold: >= 95% of ram_total_bytes for 2 consecutive samples
+fired 19:53:30
+FALLBACK REASON
+inference_unavailable — host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.
+audit 01M534HBWB…HQZJ
+telemetry sample
+show on chart
+decision 01M534DP8X…9A0D

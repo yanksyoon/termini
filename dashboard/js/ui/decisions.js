@@ -155,7 +155,20 @@ export class DecisionsPanel {
     if (this.dom.countEl) {
       const model = this.rows.filter((r) => r.source === "model").length;
       const fb = this.rows.filter((r) => r.source === "fallback").length;
-      this.dom.countEl.textContent = `${shown} shown / ${this.rows.length} decisions · model ${model} · fallback ${fb}`;
+      const withRecord = this.rows.filter((r) => r.incident).length;
+      const fromModel = this.rows.filter((r) => r.incidentSource === "model").length;
+      const fromController = this.rows.filter((r) => r.incidentSource === "fallback").length;
+      const unlabelled = this.rows.filter((r) => r.incident && r.incidentSource === null).length;
+      const parts = [
+        `${shown} shown / ${this.rows.length} decisions`,
+        `model ${model}`,
+        `fallback ${fb}`,
+        `incident records ${withRecord} (AI ${fromModel} · controller-generated ${fromController})`,
+      ];
+      // A record with no provenance is a bug; it is counted out loud, not hidden
+      // inside the total.
+      if (unlabelled) parts.push(`${unlabelled} with no provenance`);
+      this.dom.countEl.textContent = parts.join(" · ");
     }
   }
 
@@ -246,10 +259,152 @@ export class DecisionsPanel {
 
     return el("li", { class: `decision-row src-${meta.tone}`, dataset: { decisionId: r.id, source: r.source } }, [
       head,
+      this._incidentCard(r),
       breach,
       rationale,
       links,
     ]);
+  }
+
+  /**
+   * The §4.2 incident card — the primary surface. Answers the four questions the
+   * log stream cannot: what happened (title), why the operator thinks so
+   * (explanation), on what evidence (the telemetry field list), and what it did
+   * (actions DECIDED) versus what the fleet answered (EXECUTED, from the audit
+   * join). Provenance is stated on every card: model output and the §8.1
+   * controller-generated fallback are never rendered alike, and a record that
+   * arrives with no provenance is shown as unlabelled — a bug, not a style.
+   */
+  _incidentCard(r) {
+    if (!r.incident) {
+      // Deterministic mode writes no record at all (§8.1). Say so: an empty card
+      // would assert an incident the controller never recorded.
+      return el("div", { class: "incident-none", dataset: { incidentSource: "none" } }, [
+        el("span", { class: "badge inc-none-badge", text: "incident record" }),
+        el("span", { class: "incident-none-text", text: r.noIncidentReason || "no incident record" }),
+      ]);
+    }
+
+    const inc = r.incident;
+    const meta = inc.meta;
+
+    const head = el("div", { class: "incident-head" }, [
+      el("span", {
+        class: `badge inc-badge inc-${meta.tone}`,
+        text: meta.badge,
+        title: meta.note,
+        dataset: { incidentBadge: meta.key },
+      }),
+      inc.generated === null
+        ? el("span", { class: "incident-prov incident-prov-null", text: "incident_generated: NULL" })
+        : el("span", { class: "incident-prov muted", text: `incident_generated: "${inc.generated}"` }),
+      el("span", { class: "muted small incident-prov-note", text: meta.label }),
+    ]);
+
+    const title = el("h3", {
+      class: "incident-title",
+      text: inc.title || "(the record carries no title)",
+      title: inc.title || "",
+    });
+
+    const explanation = el("p", {
+      class: "incident-explanation",
+      text: inc.explanation || "(the record carries no explanation)",
+    });
+
+    const evidence = el("div", { class: "incident-block incident-evidence" }, [
+      el("div", {
+        class: "inc-label",
+        text: `evidence · ${inc.evidence.length} telemetry field${inc.evidence.length === 1 ? "" : "s"} quoted`,
+      }),
+      inc.evidence.length
+        ? el(
+            "ul",
+            { class: "inc-list inc-evidence-list" },
+            inc.evidence.map((e) =>
+              el("li", { class: "inc-evidence-row" }, [
+                el("code", { class: "inc-field", text: e.field }),
+                el("span", { class: "inc-eq", text: "=" }),
+                el("span", { class: "inc-value", text: e.valueText }),
+                e.seq === undefined ? null : el("span", { class: "inc-seq muted", text: `seq ${e.seq}` }),
+                e.ts ? el("span", { class: "inc-ts muted", text: clock(e.ts), title: e.ts }) : null,
+              ]),
+            ),
+          )
+        : el("div", { class: "muted small", text: "the record quotes no telemetry fields" }),
+    ]);
+
+    const decided = el("div", { class: "incident-block incident-decided" }, [
+      el("div", {
+        class: "inc-label",
+        text: `decided · ${inc.actions.length} action${inc.actions.length === 1 ? "" : "s"} named in the record (a decision, not an outcome)`,
+      }),
+      inc.actions.length
+        ? el(
+            "ul",
+            { class: "inc-list inc-decided-list" },
+            inc.actions.map((a) =>
+              el("li", { class: "inc-decided-row" }, [
+                el("code", { class: "inc-kind", text: a.action_kind }),
+                a.target ? el("span", { class: "inc-target", text: a.target }) : el("span", { class: "muted", text: "(no target in the record)" }),
+                a.note ? el("span", { class: "inc-note", text: a.note }) : null,
+              ]),
+            ),
+          )
+        : el("div", { class: "muted small", text: "the record names no action" }),
+    ]);
+
+    const executed = el("div", { class: `incident-block incident-executed ${r.execution ? "" : "incident-executed-none"}` }, [
+      el("div", { class: "inc-label", text: "executed · what the fleet answered (remediation_audits, joined by decision id)" }),
+      this._executedList(r),
+    ]);
+
+    const cls = `incident-card inc-${meta.tone}`;
+    return el("article", { class: cls, dataset: { incidentSource: inc.generated === null ? "null" : inc.generated } }, [
+      head,
+      title,
+      explanation,
+      evidence,
+      decided,
+      executed,
+    ]);
+  }
+
+  /**
+   * The EXECUTED half. Every fact here comes from the audit row the controller
+   * wrote when the executor ran (result / detail / endpoint / idempotency key /
+   * audit id); when there is no audit row the card says so and claims nothing.
+   */
+  _executedList(r) {
+    const ex = r.execution;
+    if (!ex) {
+      const why = r.auditMissing
+        ? "no audit row for this decision in the fetched window — nothing here claims it ran"
+        : "the controller recorded no audit row for this decision";
+      return el("ul", { class: "inc-list inc-executed-list" }, [
+        el("li", { class: "inc-executed-row muted" }, [
+          el("span", { class: "badge exec-none", text: "not executed" }),
+          el("span", { text: why }),
+        ]),
+      ]);
+    }
+    const bits = [
+      el("span", { class: `badge exec-${ex.ok ? "ok" : "err"}`, text: ex.dryRun ? `dry-run · ${ex.result}` : ex.result }),
+      ex.endpoint ? el("span", { class: "inc-endpoint", text: hostOf(ex.endpoint), title: ex.endpoint }) : null,
+      ex.method || ex.path ? el("code", { class: "inc-call", text: `${ex.method || ""} ${ex.path || ""}`.trim() }) : null,
+    ].filter(Boolean);
+    const items = [el("li", { class: "inc-executed-row" }, bits)];
+    if (ex.idempotencyKey) {
+      items.push(el("li", { class: "inc-idem muted", text: `idempotency_key ${ex.idempotencyKey}` }));
+    }
+    if (ex.detail) items.push(el("li", { class: "inc-detail", text: ex.detail }));
+    items.push(
+      el("li", { class: "inc-at muted" }, [
+        el("span", { text: ex.at ? `executed ${clock(ex.at)}` : "execution time not recorded" }),
+        el("span", { text: ` · audit ${r.auditId ? shortId(r.auditId, 10, 4) : "not in the fetched window"}`, title: r.auditId || "" }),
+      ]),
+    );
+    return el("ul", { class: "inc-list inc-executed-list" }, items);
   }
 
   _resultBadge(r) {
