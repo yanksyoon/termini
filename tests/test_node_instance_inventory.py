@@ -182,12 +182,20 @@ class ServiceFactsTest(unittest.TestCase):
     """`services[]` is emitted on every sample, from a fixed allowlist (§4.8)."""
 
     def setUp(self):
-        self.original = tb._unit_status
-        tb._unit_status = lambda unit: {"snap.lxd.daemon.service": "running",
-                                        "ssh.service": "running"}.get(unit)
+        # The seam is `_unit_facts` since t_957956e5 (it returns the operational
+        # fields alongside the status), and journal counts are a separate probe
+        # that would otherwise shell out to journalctl from a unit test.
+        self.original = tb._unit_facts
+        tb._unit_facts = lambda unit: {"status": {
+            "snap.lxd.daemon.service": "running",
+            "ssh.service": "running",
+        }.get(unit)} if unit in ("snap.lxd.daemon.service", "ssh.service") else None
+        self.original_journal = tb.journal_counts
+        tb.journal_counts = lambda unit: {}
 
     def tearDown(self):
-        tb._unit_status = self.original
+        tb._unit_facts = self.original
+        tb.journal_counts = self.original_journal
 
     def test_compute_node_reports_its_services(self):
         out = tb.service_facts({"role_hint": "compute"}, None)
@@ -211,8 +219,10 @@ class ServiceFactsTest(unittest.TestCase):
         self.assertEqual(down[-1], {"name": "llama-cpp", "status": "stopped"})
 
     def test_stopped_unit_is_reported_as_stopped(self):
-        tb._unit_status = lambda unit: {"ssh.service": "stopped",
-                                        "snap.lxd.daemon.service": "failed"}.get(unit)
+        tb._unit_facts = lambda unit: {"status": {
+            "ssh.service": "stopped",
+            "snap.lxd.daemon.service": "failed",
+        }.get(unit)} if unit in ("ssh.service", "snap.lxd.daemon.service") else None
         out = tb.service_facts({"role_hint": "compute"}, None)
         self.assertIn({"name": "lxd", "status": "failed"}, out)
         self.assertIn({"name": "sshd", "status": "stopped"}, out)
@@ -222,13 +232,16 @@ class BuildSampleTest(unittest.TestCase):
     """The sample a node actually sends carries both fields and stays valid."""
 
     def setUp(self):
-        self.api, self.unit = tb.lxd_api_get, tb._unit_status
+        self.api, self.unit = tb.lxd_api_get, tb._unit_facts
+        self.journal = tb.journal_counts
         tb.lxd_api_get = lambda path, timeout=None: [_instance("agent-0")] if "instances" in path else None
-        tb._unit_status = lambda unit: {"snap.lxd.daemon.service": "running",
-                                        "ssh.service": "running"}.get(unit)
+        tb._unit_facts = lambda unit: {"status": "running"} if unit in (
+            "snap.lxd.daemon.service", "ssh.service") else None
+        tb.journal_counts = lambda unit: {}
 
     def tearDown(self):
-        tb.lxd_api_get, tb._unit_status = self.api, self.unit
+        tb.lxd_api_get, tb._unit_facts = self.api, self.unit
+        tb.journal_counts = self.journal
         tb._CPU_PREV.clear()
 
     def _cfg(self):
