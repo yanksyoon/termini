@@ -12,14 +12,25 @@ These tests pin the collection itself: the id derivation (byte-compatible with t
 controller's and the seeder's copies), the mapping of a real LXD `recursion=2`
 inventory onto the contract's §4.6 fields, the omission rules, and that the
 emitted sample still passes the controller's ingest validator.
+
+They drive the reader through the transport it actually uses — the LXD unix
+socket, with the `lxc` CLI as fallback (`tests/test_node_lxd_inventory.py` pins
+the socket itself against a fake unix-socket server). Every test here pins
+`LXD_UNIX_SOCKETS` at a path that does not exist and stubs both transports, so
+none of them can reach the BUILD HOST's own LXD: on a host that runs LXD (the
+build box does) the real daemon answers with the host's instances, which is
+exactly how the duplicated-reader merge failed (`_CPU_PREV` filling up with
+`bsp-verify`, `demo-node-a`, …).
 """
 from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import os
 import pathlib
 import re
 import sys
+import tempfile
 import unittest
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -53,6 +64,29 @@ def _instance(name, status="Running", usage=1_000_000_000, total=4_294_967_296,
             "disk": {"root": {"usage": disk_usage, "total": 0}},
         },
     }
+
+
+class NoHostLxdTest(unittest.TestCase):
+    """Base: these tests must never observe THIS host's LXD."""
+
+    def _sandbox_lxd(self):
+        self._lxd_saved = (tb.LXD_UNIX_SOCKETS, tb._lxd_instances_over_socket,
+                           tb._lxd_instances_over_cli, tb._INVENTORY_CLI_DEAD_UNTIL,
+                           tb._INVENTORY_WARN_AT)
+        tb.LXD_UNIX_SOCKETS = (
+            os.path.join(tempfile.mkdtemp(prefix="termini-no-lxd-"), "absent.socket"),)
+        tb._lxd_instances_over_cli = lambda: (None, "lxc: not consulted in this test")
+        tb._INVENTORY_CLI_DEAD_UNTIL = 0.0
+        tb._INVENTORY_WARN_AT = 0.0
+        self.addCleanup(self._unsandbox_lxd)
+
+    def _unsandbox_lxd(self):
+        (tb.LXD_UNIX_SOCKETS, tb._lxd_instances_over_socket, tb._lxd_instances_over_cli,
+         tb._INVENTORY_CLI_DEAD_UNTIL, tb._INVENTORY_WARN_AT) = self._lxd_saved
+
+    def _payload(self, items):
+        """The socket transport's canned `GET /1.0/instances?recursion=2` answer."""
+        tb._lxd_instances_over_socket = lambda: (items, "")
 
 
 class VmIdDerivationTest(unittest.TestCase):
@@ -95,20 +129,15 @@ class VmIdDerivationTest(unittest.TestCase):
         self.assertTrue(F.LXD_INSTANCE_FIELDS["vm_id"].get("ulid"))
 
 
-class InventoryTest(unittest.TestCase):
+class InventoryTest(NoHostLxdTest):
     """A real LXD inventory maps onto the contract fields (§4.6)."""
 
     def setUp(self):
         tb._CPU_PREV.clear()
-        self.original = tb.lxd_api_get
+        self._sandbox_lxd()
 
     def tearDown(self):
-        tb.lxd_api_get = self.original
         tb._CPU_PREV.clear()
-
-    def _payload(self, items):
-        tb.lxd_api_get = lambda path, timeout=None: (
-            items if path == "/1.0/instances?recursion=2" else None)
 
     def test_running_instances_only(self):
         self._payload([
@@ -157,11 +186,22 @@ class InventoryTest(unittest.TestCase):
         tb.lxd_instance_inventory({})
         self.assertEqual(tb._CPU_PREV, {})
 
+    def test_a_stopped_instance_is_not_advertised_and_drops_its_history(self):
+        # §4.6: only RUNNING instances are reported — the guardrail resolves a
+        # model-chosen target against this array, and a stopped instance is not a
+        # remediation target.
+        self._payload([_instance("agent-0", cpu_ns=1)])
+        tb.lxd_instance_inventory({})
+        self.assertIn("agent-0", tb._CPU_PREV)
+        self._payload([_instance("agent-0", status="Stopped", cpu_ns=1)])
+        self.assertEqual(tb.lxd_instance_inventory({}), [])
+        self.assertEqual(tb._CPU_PREV, {})
+
     def test_unreadable_lxd_is_none_not_an_empty_inventory(self):
         # an empty list IS a legitimate answer (a node running nothing); a junk
         # response is not, and must be reported as "no inventory this sample"
         for broken in (None, "nonsense", {"metadata": []}, 42):
-            tb.lxd_api_get = lambda path, timeout=None, _b=broken: _b
+            self._payload(broken)
             self.assertIsNone(tb.lxd_instance_inventory({}),
                               "an unreadable LXD must be reported as 'no inventory'")
 
@@ -174,7 +214,8 @@ class InventoryTest(unittest.TestCase):
         self.assertEqual(out[0]["ram_limit_bytes"], 0)
 
     def test_config_can_disable_collection(self):
-        tb.lxd_api_get = lambda path, timeout=None: self.fail("LXD was queried")
+        tb._lxd_instances_over_socket = lambda: self.fail("LXD was queried")
+        tb._lxd_instances_over_cli = lambda: self.fail("the CLI was queried")
         self.assertIsNone(tb.lxd_instance_inventory({"lxd_inventory": "0"}))
 
 
@@ -228,19 +269,20 @@ class ServiceFactsTest(unittest.TestCase):
         self.assertIn({"name": "sshd", "status": "stopped"}, out)
 
 
-class BuildSampleTest(unittest.TestCase):
+class BuildSampleTest(NoHostLxdTest):
     """The sample a node actually sends carries both fields and stays valid."""
 
     def setUp(self):
-        self.api, self.unit = tb.lxd_api_get, tb._unit_facts
+        self.unit = tb._unit_facts
         self.journal = tb.journal_counts
-        tb.lxd_api_get = lambda path, timeout=None: [_instance("agent-0")] if "instances" in path else None
         tb._unit_facts = lambda unit: {"status": "running"} if unit in (
             "snap.lxd.daemon.service", "ssh.service") else None
         tb.journal_counts = lambda unit: {}
+        self._sandbox_lxd()
+        self._payload([_instance("agent-0")])
 
     def tearDown(self):
-        tb.lxd_api_get, tb._unit_facts = self.api, self.unit
+        tb._unit_facts = self.unit
         tb.journal_counts = self.journal
         tb._CPU_PREV.clear()
 
@@ -258,7 +300,7 @@ class BuildSampleTest(unittest.TestCase):
         self.assertEqual(errors, [])
 
     def test_sample_omits_the_field_without_lxd_and_still_validates(self):
-        tb.lxd_api_get = lambda path, timeout=None: None
+        self._payload(None)          # socket down, CLI stubbed down too
         sample = tb.build_sample(self._cfg(), 1)
         self.assertNotIn("lxd_instances", sample)
         self.assertTrue(sample["services"])

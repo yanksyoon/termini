@@ -237,8 +237,22 @@ def mint_bootstrap_tokens(base: str, project_token: str, count: int) -> list[str
 # consulted and then always discarded. Emitting it makes the demo exercise the
 # model-driven path for real.
 #
-# 26 chars, Crockford-safe (0-9A-F), stable across samples so the model can
-# reference the same target in consecutive decisions.
+# WHO the entry names is what decides whether the demo is honest, though. The
+# guardrail resolves the entry's ``vm_id`` to the LXD instance the executor will
+# act on, so a vm_id that does not belong to an instance on the node being
+# dialled produces a decision that can only end in a refusal (and, before that
+# guard existed, in `HTTP 404 Instance not found`). Two modes:
+#
+#   * ``--lxd-instance NAME[,NAME...]`` (recommended, and what the demo units
+#     pass): advertise the controller-issued ``vm_id`` of a REAL instance on the
+#     node the executor dials, derived by ``vm_id_for_instance`` exactly as the
+#     node agent and the controller do. The action then lands on a real
+#     instance — a simulated FAULT over a real TARGET, which is the demo we can
+#     defend.
+#   * ``--synthetic-instance-ids``: advertise an invented id (the historical
+#     behaviour, kept only to demonstrate the fail-closed guard: the operator
+#     logs `target_missing` and the client UI shows the reason instead of a raw
+#     404). Never use it for a demo run.
 _INSTANCE_VM_ID: dict[str, str] = {}
 
 
@@ -261,9 +275,46 @@ def instance_vm_id(node_id: str) -> str:
     return _INSTANCE_VM_ID[node_id]
 
 
+# Crockford base32 — the alphabet the controller's ULID validator accepts.
+_CROCKFORD_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+_VM_ID_PREFIX = "termini-vm-id:"
+
+
+def vm_id_for_instance(name: str) -> str:
+    """The controller-issued `vm_id` for LXD instance `name`.
+
+    Byte-for-byte the same derivation as `infra/bootstrap/node/termini-bootstrap.py`
+    (the node that reports its real inventory) and
+    `controller/app/operator/vmids.py` (the controller that resolves a reported
+    vm_id back to the instance). The seeder must use it too, or it advertises a
+    target the guardrail cannot resolve and the executor will (correctly) refuse.
+    `tests/test_vm_id_derivation.py` fails the build if the three ever drift.
+    """
+    digest = hashlib.sha256((_VM_ID_PREFIX + str(name)).encode("utf-8")).digest()
+    value = int.from_bytes(digest[:17], "big") >> 6
+    out = []
+    for _ in range(26):
+        out.append(_CROCKFORD_ALPHABET[value & 0x1F])
+        value >>= 5
+    return "".join(reversed(out))
+
+
+def advertised_vm_ids(node_id: str, instance_names: list[str],
+                      synthetic: bool) -> list[str]:
+    """The `vm_id`s this node advertises in `lxd_instances[]`.
+
+    `instance_names` are real LXD instance names on the node the executor dials
+    (see the block above); their derived ids are what the controller resolves back
+    to those names. `synthetic` restores the historical invented id.
+    """
+    if instance_names and not synthetic:
+        return [vm_id_for_instance(n) for n in instance_names]
+    return [instance_vm_id(node_id)]
+
+
 def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
            disk_write_latency_ms: float, latency_ms: float, uptime_sec: int,
-           gpu: list | None = None) -> dict:
+           vm_ids: list[str], gpu: list | None = None) -> dict:
     s = {
         "seq": seq,
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
@@ -296,15 +347,18 @@ def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
         # Contract field (node-telemetry.md 4.6). The operator's guardrail G5
         # resolves a remediation target against this list (or the literal
         # "heaviest"); with it empty, every model-chosen action is unresolvable.
+        # Each vm_id must belong to an instance that EXISTS on the node the
+        # executor dials, or the action cannot land (see `advertised_vm_ids`).
         "lxd_instances": [
             {
-                "vm_id": instance_vm_id(node_id),
+                "vm_id": vm_id,
                 "state": "running",
                 "cpu_util_pct": 12.0,
                 "ram_used_bytes": max(1, ram_used_bytes // 4),
                 "ram_limit_bytes": 4294967296,
                 "disk_used_bytes": 2362232012,
             }
+            for vm_id in vm_ids
         ],
     }
     if gpu:
@@ -343,7 +397,9 @@ class NodeTicker(threading.Thread):
 
     def __init__(self, base: str, node: dict, project_id: str,
                  period_s: float, phase: float, high_ram: bool,
-                 gpu: list | None = None, *, timeout_s: float = TELEMETRY_TIMEOUT_S,
+                 gpu: list | None = None, *, instance_names: list[str] | None = None,
+                 synthetic_ids: bool = False,
+                 timeout_s: float = TELEMETRY_TIMEOUT_S,
                  attempts: int = 3, retry_base_s: float = 0.5,
                  max_retry_s: float = 8.0):
         super().__init__(daemon=True)
@@ -355,6 +411,12 @@ class NodeTicker(threading.Thread):
         self.phase = phase
         self.high_ram = high_ram
         self.gpu = gpu or []
+        # Real LXD instance names on the node the controller will dial, and
+        # whether to advertise an invented id instead (see the _INSTANCE_VM_ID
+        # block). The advertised set is computed per tick so a restart of the
+        # seeder cannot leave the node advertising an id from another node.
+        self.instance_names = list(instance_names or [])
+        self.synthetic_ids = bool(synthetic_ids)
         self.stop = threading.Event()
         self.timeout_s = timeout_s
         self.attempts = max(1, int(attempts))
@@ -457,6 +519,8 @@ class NodeTicker(threading.Thread):
         s = sample(self.node_id, self.project_id, self.seq,
                    ram_used_bytes=ram, disk_write_latency_ms=disk_lat,
                    latency_ms=net_lat, uptime_sec=3600 + int(time.monotonic() - t0),
+                   vm_ids=advertised_vm_ids(self.node_id, self.instance_names,
+                                            self.synthetic_ids),
                    gpu=self.gpu)
         self.send(s)
 
@@ -496,7 +560,8 @@ class NodeTicker(threading.Thread):
         """
         fresh = NodeTicker(self.base, {"node_id": self.node_id, "node_token": self.token},
                            self.project_id, self.period, self.phase, self.high_ram,
-                           gpu=self.gpu, timeout_s=self.timeout_s,
+                           gpu=self.gpu, instance_names=self.instance_names,
+                           synthetic_ids=self.synthetic_ids, timeout_s=self.timeout_s,
                            attempts=self.attempts, retry_base_s=self.retry_base_s,
                            max_retry_s=self.max_retry_s)
         fresh.seq = self.seq
@@ -575,6 +640,20 @@ def main(argv=None) -> int:
                     metavar="S", dest="stall_warn_seconds",
                     help="warn (once per window) when no telemetry sample has been "
                          "accepted for this long")
+    ap.add_argument("--lxd-instance", default=os.environ.get(
+                        "TERMINI_LXD_DEFAULT_INSTANCE_NAME", "").strip(),
+                    metavar="NAME[,NAME...]", dest="lxd_instance",
+                    help="real LXD instance name(s) on the node the controller dials "
+                         "(e.g. the GCE node behind TERMINI_LXD_BASE_URL). Their "
+                         "controller-issued vm_ids are advertised in lxd_instances[], so "
+                         "the model's remediation lands on an instance that EXISTS. "
+                         "Defaults to $TERMINI_LXD_DEFAULT_INSTANCE_NAME. Without it the "
+                         "seeder advertises an invented id, which the operator's "
+                         "fail-closed guard refuses (target_missing) instead of 404ing.")
+    ap.add_argument("--synthetic-instance-ids", action="store_true",
+                    dest="synthetic_instance_ids",
+                    help="advertise an INVENTED instance id even when --lxd-instance is "
+                         "given: use only to demonstrate the fail-closed guard")
     args = ap.parse_args(argv)
 
     base = args.controller.rstrip("/")
@@ -601,15 +680,34 @@ def main(argv=None) -> int:
     node_c = register(base, boots[1], "demo-node-c",
                       [{"vendor": "nvidia", "model": "NVIDIA L4", "vram_bytes": L4_24GB}])
     project_id = node_a["project_id"]
+    instances = [t.strip() for t in args.lxd_instance.split(",") if t.strip()]
     print(f"[seed] project_id = {project_id}", flush=True)
     print(f"[seed] node A (compute)   = {node_a['node_id']}", flush=True)
     print(f"[seed] node C (inference) = {node_c['node_id']}", flush=True)
+    # Say out loud which target the demo's remediations will land on: an invented
+    # id can only ever be refused by the operator's fail-closed guard, and that is
+    # worth knowing before a run rather than during one.
+    advertised = advertised_vm_ids(node_a["node_id"], instances,
+                                   args.synthetic_instance_ids)
+    if instances and not args.synthetic_instance_ids:
+        print(f"[seed] lxd_instances[] -> real instances {instances} "
+              f"(vm_ids {advertised})", flush=True)
+    else:
+        print(f"[seed] WARNING: lxd_instances[] advertises an INVENTED vm_id "
+              f"{advertised[0]} — no such instance exists on the node the executor "
+              f"dials, so the operator will refuse the remediation "
+              f"(target_missing). Pass --lxd-instance <real LXD instance> for a "
+              f"solvable demo.", file=sys.stderr, flush=True)
 
     tickers = [
         NodeTicker(base, node_a, project_id, period_s=6.0, phase=0.0, high_ram=False,
+                   instance_names=instances,
+                   synthetic_ids=args.synthetic_instance_ids,
                    timeout_s=args.telemetry_timeout),
         NodeTicker(base, node_c, project_id, period_s=6.0, phase=3.0, high_ram=True,
-                   gpu=GPU_TELEMETRY, timeout_s=args.telemetry_timeout),
+                   gpu=GPU_TELEMETRY, instance_names=instances,
+                   synthetic_ids=args.synthetic_instance_ids,
+                   timeout_s=args.telemetry_timeout),
     ]
     for t in tickers:
         t.start()

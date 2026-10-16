@@ -423,7 +423,27 @@ class FaultEndpointsTest(unittest.TestCase):
                 break
         self.assertTrue(fired, "disk-fail-01 never fired")
         self._clear(inj["injection_id"])
-        time.sleep(3)
+        # The re-injection is only refused `remediation_in_flight` once the cleared
+        # injection has left the OPEN states, and the driver needs
+        # `clear_samples_needed` ticks (1 Hz: work + cadence) to get it there. The
+        # fixed 3 s sleep this used to do RACES that tick — measured on this tree
+        # the row reaches `cleared` at 2.86-2.99 s, so a driver slip of ~10 ms
+        # leaves it `recovering`, guard 1a answers `fault_already_active` and this
+        # assertion fails with the WRONG reason (reproduced 1 run in 5 on a loaded
+        # box; that is the CI failure of 2026-10-16, run 38944644550). Wait for the
+        # fact, bounded; the assertion below is unchanged.
+        deadline = time.time() + 15
+        row = {"state": "recovering"}
+        while time.time() < deadline and row["state"] in demo_faults.OPEN_STATES:
+            time.sleep(0.2)
+            st, listing = http(self.base, "GET",
+                               f"/v1/projects/{PROJECT_ID}/demo/faults",
+                               token=PROJECT_TOKEN)
+            self.assertEqual(st, 200, listing)
+            row = next(f for f in listing["faults"]
+                       if f["injection_id"] == inj["injection_id"])
+        self.assertNotIn(row["state"], demo_faults.OPEN_STATES,
+                         "the cleared injection never left the open states")
         st, again = self._inject(scenario="disk-fail", duration_s=30)
         self.assertEqual(st, 409, again)
         reasons = [d["reason"] for d in again["error"]["details"]]

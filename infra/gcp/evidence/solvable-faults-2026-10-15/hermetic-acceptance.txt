@@ -1,0 +1,73 @@
+t_895bf6d3 hermetic acceptance — real loop, real guardrail, real executor, strict LXD double
+LXD double: tests/stub_lxd.py (404 on an instance it does not have; never 'always 200')
+
+==============================================================================
+CASE A — a fault is injected and the model's target EXISTS on the node
+==============================================================================
+node            : 01M506SVARS2BAGD3T3V88ZRDA (ba1f1faeacb4501aed12cf8ea1e5713b, lxd_endpoint=http://127.0.0.1:46733)
+instances on the node the executor dials: ['demo-workload', 'termini-01m4wjhwqr3b8pcav2tvqbgg-0-0', 'termini-01m4wjhwqr3b8pcav2tvqbgg-0-1']
+node-reported vm_id for 'demo-workload' : NNB9287WRHGFDPEZ995TKCXDNW
+nothing is configured in TERMINI_LXD_INSTANCE_NAMES — the loop must resolve the id through the node's LIVE inventory
+
+--- injected fault, visible in telemetry BEFORE the decision ---
+  seq=100 ts=2026-10-16T09:00:00Z ram=34000000000/34359738368 (99.0%)  instances[0].vm_id=NNB9287WRHGFDPEZ995TKCXDNW
+  seq=101 ts=2026-10-16T09:00:01Z ram=34000000000/34359738368 (99.0%)  instances[0].vm_id=NNB9287WRHGFDPEZ995TKCXDNW
+  seq=102 ts=2026-10-16T09:00:02Z ram=34000000000/34359738368 (99.0%)  instances[0].vm_id=NNB9287WRHGFDPEZ995TKCXDNW
+
+--- the loop produced 1 remediation(s) ---
+DECISION  rule=oom-guard-01 action=instance.restart source=model confidence=0.9 fallback=None
+          params={"instance_name": "demo-workload", "force": true, "timeout_s": 30, "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW"}
+AUDIT     rule=oom-guard-01 action=instance.restart result=ok
+          lxd PUT /1.0/instances/demo-workload/state @ http://127.0.0.1:46733
+          detail=operation Success: /1.0/operations/op-state-1; action=restart; state Running -> Running
+OPERATOR LOG [info] oom-guard-01: instance.restart demo-workload -> ok (threshold: >= 95% of ram_total_bytes for 2 consecutive samples)
+
+--- what the executor actually sent to LXD (in order) ---
+  GET    /1.0/instances?recursion=1
+  GET    /1.0/instances/demo-workload
+  GET    /1.0/instances/demo-workload/state
+  PUT    /1.0/instances/demo-workload/state {'action': 'restart', 'force': True, 'timeout': 30}
+  GET    /1.0/operations/op-state-1
+  GET    /1.0/instances/demo-workload/state
+
+state-changing requests issued: 1
+restart requests recorded by LXD: 1 [('PUT', '/1.0/instances/demo-workload/state', {'action': 'restart', 'force': True, 'timeout': 30})]
+instance 'demo-workload' state: Running (it exists, so a real LXD restarts it and its uptime resets — the live-window observable)
+
+--- the fault CLEARS after the remediation ---
+  seq=200 ram=12000000000/34359738368 (34.9%)
+  seq=201 ram=12000000000/34359738368 (34.9%)
+  seq=202 ram=12000000000/34359738368 (34.9%)
+  further remediations produced: 0
+  trigger_state oom-guard-01 -> armed (fired 1 time(s))
+  trigger_state disk-fail-01 -> armed (fired 0 time(s))
+  trigger_state disk-degrade-01 -> armed (fired 0 time(s))
+  trigger_state latency-01 -> armed (fired 0 time(s))
+
+==============================================================================
+CASE B — negative control: the SAME fault with an INVENTED target
+==============================================================================
+the seeder advertises the id it used to invent: 01M4N827979BD9D2762EFE24A0
+it hashes from NO instance on the node, so nothing can resolve it
+
+DECISION  rule=oom-guard-01 action=instance.restart source=model confidence=0.9 fallback=None
+          params={"instance_name": "01M4N827979BD9D2762EFE24A0", "force": true, "timeout_s": 30, "_vm_id": "01M4N827979BD9D2762EFE24A0"}
+AUDIT     rule=oom-guard-01 action=instance.restart result=error
+          lxd GET /1.0/instances/01M4N827979BD9D2762EFE24A0 @ http://127.0.0.1:39203
+          detail=target_missing: refused PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state — no LXD instance '01M4N827979BD9D2762EFE24A0' on http://127.0.0.1:39203 (probe GET /1.0/instances/01M4N827979BD9D2762EFE24A
+OPERATOR LOG [warn] oom-guard-01: instance.restart 01M4N827979BD9D2762EFE24A0 -> error (target_missing: refused PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state — no LXD instance '01M4N827979BD9D2762EFE24A0' on http://127.0.0.1:39203 (pr
+
+--- what the executor sent to LXD (in order) ---
+  GET    /1.0/instances?recursion=1
+  GET    /1.0/instances/01M4N827979BD9D2762EFE24A0
+
+state-changing requests issued: 0  (fail-closed: NONE)
+no raw LXD 404 body anywhere: the audit and the log name the TARGET
+
+==============================================================================
+SUMMARY
+==============================================================================
+A fault + a target that EXISTS  -> audit result=ok, restart requests=1
+A fault + an INVENTED target    -> audit result=error (target_missing), state-changing requests=0
+
+hermetic run wall-clock: 3.80s

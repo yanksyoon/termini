@@ -231,6 +231,8 @@ class LoopDecisionIntegrationTest(unittest.TestCase):
         self.lxd = StubLxd()
         self.lxd.start()
         self.addCleanup(self.lxd.stop)
+        # The remediation target must exist on the node (see test_operator_loop).
+        self.lxd.set_state("agent-c1", "Running")
 
         with db.session(self.db_path) as conn:
             self.project_id = ulid.new_ulid()
