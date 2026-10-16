@@ -49,11 +49,13 @@ resolve this with three concrete mechanisms, not a promise: (1) telemetry cadenc
 **1000 ms** during the demo (D8), so the window is one second, not 10–15; (2) a
 **deterministic local fast-path** exists for `oom-guard-01` (threshold →
 `instance.restart` of the heaviest workload, no model call), so remediation is never
-gated on model latency — and when the model is consulted instead, that call runs on
-**Node C** (`http://10.10.0.13:8080`, `llama.cpp`, CPU-only), where the model is
-**Gemma 3 4B IT** (Google's open weights, alias `gemma`) and a decision over the
-operator's real prompt is measured in **minutes, not seconds** (≈84 s at a one-sample
-evidence window, ≈6.7 min at the real 20-sample window), which is exactly why the
+gate from model latency — and when the model is consulted instead, that diagnosis call
+runs on the controller's **provider-only Gemini listener** (`http://127.0.0.1:8085`,
+`backend=gemini-proxy` → `aiplatform.googleapis.com`), whose substituted prompt is C0
+telemetry only and which answers in **seconds**. The **agent-facing** model — **Gemma 3 4B IT**
+(Google's open weights, alias `gemma`, `http://10.10.0.13:8080`, `llama.cpp`, CPU-only) —
+serves agents and intent extraction on-prem and stays minutes-per-decision (≈84 s at a
+one-sample evidence window, ≈6.7 min at the real 20-sample window), which is exactly why the
 deterministic fast-path — not the model — covers the on-screen OOM moment; (3) the **chaos harness's deterministic ramp**
 drives the metric across the threshold on cue, so the rule fires deterministically even if `stress-ng --vm-bytes 85%`
 never quite reaches 95%×2 (`architecture.md` R24). We state plainly that beating the

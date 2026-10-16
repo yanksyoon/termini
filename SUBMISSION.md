@@ -199,13 +199,20 @@ The threshold rule is the **detector**, the model is the **decider**. A rule fir
 is a wake-up signal, never a decision:
 
 ```
-telemetry (C0/C1)  →  threshold rule fires  →  llama.cpp on Node C decides  →  guardrails  →  LXD executes  →  audit
+telemetry (C0/C1)  →  threshold rule fires  →  diagnosis (Gemini, provider-only)  →  guardrails  →  LXD executes  →  audit
+agents / intent  ─────────────────►  Gemma 3 4B on Node C (on-prem, backend=local)
 ```
 
-The model runs **on-prem, on Node C** (`llama.cpp`, CPU-only, alias **`gemma` = Gemma 3 4B IT**,
-Google's open weights), so the
-operator loop makes **no external call at all** — a strictly stronger data-residency position
-than an off-prem decision model. The model's choice is constrained three ways — a **GBNF
+The **diagnosis** — the decision step that names the remediation — runs on the controller's
+**provider-only listener** (`http://127.0.0.1:8085`, `backend=gemini-proxy` →
+`aiplatform.googleapis.com`, answered by `gemini-2.5-flash`). Its substituted prompt is
+**C0 telemetry only** (rule/metric context plus the instance inventory — no workload
+payloads), and the user decided on 2026-10-15 that this prompt may leave the premises as part
+of the managed service. This is the one call that leaves the premises, and it is labelled,
+not hidden: the audit row records `egress=external destination=aiplatform.googleapis.com`.
+The **agents and the intent path** stay on-prem: they call Node C's `:8080` (`backend=local`,
+alias **`gemma` = Gemma 3 4B IT**, Google's open weights, CPU-only), which answers from that
+node's own weights and offers no forwarded backend. The model's choice is constrained three ways — a **GBNF
 grammar** under which an off-allowlist command has no valid encoding, a **param/guardrail
 validator**, and a **confidence gate** — with a **mandatory deterministic fallback** that
 records both the fallback and its reason. Which decider acted is recorded per-decision in
@@ -214,14 +221,16 @@ records both the fallback and its reason. Which decider acted is recorded per-de
 Governance holds throughout: the call is wrapped by `externalModelCall()`
 (`governance.md` §7.2/§9.3), which asserts the static template version and the C-class of
 every substituted field before sending, and audits before/after.
-**C2 (application logs, payloads, prompts, credentials) never reaches the model.**
-**Note on latency:** on CPU a decision is *minutes*, not seconds (measured on Node C with the
-pinned Gemma 3 4B Q4_K_M: ≈84 s at a one-sample evidence window, ≈6.7 min at the real 20-sample
-window; the real request is 12,748 prompt tokens under Gemma's tokenizer and fits `--ctx-size
-16384`). The on-screen demo moment is
-therefore carried by the deterministic fast-path, not the model. The Gemma-on-Cloud-Run-GPU
-service (`termini-gemma`) remains deployed as the reference managed path, but the shipped
-operator points at Node C's on-prem Gemma instead.
+**C2 (application logs, payloads, prompts, credentials) never reaches either model.**
+**Note on latency:** served on Node C's CPU weights, a decision is *minutes*, not seconds
+(≈84 s at a one-sample evidence window, ≈6.7 min at the real 20-sample window; the real
+request is 12,748 prompt tokens under Gemma's tokenizer and fits `--ctx-size 16384`). The
+diagnosis therefore runs on the provider-only Gemini surface, where the same decision is
+**seconds** (measured 1.8 s warm / 13 s cold in the 2026-10-15 acceptance window). The
+on-screen demo moment is still carried by the deterministic fast-path. The
+Gemma-on-Cloud-Run-GPU service (`termini-gemma`) remains deployed as the reference managed
+path, but it is **not** the shipped decider — the shipped diagnosis is Gemini, and the
+shipped agent/intent model is Node C's on-prem Gemma.
 
 ---
 

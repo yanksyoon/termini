@@ -357,7 +357,9 @@ What Termini does **not** claim (the honest guardrails from
   short-lived (≤8 h), principal-bound certificates.
 - No on-node redactor that drops C2 fields — the gate is controller-side, and a
   non-conforming batch is rejected fail-closed, not field-dropped.
-- No GPU-accelerated inference in the live demo — it runs CPU-only `llama.cpp`.
+- No GPU-accelerated inference on the customer's node — the agent-facing model runs
+  CPU-only `llama.cpp` on Node C; the diagnosis runs on a managed model service (Gemini
+  on Vertex AI), which is an external call, not a GPU on the node.
 
 ---
 
