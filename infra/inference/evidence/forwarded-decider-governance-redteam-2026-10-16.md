@@ -115,27 +115,41 @@ enforcement is code, not prose (`externalModelCall()` + `egress.py`). The raw
 byte-for-byte wire capture and a fresh live adversarial re-run remain **unverified**
 pending an approved live-fleet window (items in §4).
 
-## 6. Open owner ruling (raised 2026-10-16, post-pivot)
+## 6. Owner ruling (2026-10-16) — what the product does, and what tonight's demo does instead
 
-The pivot traded an on-prem guarantee for a working demo: Node C's agent-facing front
-door now ships `gemini-proxy`, so **agent traffic — which can carry customer payloads
-— leaves for `aiplatform.googleapis.com` unless the `local` fallback is selected**.
-The governance sentence this repo has asserted in several places ("your data never
-leaves") therefore now depends on a configuration choice, not on the architecture.
+**The ruling, recorded verbatim in intent:** *"the real idea is for node C to have a local
+model deployed, so data never leaves. however, in this demo, since we cannot have access to
+gpu nodes for node C, we have to proxy it."*
 
-What is verified is limited and stated as such:
-- the DIAGNOSIS path's C0-only substitution is enforced in code (this document, §2/§5);
-- the agent path's destination is `aiplatform.googleapis.com` when `gemini-proxy` is
-  selected — that is a property of the shipped configuration, and it is the opposite
-  of what §1/§2 said before this correction.
+So there are two different, separately-true statements, and every claim in the deck, the
+narrative, the spec answers and the demo script must be read as one of them:
 
-Open questions for the owner (not decided here, and no worker should decide them):
-1. Is agent-facing egress of C2 payloads acceptable for the demo footprint, or must the
-   demo run Node C with `local` (on-prem weights, slower) and keep `gemini-proxy` for
-   the provider-only diagnosis surface?
-2. If egress is acceptable, which sentence in the deck / narrative / spec answers is
-   restated, and how, so the on-prem claim is not read as covering agent traffic?
+| | **The product (what Termini is)** | **Tonight's demo (what is running)** |
+|---|---|---|
+| Node C's model | **local weights on the node** (Gemma 3 4B IT, `llama.cpp`, `backend=local`) | **`gemini-proxy`** — forwarded to `aiplatform.googleapis.com` |
+| Why | that is the design: the customer's hardware runs the model, so **data never leaves** | **no GPU node is available for Node C** (L4 quota 0 in `asia-south1`), so the identical call is proxied to the managed model |
+| Status of the on-prem guarantee | the product's posture | a **disclosed stand-in for the missing GPU**, labelled in-band on every response (`X-Termini-Backend`, `X-Termini-External-Destination`, `X-Termini-Egress`) |
 
-Until (1) is answered, the honest reading is: **the demo's diagnostic loop keeps its
-C0-only property; the agent surface does not have an on-prem guarantee in the shipped
-configuration.**
+**What follows for claims.** "Your data never leaves" is a statement about the product,
+and it is the reason the local path exists. It must not be presented as a property of
+tonight's footprint while that footprint forwards the call — the substitution is what
+changes, not the design, and the demo now says so out loud (see `docs/demo-script.md`,
+`docs/spec-answers.md`, `SUBMISSION.md`).
+
+**The intent path is NOT forwarded — corrected.** An earlier revision of this section said
+the extraction "follows the front door and is therefore forwarded"; that was wrong. The
+deployment **pins** `TERMINI_INTENT_INFERENCE_BASE_URL` at Node C's own dedicated
+small-context `llama.cpp` instance on `:8090` (`infra/cloudrun/setup-operator-node-c.sh` sets
+`http://${NODE_C}:8090`; `infra/inference/setup-inference-surfaces.sh` sets the same;
+`tests/test_inference_surfaces.py` asserts it), and that instance is **deliberately not
+fronted by the proxy**. So the user-facing intent prompt is answered by the node's own
+weights and does **not** leave the premises — the code default is empty, but the deployed
+configuration is pinned, and it is the deployed configuration that runs.
+
+What tonight's demo actually forwards, precisely:
+
+| Surface | Tonight | Leaves the premises? |
+|---|---|---|
+| **Intent extraction** (controller → Node C `:8090`, pinned) | the node's own `llama.cpp`, not fronted by the proxy | **no** |
+| **Agent traffic** (agent VMs → Node C `:8080` front door) | `gemini-proxy` → `aiplatform.googleapis.com` | **yes** — the disclosed stand-in |
+| **Diagnosis** (controller → `127.0.0.1:8085`, provider-only) | `gemini-2.5-flash` on Vertex AI, C0-only substituted prompt | **yes**, by design (owner's Q1b) |
