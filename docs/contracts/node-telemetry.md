@@ -285,6 +285,17 @@ exit status for an instance (`/1.0/instances/<name>` has no equivalent of
 systemd's `ExecMainStatus`), so a field here could only ever be invented. The
 per-unit exit status lives in §4.8, where systemd actually reports it.
 
+`state_age_sec` is **structurally absent** on an LXD that does not expose an
+instance start time, and it is never faked in its place. Measured against the
+snap-packaged LXD 5.x this fleet runs (2026-10-16): neither
+`GET /1.0/instances?recursion=2` nor `GET /1.0/instances/<name>/state` returns
+`started_at`, so the field is omitted from **every** `lxd_instances[]` entry and a
+viewer sees it absent — not `0` — on such a node. That is the same "omit, never
+invent" rule as `last_exit_code` above and the §4.11 journal counts. Age is *not*
+derived from the instance object's `created_at`/`last_used_at`: that is
+creation/last-use age, not state age, and reporting it under this name would make
+the field a lie.
+
 ### 4.7 Inference (llama.cpp) — C0 (extension)
 
 Present only on the node hosting the inference **service** (Node C, host-exposed
@@ -373,11 +384,12 @@ The array is **omitted**, not emptied, when the node cannot read `/proc` for
 itself — the same rule as `lxd_instances[]` (§4.6): "this node did not report a
 process table" and "this node runs nothing" are different facts.
 
-**Bound (volume/retention decision, recorded, t_957956e5): top-20 per sample**,
-ranked by `cpu_util_pct` descending, then `ram_used_bytes` descending, then `pid`
-ascending — a total order, so two nodes sampling the same host agree on the set.
-The array rides the **existing** telemetry cadence (§1): no new interval, no
-additional egress, one `/proc` sweep per telemetry sample.
+**Bound (volume/retention decision: recorded, t_957956e5; amended 2026-10-16 by the
+owner's note, t_74b5cce0): top-10 per sample, ranked by `ram_used_bytes`
+descending**, then `cpu_util_pct` descending, then `pid` ascending — a total
+order, so two nodes sampling the same host agree on the set. The array rides the
+**existing** telemetry cadence (§1): no new interval, no additional egress, one
+`/proc` sweep per telemetry sample.
 
 | Field | Type | Unit | Range | Description |
 |-------|------|------|-------|-------------|
@@ -392,6 +404,16 @@ additional egress, one `/proc` sweep per telemetry sample.
 `cpu_util_pct` is omitted on the first sample after a node or process start (no
 delta available yet) rather than reported as `0` — the same convention as
 `lxd_instances[].cpu_util_pct` (§4.6).
+
+**Recorded objection (2026-10-16, decided: ship RSS-primary as stated).** An
+RSS-ranked window is blind to a CPU-bound runaway with a small resident set, and
+this sample is the only process evidence an incident has. The demo's frozen rules
+are OOM / disk-fail / disk-degrade / latency, so RSS-primary is right for
+everything the demo actually fires; the residual risk is a day-2 CPU rule, not a
+demo one, and it is recorded here rather than hidden. If such a rule arrives, the
+cheap fix is to keep the window RSS-ranked **and** always include the single
+highest-`cpu_util_pct` process; that changes the set (and therefore this
+paragraph), so it is a named follow-up, not an unrecorded drift.
 
 ---
 

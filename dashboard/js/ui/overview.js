@@ -75,7 +75,7 @@ function card(node, sample, view, state, handlers) {
   }
 
   // Top processes (contract §4.10) — what is running *inside* the node. Metrics
-  // only: name, CPU, RSS. The panel shows the first few of the bounded top-20;
+  // only: name, CPU, RSS. The panel shows the first few of the bounded top-10;
   // the rest are on the node's charts/detail view.
   const procs = el("div", { class: "processes" });
   const top = (health.processes || []).slice(0, 4);

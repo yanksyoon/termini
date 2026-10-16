@@ -28,7 +28,7 @@ export class MetricsPanel {
    *
    * Process metrics are per-sample, not a time series, so they get their own
    * card rather than a chart line: "what is running inside this node right now"
-   * is the question an incident asks, and a chart of the top-20 set over time
+   * is the question an incident asks, and a chart of the top-10 set over time
    * would answer a different one.
    */
   setProcesses(list) {

@@ -182,10 +182,13 @@ PROCESS_FIELDS: dict[str, dict] = {
     "age_sec": {"kind": "int", "unit": "s", "cclass": "C0", "min": 0},
 }
 
-# Top-N bound for `processes[]` (§4.10). The contract's existing window style is
-# ≤20; ingest rejects an over-long array rather than silently truncating, so an
-# over-eager collector is a loud defect instead of a quiet data loss.
-PROCESSES_MAX = 20
+# Top-N bound for `processes[]` (§4.10). The owner's note of 2026-10-16 set the
+# window at **top-10 per sample, ranked by RSS**, on the existing cadence and with
+# no new retention tier; §4.10 records that decision and the objection to it. The
+# bound is not a target the collector may undershoot silently: ingest rejects an
+# over-long array rather than truncating it, so an over-eager collector is a loud
+# defect instead of a quiet data loss.
+PROCESSES_MAX = 10
 
 # Top-level sample container keys (list/object fields).
 SAMPLE_CONTAINERS: dict[str, dict] = {

@@ -743,10 +743,10 @@ def service_facts(cfg: dict, inference: dict | None = None) -> list:
 # task name (`comm`), the kernel state, and the counters. This daemon never reads
 # `/proc/<pid>/cmdline`, `/proc/<pid>/environ`, the `exe` link, `cwd` or any open
 # file path — so the C2 classes are not collected at all rather than redacted
-# after the fact. `tests/test_node_processes.py` pins that an emitted entry has
+# `tests/test_telemetry_processes.py` pins that an emitted entry has
 # exactly the contract keys, and the controller rejects any of those C2 names at
 # ingest even if a compromised node sent one.
-PROCESSES_MAX = 20  # mirrors controller/app/fields.PROCESSES_MAX (§4.10)
+PROCESSES_MAX = 10  # mirrors controller/app/fields.PROCESSES_MAX (§4.10)
 
 # Cumulative CPU ticks per pid from the previous sample, for the CPU percentage.
 _PROC_PREV: dict[int, tuple[float, int]] = {}
@@ -793,11 +793,28 @@ def _comm_of(stat_text: str) -> str | None:
     return cleaned or None
 
 
+def _rank_key(row: tuple) -> tuple:
+    """`processes[]` total order (§4.10): RSS desc, then CPU desc, then `pid` asc.
+
+    RSS is the **primary** key — the owner's note of 2026-10-16 set the window at
+    "top-10 by RSS per sample". CPU and `pid` only break ties, so two readers of
+    the same host agree on the set. A process with no CPU delta available yet
+    carries the `-1.0` sentinel, which sorts below any real percentage rather
+    than inventing a `0` (§4.10 omits `cpu_util_pct` on that sample).
+
+    `row` is the collector's `(cpu_util_pct_or_minus_one, ram_used_bytes, pid,
+    entry)` tuple.
+    """
+    cpu, ram, pid = row[0], row[1], row[2]
+    return (-ram, -cpu, pid)
+
+
 def process_facts() -> list | None:
     """`processes[]` (contract §4.10): the node's top-`PROCESSES_MAX` processes.
 
-    Ranked by `cpu_util_pct` descending, then `ram_used_bytes` descending, then
-    `pid` ascending — a total order, so two readers of the same host agree.
+    Ranked by `ram_used_bytes` descending, then `cpu_util_pct` descending, then
+    `pid` ascending (`_rank_key`) — the owner's top-10-by-RSS bound, and a total
+    order, so two readers of the same host agree.
 
     Returns None when `/proc` cannot be listed, so the caller OMITS the field:
     "this node did not report a process table" is the truth, whereas an empty
@@ -879,7 +896,7 @@ def process_facts() -> list | None:
     for gone in [p for p in _PROC_PREV if p not in live]:
         _PROC_PREV.pop(gone, None)
 
-    rows.sort(key=lambda r: (-r[0], -r[1], r[2]))
+    rows.sort(key=_rank_key)
     return [entry for _pct, _ram, _pid, entry in rows[:PROCESSES_MAX]]
 
 
