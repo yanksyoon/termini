@@ -52,29 +52,58 @@ def decision_exists(conn, event_id: str) -> bool:
 def insert_decision(conn, decision_id: str, event, action, now_iso: str,
                     *, source: str = "deterministic", confidence: float | None = None,
                     fallback_reason: str | None = None,
-                    incident: dict | None = None) -> None:
+                    incident: dict | None = None,
+                    trace=None) -> None:
     # `incident` is the §4.2 incident record (or None in deterministic mode, §8.1).
     # Written in the SAME statement as the decision, so a record can never exist
     # without its decision and the row is atomic. `incident_generated` ∈
     # model | fallback; all five columns are NULL when incident is None.
+    #
+    # `trace` is the §4.3 DecisionTrace (or None in deterministic mode, §8.1) —
+    # also written in the SAME statement as the decision. At insert time it
+    # carries the steps through `action_decided`; the loop appends `executed`
+    # and `audit_recorded` in the audit's transaction (append_decision_trace),
+    # so a trace never asserts an outcome before the executor produced it.
     incident_title = incident.get("incident_title") if incident else None
     incident_explanation = incident.get("explanation") if incident else None
     incident_evidence = json.dumps(incident.get("evidence", [])) if incident else None
     incident_actions = json.dumps(incident.get("actions", [])) if incident else None
     incident_generated = incident.get("generated") if incident else None
+    decision_trace = json.dumps(trace.to_dict()) if trace is not None else None
+    trace_version = trace.trace_version if trace is not None else None
     conn.execute(
         "INSERT INTO remediation_decisions (id, event_id, node_id, rule_id, playbook,"
         " action_kind, action_params, reason, decision_source, confidence,"
         " fallback_reason, decided_at, incident_title, incident_explanation,"
-        " incident_evidence, incident_actions, incident_generated)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " incident_evidence, incident_actions, incident_generated,"
+        " decision_trace, trace_version)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             decision_id, event.event_id, event.node_id, event.rule_id,
             action.playbook, action.kind, json.dumps(action.params), action.reason,
             source, confidence, fallback_reason, now_iso,
             incident_title, incident_explanation,
             incident_evidence, incident_actions, incident_generated,
+            decision_trace, trace_version,
         ),
+    )
+
+
+def append_decision_trace(conn, decision_id: str, trace) -> None:
+    """Append the post-decision trace steps (``executed``, ``audit_recorded``).
+
+    Called in the SAME transaction as the audit write (§4.3/§4.2 rule): the
+    execution result exists only after the executor runs, so those steps are
+    appended here rather than at decision-insert time, and a trace can never
+    assert an outcome the executor has not produced. ``trace`` is the same
+    DecisionTrace object the decision insert serialized; it now carries the
+    full step list, so this overwrites the row's trace with the complete one.
+    """
+    if trace is None:
+        return
+    conn.execute(
+        "UPDATE remediation_decisions SET decision_trace = ? WHERE id = ?",
+        (json.dumps(trace.to_dict()), decision_id),
     )
 
 
@@ -168,9 +197,10 @@ def list_decisions(conn, limit: int) -> list[dict]:
             d["action_params"] = json.loads(d["action_params"])
         except (json.JSONDecodeError, TypeError):
             pass
-        # §4.2 incident record columns are JSON TEXT; expose them as objects so
-        # the API (and the dashboard) returns a structured record, not a string.
-        for col in ("incident_evidence", "incident_actions"):
+        # §4.2 incident record columns + §4.3 decision trace are JSON TEXT;
+        # expose them as objects so the API (and the dashboard) returns a
+        # structured record, not a string.
+        for col in ("incident_evidence", "incident_actions", "decision_trace"):
             raw = d.get(col)
             if raw is None:
                 d[col] = None

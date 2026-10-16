@@ -33,11 +33,13 @@ import json
 import logging
 import math
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Protocol, runtime_checkable
 
 from .. import ulid
 from .. import governance
+from .. import fields as F
 from .models import HealthEvent, RemediationAction
 from . import playbook
 
@@ -66,6 +68,19 @@ try:
         INCIDENT_GENERATED_FALLBACK,
         INCIDENT_GENERATED_MODEL,
         INCIDENT_TITLE_MAX_CHARS,
+        TRACE_DECIDED_BY_DETERMINISTIC,
+        TRACE_DECIDED_BY_FALLBACK,
+        TRACE_DECIDED_BY_MODEL,
+        TRACE_MAX_STEPS,
+        TRACE_REPLY_MAX_CHARS,
+        TRACE_STATE_CLAMPED,
+        TRACE_STATE_DROPPED,
+        TRACE_STATE_FALLBACK,
+        TRACE_STATE_OK,
+        TRACE_STATE_REJECTED,
+        TRACE_STATE_SKIPPED,
+        TRACE_STEP_DETAIL_MAX_CHARS,
+        TRACE_VERSION,
         RATIONALE_MAX_CHARS,
         SCHEMA_VERSION,
         TIMEOUT_S_MAX,
@@ -106,6 +121,19 @@ except ImportError:  # pragma: no cover - exercised only when run from controlle
         INCIDENT_GENERATED_FALLBACK,
         INCIDENT_GENERATED_MODEL,
         INCIDENT_TITLE_MAX_CHARS,
+        TRACE_DECIDED_BY_DETERMINISTIC,
+        TRACE_DECIDED_BY_FALLBACK,
+        TRACE_DECIDED_BY_MODEL,
+        TRACE_MAX_STEPS,
+        TRACE_REPLY_MAX_CHARS,
+        TRACE_STATE_CLAMPED,
+        TRACE_STATE_DROPPED,
+        TRACE_STATE_FALLBACK,
+        TRACE_STATE_OK,
+        TRACE_STATE_REJECTED,
+        TRACE_STATE_SKIPPED,
+        TRACE_STEP_DETAIL_MAX_CHARS,
+        TRACE_VERSION,
         RATIONALE_MAX_CHARS,
         SCHEMA_VERSION,
         TIMEOUT_S_MAX,
@@ -155,12 +183,174 @@ class DecisionResult:
     # carries `generated` ∈ {model, fallback} when present, so the reader can
     # never mistake a controller-built record for model output.
     incident: dict | None = None
+    # The §4.3 decision trace (a DecisionTrace), or None in deterministic mode
+    # (§8.1: no trace columns are written). The loop appends the `executed` and
+    # `audit_recorded` steps to it after the audit, then persists it.
+    trace: "DecisionTrace | None" = None
 
 
 @runtime_checkable
 class DecisionProvider(Protocol):
     def decide(self, event: HealthEvent, context: DecisionContext) -> DecisionResult:
         ...
+
+
+# --------------------------------------------------------------------------- #
+# Decision trace (operator-decision.md §4.3) — captured + sanitized at the site
+# --------------------------------------------------------------------------- #
+
+def _now_iso_ms() -> str:
+    """Current UTC time as RFC3339 with millisecond precision (matches triggers)."""
+    import datetime
+    dt = datetime.datetime.now(datetime.timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
+def _c0_field_names(sample: Any) -> list[str]:
+    """The C0 field names a sample carries, for the ``evidence_window`` step.
+
+    C1 identifiers (``hostname``, ``ip_local``, ``mac_address``, ``project_id``)
+    are deliberately excluded: the trace must not echo identifiers, only name
+    the C0 fields the prompt carried (governance.md §4.1/§4.2).
+    """
+    if not isinstance(sample, dict):
+        return []
+    names = []
+    for key in sample:
+        if key in F.SAMPLE_FIELDS and F.SAMPLE_FIELDS[key].get("cclass") == "C0":
+            names.append(key)
+        elif key in F.SAMPLE_CONTAINERS:
+            names.append(key)
+    return sorted(names)
+
+
+def sha256_display(digest: str) -> str:
+    """The payload sha256, grouped in 8-hex chunks.
+
+    A hex digest is C0, but `governance.scan_c2`'s base64 heuristic matches any
+    40+ `[A-Za-z0-9+/]` run, so a contiguous 64-hex sha256 would be dropped as
+    a base64 blob. Grouping it keeps the full digest while breaking that run.
+    """
+    if not isinstance(digest, str) or not digest:
+        return ""
+    return "-".join(digest[i:i + 8] for i in range(0, len(digest), 8))
+
+
+def safe_int_display(value: Any) -> str:
+    """A non-negative integer formatted so digit-run heuristics cannot misread it.
+
+    `governance.scan_c2` flags any 10-15 digit run as a phone number and any
+    13-16 digit+separator run as a card number. Controller-generated metrics
+    (a slow detection latency in ms, a token count) can legitimately reach that
+    size, so large values are grouped with thousands separators, which break
+    both patterns without losing the value.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return "0"
+    try:
+        v = int(round(float(value)))
+    except (TypeError, ValueError):
+        return "0"
+    if v < 1_000_000_000:  # 10+ digits read as a phone number to scan_c2
+        return str(v)
+    return f"{v:,}"
+
+
+class DecisionTrace:
+    """The §4.3 decision trace — one ordered array of ``{step, ts, label,
+    detail, state}`` steps, bounded and sanitized with the SAME scanner G7/G9
+    use (``governance.scan_c2`` — never a parallel path).
+
+    * ≤ ``TRACE_MAX_STEPS`` steps; per-step ``detail`` ≤ 512 chars; the model
+      reply step's text ≤ 4096 chars (truncation flagged).
+    * A C2 hit in a step's ``detail`` **drops** that step and records the drop
+      in ``drops`` (merged into the guardrail list, and emitted as a ``gates``
+      step so it is persisted).
+    * A C2 hit in the model reply truncates the reply step to ``[dropped: C2]``
+      with ``state=rejected`` rather than storing the text.
+
+    ``decided_by`` makes the decider visible in-band: ``model``, ``fallback`` or
+    ``deterministic`` (§4.3/§6 requirement). A fallback trace is a controller
+    trace and must say so.
+    """
+
+    def __init__(self, *, decided_by: str = TRACE_DECIDED_BY_DETERMINISTIC,
+                 now_fn=None):
+        self.decided_by = decided_by
+        self.steps: list[dict] = []
+        self.drops: list[dict] = []  # G9 drop records, merged into the guardrail list
+        self._now_fn = now_fn or _now_iso_ms
+
+    @property
+    def trace_version(self) -> int:
+        return TRACE_VERSION
+
+    # ------------------------------------------------------------- appending
+    def add(self, step: str, label: str, detail: Any = "",
+            state: str = TRACE_STATE_OK) -> dict | None:
+        """Append a generic step. Returns the step, or ``None`` when the step
+        was dropped (a C2 hit in ``detail``); the drop is recorded in ``drops``
+        and mirrored into the guardrail list by the provider/loop."""
+        if len(self.steps) >= TRACE_MAX_STEPS:
+            return None
+        detail = self._clamp_detail(detail)
+        c2 = governance.scan_c2(detail)
+        if c2:
+            self.drops.append({"rule": "G9", "decision": "drop",
+                               "field": f"trace.{step}.detail",
+                               "detail": f"C2 signature in trace step {step}: {c2[0]}"})
+            return None
+        return self._append(step, label, detail, state)
+
+    def add_reply(self, label: str, text: Any,
+                  state: str = TRACE_STATE_OK) -> dict | None:
+        """Append the ``reply_received`` step (the raw model reply, bounded).
+
+        Unlike ``add``, a C2 hit does NOT drop the step: the text is replaced
+        with ``[dropped: C2]`` and ``state`` becomes ``rejected`` (§4.3)."""
+        if len(self.steps) >= TRACE_MAX_STEPS:
+            return None
+        text, truncated = self._clamp_reply(text)
+        c2 = governance.scan_c2(text)
+        if c2:
+            self.drops.append({"rule": "G9", "decision": "drop",
+                               "field": "trace.reply_received.detail",
+                               "detail": f"C2 signature in model reply: {c2[0]}"})
+            return self._append("reply_received", label, "[dropped: C2]",
+                                TRACE_STATE_REJECTED, truncated=truncated)
+        return self._append("reply_received", label, text, state,
+                            truncated=truncated)
+
+    # -------------------------------------------------------------- internals
+    def _append(self, step: str, label: str, detail: str, state: str,
+                **extra) -> dict:
+        s = {"step": step, "ts": self._now_fn(), "label": label,
+             "detail": detail, "state": state}
+        s.update(extra)
+        self.steps.append(s)
+        return s
+
+    @staticmethod
+    def _clamp_detail(detail: Any) -> str:
+        if not isinstance(detail, str):
+            detail = "" if detail is None else str(detail)
+        if len(detail) > TRACE_STEP_DETAIL_MAX_CHARS:
+            detail = detail[:TRACE_STEP_DETAIL_MAX_CHARS]
+        return detail
+
+    @staticmethod
+    def _clamp_reply(text: Any) -> tuple[str, bool]:
+        if not isinstance(text, str):
+            text = "" if text is None else str(text)
+        truncated = len(text) > TRACE_REPLY_MAX_CHARS
+        if truncated:
+            text = text[:TRACE_REPLY_MAX_CHARS]
+        return text, truncated
+
+    def to_dict(self) -> dict:
+        return {"trace_version": self.trace_version,
+                "decided_by": self.decided_by,
+                "steps": list(self.steps)}
 
 
 # --------------------------------------------------------------------------- #
@@ -802,6 +992,13 @@ class Guardrail:
 # Model provider (operator-decision.md §6, §8)
 # --------------------------------------------------------------------------- #
 
+# Guardrail evaluation order (G1..G9). Used by the trace's gates step to know
+# whether G7/G9 were actually *reached* (a reject at G1..G6 returns early, so
+# an absent G7/G9 entry then means "not evaluated", not "accepted").
+_RULE_ORDER = {"G1": 1, "G2": 2, "G3": 3, "G4": 4, "G5": 5, "G6": 6,
+               "G7": 7, "G8": 8, "G9": 9}
+
+
 class ModelDecisionProvider:
     """Model-driven decision with the mandatory deterministic fallback (§8).
 
@@ -843,44 +1040,239 @@ class ModelDecisionProvider:
         )
 
     def decide(self, event: HealthEvent, context: DecisionContext) -> DecisionResult:
+        trace = DecisionTrace(decided_by=TRACE_DECIDED_BY_MODEL)
+        self._record_threshold(trace, event)
+        self._record_evidence(trace, context)
+
         try:
             decision_input = build_decision_input(context)
         except Exception as exc:  # noqa: BLE001
             return self._fallback(context, "schema_violation",
-                                  f"failed to build decision request: {exc}")
+                                  f"failed to build decision request: {exc}",
+                                  trace=trace)
 
         try:
-            response = self._call_model(decision_input)
+            response = self._call_model(decision_input, trace)
         except Exception as exc:  # noqa: BLE001 - a transport surprise must not escape
             return self._fallback(context, "inference_unavailable",
-                                  f"{type(exc).__name__}: {exc}")
+                                  f"{type(exc).__name__}: {exc}", trace=trace)
 
         # The adapter's decide() returns a DecisionError value (never raises) for
         # transport/latency/parse problems; map it straight onto the fallback.
         if isinstance(response, DecisionError):
-            return self._fallback(context, response.reason, response.detail)
+            self._record_reply(trace, getattr(response, "raw", None),
+                               state=TRACE_STATE_REJECTED, parse_outcome=response.reason)
+            return self._fallback(context, response.reason, response.detail, trace=trace)
         if response is None:
             return self._fallback(context, "schema_violation",
-                                  "adapter returned no decision response")
+                                  "adapter returned no decision response", trace=trace)
 
         result = self.guardrail.validate(response, context)
+        self._record_reply(trace, getattr(response, "raw", None),
+                           state=TRACE_STATE_OK)
+        self._record_gates(trace, result.decisions)
+
         if not result.ok:
             return self._fallback(context, result.reject_reason or "schema_violation",
                                   "guardrail rejected model output",
-                                  guardrail=result.decisions)
+                                  guardrail=result.decisions, trace=trace)
+
+        self._record_trace_drops(trace)
+        kind = result.action.kind if result.action is not None else "none"
+        trace.add("action_decided", f"action decided: {kind}",
+                  self._action_detail(result.action), state=TRACE_STATE_OK)
 
         return DecisionResult(action=result.action, source="model",
                               confidence=result.confidence, fallback_reason=None,
-                              guardrail=result.decisions, incident=result.incident)
+                              guardrail=list(result.decisions) + list(trace.drops),
+                              incident=result.incident, trace=trace)
+
+    # ------------------------------------------------------------ trace steps
+    @staticmethod
+    def _record_threshold(trace: DecisionTrace, event: HealthEvent) -> None:
+        detect_lat = None
+        try:
+            from . import triggers as _triggers
+            detect_lat = _triggers.detection_latency_s(event)
+        except Exception:  # noqa: BLE001 — latency is best-effort, never fatal
+            detect_lat = None
+        detail = (f"rule_id={event.rule_id} event_id={event.event_id} "
+                  f"fired_at={event.fired_at}")
+        if detect_lat is not None:
+            detail += f" detection_latency_ms={safe_int_display(detect_lat * 1000)}"
+        trace.add("threshold_fired", f"rule {event.rule_id} fired", detail,
+                  state=TRACE_STATE_OK)
+
+    @staticmethod
+    def _record_evidence(trace: DecisionTrace, context: DecisionContext) -> None:
+        evidence = context.evidence or []
+        seqs = []
+        for sample in evidence:
+            if isinstance(sample, dict):
+                s = sample.get("seq")
+                if isinstance(s, int) and not isinstance(s, bool):
+                    seqs.append(s)
+        parts = []
+        if seqs:
+            parts.append(f"seq {min(seqs)}..{max(seqs)} ({len(seqs)} samples)")
+        state = context.state if isinstance(context.state, dict) else {}
+        fields = _c0_field_names(state)
+        if fields:
+            parts.append("C0 fields: " + ", ".join(fields))
+        trace.add("evidence_window", "evidence window captured",
+                  " ".join(parts) or "no evidence window", state=TRACE_STATE_OK)
+
+    @staticmethod
+    def _record_reply(trace: DecisionTrace, raw: Any, *,
+                      state: str, parse_outcome: str = "") -> None:
+        label = ("model reply received" if not parse_outcome
+                 else f"model reply (parse={parse_outcome})")
+        if raw:
+            trace.add_reply(label, raw, state=state)
+        else:
+            trace.add("reply_received", label, "no raw reply text retained",
+                      state=TRACE_STATE_SKIPPED)
+
+    @staticmethod
+    def _record_gates(trace: DecisionTrace, decisions: list) -> None:
+        if ModelDecisionProvider._reached(decisions, "G7"):
+            g7 = [d for d in decisions if d.get("rule") == "G7"]
+            if not g7:
+                trace.add("gates", "G7 rationale",
+                          "rule=G7 field=rationale decision=accept (C0-safe, within bounds)",
+                          state=TRACE_STATE_OK)
+            else:
+                for d in g7:
+                    trace.add("gates", "G7 rationale",
+                              ModelDecisionProvider._gate_detail(d),
+                              state=ModelDecisionProvider._gate_state(d))
+        if ModelDecisionProvider._reached(decisions, "G9"):
+            g9 = [d for d in decisions if d.get("rule") == "G9"]
+            if not g9:
+                trace.add("gates", "G9 incident record",
+                          "rule=G9 decision=accept (record clean or absent)",
+                          state=TRACE_STATE_OK)
+            else:
+                for d in g9:
+                    trace.add("gates", "G9 incident record",
+                              ModelDecisionProvider._gate_detail(d),
+                              state=ModelDecisionProvider._gate_state(d))
+
+    @staticmethod
+    def _record_trace_drops(trace: DecisionTrace) -> None:
+        for d in trace.drops:
+            trace.add("gates", "G9 trace detail",
+                      ModelDecisionProvider._gate_detail(d),
+                      state=ModelDecisionProvider._gate_state(d))
+
+    @staticmethod
+    def _reached(decisions: list, rule: str) -> bool:
+        if any(d.get("rule") == rule for d in decisions):
+            return True
+        for d in decisions:
+            if d.get("decision") == "reject" and _RULE_ORDER.get(d.get("rule"), 99) < _RULE_ORDER[rule]:
+                return False
+        return True
+
+    @staticmethod
+    def _gate_detail(d: dict) -> str:
+        out = f"rule={d.get('rule', '')} field={d.get('field', '')} decision={d.get('decision', '')}"
+        reason = d.get("reason", "")
+        if reason:
+            out += f" reason={reason}"
+        detail = d.get("detail", "")
+        if detail:
+            out += f" ({detail})"
+        return out
+
+    @staticmethod
+    def _gate_state(d: dict) -> str:
+        decision = d.get("decision", "")
+        return {
+            "accept": TRACE_STATE_OK,
+            "clamp": TRACE_STATE_CLAMPED,
+            "drop": TRACE_STATE_DROPPED,
+            "reject": TRACE_STATE_REJECTED,
+            "defer": TRACE_STATE_SKIPPED,
+        }.get(decision, TRACE_STATE_OK)
+
+    @staticmethod
+    def _rejecting_gate(guardrail: list | None) -> str | None:
+        for d in (guardrail or []):
+            if d.get("decision") == "reject":
+                return d.get("rule")
+        return None
+
+    @staticmethod
+    def _action_detail(action: RemediationAction | None) -> str:
+        target = ""
+        if action is not None and isinstance(getattr(action, "params", None), dict):
+            target = str(action.params.get("instance_name") or "").strip()
+        kind = action.kind if action is not None else "none"
+        return f"action_kind={kind} target={target or '-'}"
+
+    @staticmethod
+    def _prompt_built_detail(before: dict | None, *, failed: bool = False,
+                             violations: list | None = None) -> str:
+        if not isinstance(before, dict):
+            before = {}
+        parts = [
+            f"template={before.get('template_version', '')}",
+            f"sha256={sha256_display(before.get('payload_sha256', ''))}",
+            f"substituted_fields={safe_int_display(before.get('substituted_fields', 0))}",
+        ]
+        if failed:
+            parts.append("C0_assertion=FAILED")
+            if violations:
+                shown = " | ".join(str(v) for v in violations[:5])
+                parts.append(f"violations={shown}")
+        else:
+            parts.append("C0_assertion=ok")
+        return " ".join(parts)
+
+    @staticmethod
+    def _model_call_detail(before: dict | None, latency_ms: float, *,
+                           result: Any = None, error: str | None = None) -> str:
+        if not isinstance(before, dict):
+            before = {}
+        egress = before.get("egress")
+        if not isinstance(egress, dict):
+            egress = {}
+        dest_class = before.get("destination_class", "") or ""
+        endpoint_class = {"in-vpc": "local", "external": "external"}.get(
+            dest_class, dest_class or "unknown")
+        answered_by = egress.get("answered_by") or "unknown"
+        model_id = egress.get("model") or egress.get("alias") or ""
+        parts = [
+            f"endpoint={endpoint_class}",
+            f"model={model_id or 'unknown'}",
+            f"answered_by={answered_by}",
+            f"latency_ms={safe_int_display(latency_ms)}",
+        ]
+        usage = getattr(result, "usage", None) if result is not None else None
+        if isinstance(usage, dict) and usage:
+            pt = safe_int_display(usage.get("prompt_tokens"))
+            ct = safe_int_display(usage.get("completion_tokens"))
+            tt = safe_int_display(usage.get("total_tokens"))
+            parts.append(f"tokens(prompt={pt},completion={ct},total={tt})")
+        rid = before.get("request_id", "") or ""
+        if rid:
+            parts.append(f"request_id={rid}")
+        if error:
+            parts.append(f"error={error}")
+        return " ".join(parts)
 
     # ------------------------------------------------------------------ model
-    def _call_model(self, decision_input: DecisionInput):
+    def _call_model(self, decision_input: DecisionInput, trace: DecisionTrace):
         """Call the model through the guard — ALWAYS, whichever transport is used.
 
         The `decide_fn`/adapter choice is only about *transport*: the §7.2 class
         assertion, the before/after audit row and the egress labelling must apply
         to both, or the audit would be bypassable by construction (the defect the
-        wiring test in `test_external_model_call.py` exists to catch).
+        wiring test in `test_external_model_call.py` exists to catch). The
+        `prompt_built` and `model_call` trace steps are recorded here from the
+        real `externalModelCall()` before/after audit records — never from a
+        parallel re-derivation.
         """
         if self.decide_fn is not None:
             transport = lambda: self.decide_fn(decision_input)  # noqa: E731
@@ -922,22 +1314,54 @@ class ModelDecisionProvider:
                 log.warning("egress probe failed (recording as unknown): %s", exc)
                 egress = None
 
+        audit_records: list = []
+
+        def _sink(record):
+            audit_records.append(record)
+            if self.audit_sink is not None:
+                self.audit_sink(record)
+
+        t0 = time.monotonic()
         try:
-            return external_call.external_model_call(
+            result = external_call.external_model_call(
                 decision_input,
                 send=transport,
                 destination=base_url,
                 request_id=decision_input.request_id,
-                audit_sink=self.audit_sink,
+                audit_sink=_sink,
                 egress=egress,
             )
         except external_call.ExternalCallViolation as exc:
+            before = audit_records[0] if audit_records else {}
+            trace.add("prompt_built", "prompt rendered, C0 assertion FAILED",
+                      self._prompt_built_detail(before, failed=True,
+                                                violations=exc.violations),
+                      state=TRACE_STATE_REJECTED)
             log.warning("externalModelCall rejected the decision payload: %s", exc)
             return DecisionError("schema_violation", str(exc))
+        except Exception as exc:  # noqa: BLE001 — mapped onto fallback by decide()
+            before = audit_records[0] if audit_records else {}
+            latency = round((time.monotonic() - t0) * 1000, 1)
+            if before:
+                trace.add("prompt_built", "prompt rendered (C0 assertion ok)",
+                          self._prompt_built_detail(before), state=TRACE_STATE_OK)
+            trace.add("model_call", "model call FAILED",
+                      self._model_call_detail(before, latency, error=str(exc)),
+                      state=TRACE_STATE_REJECTED)
+            raise
+
+        latency = round((time.monotonic() - t0) * 1000, 1)
+        before = audit_records[0] if audit_records else {}
+        trace.add("prompt_built", "prompt rendered (C0 assertion ok)",
+                  self._prompt_built_detail(before), state=TRACE_STATE_OK)
+        trace.add("model_call", "model answered",
+                  self._model_call_detail(before, latency, result=result),
+                  state=TRACE_STATE_OK)
+        return result
 
     # --------------------------------------------------------------- fallback
     def _fallback(self, context: DecisionContext, reason: str, detail: str,
-                  guardrail: list | None = None) -> DecisionResult:
+                  guardrail: list | None = None, trace: DecisionTrace | None = None) -> DecisionResult:
         if reason not in FALLBACK_REASONS:
             reason = "inference_unavailable"
         det = self.deterministic or DeterministicDecisionProvider(
@@ -947,9 +1371,20 @@ class ModelDecisionProvider:
         base = det.decide(context.event, context)
         log.warning("model decision fell back (reason=%s): %s", reason, detail)
         incident = build_fallback_incident(context.event, base.action, reason)
+        if trace is None:
+            trace = DecisionTrace(decided_by=TRACE_DECIDED_BY_FALLBACK)
+        trace.decided_by = TRACE_DECIDED_BY_FALLBACK
+        self._record_trace_drops(trace)
+        rejecting = self._rejecting_gate(guardrail)
+        action_kind = base.action.kind if base.action is not None else "none"
+        trace.add("action_decided", "fallback to deterministic action",
+                  f"decided_by=fallback reason={reason} action_kind={action_kind}"
+                  + (f" rejecting_gate={rejecting}" if rejecting else ""),
+                  state=TRACE_STATE_FALLBACK)
+        merged = list(guardrail or []) + list(trace.drops)
         return DecisionResult(action=base.action, source="fallback",
                               confidence=None, fallback_reason=reason,
-                              guardrail=guardrail or [], incident=incident)
+                              guardrail=merged, incident=incident, trace=trace)
 
 
 # --------------------------------------------------------------------------- #
@@ -1031,6 +1466,7 @@ __all__ = [
     "DecisionContext",
     "DecisionProvider",
     "DecisionResult",
+    "DecisionTrace",
     "DeterministicDecisionProvider",
     "Guardrail",
     "GuardrailResult",
@@ -1041,5 +1477,7 @@ __all__ = [
     "build_decision_provider",
     "build_fallback_incident",
     "in_forced_cooldown",
+    "safe_int_display",
+    "sha256_display",
     "transition_fallback_state",
 ]

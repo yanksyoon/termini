@@ -310,6 +310,126 @@ are joined by the reader (the controller API pairs the decision row with its
 not produced. On the deterministic fallback the record is built from the fired
 event instead and is labelled `generated: "fallback"` — see §8.1.
 
+### 4.3 The decision trace (how the answer was reached, not just what it was)
+
+The incident record answers *what happened, why, on what evidence, what was
+done* — the conclusion. It does not answer **how the answer was reached**: which
+rule fired, what evidence window the prompt carried, which template version/hash
+was asserted, which endpoint answered (and with what latency/tokens), what the
+model actually returned, which guardrail rules were evaluated and what each
+decided, and what the executor then did. The decision trace is that record: one
+ordered array of reasoning steps, persisted on the same row as the decision, so
+the panel can show a thinking log rather than only a conclusion.
+
+```json
+"decision_trace": {
+  "trace_version": 1,
+  "decided_by": "model",
+  "steps": [
+    { "step": "threshold_fired", "ts": "2026-10-04T07:49:05.000Z",
+      "label": "rule oom-guard-01 fired",
+      "detail": "rule_id=oom-guard-01 event_id=01M4… fired_at=2026-10-04T07:49:05.000Z detection_latency_ms=2000",
+      "state": "ok" },
+    { "step": "evidence_window", "ts": "…",
+      "label": "evidence window captured",
+      "detail": "seq 1049..1050 (2 samples) C0 fields: cpu_util_pct, ram_total_bytes, ram_used_bytes",
+      "state": "ok" },
+    { "step": "prompt_built", "ts": "…",
+      "label": "prompt rendered (C0 assertion ok)",
+      "detail": "template=operator-decision v1 sha256=<payload-sha256> substituted_fields=N C0_assertion=ok",
+      "state": "ok" },
+    { "step": "model_call", "ts": "…",
+      "label": "model answered",
+      "detail": "endpoint=external model=deepseek-flash answered_by=forwarded-managed-model latency_ms=812 tokens={…} request_id=…",
+      "state": "ok" },
+    { "step": "reply_received", "ts": "…",
+      "label": "model reply received",
+      "detail": "{\"schema_version\":1,\"action_id\":\"instance.restart\",…}",
+      "state": "ok", "truncated": false },
+    { "step": "gates", "ts": "…", "label": "G7 rationale",
+      "detail": "rule=G7 field=rationale decision=accept (C0-safe, within bounds)", "state": "ok" },
+    { "step": "gates", "ts": "…", "label": "G9 incident record",
+      "detail": "rule=G9 decision=accept (record clean or absent)", "state": "ok" },
+    { "step": "action_decided", "ts": "…", "label": "action decided: instance.restart",
+      "detail": "action_kind=instance.restart target=01M4349RPXWDC52ZDAVMPCMJSH", "state": "ok" },
+    { "step": "executed", "ts": "…", "label": "action executed: ok",
+      "detail": "result=ok latency_ms=45", "state": "ok" },
+    { "step": "audit_recorded", "ts": "…", "label": "audit row written",
+      "detail": "audit_id=… decision_id=…", "state": "ok" }
+  ]
+}
+```
+
+#### Step order (fixed, oldest first)
+
+| # | `step` | produced at | carries |
+|---|--------|-------------|---------|
+| 1 | `threshold_fired` | provider (decision site) | `rule_id`, `event_id`, `fired_at`, detection latency ms |
+| 2 | `evidence_window` | provider | the sample `seq` range and the C0 field names the prompt carried |
+| 3 | `prompt_built` | `externalModelCall()` before-audit | template version + payload sha256 + substituted field count + the C0 assertion result |
+| 4 | `model_call` | `externalModelCall()` after-audit | endpoint class `local`\\|`external`, model id, `answered_by`, latency ms, token counts (when reported), request id |
+| 5 | `reply_received` | provider | parse outcome; the raw reply text, bounded and C2-scanned |
+| 6 | `gates` (one per G7/G9 rule evaluated) | provider | which field, which rule, accept/clamp/drop/reject, reason |
+| 7 | `action_decided` | provider | `action_kind`, `target` (or the fallback action + reason) |
+| 8 | `executed` | loop, in the audit transaction | the audit row's result + remediation latency, or the error |
+| 9 | `audit_recorded` | loop, in the audit transaction | the audit id and decision id |
+
+#### Field reference
+
+| field | type | required | bounds | meaning |
+|-------|------|----------|--------|---------|
+| `trace_version` | integer | yes | `== 1` | top-level version (§12: additive within schema `1`) |
+| `decided_by` | string enum | yes | `model` \\| `fallback` \\| `deterministic` | who made the decision — the decider is visible in-band |
+| `steps` | array | yes | `0 .. 24` entries | the ordered reasoning steps |
+| `steps[].step` | string enum | yes | the nine names above | the step kind |
+| `steps[].ts` | string RFC3339 | yes | — | when the step was recorded |
+| `steps[].label` | string | yes | `≤ 128` chars | one-line human label for the panel |
+| `steps[].detail` | string | yes | `≤ 512` chars | the specifics; C0-safe (see below) |
+| `steps[].state` | string enum | yes | `ok` \\| `clamped` \\| `dropped` \\| `rejected` \\| `fallback` \\| `skipped` | the step's outcome |
+| `steps[].truncated` | boolean | no | reply step only | true when the reply text was cut to the reply bound |
+
+#### What must NOT appear (and how it is enforced)
+
+The trace is sanitized with the **SAME gate as the incident record (G9,
+`governance.scan_c2`) — never a parallel path.** C1 identifiers stay
+transformed exactly as §4.2 requires (the trace names C0 *field names* and
+C-classes, never the C1 values themselves).
+
+* **The rendered prompt is NOT stored.** Per the owner's reserved disclosure
+  decision, the `prompt_built` step stores the template version + payload
+  sha256 + the substituted field count and their C0 assertion result — not the
+  prompt text. The prompt remains C0-only by §7.2 and is never a client-visible
+  string.
+* The **raw model reply IS in scope** (the same class of content as
+  `explanation`, which §4.2 already allows), bounded to `≤ 4096` chars with
+  truncation flagged on the step.
+* A **C2 hit in a step's `detail` drops that step** and records the drop in the
+  guardrail list (`rule=G9, decision=drop`, mirroring how G9 drops a malformed
+  incident entry).
+* A **C2 hit in the model reply** does not drop the step: the reply text is
+  replaced with `[dropped: C2]`, `state` becomes `rejected`, and the drop is
+  recorded in the guardrail list.
+* C2 material is the same class as everywhere else: application log lines,
+  `argv`/command lines, environment variables, credentials, card numbers, raw
+  identifiers, file paths/content, prompt text.
+
+#### `decided_by` — label, never flatter
+
+`decided_by` makes it impossible for a reader to mistake controller-generated
+text for model output, or a forwarded answer for a local one:
+
+* `model` — the trace must name the endpoint class (`local`/`external`) and
+  `answered_by` in its `model_call` step.
+* `fallback` — a **controller** trace: it must carry the fallback reason and the
+  gate that rejected the model's answer (`rejecting_gate` in the
+  `action_decided` detail), and `decided_by` is `fallback`, never `model`.
+* `deterministic` — no trace is written at all (§8.1): a deterministic-mode row
+  stays byte-identical and carries no trace columns.
+
+The trace is **additive within schema `1`** (§12): it does not bump the
+version, a model that produces no trace steps is unaffected, and the API
+returns it alongside the existing fields without touching their types.
+
 ---
 
 ## 5. Allowed action space (`ACTION_SPACE`)
@@ -578,14 +698,31 @@ ALTER TABLE remediation_decisions ADD COLUMN incident_actions TEXT;    -- JSON a
 ALTER TABLE remediation_decisions ADD COLUMN incident_generated TEXT;  -- model | fallback
 ```
 
+Migration `0017_decision_trace.sql` adds the §4.3 decision trace to the same row —
+same statement/transaction as the decision write, so a trace can never exist
+without its decision:
+
+```sql
+ALTER TABLE remediation_decisions ADD COLUMN decision_trace TEXT;   -- JSON object (§4.3)
+ALTER TABLE remediation_decisions ADD COLUMN trace_version INTEGER; -- §4.3 top-level version
+```
+
 - `decision_source` ∈ `deterministic | model | fallback`.
 - `confidence` is `NULL` for deterministic decisions.
 - `fallback_reason` is one of the §10.1 codes, `NULL` otherwise.
 - `incident_generated` ∈ `model | fallback`; all five incident columns are `NULL`
   for a `deterministic`-mode row (§8.1), which is what keeps that mode
   byte-identical to the pre-amendment loop.
-- The API (`GET /v1/operator/decisions`) returns the row verbatim, so the
-  incident record is exposed without a second endpoint or a second query.
+- `decision_trace` is the §4.3 trace object (or `NULL`); `trace_version` is its
+  top-level version (or `NULL`). Both are `NULL` for a `deterministic`-mode row
+  (§8.1). The trace is written in the same statement as the decision with its
+  steps through `action_decided`; the `executed` and `audit_recorded` steps are
+  appended in the **audit's** transaction (`store.append_decision_trace`) — the
+  earliest they can exist — so a trace never asserts an outcome before the
+  executor produced it, mirroring §4.2's rule for the incident record.
+- The API (`GET /v1/operator/decisions`) returns the row verbatim (with
+  `decision_trace` parsed to an object, not a string), so the incident record
+  and the trace are exposed without a second endpoint or a second query.
 
 ### 11.1 Telemetry / log events
 
@@ -699,6 +836,18 @@ All added to `controller/app/config.py` `Config` + `load()`.
 | `dashboard/js/core/decisions.js` | maps the row's incident columns into the view model (`incident`, `incidentSource`) |
 | `dashboard/js/ui/decisions.js` | renders the **incident card** (title, explanation, evidence list, actions + audit result); the log stream stays a secondary view |
 | `tests/test_incident_record.py` | **NEW** — stub provider: parsed, persisted, exposed, and the labelled fallback path |
+
+### 14.6 Decision trace — exact call sites (t_e07abffc)
+
+| path | change |
+|------|--------|
+| `termini/decision/types.py` | the §4.3 trace bound constants + `DecisionResponse.raw`/`usage` (additive) |
+| `termini/decision/adapter.py` | `parse()` retains the raw completion text on `DecisionResponse.raw` |
+| `controller/app/operator/decision.py` | **NEW** `DecisionTrace` (bounded, G9-sanitized); `DecisionResult.trace`; `ModelDecisionProvider` records `threshold_fired`/`evidence_window`/`prompt_built`/`model_call`/`reply_received`/`gates`/`action_decided`; the §8.1 fallback trace |
+| `controller/app/operator/store.py` | `insert_decision(..., trace=None)` writes `decision_trace`/`trace_version` in the same statement; `append_decision_trace`; `list_decisions` parses `decision_trace` |
+| `controller/app/operator/loop.py` | passes `result.trace` to `insert_decision`; appends `executed`/`audit_recorded` in the audit's transaction |
+| `controller/app/migrations/0017_decision_trace.sql` | **NEW** — §11 DDL |
+| `tests/test_decision_trace.py` | **NEW** — step order, caps, C2 in a step detail and in a reply, deterministic writes no trace, labelled fallback trace |
 
 ---
 
