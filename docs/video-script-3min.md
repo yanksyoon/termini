@@ -25,57 +25,57 @@ shown, not described.
 ## Beat 1 — The problem · 0:00–0:25
 
 > **[on screen]** Title card / the dashboard idle, node health visible.
-> **[VO]** "Industrial operations run on data that cannot leave the building.
-> Customer records, source code, national-core IP, factory-floor telemetry — for
+> **[VO]** "Industrial operations run on data that cannot leave the building —
+> customer records, source code, national-core IP, factory-floor telemetry. For
 > regulated manufacturers and national labs, sending that to a SaaS cloud is not a
 > pricing decision, it is a legal one. So the AI never arrives. And when a disk
-> degrades or memory runs out at 3am, it pages a human, because there is no
-> operations team on-premise."
+> degrades or memory runs out at 3am, it pages a human."
 
 ## Beat 2 — What Termini is · 0:25–0:45
 
 > **[on screen]** Pan across the dashboard: two nodes, live telemetry, the charts.
 > **[VO]** "Termini turns bare on-premise hardware into a self-operating AI fleet.
 > A cloud control plane brings the hardware up on day-0, and on day-2 a **governed
-> AI operator** watches it and repairs it. This is the Manufacturing theme —
-> Intelligent Operations: operational data in, a real action out. And the data never
-> leaves."
+> AI operator** watches it and repairs it. Manufacturing, Intelligent Operations:
+> operational data in, a real action out — and the data never leaves."
 
 ## Beat 3 — The fleet is live · 0:45–1:05
 
 > **[on screen]** Hover `demo-node-a` and `demo-node-c`: CPU, RAM, disk, services,
 > `seen 1s ago`. Point at a fault badge such as `disk degrading`.
 > **[VO]** "Two nodes, streaming telemetry every second — memory, disk write
-> latency, GPU, service health. Notice this node is reporting a degrading disk.
-> That is not a mock-up; that is a live condition the system has to deal with."
+> latency, GPU, service health. Notice this node reports a degrading disk — not a
+> mock-up, a live condition the system has to deal with."
 
 ## Beat 4 — **The AI decides** · 1:05–2:00 *(the core of the video — the AI in action)*
 
 > **[on screen]** The **Live AI-operator log**. Wait for the next line to appear,
 > then let it sit on screen. Zoom so the rule id, the action and the confidence are legible.
-> **[VO]** "Watch the operator log. A threshold rule just fired — telemetry crossed
-> 95% of memory, twice in a row. That rule is only a wake-up signal. The decision is
-> made by a **managed model** — Gemini on Vertex AI, reached from the controller with
-> C0 telemetry only. The model reads the telemetry, reasons about the fault, and chooses the
-> remediation — restarting the hung workload.
->
-> And here is the discipline: the model cannot do anything we did not sanction. A
-> grammar at the decoding layer means a command outside our allowlist has no valid
-> encoding — it is not filtered afterwards, it is **unrepresentable**. Then a
-> guardrail validator, then a confidence gate. If the model is slow, wrong, or
-> unavailable, the operator falls back to a deterministic decision and records both
-> the fallback and the reason."
+> **[VO]** "Watch the operator log. A threshold rule just fired — memory crossed
+> 95%, twice. The rule only wakes us up; the decision is a **managed model**'s —
+> Gemini on Vertex AI, C0 telemetry only. And the model cannot act outside our
+> allowlist: a decoding-layer grammar makes an off-allowlist command
+> **unrepresentable**, then a validator, then a confidence gate. If the model is
+> slow, wrong or unavailable, the operator falls back deterministically and records
+> the reason."
+> **[on screen]** Open the **incident card**, then expand the **thinking log** — the
+> ordered reasoning steps scroll, and the card's provenance badge is legible.
+> **[VO]** "The reasoning is on screen too. The incident card answers what happened,
+> why, on what evidence, and what was done — and the thinking log under it is the
+> controller's own ordered steps: the rule firing, the evidence window, the prompt
+> hash, the model call and who answered it, every gate, the action, the execution,
+> the audit row. The API field is `decision_trace`; its `decided_by` says whether a
+> model or the fallback answered."
 > **[on screen]** The action lands and the log shows the result.
-> **[VO]** "It executed. The workload recovered. And every step of that is in the audit trail."
+> **[VO]** "It executed, the workload recovered, and every step is in the audit trail."
 
 ## Beat 5 — Governance held · 2:00–2:22
 
 > **[on screen]** Scroll to a rejected batch, or show the governance line in the deck.
 > **[VO]** "The model only ever sees hardware telemetry. Application logs, customer
-> payloads, prompts and credentials are classified C2 — they are refused at the
-> boundary, fail-closed, and the batch is rejected whole. The model's prompt is a
-> versioned template with only typed telemetry fields in it. So the claim isn't
-> 'your data never leaves' as a slogan — it's a property you can check."
+> payloads, prompts and credentials are classified C2 — refused at the boundary,
+> fail-closed, the batch rejected whole. The prompt is a versioned template carrying
+> only typed telemetry fields. So it is not a slogan — it is a property you can check."
 
 ## Beat 6 — Built on Google Cloud · 2:22–2:45
 
@@ -87,13 +87,13 @@ shown, not described.
 > Or show the deck's "Built on Google AI & Google Cloud" slide.
 > **[VO]** "Under the hood: **Gemini on Vertex AI** for the diagnosis, **Gemma on Node C** for the agents, the dashboard on **Firebase
 > Hosting**, the controller on **Compute Engine**, weights in **Cloud Storage**.
-> Deployed, not mocked — the links are in the submission."
+> Deployed, not mocked."
 
 ## Beat 7 — Scale and close · 2:45–3:00
 
 > **[on screen]** The roadmap slide, then the closing title.
-> **[VO]** "Beyond the prototype: swap the static thresholds for learned baselines,
-> move storage to MicroCeph for HA, and onboard real bare metal. The product is the
+> **[VO]** "Beyond the prototype: learned baselines for the static thresholds,
+> MicroCeph for HA storage, real bare-metal onboarding. The product is the
 > operations and the governance — not the model weights. Your hardware. Your data.
 > Our operations."
 
@@ -101,15 +101,27 @@ shown, not described.
 
 ## Timing sheet
 
-| Beat | Content | Planned | Running |
+**Re-measured 2026-10-16** (task `t_6c5e9925`, which adds the thinking-log moment
+to Beat 4). VO seconds are word counts at the stated ~140 wpm read; the
+"window" is what the recording plan gives each beat on the timeline.
+
+| Beat | Content | Planned window | VO (measured) |
 |---|---|---|---|
-| 1 | Problem | 0:25 | 0:25 |
-| 2 | What Termini is | 0:20 | 0:45 |
-| 3 | Fleet is live | 0:20 | 1:05 |
-| 4 | **The AI decides** | 0:55 | 2:00 |
-| 5 | Governance | 0:22 | 2:22 |
-| 6 | Built on Google Cloud | 0:23 | 2:45 |
-| 7 | Scale + close | 0:15 | 3:00 |
+| 1 | Problem | 0:25 | 0:26 |
+| 2 | What Termini is | 0:20 | 0:20 |
+| 3 | Fleet is live | 0:20 | 0:14 |
+| 4 | **The AI decides** — incl. the incident card + **thinking log** | 0:55 | 1:09 |
+| 5 | Governance | 0:22 | 0:21 |
+| 6 | Built on Google Cloud | 0:23 | 0:15 |
+| 7 | Scale + close | 0:15 | 0:15 |
+| **Total** | | **3:00** | **2:59** |
+
+The VO now totals **2:59** at 140 wpm — **inside the 3:00 requirement**; the
+committed script measured **3:09** because it was never re-measured after the
+proxy-disclosure rewrite. Beat 4 needs **~1:09** of the timeline (its 0:55 window
+was already 8 s short of its own VO), and the difference comes from beats 3, 6
+and 7, whose VO runs under their windows. `[on screen]` waits — the log line
+appearing, the thinking log expanding — are cut/trimmed in the edit, not spoken.
 
 ---
 
@@ -125,6 +137,14 @@ is to show the AI acting, not to assert. If you ad-lib, keep to these:
 - ✅ Say "**C2 never egresses**" (that is the enforced property). Do **not** claim
   "nothing leaves the premises" — the operator's model call does, under governance
   §7.1/§7.2, and it carries C0 telemetry only.
+- ✅ On the thinking log, use the shipped names: the API field is **`decision_trace`**
+  (an object with `trace_version`, `decided_by` and an ordered `steps[]`), and
+  `decided_by` is `model`, `fallback` or `deterministic`. A deterministic row writes
+  **no** trace at all — say that rather than showing an empty timeline. The
+  controller-generated fallback carries its **`fallback_reason`** (and the gate that
+  rejected the model's answer); never read a fallback row as model output.
+- ✅ The live 6-minute demo script (`docs/demo-script.md` §Beat 4) walks the same
+  moment in the same order; keep the two in step.
 - ✅ On the gate, be precise: a **C2-class field is rejected fail-closed (`422`)**,
   while a merely *unknown* field is **stripped** (deny-by-default, §3 — that is what
   keeps forward-compatibility). Both prevent storage; only the first is a rejection.

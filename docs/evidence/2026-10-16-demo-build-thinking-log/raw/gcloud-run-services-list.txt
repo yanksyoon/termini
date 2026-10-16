@@ -1,0 +1,2 @@
+NAME           REGION           URL                                            LATEST_READY_REVISION_NAME
+termini-gemma  asia-southeast1  https://termini-gemma-tylgzp65ma-as.a.run.app  termini-gemma-00001-ql5

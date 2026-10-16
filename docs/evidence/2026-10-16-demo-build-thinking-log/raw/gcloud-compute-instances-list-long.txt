@@ -1,0 +1,5 @@
+NAME                ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP   STATUS
+termini-controller  asia-south1-a  e2-standard-2               10.10.0.2    34.93.190.64  RUNNING
+termini-node-a      asia-south1-a  e2-standard-2               10.10.0.11                 RUNNING
+termini-node-b      asia-south1-a  n2-standard-2               10.10.0.12                 TERMINATED
+termini-node-c      asia-south1-a  e2-standard-8               10.10.0.13                 RUNNING

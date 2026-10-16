@@ -1,0 +1,5 @@
+NAME                ZONE           MACHINE_TYPE   STATUS      CREATION_TIMESTAMP             LAST_START_TIMESTAMP
+termini-controller  asia-south1-a  e2-standard-2  RUNNING     2026-10-11T09:36:38.690-07:00  2026-10-16T14:04:30.697-07:00
+termini-node-a      asia-south1-a  e2-standard-2  RUNNING     2026-10-13T04:26:23.442-07:00  2026-10-16T14:04:30.741-07:00
+termini-node-b      asia-south1-a  n2-standard-2  TERMINATED  2026-10-04T04:01:14.290-07:00  2026-10-04T04:05:23.560-07:00
+termini-node-c      asia-south1-a  e2-standard-8  RUNNING     2026-10-15T05:04:42.169-07:00  2026-10-16T14:04:29.548-07:00

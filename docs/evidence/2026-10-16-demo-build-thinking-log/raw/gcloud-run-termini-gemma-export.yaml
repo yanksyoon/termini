@@ -1,0 +1,73 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+    run.googleapis.com/maxScale: '1'
+    run.googleapis.com/urls: '["https://termini-gemma-667736937184.asia-southeast1.run.app","https://termini-gemma-tylgzp65ma-as.a.run.app"]'
+  labels:
+    cloud.googleapis.com/location: asia-southeast1
+    run.googleapis.com/satisfiesPzs: 'true'
+  name: termini-gemma
+  namespace: '667736937184'
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '1'
+        run.googleapis.com/client-name: gcloud
+        run.googleapis.com/client-version: 588.0.0
+        run.googleapis.com/cpu-throttling: 'false'
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/gpu-zonal-redundancy-disabled: 'true'
+        run.googleapis.com/startup-cpu-boost: 'true'
+      labels:
+        client.knative.dev/nonce: yvnbrtzise
+        run.googleapis.com/startupProbeType: Custom
+    spec:
+      containerConcurrency: 4
+      containers:
+      - args:
+        - serve
+        - /models/gemma-3-4b-it
+        - --served-model-name=gemma
+        - --max-num-seqs=4
+        - --gpu-memory-utilization=0.90
+        - --dtype=bfloat16
+        - --port=8080
+        - --host=0.0.0.0
+        command:
+        - vllm
+        image: us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:gemma4
+        ports:
+        - containerPort: 8080
+          name: http1
+        resources:
+          limits:
+            cpu: '8'
+            memory: 32Gi
+            nvidia.com/gpu: '1'
+        startupProbe:
+          failureThreshold: 100
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          tcpSocket:
+            port: 8080
+          timeoutSeconds: 10
+        volumeMounts:
+        - mountPath: /models
+          name: models
+      nodeSelector:
+        run.googleapis.com/accelerator: nvidia-l4
+      serviceAccountName: 667736937184-compute@developer.gserviceaccount.com
+      timeoutSeconds: 600
+      volumes:
+      - csi:
+          driver: gcsfuse.run.googleapis.com
+          volumeAttributes:
+            bucketName: termini-510609-models
+        name: models
+  traffic:
+  - latestRevision: true
+    percent: 100
