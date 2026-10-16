@@ -15,7 +15,7 @@
 # guest bridge (10.20.<n>.0/24 per infra-decisions.md D2). limits are deliberately
 # small so a fan-out of agent VMs fits on a 2 vCPU / 1 GiB demo node.
 name: termini-agent
-description: Termini agent VM (agent-os/w4) — root on the node local pool, one NIC on lxdbr0
+description: Termini agent VM (agent-os/w5) — root on the node local pool, one NIC on lxdbr0
 config:
   limits.cpu: "1"
   limits.memory: 512MiB

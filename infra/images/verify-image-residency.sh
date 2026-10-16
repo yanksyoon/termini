@@ -10,7 +10,7 @@
 #                                and /etc/termini/image-version matches, AND the
 #                                host image tarball is cached on the node's disk
 #                                (/var/lib/termini/images/) with a matching digest;
-#   agent image (agent-os/w4)    the alias resolves in the node's LOCAL LXD store
+#   agent image (agent-os/w5)    the alias resolves in the node's LOCAL LXD store
 #                                at the published fingerprint, AND the agent image
 #                                tarball is cached on the node's disk with a
 #                                matching digest;
@@ -29,7 +29,7 @@
 #   --nodes "N1 N2 N3"    nodes to check (default demo-node-a demo-node-b demo-node-c)
 #   --host-alias ALIAS    host node image alias  (default agentic-os/w3)
 #   --agent-alias ALIAS   host agent image alias (default agent-vm/2026.10.0)
-#   --node-alias ALIAS    per-node agent alias   (default agent-os/w4)
+#   --node-alias ALIAS    per-node agent alias   (default agent-os/w5)
 #   --cache-dir DIR       on-node image cache dir (default /var/lib/termini/images)
 #   --host-cache DIR      host export cache dir  (default $HOME/.cache/termini/images)
 #   --expect-version V    expected node OS version (default 2026.10.0)
@@ -43,7 +43,7 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODES_STR="${TERMINI_NODES:-demo-node-a demo-node-b demo-node-c}"
 HOST_ALIAS="${TERMINI_HOST_IMAGE_ALIAS:-agentic-os/w3}"
 AGENT_ALIAS="${TERMINI_AGENT_HOST_IMAGE_ALIAS:-agent-vm/2026.10.0}"
-NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w4}"
+NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w5}"
 CACHE_DIR="${TERMINI_IMAGE_CACHE_DIR:-/var/lib/termini/images}"
 HOST_CACHE="${TERMINI_HOST_IMAGE_CACHE:-$HOME/.cache/termini/images}"
 EXPECT_VERSION="${TERMINI_IMAGE_VERSION:-2026.10.0}"

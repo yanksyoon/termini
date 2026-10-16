@@ -1,0 +1,5 @@
+-- assertions --
+12:  default_model: gemma
+13:  allowed_models: [gemma]
+21:  max_concurrent_tasks: 2
+25:  max_concurrent: 2
