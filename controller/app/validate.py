@@ -145,15 +145,6 @@ def validate_sample(raw: Any) -> tuple[dict, list[str]]:
         elif key in F.SAMPLE_CONTAINERS:
             spec = F.SAMPLE_CONTAINERS[key]
             if spec["kind"] == "list":
-                cap = spec.get("max_items")
-                if cap is not None and isinstance(value, list) and len(value) > cap:
-                    # A bounded array is part of the contract (§4.10 top-N): an
-                    # over-long one is a loud validation failure, never a silent
-                    # truncation, so a collector that grows past the bound is
-                    # caught instead of quietly losing rows.
-                    errors.append(
-                        f"{key}: {len(value)} entries exceeds the contract maximum {cap}"
-                    )
                 items, item_errors = _validate_array(key, value, spec["fields"])
                 errors.extend(item_errors)
                 if item_errors:

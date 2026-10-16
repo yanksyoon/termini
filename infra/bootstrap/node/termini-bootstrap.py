@@ -37,7 +37,6 @@ add its client certificate to this node's LXD trust store; see
 """
 from __future__ import annotations
 
-import calendar
 import errno
 import hashlib
 import http.client
@@ -494,79 +493,24 @@ _SERVICE_UNITS = {
     "lxd": ("snap.lxd.daemon.service", "lxd.service"),
     "sshd": ("ssh.service", "sshd.service"),
 }
-# This daemon's own unit. `termini-bootstrap` is reported on every sample, so its
-# operational fields (§4.8) are read from systemd like any other unit rather than
-# being asserted as a constant.
-_BOOTSTRAP_UNITS = ("termini-bootstrap.service",)
 _LLAMA_UNITS = ("termini-inference-proxy.service", "termini-llama-server.service")
 
 
-# systemd properties read for one unit, in a single `systemctl show` call (§4.8).
-# The operational fields (t_957956e5) ride the same call that produces `status`,
-# so the extra evidence costs no additional subprocess.
-_SERVICE_SHOW_PROPS = (
-    "LoadState", "ActiveState", "NRestarts", "ExecMainStatus",
-    "ActiveEnterTimestampMonotonic",
-)
-
-# Journal-count window and refresh (§4.11, recorded decision t_957956e5).
-JOURNAL_WINDOW_S = int(os.environ.get("TERMINI_JOURNAL_WINDOW_S", "300") or 300)
-JOURNAL_REFRESH_S = float(os.environ.get("TERMINI_JOURNAL_REFRESH_S", "60") or 60)
-
-
-def _int_or_none(value: object) -> int | None:
-    """An int from a `systemctl show` value, or None when unset/unparseable."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            return int(value.strip())
-        except ValueError:
-            return None
-    return None
-
-
-def _active_age_sec(value: object) -> int | None:
-    """Seconds since a unit entered its current active state, or None.
-
-    `ActiveEnterTimestampMonotonic` is microseconds since boot, and 0 when the
-    unit has never been active; /proc/uptime provides the matching reference.
-    """
-    us = _int_or_none(value)
-    if us is None or us <= 0:
-        return None
-    up = boot_uptime_s()
-    if not up:
-        return None
-    return max(0, int(up - us / 1e6))
-
-
-def _unit_facts(unit: str) -> dict | None:
-    """Contract service facts for one systemd unit, or None when it does not exist.
+def _unit_status(unit: str) -> str | None:
+    """Contract status for one systemd unit, or None when it does not exist.
 
     "Does not exist" and "is stopped" are different answers: LoadState
     distinguishes them, and reporting `stopped` for a unit that is not installed
     on this node would invent a service the node does not have.
-
-    Each operational field (§4.8) is omitted when systemd does not report it: a
-    node that cannot read systemd must not render as "0 restarts, exit 0".
     """
-    args = ["systemctl", "show"]
-    for prop in _SERVICE_SHOW_PROPS:
-        args += ["-p", prop]
-    args.append(unit)
     try:
         proc = subprocess.run(
-            args, capture_output=True, text=True,
-            timeout=SERVICE_PROBE_TIMEOUT_S, check=False,
+            ["systemctl", "show", "-p", "LoadState", "-p", "ActiveState", unit],
+            capture_output=True, text=True, timeout=SERVICE_PROBE_TIMEOUT_S, check=False,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    fields: dict = {}
+    fields = {}
     for line in (proc.stdout or "").splitlines():
         key, _, value = line.partition("=")
         fields[key.strip()] = value.strip()
@@ -574,30 +518,19 @@ def _unit_facts(unit: str) -> dict | None:
         return None
     active = fields.get("ActiveState")
     if active == "active":
-        facts: dict = {"status": "running"}
-    elif active == "failed":
-        facts = {"status": "failed"}
-    else:
-        facts = {"status": "stopped"}
-    restarts = _int_or_none(fields.get("NRestarts"))
-    if restarts is not None and restarts >= 0:
-        facts["restart_count"] = restarts
-    exit_code = _int_or_none(fields.get("ExecMainStatus"))
-    if exit_code is not None and -1 <= exit_code <= 255:
-        facts["last_exit_code"] = exit_code
-    age = _active_age_sec(fields.get("ActiveEnterTimestampMonotonic"))
-    if age is not None:
-        facts["state_age_sec"] = age
-    return facts
+        return "running"
+    if active == "failed":
+        return "failed"
+    return "stopped"
 
 
-def _first_unit_facts(names: tuple) -> tuple[str | None, dict | None]:
-    """`(unit, facts)` for the first name that exists on this node, else `(None, None)`."""
+def _service_status(names: tuple) -> str | None:
+    """Status of the first `name` that exists on this node, else None."""
     for unit in names:
-        facts = _unit_facts(unit)
-        if facts is not None:
-            return unit, facts
-    return None, None
+        status = _unit_status(unit)
+        if status is not None:
+            return status
+    return None
 
 
 def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
@@ -609,59 +542,6 @@ def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
         return False
 
 
-# Journal counts are recomputed at most once per JOURNAL_REFRESH_S: the demo
-# cadence is 1 s, and a journal sweep per second per unit would be pure cost.
-_JOURNAL_CACHE: dict[str, tuple[float, dict]] = {}
-
-
-def journal_counts(unit: str) -> dict:
-    """Counts of `err` / `warning` journal entries for `unit` (§4.11).
-
-    Counts, never lines: `--output-fields=PRIORITY` makes journalctl emit only
-    the priority of each entry, so no message, identifier or payload is ever
-    read into this process. An unreadable journal yields `{}` — the caller then
-    omits the fields — because "0 errors" must never be invented from "could not
-    ask"; a readable journal that genuinely has none returns real zeros.
-    """
-    now = time.monotonic()
-    cached = _JOURNAL_CACHE.get(unit)
-    if cached is not None and (now - cached[0]) < JOURNAL_REFRESH_S:
-        return dict(cached[1])
-    counts: dict = {}
-    try:
-        proc = subprocess.run(
-            ["journalctl", "-u", unit, "--since", f"-{JOURNAL_WINDOW_S}s",
-             "-p", "warning", "--no-pager", "-q", "--output=json",
-             "--output-fields=PRIORITY"],
-            capture_output=True, text=True,
-            timeout=SERVICE_PROBE_TIMEOUT_S, check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        proc = None
-    if proc is not None and proc.returncode == 0:
-        errors = warnings = 0
-        for line in (proc.stdout or "").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(entry, dict):
-                continue
-            prio = _int_or_none(entry.get("PRIORITY"))
-            if prio is None:
-                continue
-            if prio <= 3:          # emerg, alert, crit, err
-                errors += 1
-            elif prio == 4:        # warning
-                warnings += 1
-        counts = {"journal_errors": errors, "journal_warnings": warnings}
-    _JOURNAL_CACHE[unit] = (now, dict(counts))
-    return counts
-
-
 def llama_status(cfg: dict, inference: dict | None) -> str | None:
     """`llama-cpp` status where the node hosts the inference front door (D5).
 
@@ -671,216 +551,38 @@ def llama_status(cfg: dict, inference: dict | None) -> str | None:
     the node-side component is the same one, and the alias/backend honesty label
     comes from `inference.model` and the API, not from here.
     """
-    unit, _facts = _first_unit_facts(_LLAMA_UNITS)
+    unit = _service_status(_LLAMA_UNITS)
     if str(cfg.get("role_hint") or "").strip().lower() != "inference" and unit is None:
         return None
     if inference is not None and inference.get("server_up"):
         return "running"
-    if _facts is None:
-        return "stopped"
-    return _facts["status"]
-
-
-def _service_entry(key: str, unit: str | None, facts: dict | None,
-                   default_status: str) -> dict:
-    """One `services[]` row: the allowlisted `name`, plus whatever was measured.
-
-    The operational fields are copied only when the probe produced them, so a
-    field the node cannot know is absent rather than zero (§4.8).
-    """
-    entry: dict = {"name": key, "status": default_status}
-    if facts:
-        entry["status"] = facts.get("status", default_status)
-        for field in ("state_age_sec", "restart_count", "last_exit_code"):
-            if field in facts:
-                entry[field] = facts[field]
-    if unit:
-        entry.update(journal_counts(unit))
-    return entry
+    return unit or "stopped"
 
 
 def service_facts(cfg: dict, inference: dict | None = None) -> list:
     """`services[]` (contract §4.8) for this node — always populated.
 
     `termini-bootstrap` is running by construction: this sample is emitted by that
-    unit, so a failed probe falls back to `running` rather than inventing a
-    failure of the process that is talking. `lxd` falls back to the socket when
-    systemd is not readable (so a node whose LXD answers is never reported as
-    having no LXD), `sshd` falls back to the listener when no ssh unit is visible.
+    unit. `lxd` falls back to the socket when systemd is not readable (so a node
+    whose LXD answers is never reported as having no LXD), `sshd` falls back to
+    the listener when no ssh unit is visible.
     """
-    out: list = []
+    out = [{"name": "termini-bootstrap", "status": "running"}]
 
-    boot_unit, boot_facts = _first_unit_facts(_BOOTSTRAP_UNITS)
-    out.append(_service_entry("termini-bootstrap", boot_unit, boot_facts, "running"))
-
-    lxd_unit, lxd_facts = _first_unit_facts(_SERVICE_UNITS["lxd"])
-    lxd_status = (lxd_facts or {}).get("status")
+    lxd_status = _service_status(_SERVICE_UNITS["lxd"])
     if lxd_status is None:
         lxd_status = "running" if lxd_socket_path() is not None else "stopped"
-    out.append(_service_entry("lxd", lxd_unit, lxd_facts, lxd_status))
+    out.append({"name": "lxd", "status": lxd_status})
 
-    ssh_unit, ssh_facts = _first_unit_facts(_SERVICE_UNITS["sshd"])
-    ssh_status = (ssh_facts or {}).get("status")
-    if ssh_status is None:
-        ssh_status = "running" if _port_open("127.0.0.1", 22) else "stopped"
-    out.append(_service_entry("sshd", ssh_unit, ssh_facts, ssh_status))
+    sshd_status = _service_status(_SERVICE_UNITS["sshd"])
+    if sshd_status is None:
+        sshd_status = "running" if _port_open("127.0.0.1", 22) else "stopped"
+    out.append({"name": "sshd", "status": sshd_status})
 
     llama = llama_status(cfg, inference)
     if llama is not None:
-        llama_unit, llama_facts = _first_unit_facts(_LLAMA_UNITS)
-        if llama_facts is not None and (inference is None or not inference.get("server_up")):
-            llama = llama_facts["status"]
-        elif llama_facts is None:
-            llama = "running" if (inference is not None and inference.get("server_up")) else "stopped"
-        out.append(_service_entry("llama-cpp", llama_unit, llama_facts, llama))
+        out.append({"name": "llama-cpp", "status": llama})
     return out
-
-
-# ------------------------------------------------------------------- processes
-# `processes[]` — node-telemetry.md §4.10, C0, METRICS ONLY (t_957956e5).
-#
-# Deny-by-default review admitted process METRICS and nothing else: the kernel
-# task name (`comm`), the kernel state, and the counters. This daemon never reads
-# `/proc/<pid>/cmdline`, `/proc/<pid>/environ`, the `exe` link, `cwd` or any open
-# file path — so the C2 classes are not collected at all rather than redacted
-# after the fact. `tests/test_node_processes.py` pins that an emitted entry has
-# exactly the contract keys, and the controller rejects any of those C2 names at
-# ingest even if a compromised node sent one.
-PROCESSES_MAX = 20  # mirrors controller/app/fields.PROCESSES_MAX (§4.10)
-
-# Cumulative CPU ticks per pid from the previous sample, for the CPU percentage.
-_PROC_PREV: dict[int, tuple[float, int]] = {}
-
-# /proc/<pid>/stat state letter -> the contract's `state` enum (§4.10). A letter
-# outside this map (the kernel has states the contract does not enumerate) omits
-# the field rather than being reported under a name that would be a lie.
-_PROC_STATE = {
-    "R": "running",
-    "S": "sleeping",
-    "D": "disk_sleep",
-    "Z": "zombie",
-    "T": "stopped",
-    "t": "tracing",
-    "X": "dead",
-    "x": "dead",
-}
-
-
-def _read_text(path: str) -> str | None:
-    try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            return fh.read()
-    except OSError:
-        return None
-
-
-def _comm_of(stat_text: str) -> str | None:
-    """The kernel task name from a `/proc/<pid>/stat` line, contract-clean.
-
-    `stat` is `pid (comm) state ...` and `comm` may itself contain spaces and
-    parentheses, so it is taken between the FIRST `(` and the LAST `)`. It is
-    then reduced to ≤15 printable ASCII characters — the kernel's TASK_COMM_LEN —
-    which is both the contract's pattern (§4.10) and what makes the field
-    structurally incapable of carrying prose, a path or a URL.
-    """
-    start = stat_text.find("(")
-    end = stat_text.rfind(")")
-    if start < 0 or end <= start:
-        return None
-    cleaned = "".join(
-        ch if 0x20 <= ord(ch) <= 0x7E else "?" for ch in stat_text[start + 1:end]
-    ).strip()[:15]
-    return cleaned or None
-
-
-def process_facts() -> list | None:
-    """`processes[]` (contract §4.10): the node's top-`PROCESSES_MAX` processes.
-
-    Ranked by `cpu_util_pct` descending, then `ram_used_bytes` descending, then
-    `pid` ascending — a total order, so two readers of the same host agree.
-
-    Returns None when `/proc` cannot be listed, so the caller OMITS the field:
-    "this node did not report a process table" is the truth, whereas an empty
-    list would claim the node runs nothing (same rule as §4.6).
-    """
-    try:
-        pids = sorted(int(name) for name in os.listdir("/proc") if name.isdigit())
-    except OSError:
-        return None
-
-    try:
-        page_size = int(os.sysconf("SC_PAGE_SIZE"))
-    except (ValueError, OSError, AttributeError):
-        page_size = 4096
-    try:
-        clk = int(os.sysconf("SC_CLK_TCK")) or 100
-    except (ValueError, OSError, AttributeError):
-        clk = 100
-    cores = max(1, os.cpu_count() or 1)
-    now = time.monotonic()
-    up = boot_uptime_s()
-
-    rows: list[tuple[float, int, int, dict]] = []
-    live: set = set()
-    for pid in pids:
-        stat_text = _read_text(f"/proc/{pid}/stat")
-        if not stat_text:
-            continue
-        rparen = stat_text.rfind(")")
-        if rparen < 0:
-            continue
-        rest = stat_text[rparen + 2:].split()
-        if len(rest) < 20:
-            continue
-        live.add(pid)
-
-        entry: dict = {"pid": pid}
-        comm = _comm_of(stat_text)
-        if comm:
-            entry["name"] = comm
-        state = _PROC_STATE.get(rest[0])
-        if state:
-            entry["state"] = state
-
-        utime = _int_or_none(rest[11])
-        stime = _int_or_none(rest[12])
-        ticks = None if utime is None or stime is None else utime + stime
-        pct = None
-        if ticks is not None:
-            prev = _PROC_PREV.get(pid)
-            _PROC_PREV[pid] = (now, ticks)
-            if prev is not None and now > prev[0] and ticks >= prev[1]:
-                pct = 100.0 * (ticks - prev[1]) / clk / (now - prev[0]) / cores
-                pct = round(min(100.0, max(0.0, pct)), 2)
-        if pct is not None:
-            entry["cpu_util_pct"] = pct
-
-        statm = _read_text(f"/proc/{pid}/statm")
-        resident = None
-        if statm:
-            parts = statm.split()
-            if len(parts) >= 2:
-                resident = _int_or_none(parts[1])
-        entry["ram_used_bytes"] = max(0, (resident or 0) * page_size)
-
-        threads = _int_or_none(rest[17])
-        if threads is not None and threads >= 1:
-            entry["threads"] = threads
-
-        starttime = _int_or_none(rest[19])
-        if starttime is not None and up:
-            entry["age_sec"] = max(0, int(up - starttime / clk))
-
-        rows.append((pct if pct is not None else -1.0,
-                     entry["ram_used_bytes"], pid, entry))
-
-    # Forget pids that are gone, so a long-lived node does not accumulate state
-    # for every process it has ever run.
-    for gone in [p for p in _PROC_PREV if p not in live]:
-        _PROC_PREV.pop(gone, None)
-
-    rows.sort(key=lambda r: (-r[0], -r[1], r[2]))
-    return [entry for _pct, _ram, _pid, entry in rows[:PROCESSES_MAX]]
 
 
 # --------------------------------------------------------------------------- http
@@ -1236,12 +938,6 @@ def build_sample(cfg: dict, seq: int) -> dict:
         sample["inference"] = inf
     # Emitted on EVERY sample (§4.8): a missing list renders as "no services".
     sample["services"] = service_facts(cfg, inf)
-    # Per-process metrics (§4.10). OMITTED (not emptied) when /proc cannot be
-    # read, for exactly the reason `lxd_instances` is: "did not report" is the
-    # truth and an empty list would claim the node runs nothing.
-    procs = process_facts()
-    if procs is not None:
-        sample["processes"] = procs
     return sample
 
 
@@ -1522,61 +1218,6 @@ def _lxd_instances_over_cli() -> tuple[list | None, str]:
     return items, ""
 
 
-# Restart observation per instance name: (monotonic seconds, `state.started_at`,
-# observed restart count). LXD has no restart counter of its own, so the only
-# honest number is the one this daemon can observe — a change in `started_at`
-# between two samples is a restart. The first sighting establishes the baseline
-# and reports nothing (a `0` there would claim "never restarted", which this
-# daemon cannot know).
-_INSTANCE_START_PREV: dict[str, tuple[float, str, int]] = {}
-
-
-def _iso_epoch(value: object) -> float | None:
-    """Seconds since the Unix epoch for an RFC3339 timestamp, or None.
-
-    Parsed by hand rather than with ``datetime.fromisoformat`` because LXD emits
-    nanosecond precision (``...T07:49:00.123456789Z``), which not every Python
-    the node might run accepts, and a wrong age is worse than no age.
-    """
-    if not isinstance(value, str) or not value.strip():
-        return None
-    m = re.match(
-        r"^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})"
-        r"(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$",
-        value.strip(),
-    )
-    if m is None:
-        return None
-    frac = float("0." + m.group(7)) if m.group(7) else 0.0
-    try:
-        epoch = calendar.timegm(
-            (int(m.group(1)), int(m.group(2)), int(m.group(3)),
-             int(m.group(4)), int(m.group(5)), int(m.group(6)), 0, 0, 0)
-        )
-    except (ValueError, OverflowError):
-        return None
-    tz = m.group(8) or "Z"
-    if tz != "Z":
-        sign = 1.0 if tz[0] == "+" else -1.0
-        hh, mm = tz[1:3], tz[-2:]
-        epoch -= sign * (int(hh) * 3600 + int(mm) * 60)
-    return epoch + frac
-
-
-def _instance_restart_count(name: str, started_at: object, now: float) -> int | None:
-    """Restarts of `name` observed by THIS daemon since it started (§4.6)."""
-    if not isinstance(started_at, str) or not started_at:
-        return None
-    prev = _INSTANCE_START_PREV.get(name)
-    count = 0 if prev is None else prev[2]
-    if prev is not None and prev[1] != started_at:
-        count += 1
-    _INSTANCE_START_PREV[name] = (now, started_at, count)
-    if prev is None:
-        return None  # baseline only: this daemon has observed no restart yet
-    return count
-
-
 def lxd_instance_inventory(cfg: dict) -> list | None:
     """`lxd_instances[]` for this node, from its OWN LXD (contract §4.6).
 
@@ -1655,23 +1296,11 @@ def lxd_instance_inventory(cfg: dict) -> list | None:
         pct = _instance_cpu_pct(name, cpu.get("usage"), now)
         if pct is not None:
             entry["cpu_util_pct"] = pct
-        # Operational fields (§4.6, t_957956e5): how long the instance has been in
-        # this state, and how many restarts this daemon has observed. Both are
-        # omitted when the underlying fact is unavailable rather than guessed.
-        started_at = lxd_state.get("started_at")
-        started_epoch = _iso_epoch(started_at)
-        if started_epoch is not None:
-            entry["state_age_sec"] = max(0, int(time.time() - started_epoch))
-        restarts = _instance_restart_count(name, started_at, now)
-        if restarts is not None:
-            entry["restart_count"] = restarts
         out.append(entry)
     # Drop readings for instances that are gone (or no longer running), so a
     # long-lived node does not accumulate state for every instance it has ever run.
     for gone in [n for n in _CPU_PREV if n not in seen]:
         _CPU_PREV.pop(gone, None)
-    for gone in [n for n in _INSTANCE_START_PREV if n not in seen]:
-        _INSTANCE_START_PREV.pop(gone, None)
     return out
 
 

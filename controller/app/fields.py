@@ -36,14 +36,6 @@ C2_FIELD_NAMES = {
     # Abbreviations for the same classes: `cert_pem` is certificate material just
     # as `certificate` is (caught by the test suite, not by inspection).
     "cert", "pem",
-    # Process *paths* — the executable the process runs and its working
-    # directory. Both are file paths, which §4.3 lists as C2 ("file contents or
-    # paths under customer data dirs"): `/proc/<pid>/exe` and `cwd` name customer
-    # locations just as a command line does. Added with `processes[]` (t_957956e5)
-    # — not because that field carries them (it does not), but so a node that
-    # tries anyway is FAIL-CLOSED with a 422 instead of being silently stripped.
-    # No allowlisted field tokenises to either (pinned in tests).
-    "exe", "cwd",
 }
 
 ULID_PATTERN = "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -82,7 +74,7 @@ SAMPLE_FIELDS: dict[str, dict] = {
 METRIC_FIELDS = {
     "uptime_sec", "cpu_util_pct", "cpu_core_count", "ram_total_bytes",
     "ram_used_bytes", "swap_used_bytes", "load_avg_1m", "cpu_temp_celsius",
-    "disk", "net", "gpu", "lxd_instances", "inference", "services", "processes",
+    "disk", "net", "gpu", "lxd_instances", "inference", "services",
 }
 
 DISK_FIELDS: dict[str, dict] = {
@@ -119,11 +111,6 @@ LXD_INSTANCE_FIELDS: dict[str, dict] = {
     "ram_used_bytes": {"kind": "int", "unit": "bytes", "cclass": "C0", "min": 0},
     "ram_limit_bytes": {"kind": "int", "unit": "bytes", "cclass": "C0", "min": 0},
     "disk_used_bytes": {"kind": "int", "unit": "bytes", "cclass": "C0", "min": 0},
-    # Operational fields an incident needs (node-telemetry.md §4.6, t_957956e5).
-    # `last_exit_code` is deliberately absent: LXD exposes no exit status for an
-    # instance, and a field that could only ever be invented is worse than none.
-    "state_age_sec": {"kind": "int", "unit": "s", "cclass": "C0", "min": 0},
-    "restart_count": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
 }
 
 INFERENCE_FIELDS: dict[str, dict] = {
@@ -144,48 +131,7 @@ SERVICE_FIELDS: dict[str, dict] = {
         "kind": "str", "unit": None, "cclass": "C0",
         "enum": ["running", "failed", "stopped", "exited"],
     },
-    # Operational fields (§4.8, t_957956e5): systemd reports these, so they are
-    # real measurements rather than inferences. Exactly one service per
-    # allowlisted name, matching the rest of §4.8.
-    "state_age_sec": {"kind": "int", "unit": "s", "cclass": "C0", "min": 0},
-    "restart_count": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
-    # ExecMainStatus can legitimately be -1 (unit exec not started / signal).
-    "last_exit_code": {"kind": "int", "unit": None, "cclass": "C0", "min": -1, "max": 255},
-    # Counts, never lines (§4.11). The messages behind them stay C2.
-    "journal_errors": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
-    "journal_warnings": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
 }
-
-# `processes[]` — node-telemetry.md §4.10, C0, metrics only.
-#
-# Deny-by-default review (t_957956e5) admitted process METRICS and nothing else:
-# the kernel task name (`comm`), the kernel state, and the counters. `argv`,
-# `cmdline`, `exe`, `environ`, `cwd` and any file path are NOT fields here — they
-# are C2 by name (governance.md §4.3) and are rejected at ingest, at this depth,
-# by the C2 field-name scan.
-#
-# `name` is the only free-form string in the group, so it carries a pattern that
-# makes prose/PII structurally impossible: printable ASCII, ≤15 chars — exactly
-# the kernel's TASK_COMM_LEN. The C2 value scan also applies to it (it is not in
-# `_SKIP_STRING_SCAN`), so an email/IP/MAC/card/KEY string cannot ride along.
-PROCESS_FIELDS: dict[str, dict] = {
-    "pid": {"kind": "int", "unit": None, "cclass": "C0", "min": 1},
-    "name": {"kind": "str", "unit": None, "cclass": "C0", "pattern": r"^[\x20-\x7e]{1,15}$"},
-    "state": {
-        "kind": "str", "unit": None, "cclass": "C0",
-        "enum": ["running", "sleeping", "disk_sleep", "zombie", "stopped",
-                 "tracing", "dead"],
-    },
-    "cpu_util_pct": {"kind": "float", "unit": "percent", "cclass": "C0", "min": 0, "max": 100},
-    "ram_used_bytes": {"kind": "int", "unit": "bytes", "cclass": "C0", "min": 0},
-    "threads": {"kind": "int", "unit": "count", "cclass": "C0", "min": 1},
-    "age_sec": {"kind": "int", "unit": "s", "cclass": "C0", "min": 0},
-}
-
-# Top-N bound for `processes[]` (§4.10). The contract's existing window style is
-# ≤20; ingest rejects an over-long array rather than silently truncating, so an
-# over-eager collector is a loud defect instead of a quiet data loss.
-PROCESSES_MAX = 20
 
 # Top-level sample container keys (list/object fields).
 SAMPLE_CONTAINERS: dict[str, dict] = {
@@ -195,8 +141,6 @@ SAMPLE_CONTAINERS: dict[str, dict] = {
     "lxd_instances": {"kind": "list", "cclass": "C0", "fields": LXD_INSTANCE_FIELDS},
     "services": {"kind": "list", "cclass": "C0", "fields": SERVICE_FIELDS},
     "inference": {"kind": "obj", "cclass": "C0", "fields": INFERENCE_FIELDS},
-    "processes": {"kind": "list", "cclass": "C0", "fields": PROCESS_FIELDS,
-                  "max_items": PROCESSES_MAX},
 }
 
 ALL_SAMPLE_KEYS = set(SAMPLE_FIELDS) | set(SAMPLE_CONTAINERS)

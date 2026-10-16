@@ -74,20 +74,6 @@ function card(node, sample, view, state, handlers) {
     svc.appendChild(el("span", { class: `flag ${s.status === "running" ? "ok" : "bad"}`, text: `${s.name}:${s.status}` }));
   }
 
-  // Top processes (contract §4.10) — what is running *inside* the node. Metrics
-  // only: name, CPU, RSS. The panel shows the first few of the bounded top-20;
-  // the rest are on the node's charts/detail view.
-  const procs = el("div", { class: "processes" });
-  const top = (health.processes || []).slice(0, 4);
-  if (top.length) {
-    procs.appendChild(el("span", { class: "processes-label", text: "top processes" }));
-    for (const p of top) {
-      const cpu = typeof p.cpu_util_pct === "number" ? pct(p.cpu_util_pct) : "—";
-      const label = `${p.name || `pid ${p.pid}`} · ${cpu} · ${bytes(p.ram_used_bytes)}`;
-      procs.appendChild(el("span", { class: "process", text: label, title: `pid ${p.pid}${p.state ? ` · ${p.state}` : ""}` }));
-    }
-  }
-
   const reasons = el("div", { class: "reasons" });
   for (const r of view.reasons || []) {
     reasons.appendChild(el("span", { class: "reason", text: REASON_LABELS[r] || r }));
@@ -126,7 +112,6 @@ function card(node, sample, view, state, handlers) {
     flags,
     reasons,
     svc,
-    procs,
     foot,
     actions,
   ]);

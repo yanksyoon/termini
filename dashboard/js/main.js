@@ -13,7 +13,6 @@ import { renderOverview } from "./ui/overview.js";
 import { LogPanel } from "./ui/logs.js";
 import { DecisionsPanel } from "./ui/decisions.js";
 import { MetricsPanel } from "./ui/metrics.js";
-import { processes } from "./core/health.js";
 import { ControlsPanel } from "./ui/controls.js";
 import { confirmDialog, detailDialog } from "./ui/modal.js";
 import { showBanner, hideBanner } from "./ui/banner.js";
@@ -462,10 +461,6 @@ async function refreshMetrics() {
     state.metricsByNode.set(nodeId, seriesIndex(payload));
     metricsPanel.setAnnotations(annotationsForNode(decisionsPanel.rows, nodeId));
     metricsPanel.update(payload);
-    // Same telemetry sample the overview uses, so the "top processes" card and
-    // the node card can never disagree about what is running (§4.10).
-    const sample = state.samples.get(nodeId) || null;
-    metricsPanel.setProcesses(sample ? processes(sample) : []);
     state.backend.fails = 0;
     hideBanner();
   } catch (e) {

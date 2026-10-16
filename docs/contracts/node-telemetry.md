@@ -121,8 +121,7 @@ field. Units are explicit and fixed.
   "lxd_instances": [
     { "vm_id": "01M4349RPXWDC52ZDAVMPCMJSH", "state": "running",
       "cpu_util_pct": 12.0, "ram_used_bytes": 3328599654,
-      "ram_limit_bytes": 4294967296, "disk_used_bytes": 2362232012,
-      "state_age_sec": 812, "restart_count": 1 }
+      "ram_limit_bytes": 4294967296, "disk_used_bytes": 2362232012 }
   ],
   "inference": {
     "server_up": true,
@@ -133,25 +132,10 @@ field. Units are explicit and fixed.
     "vram_used_bytes": 12884901888
   },
   "services": [
-    { "name": "termini-bootstrap", "status": "running",
-      "state_age_sec": 3610, "restart_count": 0, "last_exit_code": 0,
-      "journal_errors": 0, "journal_warnings": 2 },
-    { "name": "lxd", "status": "running",
-      "state_age_sec": 3610, "restart_count": 0 },
-    { "name": "sshd", "status": "running",
-      "state_age_sec": 3610, "restart_count": 0, "last_exit_code": 0,
-      "journal_errors": 0, "journal_warnings": 0 },
-    { "name": "llama-cpp", "status": "running",
-      "state_age_sec": 900, "restart_count": 2, "last_exit_code": 137,
-      "journal_errors": 1, "journal_warnings": 4 }
-  ],
-  "processes": [
-    { "pid": 4187, "name": "llama-server", "state": "running",
-      "cpu_util_pct": 41.5, "ram_used_bytes": 3328599654,
-      "threads": 9, "age_sec": 900 },
-    { "pid": 921, "name": "systemd-journal", "state": "sleeping",
-      "cpu_util_pct": 0.4, "ram_used_bytes": 41943040,
-      "threads": 1, "age_sec": 3610 }
+    { "name": "termini-bootstrap", "status": "running" },
+    { "name": "lxd", "status": "running" },
+    { "name": "sshd", "status": "running" },
+    { "name": "llama-cpp", "status": "running" }
   ]
 }
 ```
@@ -277,13 +261,6 @@ remediation unresolvable.
 | `ram_used_bytes` | integer | bytes | ≥ 0 | Current VM RAM usage |
 | `ram_limit_bytes` | integer | bytes | ≥ 0 | LXD's effective memory limit for the instance (`limits.memory`, or the node's total when the instance is unlimited) |
 | `disk_used_bytes` | integer | bytes | ≥ 0 | Root volume used. 0 on a storage driver that does not track per-instance usage (the `dir` driver) — the same number `lxc list` reports |
-| `state_age_sec` | integer | s | ≥ 0 | Seconds the instance has been in its current state (LXD `state.started_at`); **omitted** when LXD cannot say |
-| `restart_count` | integer | count | ≥ 0 | Restarts of this instance **observed by the reporting daemon** since that daemon started (LXD exposes no restart counter of its own); a monotonic per-daemon count, reset by a node reboot |
-
-`last_exit_code` is deliberately **not** a §4.6 field: LXD does not expose an
-exit status for an instance (`/1.0/instances/<name>` has no equivalent of
-systemd's `ExecMainStatus`), so a field here could only ever be invented. The
-per-unit exit status lives in §4.8, where systemd actually reports it.
 
 ### 4.7 Inference (llama.cpp) — C0 (extension)
 
@@ -319,16 +296,6 @@ Allowlist: `termini-bootstrap`, `lxd`, `sshd`, `llama-cpp`.
 |-------|------|-------|-------------|
 | `name` | string enum | see allowlist | Unit name |
 | `status` | string enum | `running|failed|stopped|exited` | systemd active state |
-| `state_age_sec` | integer | ≥ 0 | Seconds since the unit last entered this active state (`ActiveEnterTimestamp`); omitted when systemd does not report it |
-| `restart_count` | integer | ≥ 0 | systemd `NRestarts` — how many times the unit has been restarted; omitted when systemd cannot say (a node without a readable systemd must not report `0`) |
-| `last_exit_code` | integer | `-1` … 255 | `ExecMainStatus` of the unit's most recent run; omitted when the unit has never exited |
-| `journal_errors` | integer | ≥ 0 | Count of journal entries at priority `err`+ for the unit in the last `JOURNAL_WINDOW_S` (300 s); omitted when the journal is unreadable — never `0`-by-default (§4.11) |
-| `journal_warnings` | integer | ≥ 0 | Count of journal entries at priority `warning` for the unit in the same window; omitted under the same rule (§4.11) |
-
-The operational fields are what turn `services[]` from a boolean into evidence:
-`status: failed` plus `restart_count: 2` plus `last_exit_code: 137` plus
-`state_age_sec: 4` is a crash loop, and it is an incident an operator can act on
-without a single log line.
 
 ### 4.9 Extension registration note
 
@@ -337,85 +304,6 @@ state, llama.cpp health) and the charts. They are **now registered** in
 `governance.md` §4.1.1 as C0 allowlist groups (deny-by-default review complete,
 integration pass t_5fb81d14). The node redactor treats these exact keys as C0
 allowlist entries. No field in this document is C2 or carries customer data.
-
-The §4.6/§4.8 operational fields and the two new groups below (`processes[]`
-§4.10, journal counts §4.11) were added under the same deny-by-default review
-(t_957956e5) and are registered in `governance.md` §4.1.1 alongside the earlier
-ones. Every field is C0; no field of any group is C2, and no group introduces a
-free-form string other than the bounded `processes[].name` (§4.10).
-
----
-
-### 4.10 `processes[]` — top-N process metrics — C0 (extension)
-
-`processes[]` — what is running *inside* the node, at the metric level only. It
-is what lets an incident be explained from telemetry alone, and it is
-deliberately **not** a process listing in the `ps`/`top` sense.
-
-**Scope decision (recorded, t_957956e5): metrics-only.** An entry carries the
-kernel's own task name and its counters and nothing else:
-
-- `name` is the kernel task name (`/proc/<pid>/comm`), at most 15 printable
-  ASCII characters — never `argv`, never `cmdline`, never `/proc/<pid>/exe`,
-  never the environment. It has no arguments, no path and no user field, and at
-  ≤15 characters it cannot carry a document, a URL, a prompt or a key.
-- `state` is a closed enum; the only other string in an entry is `name`.
-
-`argv`, `cmdline` (and `argv[0]` with arguments), `environ`, `exe`, `cwd`, open
-file paths, usernames and application log lines stay **C2** (§6) and are refused
-at ingest: `argv`/`cmdline`/`env` were already fail-closed by field name, and
-`exe`/`cwd` were added to the same denylist with this change (t_957956e5) so a
-process *path* is rejected loudly instead of being silently stripped.
-Adding `processes[]` therefore does **not** relax the contract's C2 denial and
-needs no recorded exception to it.
-
-The array is **omitted**, not emptied, when the node cannot read `/proc` for
-itself — the same rule as `lxd_instances[]` (§4.6): "this node did not report a
-process table" and "this node runs nothing" are different facts.
-
-**Bound (volume/retention decision, recorded, t_957956e5): top-20 per sample**,
-ranked by `cpu_util_pct` descending, then `ram_used_bytes` descending, then `pid`
-ascending — a total order, so two nodes sampling the same host agree on the set.
-The array rides the **existing** telemetry cadence (§1): no new interval, no
-additional egress, one `/proc` sweep per telemetry sample.
-
-| Field | Type | Unit | Range | Description |
-|-------|------|------|-------|-------------|
-| `pid` | integer | — | ≥ 1 | Process id — ties the sample to live `ps` output on the node |
-| `name` | string | — | pattern `^[ -~]{1,15}$` | Kernel task name (`comm`): printable ASCII, ≤15 chars, no arguments |
-| `state` | string enum | — | `running\|sleeping\|disk_sleep\|zombie\|stopped\|tracing\|dead` | Kernel process state (`/proc/<pid>/stat` field 3) |
-| `cpu_util_pct` | number | percent | 0–100 | CPU consumed by this process over the sample delta, as percent of the node's total capacity |
-| `ram_used_bytes` | integer | bytes | ≥ 0 | Resident set size (resident pages × page size) |
-| `threads` | integer | count | ≥ 1 | Thread count (`/proc/<pid>/status` `Threads`) |
-| `age_sec` | integer | s | ≥ 0 | Seconds since process start (`/proc/<pid>/stat` field 22 vs `/proc/uptime`) |
-
-`cpu_util_pct` is omitted on the first sample after a node or process start (no
-delta available yet) rather than reported as `0` — the same convention as
-`lxd_instances[].cpu_util_pct` (§4.6).
-
----
-
-### 4.11 Journal counts — counts, not lines — C0 (extension)
-
-**Decision (recorded, t_957956e5): counts of log *entries* ARE permissible where
-raw log lines are not.** An error/warning *count* over a fixed window is an
-integer describing a unit's behaviour — an aggregate, not a log line — and
-carries none of the message, timestamp, identifier or payload of any one entry.
-It is the smallest thing that makes "the proxy restarted twice and logged 40
-errors" visible without shipping a log.
-
-It is realised as two bounded integers on `services[]` (§4.8) and never as text:
-
-| Field | Type | Unit | Range | Description |
-|-------|------|------|-------|-------------|
-| `journal_errors` | integer | count | ≥ 0 | Entries at syslog priority `err` or worse for that unit in the last `JOURNAL_WINDOW_S` (**300 s**) |
-| `journal_warnings` | integer | count | ≥ 0 | Entries at priority `warning` for that unit in the same window |
-
-Both are **omitted** (never `0`) when the node cannot read its own journal, so
-"no errors" is never invented from "could not ask". The journal *messages* remain
-C2: `log`, `logs`, `log_line`, `syslog`, `message`, `msg` and the rest are on the
-field-name denylist (`governance.md` §4.3), so no line can ride along inside a
-count field — and the contract's "Never collected" list in §6 is unchanged.
 
 ---
 
@@ -498,15 +386,6 @@ keys, and any free-form string not enumerated above. The redactor is the single
 egress gate (governance.md §5); the controller additionally validates inbound
 telemetry against this allowlist (governance.md §9 `governanceGate`) and rejects
 discrepancies with `422 GOVERNANCE_REJECT`.
-
-`processes[]` (§4.10) and the journal counts (§4.11) do not narrow this list.
-A process **name** (the kernel `comm`, ≤15 printable ASCII chars, no arguments,
-no path) and an error/warning **count** are aggregates over the machine's own
-behaviour; a process command line, its environment, its open files and the
-journal *messages* behind a count remain C2 and are rejected exactly as before.
-The denylist is enforced by field *name* at every nesting depth, so a `cmdline`
-or `message` nested inside a `processes[]` entry is rejected the same way a
-top-level one is — and that is pinned by test, not by inspection.
 
 ---
 

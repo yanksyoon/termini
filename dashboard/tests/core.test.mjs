@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { pct, num, bytes, scaleForUnit, ago, uptime, shortId, hhmm, clock } from "../js/core/format.js";
-import { deriveHealth, nodeView, SERVICE_ALLOWLIST, PROCESSES_MAX } from "../js/core/health.js";
+import { deriveHealth, nodeView, SERVICE_ALLOWLIST } from "../js/core/health.js";
 import { buildCharts, windowQuery, metricsQuery, METRIC_UNITS, CHART_GROUPS } from "../js/core/series.js";
 import { normalizeLine, appendLines, SEVERITIES, severityVisible, isControlLine } from "../js/core/logs.js";
 import { resolveConfig, apiUrl, DEFAULTS } from "../js/core/config.js";
@@ -125,42 +125,6 @@ test("health: service failures are detected on the allowlist only", () => {
   assert.ok(h.degraded_reasons.includes("service_failed"));
   assert.equal(h.services.length, 1);
   assert.deepEqual(SERVICE_ALLOWLIST.includes("llama-cpp"), true);
-});
-
-test("health: processes are allowlisted to the contract fields (§4.10)", () => {
-  // A node that sends C2 or junk alongside the metrics must not get it rendered:
-  // the panel drops anything outside the contract instead of displaying it.
-  const h = deriveHealth(COMPUTE, sample({
-    processes: [
-      { pid: 4187, name: "llama-server", state: "running", cpu_util_pct: 41.5,
-        ram_used_bytes: 1024, threads: 9, age_sec: 900 },
-      { pid: 921, name: "cmdline", cmdline: "/bin/sh -c secret", argv: ["x"] },
-      { pid: 0, name: "bad-pid" },
-      { pid: 12, name: "a very long process name", state: "sleepy" },
-      "not-an-object",
-    ],
-  }));
-  assert.equal(h.processes.length, 3);   // 4187, 921 (junk keys dropped) and 12
-  assert.deepEqual(Object.keys(h.processes[0]).sort(),
-    ["age_sec", "cpu_util_pct", "name", "pid", "ram_used_bytes", "state", "threads"]);
-  // the second entry keeps only the contract keys — `cmdline`/`argv` are gone
-  assert.equal(h.processes[1].pid, 921);
-  assert.deepEqual(Object.keys(h.processes[1]).sort(), ["name", "pid"]);
-  assert.equal(h.processes[1].cmdline, undefined);
-  assert.equal(h.processes[1].argv, undefined);
-  // pid 12 survives on its pid alone: the over-long name and the unknown state
-  // are dropped rather than displayed
-  assert.deepEqual(h.processes[2], { pid: 12 });
-});
-
-test("health: processes are bounded to the top-20", () => {
-  const many = Array.from({ length: 30 }, (_, i) => ({ pid: 100 + i, name: `p${i}` }));
-  const h = deriveHealth(COMPUTE, sample({ processes: many }));
-  assert.equal(h.processes.length, PROCESSES_MAX);
-});
-
-test("health: a missing sample yields no processes rather than inventing some", () => {
-  assert.deepEqual(deriveHealth(COMPUTE, null).processes, []);
 });
 
 test("health: status derivation from heartbeat age (contract §1.1)", () => {
