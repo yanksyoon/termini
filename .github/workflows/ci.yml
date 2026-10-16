@@ -36,6 +36,16 @@ jobs:
           done < <(git ls-files '*.py')
           exit $rc
 
+      - name: Install the agent runtime's config dependency
+        # `tests/test_agent_tasks.py` wires the shipped in-VM runtime against the real
+        # controller, so it loads the instance's own `/etc/termini/agent.yaml` through
+        # `termini_agent.config.load_config()`. That module parses YAML, which the
+        # agent runtime declares in `image/agent-vm/requirements/runtime.in`. Nothing
+        # else in `tests/` needs a third-party package; this step keeps the suite real
+        # instead of stubbing the loader out (the full runtime venv is far too heavy
+        # for CI — `runtime.lock` pulls in google-adk/langgraph).
+        run: python3 -m pip install --quiet "PyYAML>=6,<7"
+
       - name: Run unit tests
         run: python3 -m unittest discover -s tests -v
 
