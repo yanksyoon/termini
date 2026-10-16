@@ -7,7 +7,8 @@
 import { el, clear } from "./dom.js";
 import { TimeSeriesChart } from "../charts.js";
 import { buildCharts } from "../core/series.js";
-import { scaleForUnit } from "../core/format.js";
+import { scaleForUnit, pct, bytes } from "../core/format.js";
+import { PROCESSES_MAX } from "../core/health.js";
 
 export class MetricsPanel {
   constructor(container) {
@@ -16,8 +17,58 @@ export class MetricsPanel {
     this.lastPayload = null;
     this.includeAll = false;
     this.annotations = []; // decision/threshold marks for the selected node
+    this.processRows = []; // latest `processes[]` for the selected node (§4.10)
+    this._procCard = null;
     this._ro = new ResizeObserver(() => this.redraw());
     this._ro.observe(container);
+  }
+
+  /**
+   * Latest `processes[]` for the selected node (contract §4.10).
+   *
+   * Process metrics are per-sample, not a time series, so they get their own
+   * card rather than a chart line: "what is running inside this node right now"
+   * is the question an incident asks, and a chart of the top-20 set over time
+   * would answer a different one.
+   */
+  setProcesses(list) {
+    this.processRows = Array.isArray(list) ? list : [];
+    this._renderProcesses();
+  }
+
+  _renderProcesses() {
+    const rows = this.processRows || [];
+    if (rows.length === 0) {
+      if (this._procCard) {
+        this._procCard.remove();
+        this._procCard = null;
+      }
+      return;
+    }
+    if (!this._procCard) {
+      this._procCard = el("div", { class: "chart-card process-card", dataset: { chart: "processes" } });
+      this.container.appendChild(this._procCard);
+    }
+    clear(this._procCard);
+    this._procCard.appendChild(
+      el("div", { class: "chart-title" }, [
+        el("h3", { text: "Top processes" }),
+        el("span", { class: "chart-unit", text: `${rows.length} of ${PROCESSES_MAX}` }),
+      ]),
+    );
+    const table = el("div", { class: "process-table" });
+    for (const p of rows.slice(0, PROCESSES_MAX)) {
+      table.appendChild(
+        el("div", { class: "process-row" }, [
+          el("span", { class: "ps-name", text: p.name || `pid ${p.pid}`, title: `pid ${p.pid}` }),
+          el("span", { class: "ps-state", text: p.state || "" }),
+          el("span", { class: "ps-cpu", text: typeof p.cpu_util_pct === "number" ? pct(p.cpu_util_pct) : "—" }),
+          el("span", { class: "ps-ram", text: bytes(p.ram_used_bytes) }),
+          el("span", { class: "ps-threads", text: typeof p.threads === "number" ? `${p.threads}t` : "" }),
+        ]),
+      );
+    }
+    this._procCard.appendChild(table);
   }
 
   setIncludeAll(v) {
