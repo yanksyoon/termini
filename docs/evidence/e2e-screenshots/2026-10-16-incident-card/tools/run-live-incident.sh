@@ -120,7 +120,12 @@ start_controller() { # start_controller <decision-mode> <log>
   # nothing — the old controller keeps the port, the replacement dies of
   # EADDRINUSE, and the phase silently continues against the OLD controller (that
   # is how phase 4 produced a `fallback` row while claiming to be deterministic).
-  ( cd "$REPO/controller" && exec env $(controller_env "$1") python3 -m app.main ) >"$2" 2>&1 &
+  #
+  # The env pairs go through an array on purpose: the word splitting into
+  # `VAR=value` arguments is required (quoting the substitution would hand `env`
+  # one malformed argument) and an unquoted `$(…)` is SC2046, which CI fails on.
+  mapfile -t _ctrl_env < <(controller_env "$1")
+  ( cd "$REPO/controller" && exec env "${_ctrl_env[@]}" python3 -m app.main ) >"$2" 2>&1 &
   CONTROLLER_PID=$!
   echo "$CONTROLLER_PID" >"$WORK/controller.pid"
   # Readiness probe: a project-token GET. It must NOT consume the single-use

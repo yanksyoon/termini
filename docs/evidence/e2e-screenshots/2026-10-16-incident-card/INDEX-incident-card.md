@@ -82,6 +82,13 @@ a green check** — which is exactly why they are written down rather than quiet
    controller that actually ran in deterministic mode (`controller-deterministic.log`,
    `listening on 127.0.0.1:42199`).
 
+The same `exec` line then failed CI's `Shellcheck scripts` step (`git ls-files '*.sh' | xargs -r
+shellcheck -S warning`, warnings fatal) with **SC2046** — but quoting the substitution is not the
+fix, because splitting `controller_env` into `VAR=value` arguments is exactly what `env` needs. The
+pairs go through an array (`mapfile -t _ctrl_env` + `env "${_ctrl_env[@]}"`), and the start/stop path
+was re-checked after the change: `$!` is still the python PID, the readiness probe answers 200, and
+`stop_controller` leaves no process behind.
+
 ## Re-running
 
 ```bash
