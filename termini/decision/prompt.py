@@ -31,7 +31,19 @@ DECISION_JSON_SCHEMA = """{
   "action_id": "<exactly one allowed action id>",
   "params": { "<param>": "<value>" },
   "confidence": <number between 0.0 and 1.0>,
-  "rationale": "<one sentence explaining the choice, <= 1024 chars>"
+  "rationale": "<one sentence explaining the choice, <= 1024 chars>",
+  "incident_title": "<one line naming the INCIDENT, <= 160 chars>",
+  "explanation": "<why the evidence implies that incident, <= 2048 chars>",
+  "evidence": [
+    { "field": "<a telemetry field name from the input, e.g. ram_used_bytes>",
+      "value": <the value you actually read for it>,
+      "seq": <the sample seq it came from> }
+  ],
+  "actions": [
+    { "action_kind": "<the action id you chose>",
+      "target": "<the vm_id or instance_name it applies to>",
+      "note": "<one clause on why, <= 256 chars>" }
+  ]
 }""".strip()
 
 
@@ -92,6 +104,19 @@ Rules:
 - "rationale" MUST be one short, factual sentence (<= 1024 chars) naming the
   metric that breached and why this action fixes it. Do not include personal
   data or application payloads.
+- "incident_title" MUST name the INCIDENT (what is wrong on the node), not the
+  action you chose, and MUST be one line (<= 160 chars).
+- "explanation" MUST say why the evidence in the input implies that incident
+  (<= 2048 chars). It is the answer to "why does the AI think so", so it must
+  reason from the numbers in the input, not restate the title.
+- "evidence" MUST be the concrete telemetry the decision rests on: one entry per
+  field you actually used, with "field" spelled exactly as it appears in the
+  input (e.g. "ram_used_bytes", "lxd_instances.ram_used_bytes"), the "value" you
+  read, and the sample "seq" it came from. Never invent a field name, never
+  quote an application log line, a command line or an environment variable.
+- "actions" MUST list what you decided, one entry per action, with the chosen
+  "action_id" as "action_kind" and the same target you put in "params".
+- Do NOT describe what was executed: you decide, the controller executes.
 - Prefer the least destructive action that resolves the fault: restart before
   stop, stop before delete, prune images before touching instances.
 - If the evidence does not justify any remediation, choose the least destructive
@@ -169,6 +194,24 @@ FEW_SHOT: List[Dict[str, str]] = [
                     "host RAM at 94.7% of total with one instance holding 29%; "
                     "restarting the heaviest instance reclaims its memory."
                 ),
+                "incident_title": "Host memory exhaustion from one runaway instance",
+                "explanation": (
+                    "ram_used_bytes is at 94.7% of ram_total_bytes and the "
+                    "heaviest instance alone holds 29% of the node's RAM, so the "
+                    "pressure comes from that single workload rather than from "
+                    "the node's baseline load. Reclaiming its memory drops the "
+                    "host below the OOM threshold."
+                ),
+                "evidence": [
+                    {"field": "ram_used_bytes", "value": 32641751449, "seq": 1050},
+                    {"field": "ram_total_bytes", "value": 34359738368, "seq": 1050},
+                    {"field": "lxd_instances.ram_used_bytes", "value": 10000000000,
+                     "seq": 1050},
+                ],
+                "actions": [
+                    {"action_kind": "instance.restart", "target": "heaviest",
+                     "note": "reclaim the heaviest instance's resident memory"},
+                ],
             }
         ),
     },
@@ -188,6 +231,22 @@ FEW_SHOT: List[Dict[str, str]] = [
                     "sustained write-latency rise on /dev/sda with the disk still "
                     "writable; stopping the heaviest writer sheds the I/O load."
                 ),
+                "incident_title": "Degrading disk I/O on /dev/sda",
+                "explanation": (
+                    "disk.write_latency_ms on /dev/sda is 48 ms and rising while "
+                    "mount_ro is still false, so the device is degrading rather "
+                    "than failed. The heaviest writer is the load the latency is "
+                    "coming from, so shedding it removes the pressure before the "
+                    "device fails outright."
+                ),
+                "evidence": [
+                    {"field": "disk.write_latency_ms", "value": 48.0, "seq": 2077},
+                    {"field": "disk.mount_ro", "value": False, "seq": 2077},
+                ],
+                "actions": [
+                    {"action_kind": "instance.stop", "target": "heaviest",
+                     "note": "shed the heaviest writer while the device is still writable"},
+                ],
             }
         ),
     },

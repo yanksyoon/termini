@@ -51,16 +51,29 @@ def decision_exists(conn, event_id: str) -> bool:
 
 def insert_decision(conn, decision_id: str, event, action, now_iso: str,
                     *, source: str = "deterministic", confidence: float | None = None,
-                    fallback_reason: str | None = None) -> None:
+                    fallback_reason: str | None = None,
+                    incident: dict | None = None) -> None:
+    # `incident` is the §4.2 incident record (or None in deterministic mode, §8.1).
+    # Written in the SAME statement as the decision, so a record can never exist
+    # without its decision and the row is atomic. `incident_generated` ∈
+    # model | fallback; all five columns are NULL when incident is None.
+    incident_title = incident.get("incident_title") if incident else None
+    incident_explanation = incident.get("explanation") if incident else None
+    incident_evidence = json.dumps(incident.get("evidence", [])) if incident else None
+    incident_actions = json.dumps(incident.get("actions", [])) if incident else None
+    incident_generated = incident.get("generated") if incident else None
     conn.execute(
         "INSERT INTO remediation_decisions (id, event_id, node_id, rule_id, playbook,"
         " action_kind, action_params, reason, decision_source, confidence,"
-        " fallback_reason, decided_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " fallback_reason, decided_at, incident_title, incident_explanation,"
+        " incident_evidence, incident_actions, incident_generated)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             decision_id, event.event_id, event.node_id, event.rule_id,
             action.playbook, action.kind, json.dumps(action.params), action.reason,
             source, confidence, fallback_reason, now_iso,
+            incident_title, incident_explanation,
+            incident_evidence, incident_actions, incident_generated,
         ),
     )
 
@@ -155,6 +168,17 @@ def list_decisions(conn, limit: int) -> list[dict]:
             d["action_params"] = json.loads(d["action_params"])
         except (json.JSONDecodeError, TypeError):
             pass
+        # §4.2 incident record columns are JSON TEXT; expose them as objects so
+        # the API (and the dashboard) returns a structured record, not a string.
+        for col in ("incident_evidence", "incident_actions"):
+            raw = d.get(col)
+            if raw is None:
+                d[col] = None
+                continue
+            try:
+                d[col] = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                pass
         out.append(d)
     return out
 
