@@ -1,0 +1,42 @@
+== sample (compact, as egressed) ==
+{"seq":1,"ts":"2026-10-16T21:20:49Z","uptime_sec":1125414,"cpu_util_pct":6.61,"cpu_core_count":8,"ram_total_bytes":20948180992,"ram_used_bytes":18532724736,"swap_used_bytes":0,"load_avg_1m":0.6943359375,"os_name":"Ubuntu","os_version":"24.04","kernel_version":"6.8.0-142-generic","lxd_cluster_role":"member","hostname":"051375546db9782e","ip_local":"10.201.0.0/24","mac_address":"70675b0d86c14be2","project_id":"01M539DJ5WDFPAH3NR9NNXXVS2","disk":[{"path":"/dev/root","total_bytes":102888095744,"free_bytes":43319939072,"write_latency_ms":0.0,"mount_ro":false,"inode_total":12976128,"inode_used":1129359,"io_in_flight":0,"io_ticks_ms":62361848},{"path":"/dev/termini","total_bytes":102888095744,"free_bytes":43319939072,"write_latency_ms":5.545,"mount_ro":false,"inode_total":12976128,"inode_used":1129359,"io_in_flight":0,"io_ticks_ms":62361853}],"net":[{"iface":"enp5s0","rx_bytes":50069722681,"tx_bytes":47496939625,"latency_ms":0.055,"rx_errors":0,"tx_errors":0,"rx_dropped":0,"tx_dropped":0}],"lxd_instances":[{"vm_id":"4FZ922X02JSKERK8KSBZMMCXSS","state":"running","ram_used_bytes":80850944,"ram_limit_bytes":20948180992,"disk_used_bytes":0,"oom_kill_count":0,"pgmajfault_count":30730},{"vm_id":"HWHS4QFAJW9625H9FQ897FDYT6","state":"running","ram_used_bytes":263634944,"ram_limit_bytes":1073741824,"disk_used_bytes":0,"oom_kill_count":0,"pgmajfault_count":104483},{"vm_id":"CJYABWA2F2XW82YYCKZE1SYH8B","state":"running","ram_used_bytes":252481536,"ram_limit_bytes":1073741824,"disk_used_bytes":0,"oom_kill_count":0,"pgmajfault_count":96416},{"vm_id":"T81M7CV1CP3866E2KQNNKAYQNQ","state":"running","ram_used_bytes":6742220800,"ram_limit_bytes":8589934592,"disk_used_bytes":0,"oom_kill_count":0,"pgmajfault_count":96101},{"vm_id":"G91GMNHY1NW8PX32S7AGZTRBCB","state":"running","ram_used_bytes":81440768,"ram_limit_bytes":1073741824,"disk_used_bytes":0,"oom_kill_count":0,"pgmajfault_count":31837},{"vm_id":"KRZ3W7C46ZBQSK0NN17DEYD02Y","state":"running","ram_used_bytes":80449536,"ram_limit_bytes":1073741824,"disk_used_bytes":0,"oom_kill_count":0,"pgmajfault_count":31103},{"vm_id":"RW07QAZXPWG5TYBREC2R5MKFXW","state":"running","ram_used_bytes":5651652608,"ram_limit_bytes":8589934592,"disk_used_bytes":0,"oom_kill_count":0,"pgmajfault_count":35910}],"services":[{"name":"termini-bootstrap","status":"running"},{"name":"lxd","status":"running","state_age_sec":1080018,"restart_count":0,"last_exit_code":0,"journal_errors":0,"journal_warnings":0},{"name":"sshd","status":"running","state_age_sec":134193,"restart_count":0,"last_exit_code":0,"journal_errors":0,"journal_warnings":0}],"processes":[{"pid":617793,"name":"llama-server","state":"sleeping","ram_used_bytes":6486466560,"threads":18,"age_sec":439794},{"pid":1172916,"name":"llama-server","state":"sleeping","ram_used_bytes":5557460992,"threads":18,"age_sec":1062937},{"pid":44089,"name":"hermes","state":"sleeping","ram_used_bytes":639225856,"threads":24,"age_sec":1093604},{"pid":4021914,"name":"hermes","state":"sleeping","ram_used_bytes":511315968,"threads":24,"age_sec":20816},{"pid":4106428,"name":"python3","state":"sleeping","ram_used_bytes":413642752,"threads":28,"age_sec":13201},{"pid":3668,"name":"hermes","state":"sleeping","ram_used_bytes":408174592,"threads":17,"age_sec":1124506},{"pid":135180,"name":"node-MainThread","state":"sleeping","ram_used_bytes":348643328,"threads":7,"age_sec":509},{"pid":93050,"name":"hermes","state":"sleeping","ram_used_bytes":328019968,"threads":20,"age_sec":2644},{"pid":4106420,"name":"node-MainThread","state":"sleeping","ram_used_bytes":326565888,"threads":11,"age_sec":13201},{"pid":133553,"name":"hermes","state":"sleeping","ram_used_bytes":285122560,"threads":21,"age_sec":584}],"pressure":{"cpu_some_avg10":0.0,"io_some_avg10":0.0,"memory_some_avg10":0.0,"memory_full_avg10":0.0},"oom_kill_count":37,"pgmajfault_count":2670694,"mem_available_bytes":2411364352,"tcp_retransmit_segs":297295,"conntrack_count":457,"conntrack_max":262144}
+
+== controller validator (app.validate.validate_sample) ==
+errors: []
+
+== contract C2 scan (app.governance.scan_c2) ==
+violations: []
+
+== C2 signature grep over the payload (governance.md §4.3) ==
+ip_local: raw IPv4: '10.201.0.0/24'
+
+notes on the grep:
+  - `ip_local` is the contract's C1 TRANSFORMED form (last octet replaced with `.0/24`, node-telemetry.md §4.2) and `governance.scan_c2` exempts it by pattern; a RAW address would be a hit. A raw IPv4 or MAC anywhere else in the payload above would be listed here.
+  - `hostname` / `mac_address` are SHA-256 hex prefixes (C1 hashes) and match no signature.
+  - `disk[].path` values are device labels (/dev/root, /dev/termini) — no /proc, /sys, /etc or /var/log path appears anywhere in the payload,
+    and the conntrack TABLE is not read at all: only the two count files.
+
+== §4.12–§4.14 group presence ==
+  pressure: PRESENT {'cpu_some_avg10': 0.0, 'io_some_avg10': 0.0, 'memory_some_avg10': 0.0, 'memory_full_avg10': 0.0}
+  oom_kill_count: PRESENT 37
+  pgmajfault_count: PRESENT 2670694
+  mem_available_bytes: PRESENT 2411364352
+  tcp_retransmit_segs: PRESENT 297295
+  conntrack_count: PRESENT 457
+  conntrack_max: PRESENT 262144
+  disk[/dev/root]: io_ticks_ms=62361848, io_in_flight=0, inode_used=1129359, inode_total=12976128
+  disk[/dev/termini]: io_ticks_ms=62361853, io_in_flight=0, inode_used=1129359, inode_total=12976128
+  net[enp5s0]: rx_errors=0, tx_errors=0, rx_dropped=0, tx_dropped=0
+  lxd_instances[4FZ922X02JSKERK8KSBZMMCXSS]: oom_kill_count=0, pgmajfault_count=30730
+  lxd_instances[HWHS4QFAJW9625H9FQ897FDYT6]: oom_kill_count=0, pgmajfault_count=104483
+  lxd_instances[CJYABWA2F2XW82YYCKZE1SYH8B]: oom_kill_count=0, pgmajfault_count=96416
+  lxd_instances[T81M7CV1CP3866E2KQNNKAYQNQ]: oom_kill_count=0, pgmajfault_count=96101
+  lxd_instances[G91GMNHY1NW8PX32S7AGZTRBCB]: oom_kill_count=0, pgmajfault_count=31837
+  lxd_instances[KRZ3W7C46ZBQSK0NN17DEYD02Y]: oom_kill_count=0, pgmajfault_count=31103
+  lxd_instances[RW07QAZXPWG5TYBREC2R5MKFXW]: oom_kill_count=0, pgmajfault_count=35910
+
+== groups this host cannot produce (honest negatives) ==
+  SMART media health: smartctl/nvme not installed and no SATA/NVMe passthrough on this QEMU host — needs a live node (smartctl -a /dev/sda)
+  EDAC memory errors: /sys/devices/system/edac/mc has no controller nodes — needs ECC server hardware
+  GCE preemptible/maintenance-event: metadata.google.internal does not resolve off-GCE — needs a live GCE node
+  OVS/OVN flow counters: ovs-vsctl/ovn-* not installed; the fleet uses the Linux bridge (lxdbr0)
