@@ -71,6 +71,19 @@ SAMPLE_FIELDS: dict[str, dict] = {
     "os_version": {"kind": "str", "unit": None, "cclass": "C0", "enum": ["24.04"]},
     "kernel_version": {"kind": "str", "unit": None, "cclass": "C0"},
     "lxd_cluster_role": {"kind": "str", "unit": None, "cclass": "C0", "enum": ["member"]},
+    # --- §4.12 pressure + memory-pressure scalars (C0, research t_cae0dfa8) ---
+    # Cumulative counters from /proc/vmstat and /proc/meminfo. Omitted, never 0,
+    # when the source is unreadable (node-telemetry.md §4.12).
+    "oom_kill_count": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    "pgmajfault_count": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    "mem_available_bytes": {"kind": "int", "unit": "bytes", "cclass": "C0", "min": 0},
+    # --- §4.13 transport / conntrack scalars (C0, research t_cae0dfa8) ---
+    "tcp_retransmit_segs": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    # Count-only: the conntrack *table* (/proc/net/nf_conntrack) is C2 and must
+    # never be read for telemetry — only these two count files are C0 (governance
+    # §4.1.1). `conntrack_max` is a table capacity, so it is never 0.
+    "conntrack_count": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    "conntrack_max": {"kind": "int", "unit": "count", "cclass": "C0", "min": 1},
     # --- identifiers (C1, must arrive already transformed) ---
     "hostname": {"kind": "str", "unit": None, "cclass": "C1", "pattern": "^[0-9a-f]{16}$"},
     "ip_local": {"kind": "str", "unit": None, "cclass": "C1", "c1_ip": True},
@@ -83,6 +96,10 @@ METRIC_FIELDS = {
     "uptime_sec", "cpu_util_pct", "cpu_core_count", "ram_total_bytes",
     "ram_used_bytes", "swap_used_bytes", "load_avg_1m", "cpu_temp_celsius",
     "disk", "net", "gpu", "lxd_instances", "inference", "services", "processes",
+    # §4.12–§4.14 (research t_cae0dfa8): pressure, vmstat/meminfo scalars, and
+    # the transport/conntrack scalars are metrics in their own right.
+    "pressure", "oom_kill_count", "pgmajfault_count", "mem_available_bytes",
+    "tcp_retransmit_segs", "conntrack_count", "conntrack_max",
 }
 
 DISK_FIELDS: dict[str, dict] = {
@@ -91,6 +108,14 @@ DISK_FIELDS: dict[str, dict] = {
     "free_bytes": {"kind": "int", "unit": "bytes", "cclass": "C0", "min": 0},
     "write_latency_ms": {"kind": "float", "unit": "ms", "cclass": "C0", "min": 0},
     "mount_ro": {"kind": "bool", "unit": None, "cclass": "C0"},
+    # §4.13 disk I/O + inode extension (C0, research t_cae0dfa8): the raw
+    # saturation signal behind write_latency_ms, plus inode exhaustion (a full
+    # inode table fails writes while free_bytes looks healthy). Omitted, never
+    # 0, when /sys/block/<dev>/stat or statvfs is unreadable.
+    "io_ticks_ms": {"kind": "int", "unit": "ms", "cclass": "C0", "min": 0},
+    "io_in_flight": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    "inode_used": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    "inode_total": {"kind": "int", "unit": "count", "cclass": "C0", "min": 1},
 }
 
 NET_FIELDS: dict[str, dict] = {
@@ -98,6 +123,14 @@ NET_FIELDS: dict[str, dict] = {
     "rx_bytes": {"kind": "int", "unit": "bytes", "cclass": "C0", "min": 0},
     "tx_bytes": {"kind": "int", "unit": "bytes", "cclass": "C0", "min": 0},
     "latency_ms": {"kind": "float", "unit": "ms", "cclass": "C0", "min": 0},
+    # §4.13 NIC error/drop counters (C0, research t_cae0dfa8): explains
+    # latency-01 — high latency with rising drops is an underlay fault, high
+    # latency with clean counters is application-level. Omitted, never 0, when
+    # /sys/class/net/<iface>/statistics is unreadable.
+    "rx_errors": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    "tx_errors": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    "rx_dropped": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    "tx_dropped": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
 }
 
 GPU_FIELDS: dict[str, dict] = {
@@ -124,6 +157,13 @@ LXD_INSTANCE_FIELDS: dict[str, dict] = {
     # instance, and a field that could only ever be invented is worse than none.
     "state_age_sec": {"kind": "int", "unit": "s", "cclass": "C0", "min": 0},
     "restart_count": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    # §4.14 per-instance cgroup counters (C0, research t_cae0dfa8): OOM and
+    # major-fault attribution per instance, sourced from the instance cgroup
+    # (/sys/fs/cgroup/lxc.payload.<name>/memory.events + memory.stat) — NOT the
+    # LXD API, which does not expose them. Omitted, never 0, when the cgroup
+    # file is unreadable.
+    "oom_kill_count": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
+    "pgmajfault_count": {"kind": "int", "unit": "count", "cclass": "C0", "min": 0},
 }
 
 INFERENCE_FIELDS: dict[str, dict] = {
@@ -190,6 +230,28 @@ PROCESS_FIELDS: dict[str, dict] = {
 # defect instead of a quiet data loss.
 PROCESSES_MAX = 10
 
+# `pressure{}` — node-telemetry.md §4.12, C0. The four PSI "some/full × avg10"
+# scalars from /proc/pressure/{cpu,io,memory}. Fixed four-key object (research
+# card rows 1+12): no array, no free-form string, each value a percentage 0–100.
+# The whole object is omitted (never an empty `{}`, never 0s) when /proc/pressure
+# is unreadable — that is the collector's job, and contract §4.12 pins it.
+PRESSURE_FIELDS: dict[str, dict] = {
+    "cpu_some_avg10": {"kind": "float", "unit": "percent", "cclass": "C0", "min": 0, "max": 100},
+    "io_some_avg10": {"kind": "float", "unit": "percent", "cclass": "C0", "min": 0, "max": 100},
+    "memory_some_avg10": {"kind": "float", "unit": "percent", "cclass": "C0", "min": 0, "max": 100},
+    "memory_full_avg10": {"kind": "float", "unit": "percent", "cclass": "C0", "min": 0, "max": 100},
+}
+
+# Cost/bounds honesty (node-telemetry.md §4.12–§4.14): the worst case for the
+# new fields is a sample carrying every one of them at its maximum representable
+# magnitude (64-bit counters at 20 digits, PSI at 100.0, one worst-case entry
+# each for disk[]/net[]/lxd_instances[]). Measured serialized size (compact
+# separators): 744 bytes. This budget is the ceiling a test pins, so a 1 s
+# cadence cannot silently grow the ingest payload (it stays far under the 16 KiB
+# whole-batch cap of governance.md §5.2). Pinned by
+# tests/test_telemetry_metric_expansion.py.
+METRIC_EXPANSION_MAX_BYTES = 1024
+
 # Top-level sample container keys (list/object fields).
 SAMPLE_CONTAINERS: dict[str, dict] = {
     "disk": {"kind": "list", "cclass": "C0", "fields": DISK_FIELDS},
@@ -198,6 +260,7 @@ SAMPLE_CONTAINERS: dict[str, dict] = {
     "lxd_instances": {"kind": "list", "cclass": "C0", "fields": LXD_INSTANCE_FIELDS},
     "services": {"kind": "list", "cclass": "C0", "fields": SERVICE_FIELDS},
     "inference": {"kind": "obj", "cclass": "C0", "fields": INFERENCE_FIELDS},
+    "pressure": {"kind": "obj", "cclass": "C0", "fields": PRESSURE_FIELDS},
     "processes": {"kind": "list", "cclass": "C0", "fields": PROCESS_FIELDS,
                   "max_items": PROCESSES_MAX},
 }
