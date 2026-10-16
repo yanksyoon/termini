@@ -85,7 +85,7 @@ There is **no LXD overlay network** in the demo — cross-node traffic routes ov
 | Controller | `10.10.0.10:443` | Public HTTPS; also reachable from nodes as outbound target |
 | Node A (seed) | `10.10.0.11:8443` | LXD cluster seed; controller addresses the cluster here |
 | Node B | `10.10.0.12` | LXD cluster member |
-| Node C (CPU) | `10.10.0.13:8080` | Host-exposed llama.cpp inference service (D5), CPU-only — the **agent-facing** surface, serving LOCAL weights (`backend=local`, D9). The **provider-only** diagnosis surface is loopback on the controller (`127.0.0.1:8085`, `gemini-proxy`) and is not a node address |
+| Node C (CPU) | `10.10.0.13:8080` | Host-exposed llama.cpp inference service (D5), CPU-only — the **agent-facing** surface. Since the pivot (`t_957956e5` / `t_3fcee90b`) its front door ships the forwarded managed model (`backend=gemini-proxy`, labelled in-band); `backend=local` (that node's own weights, D9) is the one-variable fallback. The **provider-only** diagnosis surface is loopback on the controller (`127.0.0.1:8085`, `gemini-proxy`) and is not a node address |
 | Guest bridges | `10.20.1.0/24`, `10.20.2.0/24`, `10.20.3.0/24` | Per-node NAT bridges (`lxdbr0`) |
 
 Ports: `443` controller (public + node outbound); `8443` LXD API (peers + controller);
@@ -188,9 +188,12 @@ kanban `t_aa7a70f9`) under the static versioned template of `governance.md` §7.
 It is **not** a customer-payload path: C2 never reaches it — the substituted prompt
 is rule/metric context plus the instance inventory (C0) — and the user decided on
 2026-10-15 (Q1/Q1b) that this diagnosis prompt may leave the premises as part of the
-managed service. Node C is **not** on this path any more: its `:8080` is the
-agent-facing surface and serves local weights (above), so the two surfaces cannot be
-mistaken for each other. The controller wraps the call in `externalModelCall()`, which asserts the template
+managed service. Node C is **not** on this path any more: the diagnosis runs on the
+controller's own loopback listener, and since the pivot (`t_957956e5` /
+`t_3fcee90b`) Node C's `:8080` ships the forwarded backend too — so "which listener"
+is no longer the only question, and `backend` / `answered_by` / `egress` /
+`destination` are read off the answer so the two can never be mistaken for each
+other. The controller wraps the call in `externalModelCall()`, which asserts the template
 version and the class of every substituted field (C0 / transformed C1) before
 sending and audits before/after (§7.1, §9.3; `controller/app/operator/external_call.py`).
 The call **does** leave the premises, and that is the deliberate trade of D9: the
@@ -237,7 +240,7 @@ Guiding rule everywhere: **a degraded node keeps reporting** so the operator can
 
 1. Identifiers (`node_id`, `project_id`, `vm_id`, `command_id`, `plan_id`, `task_id`, `call_id`,
    `audit_id`, `request_id`) are **ULIDs** (26-char Crockford base32, uppercase, no I/L/O/U).
-2. Addresses/ports are static and frozen (D2 table); `INFERENCE_BASE_URL=http://10.10.0.13:8080` is the **agent-facing** surface (LOCAL weights, D9); the provider-only diagnosis surface is loopback on the controller (`127.0.0.1:8085`).
+2. Addresses/ports are static and frozen (D2 table); `INFERENCE_BASE_URL=http://10.10.0.13:8080` is the **agent-facing** surface, which since the pivot (`t_957956e5` / `t_3fcee90b`) ships the forwarded managed model (`backend=gemini-proxy`, labelled in-band) with `backend=local` — D9's local weights — as the one-variable fallback; the provider-only diagnosis surface is loopback on the controller (`127.0.0.1:8085`).
 3. Only hardware/OS telemetry leaves a node, always through the bootstrap daemon.
 4. No private keys transit the controller (user keys in browser; node keys on node; only CSR/public keys move).
 5. LXD snap revision is identical across all members (mismatch ⇒ failed join ⇒ degraded).

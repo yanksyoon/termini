@@ -23,7 +23,7 @@ This document answers every open **infrastructure** question in `project.md` and
 | D6 | Node ↔ controller control topology | **Outbound-only control channel from each node** (mTLS WebSocket); push telemetry; no inbound SSH required | Controller pulls/scrapes nodes, inbound SSH from internet |
 | D7 | Cluster storage | **Local `zfs` pool per member** (`local`); no shared storage in the demo | MicroCeph/Ceph, NFS shared pool |
 | D8 | Telemetry transport & cadence | **Push over the D6 channel**, demo cadence **1000 ms**, default 15000 ms, bounded local spool | Prometheus scrape, fixed slow polling |
-| D9 | One inference address, two surfaces | **Split them: agents are served by LOCAL weights on Node C (`10.10.0.13:8080`, `backend=local`); the operator's diagnosis is served by Gemini from the CONTROLLER only (`127.0.0.1:8085`, `backend=gemini-proxy`)** | One endpoint with a backend flag, a forwarded managed model on the agent port, a key file on either host |
+| D9 | One inference address, two surfaces | **Split them: agents are served by LOCAL weights on Node C (`10.10.0.13:8080`, `backend=local`); the operator's diagnosis is served by Gemini from the CONTROLLER only (`127.0.0.1:8085`, `backend=gemini-proxy`)** — ⚠️ **SUPERSEDED by `t_957956e5` / `t_3fcee90b`: Node C's `:8080` ships `backend=gemini-proxy` (managed model) again; `local` is the one-variable fallback. Read the Supersession block in D9 before relying on this row.** | One endpoint with a backend flag, a forwarded managed model on the agent port, a key file on either host |
 
 These choices share one bias: **maximise demo reliability and minimise the number of distributed systems that can fail live**, while keeping the architecture honest enough that the "your hardware, your data, our operations" story survives an adversarial read.
 
@@ -203,6 +203,10 @@ and firewall scope are unchanged.
 **Superseded in part by D9:** `:8080` is now the **agent-facing** surface and is
 served from the node's own weights (`backend=local`); the forwarded managed model
 moved to the controller's loopback provider listener. See D9.
+**D9 is itself superseded for this surface (kanban `t_957956e5` / `t_3fcee90b`):**
+`:8080` still fronts the loopback worker, but a FRESH Node C now ships
+`backend=gemini-proxy` — the managed model — and `local` is the one-variable
+fallback. The address, the port and the firewall scope are unchanged.
 
 **Rationale.**
 - `project.md` adversarial note 3 explicitly recommends "expose `llama.cpp` directly on Node C's host IP ... without relying on complex OVN/Fan virtual bridges during a live presentation." Host exposure removes both the overlay AND the passthrough variables at once.
@@ -278,6 +282,56 @@ MicroCeph for cheap true live migration.
 
 - Owner: kanban **`t_aa7a70f9`** (infra), encoding the user's decisions of 2026-10-15.
 - Amends: D5 (which describes one inference address) and `docs/contracts/agent-runtime.md` AR-4/AR-6.
+
+> ### ⚠️ SUPERSEDED — `t_957956e5`, REQUIRED WORK 3 (kanban `t_3fcee90b`), 2026-10-16
+>
+> **The text below is kept as history. It is no longer the shipped configuration.**
+>
+> Node C's `:8080` (the agent surface) **ships `backend=gemini-proxy` again**: a
+> request to the frozen agent address is answered by the **managed model** (Google
+> AI — Gemini, or Gemma on Google Cloud — through the proxy's `generateContent`
+> translation) and the answer is labelled in-band. The reason is measured, not
+> stylistic: the live-GPU path is blocked *independently* of this decision (the L4
+> quota is 0 in `asia-south1` and the Cloud Quotas API refuses the increase —
+> `t_21ac1bd8`, `t_294d2159`), and the local path this section chose is slow **on
+> this footprint** — the operator's 20-sample prompt measured **402 s** on
+> `n2-standard-8` (see the cost note below). The proxy is the path that works today.
+>
+> **What the split got right is kept.** There are still two listeners, separately
+> labelled, and neither may stand in for the other:
+> - the **agent address is unchanged** — `http://10.10.0.13:8080`, the value the
+>   controller distributes to agents (invariant 1);
+> - the **provider-only diagnosis listener** on the controller
+>   (`http://127.0.0.1:8085`, `gemini-proxy` → `aiplatform.googleapis.com`) is
+>   still loopback-only, still not an agent destination, still never advertised to
+>   an agent (`infra/inference/setup-inference-surfaces.sh`);
+> - the pre-split script still refuses to run without `--allow-unsplit`.
+>
+> **What changed is which backend answers the agent surface, and that it says so.**
+> `/health` names it in-band (`backend`, `answered_by`, `served_model`, `egress`,
+> `destination`, `note`), every response carries the `X-Termini-*` labels, and
+> nothing in the dashboard, the audit row or the deck may claim a local GPU or
+> local weights for a forwarded call (`verify-proxy.sh` asserts the word `GPU` is
+> absent from the whole response).
+>
+> **Consequences worth stating plainly:**
+> - **Agent traffic now leaves the premises by default.** That is the honest
+>   reading of the pivot, and it is why `docs/contracts/governance.md` §7.1 was
+>   updated in the same change. The on-prem guarantee is now **opt-in**, not the
+>   default: `inference_backend = "local"` (Terraform) / `INFERENCE_BACKEND=local`
+>   (provision.sh, raise-standing-fleet.sh) at render time, or
+>   `termini-inference-switch local` on a running node — one variable, one command,
+>   no rebuild. This is the D9 configuration preserved as a switch.
+> - The D9-era `--allow-unsplit` gate on `infra/cloudrun/setup-operator-node-c.sh`
+>   no longer protects the same thing (that script points the diagnosis at Node C,
+>   which now forwards); see that script's own header.
+> - The first-boot pins flipped with this change: `infra/gcp/variables.tf`
+>   (`inference_backend`, now `gemini-proxy`), `infra/gcp/userdata/variables.tf`,
+>   `infra/gcp/provision.sh`, `infra/gcp/tools/raise-standing-fleet.sh`,
+>   `infra/gcp/cloud-init/node-c-serve-block.sh`, `infra/inference/install-inference-proxy.sh`,
+>   and the expectations that pinned `local` (`infra/gcp/userdata/verify/main.tf`,
+>   `infra/gcp/verify-cloud-init.sh` §8, `tests/test_node_c_first_boot.py`,
+>   `tests/test_inference_surfaces.py`) — inverted, not deleted.
 
 **Decision.** The footprint runs **two inference listeners with different
 guarantees**, and neither may stand in for the other:
@@ -386,7 +440,7 @@ it is the provider surface; the two facts belong in the same paragraph.
 
 ## Cross-component invariants (other workstreams rely on these)
 
-1. **Addresses are static and frozen** per the D2 table. `INFERENCE_BASE_URL=http://10.10.0.13:8080` is the value the controller distributes to agents — it is the **agent-facing** surface and serves LOCAL weights (D9). The **provider-only** diagnosis surface is loopback on the controller (`http://127.0.0.1:8085`) and is never handed to an agent.
+1. **Addresses are static and frozen** per the D2 table. `INFERENCE_BASE_URL=http://10.10.0.13:8080` is the value the controller distributes to agents — it is the **agent-facing** surface, and since the pivot (`t_957956e5` / `t_3fcee90b`) it **ships `backend=gemini-proxy`**: the managed model answers through the front door and the answer is labelled in-band (`backend`, `answered_by`, `served_model`), so an agent can always tell where its tokens came from and nothing may read a forwarded answer as a local one. The **on-prem** configuration (`backend=local`, that node's own weights) is one variable / one command away and is **not** the default (D9, superseded). The **provider-only** diagnosis surface is loopback on the controller (`http://127.0.0.1:8085`) and is never handed to an agent.
 2. **Node identity is the machine ID** (DMI UUID + `/etc/machine-id`); re-registration is an upsert (see `node-bootstrap.md` §10).
 3. **Only hardware/OS telemetry leaves a node**, always through the bootstrap daemon (governance boundary; enforced on the node side).
 4. **No private keys transit the controller** (user keys stay in the browser; node keys stay on the node; only CSRs and public keys move).

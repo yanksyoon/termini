@@ -27,7 +27,7 @@ Nothing here is a TBD. Where a value is not fixed below, the default in the refe
 | AR-1 | Immutable `agent-vm/<semver>` LXD VM image, preloaded on every host; contents fixed in §3. No installs/downloads at launch. | live `cloud-init` pip install, registry pull at launch |
 | AR-2 | Launch is a typed `vm.launch` command to the node daemon, which calls the **local** LXD API; instance spec fixed in §4. | controller calling LXD REST on nodes directly (no node-side gate), free-form `lxc` argv |
 | AR-3 | In-VM runtime `termini-agent` (systemd, unprivileged `agent`) + node-side `termini-agent-broker`. Fixed in §5–§6. | agents calling the controller directly, sidecar per agent |
-| AR-4 | Inference is an **OpenAI-compatible router** on `http://10.10.0.13:8080` fronting one-or-more **llama.cpp workers** bound to loopback. Since the inference split (**D9**, kanban `t_aa7a70f9`) that address is the **agent-facing** surface and `TERMINI_INFERENCE_BACKEND=local`: it answers from this node's own weights and the port offers **no forwarded backend**, so agent traffic cannot leave the premises. The provider-only diagnosis surface is a separate loopback listener on the controller, is not an agent destination, and is never advertised to an agent. §8. | one monolithic llama.cpp on :8080 with no routing (cannot serve two aliases) |
+| AR-4 | Inference is an **OpenAI-compatible router** on `http://10.10.0.13:8080` fronting one-or-more **llama.cpp workers** bound to loopback. That address is the **agent-facing** surface, and since the pivot (**`t_957956e5` / `t_3fcee90b`**, which supersedes the inference split of **D9**, `t_aa7a70f9`) it **ships `TERMINI_INFERENCE_BACKEND=gemini-proxy`**: the managed model (Google AI) answers through the front door and the answer is labelled in-band (`X-Termini-Backend` / `X-Termini-Answered-By` / `X-Termini-Egress`, plus a `termini_backend` body block), because the live-GPU path is blocked by the L4 quota and this node's own CPU weights measured 402 s. `TERMINI_INFERENCE_BACKEND=local` — that node's own weights, forwarding nothing — stays the one-variable fallback. The provider-only diagnosis surface is a separate loopback listener on the controller, is not an agent destination, and is never advertised to an agent. §8. | one monolithic llama.cpp on :8080 with no routing (cannot serve two aliases) |
 | AR-5 | Model routing is **explicit**: request `model` selects the alias; no silent substitution except opted-in `X-Termini-Allow-Degrade`. §9. | implicit "pick a model" router, auto-upgrade/downgrade without consent |
 | AR-6 | The agent resolves its inference model against the alias set the Node C endpoint actually serves, and refuses any alias outside it (`ModelNotAllowed`) — no silent substitution. Today that set is exactly **`gemma`** (Gemma 3 4B IT, resident; `image/models.lock.json` `shipped_resident_alias`). The image's catalog pins (`deepseek-flash`, `deepseek-v4-pro`) remain baked as documented reference distills and stay valid in telemetry, but they are **no longer the agent's wired aliases**. Residency policy §11. | more models, external model fallback |
 | AR-7 | Deterministic failure/fallback matrix with named error codes; fail-closed to `503`, never silent partial answers. §12. | blind retries, silent model substitution |
@@ -488,17 +488,25 @@ local op tooling ─────┴──► termini-infer-router  :8080  (0.0.0
 ```
 
 - The router realises D5's "host-exposed llama.cpp, OpenAI-compatible API on `:8080`". A single-model deployment (only `gemma` wired, AR-6) collapses the router to a transparent passthrough.
-- **This surface is LOCAL-only (AR-4/D9).** Everything a client or agent sends to
-  `:8080` is answered by this node's weights: the router runs
-  `TERMINI_INFERENCE_BACKEND=local` and the forwarded backend is not offered on
-  this port. `/health` states it (`"backend":"local"`, `"egress":"in-vpc"`) and
-  every response is labelled in-band (`X-Termini-Backend: local`,
-  `X-Termini-Egress: in-vpc`, `X-Termini-Answered-By: local-weights`).
-- **Cost, stated plainly:** this node is CPU-only (D9 cost note). Generation is
-  ≈8–10 tok/s and the operator's 20-sample prompt measured **402 s** here — so
-  agent work served locally is **not interactive** until the GPU quota lands.
-  The demo's seconds-scale model decision is the *diagnosis*, which runs on the
-  provider-only surface (below), not on this one.
+- **This surface is the AGENT address, and since the pivot (`t_957956e5` /
+  `t_3fcee90b`) it SHIPS the forwarded backend (AR-4).** The router runs
+  `TERMINI_INFERENCE_BACKEND=gemini-proxy`: the managed model (Google AI) answers
+  through the front door, and the answer is labelled in-band — `/health` states
+  `"backend":"gemini-proxy"`, `"answered_by":"forwarded-managed-model"`,
+  `"served_model"`, `"egress":"external"` and a `note` — and every response
+  carries `X-Termini-Backend: gemini-proxy`, `X-Termini-Egress: external`,
+  `X-Termini-Answered-By: forwarded-managed-model`. A client can therefore always
+  tell where its tokens came from, which it must, because **agent traffic now
+  leaves the premises by default**. The on-prem configuration is the D9 one,
+  preserved as the **one-variable fallback**: `TERMINI_INFERENCE_BACKEND=local`
+  (or `termini-inference-switch local`) serves that node's own weights and
+  forwards nothing — `X-Termini-Answered-By: local-weights`, `egress: in-vpc`.
+- **Cost, stated plainly — this is why the fallback is not the default.** The
+  `local` backend is CPU-only (D9 cost note; the footprint's GPU quota is 0) and
+  slow: generation is ≈8–10 tok/s and the operator's 20-sample prompt measured
+  **402 s** here. The demo's seconds-scale model decision is therefore the
+  *diagnosis*, which runs on the provider-only surface (below), and the agent
+  surface ships the forwarded backend rather than the 402-second one.
 - Firewall (D2): `allow tcp/8080 from 10.10.0.0/24` only; workers bind to loopback and are unreachable off-host.
 - Workers run as `llama-cpp@<alias>.service` (systemd template), `--n-gpu-layers -1`, `--host 127.0.0.1 --port 808<k>`, `--flash-attn`, model/ctx from §11.
 
@@ -509,6 +517,11 @@ diagnosis calls a **provider-only** listener on the controller's own loopback
 provider function over C0 telemetry (§15, governance §7): it is not reachable from
 an agent VM, it is not in `inference.allowed_models`, and nothing in this document
 gives an agent a route to it. An agent's model address stays `:8080`.
+Since the pivot (`t_957956e5` / `t_3fcee90b`) both listeners ship
+`gemini-proxy`; what still separates them is **not** the backend but **who may
+reach them and who may be told they exist** — the agent surface is handed to
+agents and labelled in-band on every answer, the provider surface is
+loopback-only, provider-only, and is nobody's agent destination.
 
 ### 8.2 Endpoints
 
@@ -613,7 +626,7 @@ The wire format is the OpenAI Chat Completions shape plus Termini **headers** (s
 }
 ```
 
-**Response headers:** `X-Termini-Request-Id` (echo), `X-Termini-Model` (alias actually served), `X-Termini-Residency`, `X-Termini-Queue-Ms`, `X-Termini-Degraded`.
+**Response headers:** `X-Termini-Request-Id` (echo), `X-Termini-Model` (alias actually served), `X-Termini-Residency`, `X-Termini-Queue-Ms`, `X-Termini-Degraded` — plus the **provenance labels** every answer carries (`infra/inference/proxy.py`): `X-Termini-Backend` (the shipped `gemini-proxy`, or `local` on the fallback), `X-Termini-Answered-By`, `X-Termini-Egress` (`external` for a forwarded answer) and `X-Termini-External-Destination`. A forwarded answer additionally carries a `termini_backend` block in the body; a local answer does not, because that body is llama.cpp's own bytes (byte-transparent passthrough). Both forms are the truth about who answered — §5 already binds the runtime to record them on the result — and `/health` names the same fields, so an unlabelled response is never read as local inference (§8.3).
 
 ### 10.3 Streaming response
 

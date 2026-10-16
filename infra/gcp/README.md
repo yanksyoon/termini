@@ -112,21 +112,24 @@ service, no installs, no downloads). Node C is the one exception: when
    `--reasoning-format none`, alias `gemma`).
 
 **What a fresh node serves is explicit and one variable away.**
-`inference_backend` (default **`local`**) is substituted into the first
-boot as `TERMINI_INFERENCE_BACKEND`. `local` is the shipped configuration since
-the inference split (**D9**, kanban `t_aa7a70f9`): `0.0.0.0:8080` is the
-**agent-facing** surface and answers from THIS node's weights — a client or agent
-request cannot leave the premises, and the forwarded backend is not offered on
-that port. The forwarded managed model now lives on the **controller's
-provider-only listener** (`127.0.0.1:8085`, `gemini-proxy` →
+`inference_backend` (default **`gemini-proxy`**) is substituted into the first
+boot as `TERMINI_INFERENCE_BACKEND`. `gemini-proxy` is the shipped configuration
+since the pivot (**kanban `t_957956e5` / `t_3fcee90b`**, which rolls back the
+inference split of D9, `t_aa7a70f9`): `0.0.0.0:8080` is the **agent-facing**
+surface and it is answered by the forwarded managed model (Google AI, through the
+proxy's `generateContent` translation), labelled in-band so a client can always
+tell where its tokens came from. The reason is measured — the live-GPU path is
+blocked by the L4 quota and this node's own CPU weights measured **402 s** on the
+operator's prompt — so the proxy is the path that works today. The **on-prem**
+configuration, `inference_backend = "local"`, is still supported and is now the
+**one-variable fallback**: it serves that node's own weights through the front
+door and forwards nothing, one command away on a running node
+(`termini-inference-switch local`); the pre-proxy host-exposed server is
+`termini-inference-switch legacy`, and `status` reports what is actually serving
+(`/run/termini/inference-backend.json`). The controller keeps its **provider-only
+diagnosis listener** (`127.0.0.1:8085`, `gemini-proxy` →
 `aiplatform.googleapis.com`), installed by
-`infra/inference/setup-inference-surfaces.sh`; see `infra/inference/`. Setting
-`inference_backend = "gemini-proxy"` here would put a forwarded managed model back
-on the agent port — supported as configuration, but it is the arrangement D9
-rejects. On a running node the CPU path is one command away —
-`termini-inference-switch local` — and the pre-proxy host-exposed server is
-`termini-inference-switch legacy`; `status` reports what is actually serving
-(`/run/termini/inference-backend.json`).
+`infra/inference/setup-inference-surfaces.sh`; see `infra/inference/`.
 
 The underlay firewall rules allow `10.10.0.0/24 → node-c:8080` (the front door,
 i.e. the frozen inference address) and `10.10.0.0/24 → node-c:8090` (the
@@ -191,8 +194,10 @@ It renders all three nodes through the module and asserts: symlink identity, no
 every node, the llama.cpp block on Node C only, valid YAML, that the same
 template still renders through envsubst — and (task `t_359ed606`) that Node C's
 first boot carries the inference **front door** with a byte-exact payload, that
-the non-inference nodes carry none of it, and that the first-boot backend is the
-shipped `local` (the agent-facing surface, D9).
+the non-inference nodes carry none of it, and that the first-boot backend is
+**pinned** to the shipped `gemini-proxy` (the managed-model proxy, `t_3fcee90b`)
+— a `local` expectation is rejected, so the check proves the render pins a value
+rather than inheriting a default.
 
 ## Re-enabling the GPU (after a billing upgrade)
 

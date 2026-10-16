@@ -11,15 +11,18 @@
 # WHAT A FRESH NODE SERVES (explicit, task requirement 2)
 #   The first boot installs `termini-inference-proxy.service` on 0.0.0.0:8080 and
 #   moves llama.cpp to the LOOPBACK WORKER on 127.0.0.1:8081, with
-#   TERMINI_INFERENCE_BACKEND = __INFERENCE_BACKEND__ — **`local` as shipped**:
-#   this node's own CPU weights, because :8080 is the AGENT-facing surface of the
-#   inference split (D9) and agent/client traffic must not be forwarded. The
-#   forwarded backend is not offered on this port; the PROVIDER surface is the
-#   controller's own loopback listener
-#   (`infra/inference/setup-inference-surfaces.sh`). The other backend stays one
-#   env var / one command away on the running node:
+#   TERMINI_INFERENCE_BACKEND = __INFERENCE_BACKEND__ — **`gemini-proxy` as
+#   shipped**: :8080 is the AGENT-facing surface and it is answered by the
+#   forwarded managed model (Google AI, through the proxy's `generateContent`
+#   translation), labelled in-band with `backend` / `answered_by` / `served_model`
+#   so a client can always tell where its tokens came from. This is the roll-back
+#   of the inference split (D9) by kanban t_957956e5 / t_3fcee90b: the live-GPU
+#   path is blocked by the L4 quota and this node's own CPU weights measured 402 s
+#   on the operator's prompt, so the proxy is the path that works today. The LOCAL
+#   backend — this node's own CPU weights, forwarding nothing, the on-prem
+#   fallback — stays one env var / one command away on the running node:
 #
-#       termini-inference-switch gemini-proxy   # the forwarded managed model
+#       termini-inference-switch local          # this node's own CPU weights
 #       termini-inference-switch legacy         # the pre-proxy host-exposed server
 #       termini-inference-switch status         # what is serving RIGHT NOW
 #

@@ -25,6 +25,9 @@ CLI:
 
     python3 infra/gcp/cloud-init/node_c_front_door_check.py <user-data.yaml> ...
         [--expect none]     # a node that must carry NO serve block (node-a/b)
+        [--backend gemini-proxy|local]   # what a FRESH Node C must serve through
+                            # the front door (default: gemini-proxy — the shipped
+                            # managed-model proxy, kanban t_957956e5 / t_3fcee90b)
 
 Exit 0 = every check passed. Nothing is prettified: failures are printed raw.
 """
@@ -99,7 +102,7 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def check_user_data(text: str, repo_root: pathlib.Path, *, backend: str = "local",
+def check_user_data(text: str, repo_root: pathlib.Path, *, backend: str = "gemini-proxy",
                     alias: str = "gemma", port: int = 8080) -> list[str]:
     """Return a list of failure strings ([] == this user-data is correct)."""
     fail: list[str] = []
@@ -166,7 +169,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--expect", choices=["front-door", "none"], default="front-door",
                     help="front-door (Node C) or none (node-a/b)")
     ap.add_argument("--repo-root", default=str(pathlib.Path(__file__).resolve().parents[3]))
-    ap.add_argument("--backend", default="local")
+    ap.add_argument("--backend", default="gemini-proxy",
+                    help="the backend a FRESH Node C must serve through the front door "
+                         "(shipped default: gemini-proxy, kanban t_3fcee90b)")
     ap.add_argument("--alias", default="gemma")
     ap.add_argument("--port", type=int, default=8080)
     args = ap.parse_args(argv)

@@ -5,7 +5,7 @@ The three deploy targets, and why each sits where it does.
 | component | host | why there |
 |---|---|---|
 | **dashboard** | Firebase Hosting | static site; `firebase deploy --only hosting` |
-| **model (decision step)** | **controller loopback** — provider-only listener, `gemini-proxy` → `aiplatform.googleapis.com`; the **agent** surface is Node C (`llama.cpp`, CPU-only, `10.10.0.13:8080`, `backend=local`) | see "Where the decision model runs" below |
+| **model (decision step)** | **controller loopback** — provider-only listener, `gemini-proxy` → `aiplatform.googleapis.com`; the **agent** surface is Node C (`llama.cpp`, CPU-only, `10.10.0.13:8080`), which since the pivot (`t_3fcee90b`) also ships `backend=gemini-proxy`, with `local` as the one-variable fallback | see "Where the decision model runs" below |
 | **model (managed reference)** | Cloud Run GPU, `asia-southeast1` | Google's own open-weights Gemma on a named GCP product, via a Model Garden image; scale-to-zero. Deployed, but the shipped operator does not point at it |
 | **controller** | Compute Engine VM, `asia-south1-a` | it persists to **SQLite** — Cloud Run's filesystem is ephemeral (issue #96) |
 
@@ -81,16 +81,22 @@ telemetry only, and the user decided on 2026-10-15 (Q1/Q1b) that it may leave th
 premises as part of the managed service. A round-trip is **seconds**.
 
 **The agent-facing surface is Node C**, and it is a different listener with a
-different guarantee: `llama.cpp` (CPU-only, `n2-standard-8`, alias `gemma` =
-Gemma 3 4B IT) behind the front door on `http://10.10.0.13:8080` in
-`backend=local`, reached over the underlay. Client/agent traffic is answered by
-that node's own weights and the port offers no forwarded backend.
+different address: `llama.cpp` (CPU-only, `n2-standard-8`, alias `gemma` =
+Gemma 3 4B IT) behind the front door on `http://10.10.0.13:8080`, reached over the
+underlay. Since the pivot (`t_957956e5` / `t_3fcee90b`) that front door **ships
+`backend=gemini-proxy`** — the same forwarded managed model, labelled in-band — so
+the agent surface answers at provider latency while saying where the tokens came
+from; `backend=local` (that node's own weights, forwarding nothing) is the
+one-variable fallback and is the slow path measured below.
 
 `setup-operator-node-c.sh` is the **pre-split** wiring (it pointed the diagnosis at
 Node C, the counterpart of `setup-operator-model.sh` pointing it at the managed
 Cloud Run model). It still exists as an explicit opt-in — a fully on-prem decision
-path — but it **refuses to run** without `--allow-unsplit`, because running it would
-put the diagnosis back on the agent surface at the latency below.
+path — but it **refuses to run** without `--allow-unsplit`. Since the pivot the
+gate protects a different property than it used to: a Node C diagnosis in
+`gemini-proxy` mode now leaves the premises through the node, so `--allow-unsplit`
+means "diagnose over the node's front door", and only a node explicitly switched
+to `local` makes the run fully on-prem at the latency below.
 
 **Raw measurement on Node C** (`n2-standard-8`, 8 threads, `--ctx-size 16384 --parallel 1`,
 the pinned `gemma` GGUF = Gemma 3 4B IT Q4_K_M) — i.e. what the **local** path costs:

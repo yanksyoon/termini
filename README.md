@@ -230,7 +230,7 @@ compose — same controller, same decision step, same audit trail.
 | Component | Where | Endpoint |
 |---|---|---|
 | Dashboard | Firebase Hosting | `https://termini-510609.web.app` |
-| Agent-facing model | **Node C** (GCE VM `termini-node-c`) — CPU-only, `n2-standard-8`, `asia-south1-a` | `http://10.10.0.13:8080` (underlay only) — front door in `backend=local`: `llama.cpp`, alias `gemma` = Gemma 3 4B IT. Answers from that node's own weights; never forwards |
+| Agent-facing model | **Node C** (GCE VM `termini-node-c`) — CPU-only, `n2-standard-8`, `asia-south1-a` | `http://10.10.0.13:8080` (underlay only) — the front door, shipped in `backend=gemini-proxy` since the pivot (`t_957956e5` / `t_3fcee90b`): the managed model answers and every response says so in-band (`backend`, `answered_by`, `served_model`, `is_gpu_inference:false`). `backend=local` — `llama.cpp`, alias `gemma` = Gemma 3 4B IT, that node's own weights — is the one-variable fallback |
 | Provider-only diagnosis model | **same controller VM**, loopback | `http://127.0.0.1:8085` — the same proxy in `backend=gemini-proxy` → `aiplatform.googleapis.com` (`gemini-2.5-flash`). No agent route to it |
 | Controller | GCE VM `termini-controller` — `n2-standard-2`, `asia-south1-a` | `https://34-93-190-64.sslip.io` |
 | Telemetry seeder | systemd on the controller VM | — (fabricates `demo-node-a` / `demo-node-c`) |
@@ -252,22 +252,25 @@ the mandatory fallback — which decider acted is recorded per-decision in
 
 The **agents** are served by the other surface: Node C's `:8080`
 (`n2-standard-8`, CPU-only, pinned `gemma` = Gemma 3 4B IT Q4_K_M) over the
-underlay, in `backend=local` — client traffic is answered by that node's own
-weights and the port offers no forwarded backend. That path is CPU-slow
-(generation ≈8–10 tok/s; the operator's 20-sample prompt measured 402 s there),
-which is exactly why the diagnosis runs on the provider surface instead.
+underlay. Since the pivot (`t_957956e5` / `t_3fcee90b`) that front door ships
+`backend=gemini-proxy` — the same forwarded managed model, labelled in-band in
+every response — because the live-GPU path is blocked by the L4 quota and this
+node's own CPU weights are slow (generation ≈8–10 tok/s; the operator's 20-sample
+prompt measured 402 s when it ran against them). `backend=local` remains the
+one-variable fallback and is that measured path.
 
 **Measured on Node C: a local decision is minutes, not seconds.** A decision over the
 operator's real prompt takes **≈84 s at a one-sample evidence window and ≈6.7 min
 (402 s) at the real 20-sample window** (prefill ≈33 tok/s, generation ≈8–10 tok/s);
 the real 20-sample request is **12,748 prompt tokens** under Gemma's tokenizer and
 **fits** the shipped context (`--ctx-size 16384 --parallel 1`). That is the number
-behind the inference split: the shipped **diagnosis** runs on the provider-only
-surface (seconds), while the locally-served **agent** path keeps this latency and
-says so. The interactive on-screen moment is still carried by the
-**deterministic fast-path**. (It replaced a DeepSeek-R1 distill that was slower
-still — 156 s / 12 min, and whose 8,973-token request did not fit the old shipped
-context.)
+behind the pivot: the shipped **diagnosis** runs on the controller's provider-only
+surface (seconds), and the agent-facing front door now ships the forwarded backend
+rather than the 402-second one — the locally-served path is kept as the on-prem
+fallback and says so in-band when it is selected. The interactive on-screen moment
+is still carried by the **deterministic fast-path**. (It replaced a DeepSeek-R1
+distill that was slower still — 156 s / 12 min, and whose 8,973-token request did
+not fit the old shipped context.)
 
 Two deliberate departures from the "everything on the customer's metal" shape,
 both recorded rather than implied:

@@ -7,13 +7,16 @@
 # The footprint has ONE model address before this script, and two surfaces want
 # it for opposite reasons:
 #
-#   * the client's AGENTS want inference that never leaves the premises, served
-#     from the LOCAL weights on Node C (`http://10.10.0.13:8080`, backend
-#     `local`) — that is the agent-facing surface, and it must not forward;
+#   * the client's AGENTS want their own address on Node C
+#     (`http://10.10.0.13:8080`) — the agent-facing surface. Since the pivot
+#     (kanban `t_957956e5` / `t_3fcee90b`) that surface SHIPS
+#     `gemini-proxy` too, with `local` (this node's own CPU weights) as the
+#     one-variable fallback, so "the agent port cannot forward" is no longer true;
 #   * the OPERATOR'S DIAGNOSIS wants Google's Gemini on
 #     `aiplatform.googleapis.com` (the user's Q1/Q1b decision of 2026-10-15: the
 #     diagnosis prompt — C0 telemetry, no workload payloads — may leave the
-#     premises as part of the managed service).
+#     premises as part of the managed service), and it wants it on a surface that
+#     is never handed to an agent.
 #
 # This script materialises the second surface ON THE CONTROLLER, on LOOPBACK, as
 # a separate listener with its own env file, its own unit and its own address:
@@ -193,7 +196,8 @@ Environment=TERMINI_INFERENCE_TIMEOUT_S=$DECISION_TIMEOUT_S
 Environment=TERMINI_OPERATOR_DECISION_TIMEOUT_S=$DECISION_TIMEOUT_S
 # --- the AGENT surface is still Node C --------------------------------------
 # User-facing intent extraction keeps the dedicated small-context llama.cpp
-# instance on Node C (:8090) — the same node, still served from local weights.
+# instance on Node C (:8090) — the same node, served by its own local weights
+# (this instance is deliberately NOT fronted by the proxy).
 Environment=TERMINI_INTENT_INFERENCE_BASE_URL=$INTENT_BASE_URL
 Environment=TERMINI_INTENT_MODEL_TIMEOUT_S=$DECISION_TIMEOUT_S
 # 'TERMINI_INFERENCE_BASE_URL' now names loopback, so it can no longer identify
@@ -288,4 +292,4 @@ if [ "$DO_VERIFY" = "1" ]; then
     | grep -E '^TERMINI_(INFERENCE|INTENT_INFERENCE|AGENT_PLACEMENT|OPERATOR_DECISION_(MODE|TIMEOUT))' || true
 fi
 
-log "done — diagnosis: http://$PROVIDER_BIND:$PROVIDER_PORT (provider-only); agents: http://$NODE_C_HOST:8080 (local weights)"
+log "done — diagnosis: http://$PROVIDER_BIND:$PROVIDER_PORT (provider-only, never handed to an agent); agents: http://$NODE_C_HOST:8080 (front door — gemini-proxy as shipped, local as the fallback)"

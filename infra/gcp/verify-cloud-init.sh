@@ -11,7 +11,13 @@
 #      and enrollment token;
 #   5. only Node C carries the llama.cpp serve block;
 #   6. the SAME template also renders through the envsubst path
-#      (infra/bootstrap/render-cloud-init.sh) — one template, two renderers.
+#      (infra/bootstrap/render-cloud-init.sh) — one template, two renderers;
+#   7. the gcloud fallback (provision.sh) renders the same cloud-init;
+#   8. Node C's first boot ships the inference front door PINNED to the SHIPPED
+#      backend — `gemini-proxy`, the managed-model proxy (the D9 split rolled back
+#      by kanban t_957956e5 / t_3fcee90b) — and a `local` expectation is rejected,
+#      because `local` is the one-variable fallback on a running node, not the
+#      render's value.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -156,17 +162,18 @@ if python3 "$CHECKER" --expect none "$WORK/node-a.yaml" "$WORK/node-b.yaml" \
 else
   bad "a non-inference node carries (part of) Node C's serve block"
 fi
-# The card's requirement 2, asserted on the RENDERED user-data: what a fresh node
-# serves, and that the CPU path is one variable away.
-if python3 "$CHECKER" --backend local "$WORK/node-c.yaml" >/dev/null 2>&1; then
-  ok "first-boot backend is the shipped default (local — the agent surface, D9)"
-else
-  bad "first-boot backend is not local in the Terraform render"
-fi
+# The card's required work, asserted on the RENDERED user-data: what a fresh node
+# serves (the managed-model proxy — the D9 split rolled back by kanban t_957956e5 /
+# t_3fcee90b), and that the render PINS it instead of leaving it to a default.
 if python3 "$CHECKER" --backend gemini-proxy "$WORK/node-c.yaml" >/dev/null 2>&1; then
-  bad "the render does not actually pin the backend (a 'gemini-proxy' expectation passed too)"
+  ok "first-boot backend is the shipped default (gemini-proxy — the managed-model proxy)"
 else
-  ok "the backend in the render is pinned (a 'gemini-proxy' expectation is rejected)"
+  bad "first-boot backend is not gemini-proxy in the Terraform render"
+fi
+if python3 "$CHECKER" --backend local "$WORK/node-c.yaml" >/dev/null 2>&1; then
+  bad "the render does not actually pin the backend (a 'local' expectation passed too)"
+else
+  ok "the backend in the render is pinned (a 'local' expectation is rejected; local is the one-variable fallback on a running node, not the render)"
 fi
 for pair in "terraform:$WORK/node-c.yaml" "provision.sh:$WORK/prov/node-c.yaml"; do
   f="${pair#*:}"
