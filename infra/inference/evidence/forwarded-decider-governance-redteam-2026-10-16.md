@@ -115,27 +115,31 @@ enforcement is code, not prose (`externalModelCall()` + `egress.py`). The raw
 byte-for-byte wire capture and a fresh live adversarial re-run remain **unverified**
 pending an approved live-fleet window (items in §4).
 
-## 6. Open owner ruling (raised 2026-10-16, post-pivot)
+## 6. Owner ruling (2026-10-16) — what the product does, and what tonight's demo does instead
 
-The pivot traded an on-prem guarantee for a working demo: Node C's agent-facing front
-door now ships `gemini-proxy`, so **agent traffic — which can carry customer payloads
-— leaves for `aiplatform.googleapis.com` unless the `local` fallback is selected**.
-The governance sentence this repo has asserted in several places ("your data never
-leaves") therefore now depends on a configuration choice, not on the architecture.
+**The ruling, recorded verbatim in intent:** *"the real idea is for node C to have a local
+model deployed, so data never leaves. however, in this demo, since we cannot have access to
+gpu nodes for node C, we have to proxy it."*
 
-What is verified is limited and stated as such:
-- the DIAGNOSIS path's C0-only substitution is enforced in code (this document, §2/§5);
-- the agent path's destination is `aiplatform.googleapis.com` when `gemini-proxy` is
-  selected — that is a property of the shipped configuration, and it is the opposite
-  of what §1/§2 said before this correction.
+So there are two different, separately-true statements, and every claim in the deck, the
+narrative, the spec answers and the demo script must be read as one of them:
 
-Open questions for the owner (not decided here, and no worker should decide them):
-1. Is agent-facing egress of C2 payloads acceptable for the demo footprint, or must the
-   demo run Node C with `local` (on-prem weights, slower) and keep `gemini-proxy` for
-   the provider-only diagnosis surface?
-2. If egress is acceptable, which sentence in the deck / narrative / spec answers is
-   restated, and how, so the on-prem claim is not read as covering agent traffic?
+| | **The product (what Termini is)** | **Tonight's demo (what is running)** |
+|---|---|---|
+| Node C's model | **local weights on the node** (Gemma 3 4B IT, `llama.cpp`, `backend=local`) | **`gemini-proxy`** — forwarded to `aiplatform.googleapis.com` |
+| Why | that is the design: the customer's hardware runs the model, so **data never leaves** | **no GPU node is available for Node C** (L4 quota 0 in `asia-south1`), so the identical call is proxied to the managed model |
+| Status of the on-prem guarantee | the product's posture | a **disclosed stand-in for the missing GPU**, labelled in-band on every response (`X-Termini-Backend`, `X-Termini-External-Destination`, `X-Termini-Egress`) |
 
-Until (1) is answered, the honest reading is: **the demo's diagnostic loop keeps its
-C0-only property; the agent surface does not have an on-prem guarantee in the shipped
-configuration.**
+**What follows for claims.** "Your data never leaves" is a statement about the product,
+and it is the reason the local path exists. It must not be presented as a property of
+tonight's footprint while that footprint forwards the call — the substitution is what
+changes, not the design, and the demo now says so out loud (see `docs/demo-script.md`,
+`docs/spec-answers.md`, `SUBMISSION.md`).
+
+**One nuance worth pinning, because a demo script used to assert it.** The intent
+extraction endpoint is `TERMINI_INTENT_INFERENCE_BASE_URL`, and it defaults to **empty** —
+which means extraction follows the front door and is therefore **forwarded in tonight's
+demo**. Pinning it at the node's own dedicated instance (`termini-llama-intent`, `:8090`)
+is what would keep the extraction prompt on-prem. The demo script no longer claims the
+prompt stays on the premises; if you want to make that claim on stage, pin that variable
+first and say so.

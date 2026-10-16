@@ -54,7 +54,11 @@ runs on the controller's **provider-only Gemini listener** (`http://127.0.0.1:80
 `backend=gemini-proxy` → `aiplatform.googleapis.com`), whose substituted prompt is C0
 telemetry only and which answers in **seconds**. The **agent-facing** model — **Gemma 3 4B IT**
 (Google's open weights, alias `gemma`, `http://10.10.0.13:8080`, `llama.cpp`, CPU-only) —
-serves agents and intent extraction on-prem and stays minutes-per-decision (≈84 s at a
+serves agents and intent extraction on-prem **when Node C runs its own weights — the
+product's posture, and the reason data never leaves**. In this demo that front door ships
+`gemini-proxy` instead, because no GPU node is available for Node C: the same call is
+forwarded to `aiplatform.googleapis.com`, answered in seconds, and labelled in-band with
+which backend answered. On the on-prem weights it stays minutes-per-decision (≈84 s at a
 one-sample evidence window, ≈6.7 min at the real 20-sample window), which is exactly why the
 deterministic fast-path — not the model — covers the on-screen OOM moment; (3) the **chaos harness's deterministic ramp**
 drives the metric across the threshold on cue, so the rule fires deterministically even if `stress-ng --vm-bytes 85%`
