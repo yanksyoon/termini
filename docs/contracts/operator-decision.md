@@ -139,6 +139,7 @@ event + loop state):
 | `confidence` | float \| None | `None` for deterministic |
 | `fallback_reason` | str \| None | set iff `source == fallback` |
 | `guardrail` | list[dict] | per-rule decisions (what was validated/clamped/rejected) |
+| `incident` | dict \| None | the §4.2 incident record (title/explanation/evidence/actions + `generated`); `None` only in `deterministic` mode |
 
 ---
 
@@ -229,7 +230,18 @@ Schema `1`. The model must emit exactly one JSON object with this shape.
   "action_id": "instance.restart",
   "params": { "instance_name": "agent-01H4KZ9Q", "force": true, "timeout_s": 30 },
   "confidence": 0.87,
-  "rationale": "host RAM at 95% with one instance holding 29% of RAM; restart it to reclaim."
+  "rationale": "host RAM at 95% with one instance holding 29% of RAM; restart it to reclaim.",
+  "incident_title": "Memory exhaustion on node 01M4349RPTT29RNTC6VBCXQ0RC",
+  "explanation": "ram_used_bytes reached 96.0% of ram_total_bytes and stayed there for two consecutive samples, and instance 01M4349RPXWDC52ZDAVMPCMJSH holds 29% of the node's RAM by itself. That is a single-instance leak rather than fleet-wide pressure, so reclaiming that instance's memory resolves the breach without touching the node.",
+  "evidence": [
+    { "field": "ram_used_bytes", "value": 32641751449, "seq": 1050, "ts": "2026-10-04T07:49:05.000Z" },
+    { "field": "ram_total_bytes", "value": 34359738368, "seq": 1050, "ts": "2026-10-04T07:49:05.000Z" },
+    { "field": "lxd_instances.ram_used_bytes", "value": 10000000000, "seq": 1050 }
+  ],
+  "actions": [
+    { "action_kind": "instance.restart", "target": "01M4349RPXWDC52ZDAVMPCMJSH",
+      "note": "restart the heaviest instance to reclaim its resident memory" }
+  ]
 }
 ```
 
@@ -243,6 +255,60 @@ Schema `1`. The model must emit exactly one JSON object with this shape.
 | `params` | object | no (default `{}`) | keys ⊆ the action's `params_schema`; values per §5 |
 | `confidence` | number | yes | `0.0 .. 1.0` |
 | `rationale` | string | yes | `1 .. 1024` chars, C0-safe |
+| `incident_title` | string | no | `1 .. 160` chars, C0-safe (§4.2) |
+| `explanation` | string | no | `1 .. 2048` chars, C0-safe (§4.2) |
+| `evidence[]` | array of objects | no | `0 .. 12` entries, each per §4.2 |
+| `actions[]` | array of objects | no | `0 .. 8` entries, each per §4.2 |
+
+The four incident fields are **additive within schema `1`** (§12: additive field
+additions do not bump the version). A model that emits none of them is still a
+valid response — the deterministic fields above are the whole decision, and the
+record is the *explanation* of it. `kind`/`params`/`reason` (the
+`RemediationAction` the executor consumes, §1.2) are unchanged and remain
+mandatory for the action to be executable at all.
+
+### 4.2 The incident record (why the answer stops being a log line)
+
+`rationale` is one line: enough to justify a command to an auditor, not enough to
+explain an incident to a human at 03:00. The incident record is the structured
+answer to the four questions the log stream cannot answer — *what happened, why
+does the model think so, on what evidence, and what did it do*. It is
+**contractual**, not prompt-only: the shape, the types and the bounds below are
+enforced by the controller's guardrail (G9, §7) before anything is persisted.
+
+```json
+"incident_title": "<one line, ≤160 chars>",
+"explanation":     "<why the evidence implies it, ≤2048 chars>",
+"evidence": [ { "field": "ram_used_bytes", "value": 32641751449, "seq": 1050, "ts": "..." } ],
+"actions":  [ { "action_kind": "instance.restart", "target": "01M4349RPXWDC52ZDAVMPCMJSH", "note": "..." } ]
+```
+
+| field | type | required | bounds | meaning |
+|-------|------|----------|--------|---------|
+| `incident_title` | string | no | `1 .. 160` chars | One line naming the incident, not the action |
+| `explanation` | string | no | `1 .. 2048` chars | Why the evidence implies the incident, in the model's own words |
+| `evidence[].field` | string | yes (per entry) | `≤ 64` chars, pattern `^[a-z0-9_]+(\.[a-z0-9_]+)*$` | The telemetry field the entry is about — a **name already in the accepted sample** (`node-telemetry.md` §4), never free text |
+| `evidence[].value` | string \| number \| boolean | yes (per entry) | strings `≤ 128` chars | The value observed for that field |
+| `evidence[].seq` | integer | no | `≥ 0` | The sample `seq` the value came from |
+| `evidence[].ts` | string RFC3339 | no | — | The sample timestamp the value came from |
+| `actions[].action_kind` | string enum | yes (per entry) | ∈ §5 `ACTION_SPACE` | What the model decided to do |
+| `actions[].target` | string | no | `≤ 64` chars | The instance/node the action names, if any |
+| `actions[].note` | string | no | `≤ 256` chars | Why that action, in one clause |
+
+**Evidence quoting (recorded decision, t_957956e5): yes — C0 values only.**
+`evidence[]` may quote the raw *values* of C0 telemetry fields already inside the
+accepted sample, because that is what makes the record checkable against the
+telemetry store: an auditor can re-read `seq 1050` and see the same number. It may
+never quote C2 material (application log lines, `argv`, environment variables,
+file contents, prompt text), and `field` may not be an invented path — the G9 scan
+(§7) runs the same C2 signature scan over every incident string that G7 runs over
+`rationale`.
+
+`actions[]` is what the model **decided**; the *executed* result and its audit id
+are joined by the reader (the controller API pairs the decision row with its
+`remediation_audits` row), so the record never asserts an outcome the executor has
+not produced. On the deterministic fallback the record is built from the fired
+event instead and is labelled `generated: "fallback"` — see §8.1.
 
 ---
 
@@ -383,10 +449,14 @@ every rule. Ordered, deterministic:
 | G6 | confidence gate | `confidence ≥ decision_min_confidence` (default `0.5`) | fallback `low_confidence` |
 | G7 | rationale sanitization | `rationale` length `≤ 1024`, C0-safe (re-run the C2/PII scan from `governance.md` §7) | truncate; on C2 hit → fallback `schema_violation` |
 | G8 | idempotency | resulting action → idempotency key (§9) | existing dedup (`already_applied`) |
+| G9 | incident-record sanitization | `incident_title` `≤ 160`, `explanation` `≤ 2048`, `evidence[]` `≤ 12`, `actions[]` `≤ 8`; every string C0-safe; `evidence[].field` matching `^[a-z0-9_]+(\.[a-z0-9_]+)*$` and `≤ 64`; `actions[].action_kind` ∈ `ACTION_SPACE` | truncate to the bound; drop an entry that fails its pattern/enum/C2 scan and record the drop in the guardrail list; on a C2 hit in `incident_title`/`explanation` → fallback `schema_violation` (same rule as G7) |
 
 G4/G5 **clamp**, never reject, on numeric/unknown-key issues; G1/G2/G3/G6/G7 are
-hard **fallbacks**. The all-or-nothing rule from `controller-api.md` §5.3 does
-**not** apply here — a fallback produces a deterministic action, not a rejection.
+hard **fallbacks**. G9 never rejects the *decision* over an entry — a malformed
+evidence row is dropped and the record keeps the rest — but a title or an
+explanation carrying C2 material is a hard fallback, exactly as `rationale` is.
+The all-or-nothing rule from `controller-api.md` §5.3 does **not** apply here — a
+fallback produces a deterministic action, not a rejection.
 
 The guardrail returns a `RemediationAction` (built from the *validated* response,
 never the raw output) plus the `guardrail` decision list for the audit record.
@@ -409,6 +479,34 @@ On fallback, the loop emits a structured `warn` log + operator-stream line with 
 fallback reason (§11) and records `source="fallback"` in the decision log. Remediation
 is **never blocked on model latency**: the deterministic path runs regardless
 (`controller-api.md` §8 fast-path guarantee preserved).
+
+### 8.1 The fallback still produces an incident record — labelled
+
+An incident that silently loses its explanation the moment the model is down is
+the same defect as a blank dashboard: the reader cannot tell "no incident" from
+"no model". So the fallback path **also** writes an incident record, built from
+the fired `HealthEvent` (its `rule_id`, `metric`, `value`, `threshold`, sample
+`seq` and the target the deterministic provider chose) — and it is **labelled**:
+
+- `generated: "fallback"` in the record, and `incident_generated = "fallback"`
+  on the persisted row, which the dashboard renders as its own visible state;
+- `explanation` names the reason in the text itself
+  (`"model unavailable (<fallback_reason>); the deterministic playbook chose …"`);
+- `evidence[]` contains **only** the event's own C0 fields — never a model
+  sentence, never a fabricated sample. Nothing that the fallback produces is
+  presented as model output, and no field of a fallback record claims the model
+  said anything.
+
+`generated` is `"model"` only when the string that reaches the record is the
+model's own validated output (i.e. `source == "model"` and the response passed
+G9). A record with `generated: "model"` that did not come from a model is a
+contract violation, and the test suite pins the two paths apart.
+
+In `deterministic` mode (`TERMINI_OPERATOR_DECISION_MODE=deterministic`, §12) no
+incident record is written at all: that mode must stay **byte-identical** to the
+pre-amendment loop, so the decision row carries no incident columns. The
+dashboard renders that state as "no incident record (deterministic mode)" rather
+than an empty card.
 
 ---
 
@@ -468,9 +566,26 @@ CREATE TABLE IF NOT EXISTS decision_fallback_state (
 );
 ```
 
+Migration `0016_incident_record.sql` adds the incident record (§4.2) to the same
+row — same transaction as the decision write, so a record can never exist without
+its decision:
+
+```sql
+ALTER TABLE remediation_decisions ADD COLUMN incident_title TEXT;
+ALTER TABLE remediation_decisions ADD COLUMN incident_explanation TEXT;
+ALTER TABLE remediation_decisions ADD COLUMN incident_evidence TEXT;   -- JSON array (§4.2)
+ALTER TABLE remediation_decisions ADD COLUMN incident_actions TEXT;    -- JSON array (§4.2)
+ALTER TABLE remediation_decisions ADD COLUMN incident_generated TEXT;  -- model | fallback
+```
+
 - `decision_source` ∈ `deterministic | model | fallback`.
 - `confidence` is `NULL` for deterministic decisions.
 - `fallback_reason` is one of the §10.1 codes, `NULL` otherwise.
+- `incident_generated` ∈ `model | fallback`; all five incident columns are `NULL`
+  for a `deterministic`-mode row (§8.1), which is what keeps that mode
+  byte-identical to the pre-amendment loop.
+- The API (`GET /v1/operator/decisions`) returns the row verbatim, so the
+  incident record is exposed without a second endpoint or a second query.
 
 ### 11.1 Telemetry / log events
 
@@ -569,6 +684,21 @@ All added to `controller/app/config.py` `Config` + `load()`.
 | `docs/contracts/operator-decision.md` | this document |
 | `docs/contracts/controller-api.md` §9 | add cross-reference line |
 | `docs/architecture.md` §4.4 | note the model-driven path is now a selectable mode with deterministic default + fallback (day-2 wording updated) |
+
+### 14.5 Incident record — exact call sites (t_957956e5)
+
+| path | change |
+|------|--------|
+| `termini/decision/types.py` | `DecisionResponse` gains `incident_title`/`explanation`/`evidence`/`actions` + the §4.2 bound constants |
+| `termini/decision/prompt.py` | the JSON schema, the rules block and the few-shot examples carry the incident record (template stays `operator-decision v1`: §12 additive) |
+| `termini/decision/adapter.py` | parse + light repair of the four fields (bounded, typed, entries dropped when malformed) |
+| `controller/app/operator/decision.py` | `DecisionResult.incident`, `GuardrailResult.incident`, guardrail **G9**, and the §8.1 labelled fallback record |
+| `controller/app/operator/store.py` | `insert_decision(..., incident=None)` writes the five columns in the same statement |
+| `controller/app/operator/loop.py` | passes `result.incident` to `insert_decision` |
+| `controller/app/migrations/0016_incident_record.sql` | **NEW** — §11 DDL |
+| `dashboard/js/core/decisions.js` | maps the row's incident columns into the view model (`incident`, `incidentSource`) |
+| `dashboard/js/ui/decisions.js` | renders the **incident card** (title, explanation, evidence list, actions + audit result); the log stream stays a secondary view |
+| `tests/test_incident_record.py` | **NEW** — stub provider: parsed, persisted, exposed, and the labelled fallback path |
 
 ---
 

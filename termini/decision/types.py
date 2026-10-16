@@ -38,6 +38,31 @@ SCHEMA_VERSION = 1
 RATIONALE_MIN_CHARS = 1
 RATIONALE_MAX_CHARS = 1024
 
+# ---------------------------------------------------------------------------
+# Incident record bounds (operator-decision.md §4.2, t_957956e5)
+# ---------------------------------------------------------------------------
+# Additive within schema 1 (§12), so no version bump: a model that emits none of
+# these fields is still a valid response, and the deterministic fields remain the
+# whole *decision*. These are the bounds the adapter repairs to and the
+# controller's G9 enforces.
+INCIDENT_TITLE_MAX_CHARS = 160
+EXPLANATION_MAX_CHARS = 2048
+EVIDENCE_MAX_ENTRIES = 12
+ACTIONS_MAX_ENTRIES = 8
+EVIDENCE_FIELD_MAX_CHARS = 64
+# A telemetry field *name* — `ram_used_bytes`, `lxd_instances.ram_used_bytes`.
+# The pattern is what makes the field a name rather than free text: prose, a URL,
+# a path or a log line cannot match it.
+EVIDENCE_FIELD_PATTERN = r"^[a-z0-9_]+(\.[a-z0-9_]+)*$"
+EVIDENCE_VALUE_STR_MAX_CHARS = 128
+ACTION_TARGET_MAX_CHARS = 64
+ACTION_NOTE_MAX_CHARS = 256
+
+# `generated` labels WHO produced the record (§8.1). A fallback record must never
+# be presented as model output, so this is a closed two-value enum.
+INCIDENT_GENERATED_MODEL = "model"
+INCIDENT_GENERATED_FALLBACK = "fallback"
+
 # confidence: §4.1 — 0.0 .. 1.0.
 CONFIDENCE_MIN = 0.0
 CONFIDENCE_MAX = 1.0
@@ -292,6 +317,12 @@ class DecisionResponse:
     params: Dict[str, Any] = field(default_factory=dict)
     schema_version: int = SCHEMA_VERSION
     request_id: Optional[str] = None
+    # Incident record (§4.2, additive within schema 1). Empty/absent means the
+    # model emitted no record — still a valid response.
+    incident_title: str = ""
+    explanation: str = ""
+    evidence: List[Dict[str, Any]] = field(default_factory=list)
+    actions: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         out: Dict[str, Any] = {
@@ -303,6 +334,14 @@ class DecisionResponse:
         }
         if self.request_id is not None:
             out["request_id"] = self.request_id
+        if self.incident_title:
+            out["incident_title"] = self.incident_title
+        if self.explanation:
+            out["explanation"] = self.explanation
+        if self.evidence:
+            out["evidence"] = self.evidence
+        if self.actions:
+            out["actions"] = self.actions
         return out
 
 

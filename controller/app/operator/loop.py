@@ -440,6 +440,7 @@ class OperatorLoop(threading.Thread):
                 conn, decision_id, event, action, now,
                 source=result.source, confidence=result.confidence,
                 fallback_reason=result.fallback_reason,
+                incident=result.incident,
             )
 
         target = action.params.get("instance_name", "")

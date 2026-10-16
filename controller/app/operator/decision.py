@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Protocol, runtime_checkable
 
@@ -54,6 +55,17 @@ try:
         DEFAULT_MAX_CONSECUTIVE_FALLBACKS,
         FALLBACK_REASONS,
         HEAVIEST,
+        ACTIONS_MAX_ENTRIES,
+        ACTION_NOTE_MAX_CHARS,
+        ACTION_TARGET_MAX_CHARS,
+        EVIDENCE_FIELD_MAX_CHARS,
+        EVIDENCE_FIELD_PATTERN,
+        EVIDENCE_MAX_ENTRIES,
+        EVIDENCE_VALUE_STR_MAX_CHARS,
+        EXPLANATION_MAX_CHARS,
+        INCIDENT_GENERATED_FALLBACK,
+        INCIDENT_GENERATED_MODEL,
+        INCIDENT_TITLE_MAX_CHARS,
         RATIONALE_MAX_CHARS,
         SCHEMA_VERSION,
         TIMEOUT_S_MAX,
@@ -83,6 +95,17 @@ except ImportError:  # pragma: no cover - exercised only when run from controlle
         DEFAULT_MAX_CONSECUTIVE_FALLBACKS,
         FALLBACK_REASONS,
         HEAVIEST,
+        ACTIONS_MAX_ENTRIES,
+        ACTION_NOTE_MAX_CHARS,
+        ACTION_TARGET_MAX_CHARS,
+        EVIDENCE_FIELD_MAX_CHARS,
+        EVIDENCE_FIELD_PATTERN,
+        EVIDENCE_MAX_ENTRIES,
+        EVIDENCE_VALUE_STR_MAX_CHARS,
+        EXPLANATION_MAX_CHARS,
+        INCIDENT_GENERATED_FALLBACK,
+        INCIDENT_GENERATED_MODEL,
+        INCIDENT_TITLE_MAX_CHARS,
         RATIONALE_MAX_CHARS,
         SCHEMA_VERSION,
         TIMEOUT_S_MAX,
@@ -128,6 +151,10 @@ class DecisionResult:
     confidence: float | None = None
     fallback_reason: str | None = None  # set iff source == "fallback"
     guardrail: list = field(default_factory=list)
+    # The §4.2 incident record, or None in deterministic mode (§8.1). Always
+    # carries `generated` ∈ {model, fallback} when present, so the reader can
+    # never mistake a controller-built record for model output.
+    incident: dict | None = None
 
 
 @runtime_checkable
@@ -240,6 +267,10 @@ class GuardrailResult:
     confidence: float | None = None
     reject_reason: str | None = None    # one of FALLBACK_REASONS when not ok
     decisions: list = field(default_factory=list)
+    # The validated §4.2 incident record (G9), or None when the model emitted
+    # none. Carries `generated: "model"` — set by the guardrail, never by the
+    # adapter, so a record can never be dressed up as model output.
+    incident: dict | None = None
 
 
 def _heaviest_vm_id(evidence: list) -> str | None:
@@ -307,6 +338,224 @@ def _coerce_int_clamped(value: Any, minimum: int, maximum: int) -> int | None:
             return None
         return max(minimum, min(maximum, int(value)))
     return None
+
+
+# --------------------------------------------------------------------------- #
+# G9 — incident-record sanitization (§4.2, §7). Pure, LLM-free.
+# --------------------------------------------------------------------------- #
+
+_EVIDENCE_FIELD_RE = re.compile(EVIDENCE_FIELD_PATTERN)
+
+
+def _incident_entry_strings(entry: dict) -> list[str]:
+    """The strings inside one incident entry, for the C2 scan (G9).
+
+    Every incident string is scanned the same way G7 scans `rationale`: a value
+    that carries a C2 signature (a log line, an `argv`, an env var, a credential,
+    a file path blob) is evidence the record cannot be trusted, so the entry is
+    dropped. The `field` value is excluded — it is already constrained to the
+    `^[a-z0-9_]+(\\.[a-z0-9_]+)*$` name pattern, which cannot carry prose.
+    """
+    out: list[str] = []
+    for key in ("value", "ts", "target", "note"):
+        v = entry.get(key)
+        if isinstance(v, str):
+            out.append(v)
+    return out
+
+
+def _sanitize_incident(resp: DecisionResponse, decisions: list[dict]) -> tuple[dict | None, str | None]:
+    """G9: validate + clamp the §4.2 incident record. Never rejects the decision
+    over an entry — a malformed/C2-carrying evidence or action entry is dropped
+    and recorded — but a C2 hit in the title or explanation is a hard fallback
+    (`schema_violation`), exactly as G7 treats `rationale`.
+
+    Returns ``(incident, reject_reason)``. ``incident`` is the record to persist
+    (``generated: "model"``), or ``None`` when the model emitted none of the four
+    fields (a valid, record-less response). ``reject_reason`` is set only for the
+    hard title/explanation fallback.
+    """
+    # Bounds (§4.2). The adapter already repairs these; re-run here because the
+    # guardrail may receive a raw dict through `_response_from_dict`.
+    title = resp.incident_title if isinstance(resp.incident_title, str) else ""
+    explanation = resp.explanation if isinstance(resp.explanation, str) else ""
+    if len(title) > INCIDENT_TITLE_MAX_CHARS:
+        decisions.append({"rule": "G9", "decision": "clamp", "field": "incident_title",
+                          "from": len(title), "to": INCIDENT_TITLE_MAX_CHARS})
+        title = title[:INCIDENT_TITLE_MAX_CHARS]
+    if len(explanation) > EXPLANATION_MAX_CHARS:
+        decisions.append({"rule": "G9", "decision": "clamp", "field": "explanation",
+                          "from": len(explanation), "to": EXPLANATION_MAX_CHARS})
+        explanation = explanation[:EXPLANATION_MAX_CHARS]
+
+    # Title/explanation C2 → hard fallback (the same scan G7 runs on rationale).
+    title_c2 = governance.scan_c2(title)
+    if title_c2:
+        decisions.append({"rule": "G9", "decision": "reject", "field": "incident_title",
+                          "reason": "schema_violation",
+                          "detail": f"C2 signature in incident_title: {title_c2[0]}"})
+        return None, "schema_violation"
+    explanation_c2 = governance.scan_c2(explanation)
+    if explanation_c2:
+        decisions.append({"rule": "G9", "decision": "reject", "field": "explanation",
+                          "reason": "schema_violation",
+                          "detail": f"C2 signature in explanation: {explanation_c2[0]}"})
+        return None, "schema_violation"
+
+    evidence_out: list[dict] = []
+    raw_evidence = resp.evidence if isinstance(resp.evidence, list) else []
+    if len(raw_evidence) > EVIDENCE_MAX_ENTRIES:
+        decisions.append({"rule": "G9", "decision": "clamp", "field": "evidence",
+                          "from": len(raw_evidence), "to": EVIDENCE_MAX_ENTRIES})
+        raw_evidence = raw_evidence[:EVIDENCE_MAX_ENTRIES]
+    for i, entry in enumerate(raw_evidence):
+        if not isinstance(entry, dict):
+            decisions.append({"rule": "G9", "decision": "drop", "field": f"evidence[{i}]",
+                              "detail": "not an object"})
+            continue
+        field = entry.get("field")
+        if not isinstance(field, str):
+            decisions.append({"rule": "G9", "decision": "drop", "field": f"evidence[{i}].field",
+                              "detail": "missing/non-string field"})
+            continue
+        if len(field) > EVIDENCE_FIELD_MAX_CHARS or not _EVIDENCE_FIELD_RE.match(field):
+            decisions.append({"rule": "G9", "decision": "drop", "field": f"evidence[{i}].field",
+                              "detail": f"field {field!r} fails the name pattern"})
+            continue
+        value = entry.get("value")
+        if isinstance(value, bool):
+            pass
+        elif isinstance(value, (int, float)):
+            if not math.isfinite(float(value)):
+                decisions.append({"rule": "G9", "decision": "drop",
+                                  "field": f"evidence[{i}].value",
+                                  "detail": "non-finite number"})
+                continue
+        elif isinstance(value, str):
+            value = value[:EVIDENCE_VALUE_STR_MAX_CHARS]
+        else:
+            decisions.append({"rule": "G9", "decision": "drop", "field": f"evidence[{i}].value",
+                              "detail": f"value type {type(value).__name__} not allowed"})
+            continue
+        # C2 scan over every string in the entry (value/ts); field is name-only.
+        c2 = governance.scan_c2(_incident_entry_strings(entry))
+        if c2:
+            decisions.append({"rule": "G9", "decision": "drop", "field": f"evidence[{i}]",
+                              "detail": f"C2 signature in entry: {c2[0]}"})
+            continue
+        row: dict = {"field": field, "value": value}
+        seq = entry.get("seq")
+        if isinstance(seq, int) and not isinstance(seq, bool) and seq >= 0:
+            row["seq"] = seq
+        ts = entry.get("ts")
+        if isinstance(ts, str) and ts.strip():
+            row["ts"] = ts.strip()
+        evidence_out.append(row)
+
+    actions_out: list[dict] = []
+    raw_actions = resp.actions if isinstance(resp.actions, list) else []
+    if len(raw_actions) > ACTIONS_MAX_ENTRIES:
+        decisions.append({"rule": "G9", "decision": "clamp", "field": "actions",
+                          "from": len(raw_actions), "to": ACTIONS_MAX_ENTRIES})
+        raw_actions = raw_actions[:ACTIONS_MAX_ENTRIES]
+    for i, entry in enumerate(raw_actions):
+        if not isinstance(entry, dict):
+            decisions.append({"rule": "G9", "decision": "drop", "field": f"actions[{i}]",
+                              "detail": "not an object"})
+            continue
+        kind = entry.get("action_kind")
+        if not isinstance(kind, str) or kind not in ACTION_SPACE:
+            decisions.append({"rule": "G9", "decision": "drop", "field": f"actions[{i}].action_kind",
+                              "detail": f"action_kind {kind!r} not in ACTION_SPACE"})
+            continue
+        c2 = governance.scan_c2(_incident_entry_strings(entry))
+        if c2:
+            decisions.append({"rule": "G9", "decision": "drop", "field": f"actions[{i}]",
+                              "detail": f"C2 signature in entry: {c2[0]}"})
+            continue
+        row: dict = {"action_kind": kind}
+        target = entry.get("target")
+        if isinstance(target, str) and target.strip():
+            row["target"] = target.strip()[:ACTION_TARGET_MAX_CHARS]
+        note = entry.get("note")
+        if isinstance(note, str) and note.strip():
+            row["note"] = note.strip()[:ACTION_NOTE_MAX_CHARS]
+        actions_out.append(row)
+
+    if not (title or explanation or evidence_out or actions_out):
+        return None, None
+
+    return {
+        "incident_title": title,
+        "explanation": explanation,
+        "evidence": evidence_out,
+        "actions": actions_out,
+        "generated": INCIDENT_GENERATED_MODEL,
+    }, None
+
+
+def build_fallback_incident(event: HealthEvent, action: RemediationAction | None,
+                            reason: str) -> dict:
+    """The §8.1 labelled fallback record — built ONLY from the fired event's C0
+    fields, never from model output, and never dressed up as model output.
+
+    A fallback that silently dropped the "why" would be the same defect as a
+    blank dashboard: the reader could not tell "no incident" from "no model". So
+    the fallback still writes a record, and it is *labelled* so a reader can
+    never mistake it for the model's own answer:
+
+      * ``generated: "fallback"``;
+      * the explanation names the fallback reason in the text itself;
+      * ``evidence[]`` holds only the event's own C0 fields (metric, value,
+        threshold, sample ``seq``) — never a fabricated sample, never a model
+        sentence.
+    """
+    reason = reason if reason in FALLBACK_REASONS else "inference_unavailable"
+    title = f"{event.type} on node {event.node_id}".strip()
+    title = title[:INCIDENT_TITLE_MAX_CHARS]
+
+    kind = action.kind if action is not None else "no action"
+    target = ""
+    if action is not None and isinstance(action.params, dict):
+        target = str(action.params.get("instance_name") or "").strip()
+    explanation = (
+        f"model unavailable ({reason}); the deterministic playbook chose {kind}"
+        + (f" on {target}" if target else "")
+        + f" for rule {event.rule_id}"
+    )
+    explanation = explanation[:EXPLANATION_MAX_CHARS]
+
+    evidence: list[dict] = []
+    value: Any = event.value
+    if not (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(float(value))):
+        value = event.threshold  # a C0 human-readable description, still event-derived
+    entry: dict = {"field": event.metric, "value": value}
+    seq = None
+    if event.evidence:
+        last = event.evidence[-1] if isinstance(event.evidence, list) else None
+        if isinstance(last, dict):
+            s = last.get("seq")
+            if isinstance(s, int) and not isinstance(s, bool) and s >= 0:
+                seq = s
+    if seq is not None:
+        entry["seq"] = seq
+    evidence.append(entry)
+
+    actions: list[dict] = []
+    if action is not None:
+        act: dict = {"action_kind": action.kind}
+        if target:
+            act["target"] = target
+        actions.append(act)
+
+    return {
+        "incident_title": title,
+        "explanation": explanation,
+        "evidence": evidence,
+        "actions": actions,
+        "generated": INCIDENT_GENERATED_FALLBACK,
+    }
 
 
 class Guardrail:
@@ -459,6 +708,14 @@ class Guardrail:
         decisions.append({"rule": "G8", "decision": "defer", "field": "idempotency",
                           "detail": "applied downstream by the loop (unchanged)"})
 
+        # G9 — incident-record sanitization (§4.2). A title/explanation C2 hit is
+        # a hard fallback (same rule as G7); a malformed/C2 entry is dropped and
+        # recorded. The record itself never rejects the decision.
+        incident, incident_reject = _sanitize_incident(resp, decisions)
+        if incident_reject is not None:
+            return GuardrailResult(ok=False, reject_reason=incident_reject,
+                                   decisions=decisions)
+
         action = RemediationAction(
             kind=resp.action_id,
             params=params,
@@ -467,7 +724,8 @@ class Guardrail:
             rule_id=context.event.rule_id,
         )
         return GuardrailResult(ok=True, action=action, confidence=confidence,
-                               reject_reason=None, decisions=decisions)
+                               reject_reason=None, decisions=decisions,
+                               incident=incident)
 
     # ------------------------------------------------------------------ G1/G2
     @staticmethod
@@ -517,10 +775,24 @@ class Guardrail:
             request_id = d.get("request_id")
             if not isinstance(request_id, str) or not request_id:
                 request_id = None
+            incident_title = d.get("incident_title")
+            if not isinstance(incident_title, str):
+                incident_title = ""
+            explanation = d.get("explanation")
+            if not isinstance(explanation, str):
+                explanation = ""
+            evidence = d.get("evidence")
+            if not isinstance(evidence, list):
+                evidence = []
+            actions = d.get("actions")
+            if not isinstance(actions, list):
+                actions = []
             return DecisionResponse(
                 action_id=action_id.strip(), confidence=float(confidence),
                 rationale=rationale, params=params,
                 schema_version=schema_version, request_id=request_id,
+                incident_title=incident_title, explanation=explanation,
+                evidence=evidence, actions=actions,
             ), None
         except (ValueError, TypeError) as exc:
             return None, ("schema_violation", str(exc))
@@ -599,7 +871,7 @@ class ModelDecisionProvider:
 
         return DecisionResult(action=result.action, source="model",
                               confidence=result.confidence, fallback_reason=None,
-                              guardrail=result.decisions)
+                              guardrail=result.decisions, incident=result.incident)
 
     # ------------------------------------------------------------------ model
     def _call_model(self, decision_input: DecisionInput):
@@ -674,9 +946,10 @@ class ModelDecisionProvider:
         )
         base = det.decide(context.event, context)
         log.warning("model decision fell back (reason=%s): %s", reason, detail)
+        incident = build_fallback_incident(context.event, base.action, reason)
         return DecisionResult(action=base.action, source="fallback",
                               confidence=None, fallback_reason=reason,
-                              guardrail=guardrail or [])
+                              guardrail=guardrail or [], incident=incident)
 
 
 # --------------------------------------------------------------------------- #
@@ -766,6 +1039,7 @@ __all__ = [
     "build_allowed_action_space",
     "build_decision_input",
     "build_decision_provider",
+    "build_fallback_incident",
     "in_forced_cooldown",
     "transition_fallback_state",
 ]
