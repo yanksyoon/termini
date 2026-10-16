@@ -1,0 +1,128 @@
+=== host: hack ===
+
+### systemctl show for lxd (selected props)
+MainPID=0
+NRestarts=0
+ExecMainStatus=0
+MemoryCurrent=[not set]
+CPUUsageNSec=[not set]
+TasksCurrent=[not set]
+IOReadBytes=[not set]
+IOWriteBytes=[not set]
+ActiveState=inactive
+SubState=dead
+ActiveEnterTimestamp=
+
+### systemctl show for a unit that does NOT report (failure-state check: --failed)
+(exit: 0)
+
+### systemd-analyze boot timing
+Startup finished in 2.914s (kernel) + 7.632s (userspace) = 10.547s 
+graphical.target reached after 7.365s in userspace.
+
+### systemd-analyze blame (head)
+18.547s snapd.service
+ 8.980s apt-daily.service
+ 2.393s snapd.seeded.service
+ 1.484s apt-daily-upgrade.service
+ 1.376s pollinate.service
+ 1.270s motd-news.service
+ 1.131s cloud-init.service
+  957ms cloud-config.service
+
+### journald rate (systemd-journald RuntimeMaxUse etc)
+
+### ss -s (socket summary)
+Total: 316
+TCP:   250 (estab 22, closed 215, orphaned 0, timewait 181)
+
+Transport Total     IP        IPv6
+RAW	  2         0         2        
+UDP	  10        6         4        
+TCP	  35        32        3        
+INET	  47        38        9        
+FRAG	  0         0         0        
+
+
+### conntrack (nf_conntrack_count/max)
+854
+262144
+
+### iface MTU + flags
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000\    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+2: enp5s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1442 qdisc mq state UP mode DEFAULT group default qlen 1000\    link/ether 00:16:3e:18:c0:26 brd ff:ff:ff:ff:ff:ff
+3: tailscale0: <POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP> mtu 1280 qdisc fq_codel state UNKNOWN mode DEFAULT group default qlen 500\    link/none 
+6: lxdbr0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default qlen 1000\    link/ether 00:16:3e:f8:70:2a brd ff:ff:ff:ff:ff:ff
+299: veth613ff56c@if298: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master lxdbr0 state UP mode DEFAULT group default qlen 1000\    link/ether 22:3d:2b:f7:76:81 brd ff:ff:ff:ff:ff:ff link-netnsid 17
+387: veth4abc4111@if386: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master lxdbr0 state UP mode DEFAULT group default qlen 1000\    link/ether 82:ff:b6:1d:b6:1b brd ff:ff:ff:ff:ff:ff link-netnsid 3
+389: veth8e5574ed@if388: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master lxdbr0 state UP mode DEFAULT group default qlen 1000\    link/ether 5e:54:4d:b6:5a:8e brd ff:ff:ff:ff:ff:ff link-netnsid 4
+391: vethadc9d4c5@if390: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master lxdbr0 state UP mode DEFAULT group default qlen 1000\    link/ether 22:21:06:50:07:2d brd ff:ff:ff:ff:ff:ff link-netnsid 6
+136: veth2a545817@veth90926d5f: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000\    link/ether 00:16:3e:63:3a:f5 brd ff:ff:ff:ff:ff:ff
+137: veth90926d5f@veth2a545817: <NO-CARRIER,BROADCAST,MULTICAST,UP,M-DOWN> mtu 1500 qdisc noqueue master lxdbr0 state LOWERLAYERDOWN mode DEFAULT group default qlen 1000\    link/ether be:0e:98:0a:48:7a brd ff:ff:ff:ff:ff:ff
+
+### DNS resolver (resolved status)
+Global
+         Protocols: -LLMNR -mDNS -DNSOverTLS DNSSEC=no/unsupported
+  resolv.conf mode: stub
+
+Link 2 (enp5s0)
+    Current Scopes: DNS
+         Protocols: +DefaultRoute -LLMNR -mDNS -DNSOverTLS DNSSEC=no/unsupported
+Current DNS Server: 10.200.0.1
+       DNS Servers: 10.200.0.1
+        DNS Domain: lxd
+
+Link 3 (tailscale0)
+
+### NTP / clock
+               Local time: Fri 2026-10-16 20:43:07 UTC
+           Universal time: Fri 2026-10-16 20:43:07 UTC
+                 RTC time: Fri 2026-10-16 20:43:07
+                Time zone: Etc/UTC (UTC, +0000)
+System clock synchronized: yes
+              NTP service: active
+          RTC in local TZ: no
+chronyc: ABSENT
+/home/ubuntu/.hermes/profiles/architect/cache/scratch/probe_systemd_net_kernel.sh: line 41: chronyc: command not found
+
+### dmesg access (OOM counts only)
+0
+dmesg oom lines: 0
+denied-or-none
+dmesg readable check exit: 1
+
+### kdump state
+0
+inactive
+
+### bpftrace -l | head
+ERROR: bpftrace currently only supports running as the root user.
+count: 0
+
+### unprivileged eBPF (kernel.unprivileged_bpf_disabled)
+2
+
+### hung-task / soft-lockup counters (via dmesg if readable)
+0
+denied-or-none
+
+### memory.stat full pgmajfault/oom (self)
+workingset_refault_anon 0
+workingset_refault_file 589
+workingset_activate_anon 0
+workingset_activate_file 244
+workingset_restore_anon 0
+workingset_restore_file 25
+workingset_nodereclaim 0
+pgfault 483223
+pgmajfault 735
+
+### LXD instance io.stat / io.pressure / cpu.max
+io.stat: 7:1 rbytes=287744 wbytes=0 rios=7 wios=0 dbytes=0 dios=0
+8:0 rbytes=14272143360 wbytes=12659527680 rios=327809 wios=976459 dbytes=0 dios=0
+
+io.pressure: some avg10=0.00 avg60=0.00 avg300=0.00 total=607438806
+full avg10=0.00 avg60=0.00 avg300=0.00 total=93059410
+cpu.max: max 100000
+memory.max: 1073741824
+memory.stat pgmajfault/oom: pgmajfault 103032

@@ -1,0 +1,26 @@
+=== systemctl show for a RUNNING unit (positive control for cgroup accounting) ===
+MainPID=127130
+NRestarts=0
+ExecMainStatus=0
+MemoryCurrent=315392
+CPUUsageNSec=996417000
+TasksCurrent=0
+IOReadBytes=[not set]
+ActiveState=active
+SubState=running
+ActiveEnterTimestamp=Sun 2026-10-04 09:20:30 UTC
+
+=== journalctl count (error+ in last 300s for snap.lxd.daemon) ===
+1
+journalctl exit=0
+
+=== journalctl list-boots ===
+IDX BOOT ID                          FIRST ENTRY                 LAST ENTRY
+  0 7571cc88218846d6a6387697417d3391 Sat 2026-10-03 20:43:57 UTC Fri 2026-10-16 20:44:00 UTC
+exit=0
+
+=== lxc info summary ===
+  driver: lxc | qemu
+  driver_version: 6.0.6 | 8.2.2
+  server_name: hack
+  storage: dir

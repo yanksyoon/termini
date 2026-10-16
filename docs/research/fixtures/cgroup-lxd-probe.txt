@@ -1,0 +1,134 @@
+=== host: hack ===
+
+### cgroup v2 unified? (mount)
+cgroup2 on /sys/fs/cgroup type cgroup2 (rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot)
+
+### self cgroup
+0::/user.slice/user-1000.slice/user@1000.service/app.slice/hermes-worker-kanban-t_cae0dfa8-run-175.scope
+
+### self memory.current / memory.stat (head) / memory.events
+path: /user.slice/user-1000.slice/user@1000.service/app.slice/hermes-worker-kanban-t_cae0dfa8-run-175.scope
+memory.current: 419835904
+
+memory.stat (head): anon 348061696
+file 58302464
+kernel 13045760
+kernel_stack 557056
+pagetables 3977216
+sec_pagetables 0
+percpu 1440
+sock 0
+vmalloc 0
+shmem 0
+zswap 0
+zswapped 0
+file_mapped 102400
+file_dirty 811008
+file_writeback 0
+swapcached 0
+anon_thp 0
+file_thp 0
+shmem_thp 0
+inactive_anon 4096
+active_anon 347922432
+inactive_file 42389504
+active_file 15912960
+unevictable 0
+slab_reclaimable 7369256
+slab_unreclaimable
+
+memory.events: low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+
+cpu.stat: usage_usec 42581153
+user_usec 35458884
+system_usec 7122268
+core_sched.force_idle_usec 0
+
+pids.current: 35
+pids.events: max 0
+pids.max: 23875
+
+### io.stat present? (self)
+head: cannot open '/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/hermes-worker-kanban-t_cae0dfa8-run-175.scope/io.stat' for reading: No such file or directory
+
+### io.pressure present? (self)
+some avg10=0.01 avg60=0.06 avg300=0.01 total=301004
+full avg10=0.01 avg60=0.06 avg300=0.01 total=297274
+
+### LXD instance cgroup roots
+/sys/fs/cgroup/lxc.payload.bsp-verify/:
+cgroup.controllers
+cgroup.events
+cgroup.freeze
+cgroup.kill
+cgroup.max.depth
+cgroup.max.descendants
+cgroup.pressure
+cgroup.procs
+cgroup.stat
+cgroup.subtree_control
+cgroup.threads
+cgroup.type
+cpu.idle
+cpu.max
+cpu.max.burst
+cpu.pressure
+cpu.stat
+cpu.stat.local
+cpu.uclamp.max
+
+### LXD container list (names only)
+bsp-verify,RUNNING
+demo-node-a,RUNNING
+demo-node-b,RUNNING
+demo-node-c,RUNNING
+rt-net-a,RUNNING
+rt-net-b,RUNNING
+rt-net-c,RUNNING
+
+### demo-node-a cgroup memory.current / cpu.stat / memory.events
+-- /sys/fs/cgroup/lxc.payload.demo-node-a --
+  memory.current: 224927744
+  memory.events: low 0
+high 0
+max 32932
+oom 0
+oom_kill 0
+oom_group_kill 0
+  cpu.stat: usage_usec 4163450661
+user_usec 2660619318
+system_usec 1502831342
+core_sched.force_idle_usec 0
+nr_periods 0
+nr_throttled 0
+throttled_usec 0
+nr_bursts 0
+burst_usec 0
+  pids.current: 91
+  pids.events: max 0
+
+-- /sys/fs/cgroup/lxc.payload.demo-node-c --
+  memory.current: 6710243328
+  memory.events: low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+  cpu.stat: usage_usec 6208925602
+user_usec 5144247257
+system_usec 1064678344
+core_sched.force_idle_usec 0
+nr_periods 0
+nr_throttled 0
+throttled_usec 0
+nr_bursts 0
+burst_usec 0
+  pids.current: 111
+  pids.events: max 0
+

@@ -1,0 +1,38 @@
+=== host: hack ===
+
+### DMI (is this a VM? vendor/product)
+QEMU
+Standard PC (Q35 + ICH9, 2009)
+QEMU
+
+### metadata.google.internal DNS resolution
+getent exit: 2
+
+### is there a google route/nic hint? (ip route default)
+default via 10.201.0.1 dev enp5s0 proto dhcp src 10.201.0.4 metric 100 
+
+### GCE guest agent / cloud monitoring agent present?
+google-guest-agent: google-startup-scripts: google-cloud-ops-agent: stackdriver-agent: google-fluentd: 
+### dpkg google packages
+
+### smartctl / nvme / sensors present?
+smartctl: ABSENT
+nvme: ABSENT
+sensors: ABSENT
+
+### dmesg_restrict
+1
+
+### kptr_restrict (kernel pointer visibility — matters for eBPF/tracepoint value)
+1
+
+### is lxd a snap or native unit?
+snap-lxd-40958.mount                         enabled         enabled
+lxd-agent.service                            static          -
+lxd-installer@.service                       static          -
+snap.lxd.activate.service                    enabled         enabled
+snap.lxd.daemon.service                      static          -
+Service          Startup  Current   Notes
+lxd.activate     enabled  inactive  -
+lxd.daemon       enabled  active    socket-activated
+lxd.user-daemon  enabled  inactive  socket-activated
