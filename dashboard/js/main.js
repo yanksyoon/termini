@@ -7,7 +7,7 @@ import { $ } from "./ui/dom.js";
 import { ApiClient, ApiError } from "./api.js";
 import { LogStream } from "./stream.js";
 import { resolveConfig, apiUrl, stripKeysFromQuery } from "./core/config.js";
-import { CHART_GROUPS, windowQuery, metricsQuery } from "./core/series.js";
+import { CHART_GROUPS, windowQuery, metricsQuery, requestedMetrics } from "./core/series.js";
 import { parseEgressLine, annotationsForNode, sourceMeta } from "./core/decisions.js";
 import { renderOverview } from "./ui/overview.js";
 import { LogPanel } from "./ui/logs.js";
@@ -462,14 +462,34 @@ async function refreshMetrics() {
     state.metricsByNode.set(nodeId, seriesIndex(payload));
     metricsPanel.setAnnotations(annotationsForNode(decisionsPanel.rows, nodeId));
     metricsPanel.update(payload);
-    // Same telemetry sample the overview uses, so the "top processes" card and
-    // the node card can never disagree about what is running (§4.10).
-    const sample = state.samples.get(nodeId) || null;
+    // The same raw telemetry sample the overview uses: it feeds both the
+    // "top processes" card (§4.10) and the metric-expansion groups
+    // (§4.12–§4.14), which are per-sample facts rather than time series.
+    const sample = await fetchLatestSample(nodeId);
     metricsPanel.setProcesses(sample ? processes(sample) : []);
+    metricsPanel.setSample(sample);
     state.backend.fails = 0;
     hideBanner();
   } catch (e) {
     handleBackendError(e);
+  }
+}
+
+/**
+ * The selected node's latest raw telemetry Sample (`metrics_latest`, dashboard.md
+ * §1.2). Re-read on every metrics poll so "latest sample" means latest, and cached
+ * only as the fallback for a failed fetch — the metric-expansion groups are read
+ * from this one sample, so the panel and the node card cannot disagree about what
+ * the node reported.
+ */
+async function fetchLatestSample(nodeId) {
+  try {
+    const detail = await backend.api.getNode(nodeId);
+    const sample = detail && detail.metrics_latest ? detail.metrics_latest : null;
+    if (sample) state.samples.set(nodeId, sample);
+    return sample;
+  } catch {
+    return state.samples.get(nodeId) || null; // last known sample, never an invention
   }
 }
 
@@ -482,11 +502,15 @@ function seriesIndex(payload) {
   return out;
 }
 
+/**
+ * The metric names the panel asks the controller for: ONLY the frozen controller
+ * allowlist (dashboard.md §1.4), which is what `requestedMetrics()` returns. The
+ * §4.12–§4.14 metrics are read from the raw sample instead — naming one of them
+ * here would make the controller reject the WHOLE request (`unknown metric(s)`,
+ * 400) and blank every chart on the panel.
+ */
 function metricsForView() {
-  const groups = state.includeAll ? CHART_GROUPS : CHART_GROUPS.filter((g) => g.primary);
-  const names = new Set();
-  for (const g of groups) for (const m of g.metrics) names.add(m);
-  return Array.from(names);
+  return requestedMetrics(state.includeAll);
 }
 
 function handleBackendError(e) {

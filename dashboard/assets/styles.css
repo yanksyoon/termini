@@ -497,6 +497,31 @@ details.panel > summary.panel-head h2 { margin: 0; font-size: 1rem; }
 .chart-card.fault { border-color: #8a6a1f; box-shadow: inset 0 0 0 1px rgba(255,159,10,.15); }
 .chart-card.flash { animation: flash 2.4s ease-out; }
 @keyframes flash { 0% { box-shadow: 0 0 0 2px rgba(90,200,250,.6); } 100% { box-shadow: none; } }
+
+/* Metric-expansion sample groups (§4.12–§4.14): per-sample FACTS, not time
+   series. Each row says whether it is raw or derived, whether it is a cumulative
+   counter, or that it was not reported at all — "not reported" is never a 0. */
+.chart-chip {
+  font-size: .66rem; text-transform: uppercase; letter-spacing: .05em;
+  padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--muted);
+}
+.chart-chip.derived { color: #ffdca8; border-color: #8a6a1f; }
+.chart-chip.raw { color: var(--fg-dim); }
+.chart-basis { font-size: .74rem; color: var(--muted); }
+.sample-card .chart-title { border-bottom: 1px solid var(--line-2); padding-bottom: 4px; }
+.sample-table { display: flex; flex-direction: column; margin-top: 4px; }
+.sample-row {
+  display: grid; grid-template-columns: 84px minmax(0, 1fr) 96px 30px minmax(0, 1fr);
+  align-items: baseline; gap: 6px; font-size: .8rem; padding: 2px 0;
+  border-bottom: 1px dashed rgba(255,255,255,.05);
+}
+.sample-row .sr-where { color: var(--muted); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; }
+.sample-row .sr-label { color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; }
+.sample-row .sr-value { text-align: right; font-family: ui-monospace, monospace; }
+.sample-row .sr-unit { color: var(--muted); font-size: .72rem; }
+.sample-row .sr-flags { color: var(--muted); font-size: .7rem; overflow: hidden; text-overflow: ellipsis; }
+.sample-note { font-size: .8rem; padding: 8px 0; }
+.sr-value.nr, .sample-note.nr { color: #ffb4a2; font-style: italic; }
 .badge.synthetic { color: #e3c6ff; border-color: #6b3f8f; }
 
 @media (max-width: 720px) {

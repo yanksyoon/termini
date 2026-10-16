@@ -53,6 +53,126 @@ export function processes(sample) {
   return out;
 }
 
+/*
+ * ---------------------------------------------------------------------------
+ * Metric expansion (§4.12–§4.14) — bounded, allowlisted selectors.
+ * ---------------------------------------------------------------------------
+ *
+ * Same rule as `processes()` above: the panel renders what the contract admits
+ * and NOTHING else. Every selector drops a key it does not know, so a node (or a
+ * compromised node) that adds `cmdline`, `env`, or an instance NAME to one of
+ * these groups cannot have it displayed even though ingest already rejects it —
+ * this panel is not a second egress path for C2 content. The one string admitted
+ * is `vm_id`, and only in the 26-character ULID form the contract defines: never
+ * the LXD instance name, which may carry customer hostname data (§4.6).
+ *
+ * Absent ≠ zero: a field that is not on the wire is simply not in the result —
+ * never a `0` standing in for it — and a *measured* `0` is kept as `0`.
+ *
+ * Bounds: `disk[]` at DISK_MAX and `net[]` at NET_MAX (the collector's own caps,
+ * §4.13), `lxd_instances[]` at INSTANCES_MAX (the contract deliberately does not
+ * cap it — the guardrail resolves targets through it — so the panel bounds
+ * itself, exactly as `processes()` does). The caller reports what it cut.
+ */
+export const DISK_MAX = 8;
+export const NET_MAX = 1;
+export const INSTANCES_MAX = 10;
+
+export const PRESSURE_FIELDS = ["cpu_some_avg10", "io_some_avg10", "memory_some_avg10", "memory_full_avg10"];
+export const MEMORY_PRESSURE_FIELDS = ["oom_kill_count", "pgmajfault_count", "mem_available_bytes"];
+export const DISK_IO_FIELDS = ["io_ticks_ms", "io_in_flight", "inode_used", "inode_total"];
+export const NET_ERROR_FIELDS = ["rx_errors", "tx_errors", "rx_dropped", "tx_dropped"];
+export const TRANSPORT_FIELDS = ["tcp_retransmit_segs", "conntrack_count", "conntrack_max"];
+export const INSTANCE_FAULT_FIELDS = ["oom_kill_count", "pgmajfault_count"];
+
+/** Minimum each transport/conntrack scalar may take (conntrack_max is a capacity). */
+const TRANSPORT_MIN = { tcp_retransmit_segs: 0, conntrack_count: 0, conntrack_max: 1 };
+/** A vm_id is a ULID or it is not rendered at all (never an instance name, §4.6). */
+const VM_ID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
+/** A counter: a JSON integer at or above `min`. Anything else is not a value. */
+function counter(v, min = 0) {
+  return Number.isInteger(v) && v >= min ? v : undefined;
+}
+
+/** A percentage (§4.12 PSI): a finite 0–100 number. */
+function pctField(v) {
+  return isNum(v) && v >= 0 && v <= 100 ? v : undefined;
+}
+
+/** Keep only the named fields that carry a readable value; null when none do. */
+function pick(source, fields, read) {
+  if (!source || typeof source !== "object") return null;
+  const out = {};
+  for (const f of fields) {
+    const v = read(source[f], f);
+    if (v !== undefined) out[f] = v;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** §4.12 `pressure{}` — the four PSI scalars, or null when not reported. */
+export function pressureFacts(sample) {
+  return pick(sample && sample.pressure, PRESSURE_FIELDS, pctField);
+}
+
+/** §4.12 `oom_kill_count` / `pgmajfault_count` / `mem_available_bytes`. */
+export function memoryFacts(sample) {
+  return pick(sample, MEMORY_PRESSURE_FIELDS, (v) => counter(v));
+}
+
+/** §4.13 flat transport scalars (`conntrack_max` is a capacity, so ≥ 1). */
+export function transportFacts(sample) {
+  return pick(sample, TRANSPORT_FIELDS, (v, f) => counter(v, TRANSPORT_MIN[f] ?? 0));
+}
+
+/**
+ * §4.13 `disk[]` extension — one row per disk entry, in sample order, capped at
+ * DISK_MAX. The row keeps its `index` so the panel can label it with the entry
+ * it really came from, and a disk whose extension fields are all unreadable is
+ * still a row (reported as "not reported") rather than a missing entry.
+ */
+export function diskFacts(sample) {
+  return arrayFacts(sample, "disk", DISK_IO_FIELDS, (v, f) => counter(v, f === "inode_total" ? 1 : 0), DISK_MAX);
+}
+
+/** §4.13 `net[]` extension — the four NIC error/drop counters. */
+export function netFacts(sample) {
+  return arrayFacts(sample, "net", NET_ERROR_FIELDS, (v) => counter(v), NET_MAX);
+}
+
+/**
+ * §4.14 `lxd_instances[]` — per-instance OOM/fault counts, keyed by the ULID
+ * `vm_id`. An entry whose `vm_id` is not a ULID is refused outright (it would be
+ * an instance name on the wire), and the counts are read from the allowlist.
+ */
+export function instanceFacts(sample) {
+  const rows = [];
+  const list = arr(sample && sample.lxd_instances);
+  for (let i = 0; i < list.length && rows.length < INSTANCES_MAX; i++) {
+    const e = list[i];
+    if (!e || typeof e !== "object" || typeof e.vm_id !== "string" || !VM_ID_RE.test(e.vm_id)) continue;
+    const row = { vm_id: e.vm_id, index: i };
+    for (const f of INSTANCE_FAULT_FIELDS) {
+      const v = counter(e[f]);
+      if (v !== undefined) row[f] = v;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function arrayFacts(sample, key, fields, read, max) {
+  const list = arr(sample && sample[key]);
+  const rows = [];
+  for (let i = 0; i < list.length && i < max; i++) {
+    const e = list[i];
+    const row = { index: i, ...(pick(e, fields, read) || {}) };
+    rows.push(row);
+  }
+  return rows;
+}
+
 export const DEGRADED_REASONS = [
   "heartbeat_late",
   "disk_read_only",

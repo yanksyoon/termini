@@ -97,7 +97,22 @@ The terminal panel (xterm.js WebSocket + SSH string) is a separate card
    window (5 m / 15 m / 1 h / 6 h) mapped to contract resolutions, labelled axes
    with units, legends and hover crosshair; bytes are displayed in GiB/MiB while
    the wire stays in bytes.
-5. **Manual intervention** — Restart / Drain behind confirm dialogs with a reason
+5. **Metric expansion (latest sample)** — the §4.12–§4.14 groups as cards read from
+   the **newest raw telemetry sample** (not from `/metrics`: they are per-sample
+   facts, not time series): PSI pressure, memory pressure (`oom_kill_count`,
+   `pgmajfault_count`, `mem_available_bytes`), disk saturation + inode counts,
+   NIC error/drop counters, transport (`tcp_retransmit_segs`, conntrack) and
+   per-instance OOM/fault counts. Every value states what it is: `cumulative` for
+   a count since boot (never presented as a rate), `derived` for anything the
+   panel computed (an inode or conntrack ratio), and the **frozen rule the group
+   is a leading indicator for** in the card's caption — the contract defines no
+   threshold for these fields, so no client-side flag is invented. A field the
+   node did not report renders as **not reported**, never as a zero, and no
+   threshold-shaped value (`pressure` is a fixed 4-key object) is fabricated.
+   The panel bounds what it draws (`disk[]` 8, `net[]` 1, `lxd_instances[]` 10)
+   and says what it cut. Only the frozen §1.4 allowlist is ever named in the
+   `?metrics=` query; the new groups are read from the sample instead.
+6. **Manual intervention** — Restart / Drain behind confirm dialogs with a reason
    selector, a scale-intent form (prompt → reviewed plan with clamps as warnings
    and rejects as errors → apply), and approve/deny of pending AI remediation.
 
@@ -140,7 +155,12 @@ It needs no npm packages (Node ≥ 22 for the built-in `WebSocket`).
 contract endpoints for the four W5 surfaces, with:
 
 * evolving 1 s telemetry and 19-metric series (same names/units as
-  `controller/app/store.py METRICS`),
+  `controller/app/store.py METRICS`). The mock's own `Sample` does **not** carry
+  the §4.12–§4.14 groups yet, so the metric-expansion cards read "not reported"
+  against it — inventing pressure/OOM numbers here would be fabricating
+  telemetry. The committed real payload from the collector card
+  (`docs/evidence/2026-10-16-metric-expansion/node-payload.json`) is the input
+  those cards are built and evidenced against,
 * live status transitions (`online → degraded → offline → online`) via heartbeat
   stalls,
 * a streaming SSE operator log incl. periodic `pending_approval` remediations,

@@ -1,0 +1,17 @@
+{
+  "node_id": "01M53BYSEHFR0KVWSYDP923BMW",
+  "real": null,
+  "absent": {
+    "ingest": {
+      "accepted": 1,
+      "rejected": 0,
+      "backpressure": "none"
+    },
+    "stored_seqs": [
+      2,
+      1
+    ],
+    "latest_seq": 2,
+    "expansion_fields": []
+  }
+}
