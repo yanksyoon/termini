@@ -112,7 +112,7 @@ content and are required by the AI operator and charts. Canonical definitions:
 | `inference{}` | `node-telemetry.md` §4.7 | llama.cpp router health/throughput (present on the inference node only). |
 | `services[]` | `node-telemetry.md` §4.8 | systemd unit state, fixed name allowlist. |
 | `agents[]` | `agent-runtime.md` §13.2 | Per-agent-VM C0 status counters (state, queue depth, task counters). |
-| `processes[]` | `node-telemetry.md` §4.10 | Top-20 per sample, anchored by `pid`. **Metrics only**: the kernel task name (`comm`, ≤15 printable ASCII chars), state, CPU%, RSS, thread count and age. No `argv`, no `cmdline`, no `exe`, no environment, no file paths — those remain C2 (§4.3). |
+| `processes[]` | `node-telemetry.md` §4.10 | Top-10 per sample by RSS, anchored by `pid`. **Metrics only**: the kernel task name (`comm`, ≤15 printable ASCII chars), state, CPU%, RSS, thread count and age. No `argv`, no `cmdline`, no `exe`, no environment, no file paths — those remain C2 (§4.3). |
 | `services[].journal_errors` / `services[].journal_warnings` | `node-telemetry.md` §4.11 | **Counts** of journal entries at priority `err`+ / `warning` for a unit over a 300 s window. A count is an aggregate, not a log line; the messages stay C2. Omitted, never `0`, when the journal is unreadable. |
 
 `processes[]` and the journal counts were added under the same deny-by-default

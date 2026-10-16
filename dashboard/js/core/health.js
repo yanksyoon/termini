@@ -14,7 +14,7 @@
 export const SERVICE_ALLOWLIST = ["termini-bootstrap", "lxd", "sshd", "llama-cpp"];
 
 /**
- * `processes[]` (node-telemetry.md §4.10) — metrics only, bounded top-20.
+ * `processes[]` (node-telemetry.md §4.10) — metrics only, bounded top-10 by RSS.
  *
  * The dashboard renders what the contract admits and nothing more: `pid`,
  * `name`, `state`, `cpu_util_pct`, `ram_used_bytes`, `threads`, `age_sec`. Any
@@ -22,7 +22,7 @@ export const SERVICE_ALLOWLIST = ["termini-bootstrap", "lxd", "sshd", "llama-cpp
  * sends `cmdline`/`argv`/`env` cannot have it displayed even though ingest
  * already rejects it — the panel is not a second egress path for C2 content.
  */
-export const PROCESSES_MAX = 20;
+export const PROCESSES_MAX = 10;
 export const PROCESS_STATES = [
   "running",
   "sleeping",

@@ -153,7 +153,8 @@ test("health: processes are allowlisted to the contract fields (§4.10)", () => 
   assert.deepEqual(h.processes[2], { pid: 12 });
 });
 
-test("health: processes are bounded to the top-20", () => {
+test("health: processes are bounded to the top-10 (RSS-ranked, §4.10)", () => {
+  assert.equal(PROCESSES_MAX, 10);
   const many = Array.from({ length: 30 }, (_, i) => ({ pid: 100 + i, name: `p${i}` }));
   const h = deriveHealth(COMPUTE, sample({ processes: many }));
   assert.equal(h.processes.length, PROCESSES_MAX);

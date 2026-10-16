@@ -17,9 +17,11 @@ instead of at an incident.
 from __future__ import annotations
 
 import importlib.util
+import itertools
 import pathlib
 import sys
 import unittest
+from unittest import mock
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "controller"))
@@ -84,17 +86,57 @@ class NodeCollectorTest(unittest.TestCase):
                                  f"{key} is a C2 field name (§4.3)")
 
     def test_bounded_top_n(self):
+        # The bound is the owner's note of 2026-10-16 (top-10 by RSS per sample),
+        # pinned here so a drift in either the bound or the doc fails the build.
+        self.assertEqual(F.PROCESSES_MAX, 10)
         tb.process_facts()
         rows = tb.process_facts()
         self.assertLessEqual(len(rows), F.PROCESSES_MAX)
 
-    def test_ranking_is_by_cpu_then_ram(self):
+    def test_ranking_is_by_rss_then_cpu(self):
         tb._PROC_PREV.clear()
         tb.process_facts()
         self.assertGreaterEqual(len(tb._PROC_PREV), 1)
         rows = tb.process_facts() or []
-        pcts = [r["cpu_util_pct"] for r in rows if "cpu_util_pct" in r]
-        self.assertEqual(pcts, sorted(pcts, reverse=True))
+        rams = [r["ram_used_bytes"] for r in rows]
+        self.assertEqual(rams, sorted(rams, reverse=True),
+                         "`ram_used_bytes` is the primary rank (§4.10)")
+        # CPU is the tie-break *inside* an equal RSS, never the primary key.
+        for _ram, group in itertools.groupby(rows, key=lambda r: r["ram_used_bytes"]):
+            pcts = [r["cpu_util_pct"] for r in group if "cpu_util_pct" in r]
+            self.assertEqual(pcts, sorted(pcts, reverse=True))
+
+    def test_rank_key_is_rss_then_cpu_then_pid(self):
+        # Synthetic tuples, so the total order is pinned deterministically rather
+        # than by whichever processes this host happens to be running.
+        rows = [(50.0, 1000, 7), (-1.0, 9000, 3), (2.0, 1000, 9), (80.0, 1000, 5)]
+        self.assertEqual(
+            sorted(rows, key=tb._rank_key),
+            [(-1.0, 9000, 3), (80.0, 1000, 5), (50.0, 1000, 7), (2.0, 1000, 9)],
+        )
+        # A missing CPU delta (the -1.0 sentinel) sorts below a real 0.0 on equal
+        # RSS instead of being treated as zero.
+        self.assertEqual(sorted([(-1.0, 10, 1), (0.0, 10, 2)], key=tb._rank_key)[0][2], 2)
+
+    def test_bounded_window_is_the_rss_heaviest(self):
+        # The window must be RSS-optimal: no process left out may be heavier than
+        # one kept. Checked against the full table (`/proc` read with the bound
+        # lifted), so the assertion is about the ranking, not about this host.
+        tb._PROC_PREV.clear()
+        tb.process_facts()
+        with mock.patch.object(tb, "PROCESSES_MAX", 10 ** 6):
+            full = tb.process_facts() or []
+        bounded = tb.process_facts() or []
+        self.assertTrue(bounded)
+        self.assertEqual(len(bounded), min(len(full), F.PROCESSES_MAX))
+        kept = {entry["pid"] for entry in bounded}
+        floor = min(entry["ram_used_bytes"] for entry in bounded)
+        for entry in full:
+            if entry["pid"] not in kept:
+                self.assertLessEqual(
+                    entry["ram_used_bytes"], floor,
+                    f"pid {entry['pid']} has more RSS than a kept process")
+        self.assertTrue(any("cpu_util_pct" in entry for entry in bounded))
 
     def test_first_sample_omits_cpu_rather_than_faking_zero(self):
         tb._PROC_PREV.clear()
@@ -231,11 +273,19 @@ class ContractMirrorTest(unittest.TestCase):
         doc = (REPO / "docs" / "contracts" / "governance.md").read_text()
         self.assertIn("`processes[]`", doc)
         self.assertIn("journal_errors", doc)
+        self.assertIn("Top-10 per sample by RSS", doc)
 
     def test_contract_doc_documents_the_new_sections(self):
         doc = (REPO / "docs" / "contracts" / "node-telemetry.md").read_text()
         self.assertIn("### 4.10", doc)
         self.assertIn("### 4.11", doc)
+        # The doc must state the bound the code implements, in the same words:
+        # top-10, RSS-first, with the CPU tie-break, and no new cadence.
+        self.assertRegex(doc, r"top-10 per sample, ranked by\s+`ram_used_bytes`")
+        self.assertIn("Recorded objection", doc)
+        # §4.6's measured asymmetry is stated too, so the doc does not promise a
+        # field a snap-LXD node can never fill.
+        self.assertIn("`state_age_sec` is **structurally absent**", doc)
 
 
 if __name__ == "__main__":
