@@ -27,6 +27,9 @@ install -m 0644 "${BUILD_CTX}"/requirements/*.lock "${BUILD_CTX}"/requirements/*
   /opt/termini/requirements/
 install -d -m 0750 -o agent -g agent /var/log/termini
 install -d -m 0750 -o agent -g agent /var/lib/termini/agent/tasks
+# On-prem result sink for the task surface (agent-runtime.md §7.3): task/answer
+# bodies live here and never egress.
+install -d -m 0750 -o agent -g agent /var/lib/termini/agent/results
 install -d -m 0755 /run/termini
 
 # short image digest over the pinned inputs (stable, not a security hash)

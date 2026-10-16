@@ -465,6 +465,96 @@ class LxdExecutor:
             r.detail = "certificate already present in the node trust store — idempotent no-op"
         return r
 
+    def exec_instance(
+        self,
+        name: str,
+        command: list[str],
+        *,
+        cwd: str = "/",
+        environment: dict | None = None,
+        timeout_s: float = 60.0,
+        poll_s: float = 0.25,
+    ) -> ExecResult:
+        """Run a command INSIDE an instance and return its recorded stdout.
+
+        This is the transport for the agent task surface (agent-runtime.md §5.6/§7.4):
+        the in-VM runtime listens on `127.0.0.1` inside the instance, so the only way
+        to hand it a task is from the node that hosts it. LXD's exec API can do that
+        over plain HTTP: `record-output: true` makes the daemon write the command's
+        stdout/stderr into the instance's log store and report `return` plus the two
+        log URLs on the operation — no websocket and no PTY, which is what keeps the
+        controller's stdlib client sufficient (same reasoning as `_await_write`: an
+        operation reaching Success is what proves the command ran).
+
+        The recorded stdout is returned as `detail` so a caller can parse the
+        command's own JSON answer; a non-zero exit is an `error` whose `detail`
+        carries stderr, never an `ok` with no output.
+        """
+        if not command:
+            raise ValueError("exec_instance needs a command")
+        body = {
+            "command": [str(c) for c in command],
+            "environment": environment or {},
+            "wait-for-websocket": False,
+            "record-output": True,
+            "interactive": False,
+            "cwd": cwd,
+        }
+        path = f"/1.0/instances/{name}/exec"
+        r = self._request("POST", path, body)
+        if r.result != "ok":
+            return r
+        op = _operation_url(r.detail)
+        if not op:
+            r.result = "error"
+            r.detail = f"exec on {name} returned no operation URL: {r.detail[:300]}"
+            return r
+
+        deadline = time.monotonic() + max(1.0, float(timeout_s))
+        while True:
+            rr, meta = self._read_json(op)
+            if rr.result != "ok":
+                return rr
+            md = meta.get("metadata") if isinstance(meta, dict) else None
+            md = md if isinstance(md, dict) else {}
+            status = md.get("status") or ""
+            if status == "Success":
+                inner = md.get("metadata") if isinstance(md.get("metadata"), dict) else {}
+                outputs = inner.get("output") if isinstance(inner.get("output"), dict) else {}
+                rc = inner.get("return")
+                stdout = stderr = ""
+                for stream, log_path in (outputs or {}).items():
+                    lr, lmeta = self._read_json(str(log_path))
+                    text = ""
+                    if lr.result == "ok" and isinstance(lmeta, dict):
+                        text = str(lmeta.get("metadata") or "")
+                    if str(stream) == "1":
+                        stdout = text
+                    else:
+                        stderr = text
+                r.operation = op
+                r.status = 200
+                if rc in (0, None):
+                    r.result = "ok"
+                    r.detail = stdout
+                else:
+                    r.result = "error"
+                    r.detail = (f"exec on {name} exited {rc}: "
+                                f"{(stderr.strip() or stdout.strip())[:300]}")
+                return r
+            if status in ("Failure", "Cancelled"):
+                r.result = "error"
+                r.operation = op
+                r.detail = f"exec operation {status}: {md.get('err') or op}"
+                return r
+            if time.monotonic() >= deadline:
+                r.result = "error"
+                r.operation = op
+                r.detail = (f"exec on {name} still {status or 'pending'} after "
+                            f"{timeout_s}s: {op}")
+                return r
+            time.sleep(poll_s)
+
     def create_instance(
         self,
         name: str,

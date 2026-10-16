@@ -53,6 +53,20 @@ class BrokerConfig:
 
 
 @dataclass(frozen=True)
+class TasksConfig:
+    """The in-VM task-submit surface's bounds (agent-runtime.md §5.6).
+
+    `max_concurrent` is the per-INSTANCE bound: the number of tasks this instance
+    will run at once for its owner. It is what stops a client's task load from
+    saturating the node, so it defaults to the broker's worker count (one worker
+    per concurrent task) rather than to something open-ended.
+    """
+
+    max_concurrent: int = 2
+    result_sink: str = "/var/lib/termini/agent/results"
+
+
+@dataclass(frozen=True)
 class LoggingConfig:
     sink: str = "/var/log/termini/agent.jsonl"
     local_only: bool = True
@@ -68,6 +82,7 @@ class AgentConfig:
     broker: BrokerConfig
     logging: LoggingConfig
     raw: dict[str, Any] = field(default_factory=dict)
+    tasks: TasksConfig = field(default_factory=TasksConfig)
 
     # -- derived ---------------------------------------------------------------
     def inference_token(self) -> str | None:
@@ -92,6 +107,8 @@ class AgentConfig:
             },
             "broker": {"endpoint": self.broker.endpoint,
                        "max_concurrent_tasks": self.broker.max_concurrent_tasks},
+            "tasks": {"max_concurrent": self.tasks.max_concurrent,
+                      "result_sink": self.tasks.result_sink},
             "logging": {"sink": self.logging.sink, "local_only": self.logging.local_only},
         }
 
@@ -168,6 +185,7 @@ def load_config(path: str | os.PathLike[str] = DEFAULT_CONFIG_PATH, *,
     inj = data.get("inference") or {}
     brk = data.get("broker") or {}
     log = data.get("logging") or {}
+    tsk = data.get("tasks") or {}
 
     allowed_networks = _validate_networks(
         inj.get("allowed_networks") or list(ALLOWED_INFERENCE_NETWORKS)
@@ -200,6 +218,12 @@ def load_config(path: str | os.PathLike[str] = DEFAULT_CONFIG_PATH, *,
             endpoint=str(_require(brk, "endpoint", "broker")),
             pull_interval_s=float(brk.get("pull_interval_s", 1.0)),
             max_concurrent_tasks=int(brk.get("max_concurrent_tasks", 2)),
+        ),
+        tasks=TasksConfig(
+            # The §5.6 per-instance bound. Defaults to the broker's worker count so
+            # an image predating this key still gets a real bound, never "unlimited".
+            max_concurrent=int(tsk.get("max_concurrent", brk.get("max_concurrent_tasks", 2))),
+            result_sink=str(tsk.get("result_sink", "/var/lib/termini/agent/results")),
         ),
         logging=LoggingConfig(
             sink=str(log.get("sink", "/var/log/termini/agent.jsonl")),

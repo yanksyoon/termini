@@ -11,8 +11,8 @@ Rules enforced here:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Iterator, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Iterator, Sequence
 
 from .config import AgentConfig, InferenceConfig
 from .ulid import new_ulid
@@ -30,8 +30,20 @@ class ModelNotAllowed(InferenceError):
     code = "MODEL_NOT_ALLOWED"
 
 
+class ModelNotFound(InferenceError):
+    """The endpoint does not serve the alias the config names (§10.5 404)."""
+
+    code = "MODEL_NOT_FOUND"
+
+
 class InferenceTimeout(InferenceError):
     code = "INFERENCE_TIMEOUT"
+
+
+class InferenceUnreachable(InferenceError):
+    """Nothing is listening / no route — distinct from a slow-but-alive call."""
+
+    code = "INFERENCE_UNREACHABLE"
 
 
 class InferenceBusy(InferenceError):
@@ -40,6 +52,31 @@ class InferenceBusy(InferenceError):
 
 class InferenceUnavailable(InferenceError):
     code = "MODEL_UNAVAILABLE"
+
+
+class EmptyCompletion(InferenceError):
+    """HTTP 200 with empty content — a failure, never an empty answer."""
+
+    code = "EMPTY_COMPLETION"
+
+
+@dataclass
+class Completion:
+    """A non-streaming completion plus what actually answered it.
+
+    `provenance` is taken from the endpoint's own in-band labelling (`termini_backend`
+    body block / `X-Termini-Backend` header, infra/inference/proxy.py) so a caller can
+    say honestly which backend served an answer — including when that backend is a
+    *forwarded* managed model rather than local weights. It is never inferred here.
+    """
+
+    content: str
+    model: str
+    request_id: str
+    provenance: dict[str, Any] = field(default_factory=dict)
+    usage: dict[str, Any] = field(default_factory=dict)
+    timings: dict[str, Any] = field(default_factory=dict)
+    status: int = 200
 
 
 @dataclass
@@ -137,6 +174,82 @@ class InferenceClient:
         except Exception as exc:  # noqa: BLE001
             raise _translate(exc) from exc
 
+    def complete_with_provenance(
+        self,
+        messages: Sequence[Message | dict[str, str]],
+        *,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> Completion:
+        """One non-streaming call that also reports *what* answered it.
+
+        Used by the task surface (§5.6): a task result must carry the endpoint's own
+        provenance label (backend / answered_by / egress) next to the answer, so a
+        caller never has to assume local inference. The request obeys the same rules
+        as `complete` — config-scoped base URL, an allowed alias, attribution
+        headers — but the transport is plain `httpx` so response headers and the
+        `termini_backend` block are readable (the vendored SDK hides them).
+        """
+        import httpx  # noqa: PLC0415 — vendored in the image, not needed for import
+
+        alias = self.resolve_model(model)
+        msgs = [m.as_dict() if isinstance(m, Message) else dict(m) for m in messages]
+        rid = self.request_id()
+        payload: dict[str, Any] = {"model": alias, "messages": msgs, "stream": False}
+        if max_tokens is not None:
+            payload["max_tokens"] = int(max_tokens)
+        if temperature is not None:
+            payload["temperature"] = float(temperature)
+        headers = {"Content-Type": "application/json",
+                   "Authorization": f"Bearer {self.cfg.inference_token() or 'termini-local'}",
+                   **self.headers(rid)}
+        url = f"{self.infer.base_url.rstrip('/')}/v1/chat/completions"
+
+        timeout = httpx.Timeout(self.infer.request_timeout_s,
+                                connect=self.infer.connect_timeout_s)
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.post(url, json=payload, headers=headers)
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError) as exc:
+            raise InferenceUnreachable(
+                f"inference endpoint {self.infer.base_url} is unreachable: {exc}") from exc
+        except httpx.TimeoutException as exc:
+            raise InferenceTimeout(
+                f"inference endpoint did not answer within "
+                f"{self.infer.request_timeout_s}s: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise InferenceError(f"{type(exc).__name__}: {exc}") from exc
+
+        if resp.status_code >= 400:
+            raise _translate_status(resp.status_code, resp.text)
+
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise InferenceError(
+                f"inference endpoint returned non-JSON: {resp.text[:200]}") from exc
+
+        choices = data.get("choices") or []
+        content = ""
+        if choices and isinstance(choices[0], dict):
+            message = choices[0].get("message") or {}
+            content = message.get("content") or ""
+        if not content.strip():
+            raise EmptyCompletion(
+                "inference endpoint returned HTTP 200 with empty content "
+                f"(model={data.get('model')!r}, finish_reason="
+                f"{(choices[0].get('finish_reason') if choices else None)!r})")
+        return Completion(
+            content=content,
+            model=resp.headers.get("X-Termini-Model") or str(data.get("model") or alias),
+            request_id=resp.headers.get("X-Termini-Request-Id") or rid,
+            provenance=_provenance(data, resp.headers),
+            usage=dict(data.get("usage") or {}),
+            timings=dict(data.get("timings") or {}),
+            status=resp.status_code,
+        )
+
     def health(self) -> dict:
         """Probe the router's /health (best-effort; never raises)."""
         try:
@@ -149,6 +262,9 @@ class InferenceClient:
 def _translate(exc: Exception) -> InferenceError:
     import httpx  # noqa: PLC0415
 
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)) and not isinstance(
+            exc, httpx.ReadTimeout):
+        return InferenceUnreachable(str(exc))
     if isinstance(exc, (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.TimeoutException)):
         return InferenceTimeout(str(exc))
     if isinstance(exc, httpx.HTTPStatusError):
@@ -158,3 +274,57 @@ def _translate(exc: Exception) -> InferenceError:
         if status in (502, 504):
             return InferenceUnavailable(str(exc))
     return InferenceError(f"{type(exc).__name__}: {exc}")
+
+
+def _translate_status(status: int, body: str) -> InferenceError:
+    """Map an HTTP error from the endpoint onto the §10.5 code family.
+
+    The distinction that matters for the task surface is *which* failure this is:
+    an unknown alias (`MODEL_NOT_FOUND`) and an endpoint with no usable backend
+    (`MODEL_UNAVAILABLE`) must not be reported as a generic error, and neither may
+    be mistaken for the timeout a slow model would produce.
+    """
+    detail = " ".join(body.split())[:300]
+    text = f"inference endpoint refused the call ({status}): {detail}"
+    if status == 401:
+        return InferenceError("UNAUTHENTICATED: " + text)
+    if status == 404:
+        return ModelNotFound(text)
+    if status == 413:
+        return InferenceError("CONTEXT_LENGTH_EXCEEDED: " + text)
+    if status == 429:
+        return InferenceBusy(text)
+    if status == 503:
+        return InferenceUnavailable(text)
+    if status == 504:
+        return InferenceTimeout(text)
+    if status == 400 and "model" in detail.lower():
+        # The router's `400 INVALID_ARGUMENT` for `model: auto`/an unknown alias.
+        return ModelNotFound(text)
+    return InferenceError(text)
+
+
+def _provenance(data: dict[str, Any], headers: Any) -> dict[str, Any]:
+    """What answered this call, taken from the endpoint's own in-band labels.
+
+    `infra/inference/proxy.py` puts the truth in the body (`termini_backend`) and in
+    `X-Termini-*` headers; a plain llama.cpp answers with neither, in which case the
+    honest answer is "unknown backend" — never an assumed "local".
+    """
+    block = data.get("termini_backend")
+    prov: dict[str, Any] = dict(block) if isinstance(block, dict) else {}
+    header_map = {
+        "backend": "X-Termini-Backend",
+        "answered_by": "X-Termini-Answered-By",
+        "egress": "X-Termini-Egress",
+        "destination": "X-Termini-Destination",
+        "forwarded": "X-Termini-Forwarded",
+    }
+    for key, header in header_map.items():
+        if prov.get(key) is None and headers.get(header):
+            prov[key] = headers.get(header)
+    prov.setdefault("backend", "unknown")
+    prov.setdefault("forwarded", False)
+    prov.setdefault("source", "endpoint-in-band" if block else "unlabelled-endpoint")
+    return prov
+
