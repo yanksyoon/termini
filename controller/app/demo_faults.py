@@ -347,14 +347,28 @@ def open_fault_for_rule(conn, project_id: str, node_id: str, rule_id: str) -> di
     return _row_to_dict(row) if row else None
 
 
-def update_fault(conn, injection_id: str, **fields) -> None:
+def update_fault(conn, injection_id: str, *, where_state: str | None = None,
+                 **fields) -> int:
+    """Patch one injection row. Returns the number of rows actually changed.
+
+    `where_state` makes the write a COMPARE-AND-SET: it applies only while the row
+    is still in the state the caller observed. The driver reads its open rows at the
+    START of a tick and writes at the end, so without this guard a clear (or a TTL)
+    landing mid-tick was overwritten by the in-flight tick: on main's CI that showed
+    up as a cleared injection resurrected to `active` — an EARLIER state than
+    `recovering` — and a series the clear had just restored re-breached.
+
+    A lost CAS is not an error: the newer write (the operator's) is the truth.
+    """
     if not fields:
-        return
+        return 0
     cols = ", ".join(f"{k} = ?" for k in fields)
-    conn.execute(
-        f"UPDATE demo_faults SET {cols} WHERE injection_id = ?",
-        (*fields.values(), injection_id),
-    )
+    sql = f"UPDATE demo_faults SET {cols} WHERE injection_id = ?"
+    params: list = [*fields.values(), injection_id]
+    if where_state is not None:
+        sql += " AND state = ?"
+        params.append(where_state)
+    return conn.execute(sql, params).rowcount
 
 
 def _epoch(ts: str | None) -> float:
@@ -522,8 +536,13 @@ class DemoFaultInjector(threading.Thread):
             if elapsed >= float(row["duration_s"] or DEFAULT_DURATION_S):
                 # TTL: end the fault loudly, then run the recovery burst so the rule
                 # re-arms (never stop mid-series and leave the rule breached).
-                update_fault(conn, injection_id, state="recovering", cleared_at=ts,
-                             cleared_by="ttl", clear_reason="ttl_expired")
+                if not update_fault(conn, injection_id, state="recovering", cleared_at=ts,
+                                    cleared_by="ttl", clear_reason="ttl_expired",
+                                    where_state="active"):
+                    # The operator cleared it while this tick was in flight: their
+                    # clear (and its attribution) is the newer truth — do not
+                    # overwrite it, and do not log a TTL that did not end anything.
+                    return
                 self._emit_log(
                     conn, node_id,
                     f"fault TTL expired after {float(row['duration_s']):.0f}s — auto-clearing: "
@@ -544,14 +563,15 @@ class DemoFaultInjector(threading.Thread):
             if call_id is None:
                 return
             done = n >= clear_n
-            update_fault(
+            applied = update_fault(
                 conn, injection_id, next_seq=seq + 1,
                 samples_written=int(row["samples_written"] or 0) + 1,
                 recovery_samples=n,
                 state="cleared" if done else "recovering",
                 cleared_at=ts if done else row["cleared_at"],
+                where_state="recovering",
             )
-            if done:
+            if done and applied:
                 self._supersede_logged.discard(injection_id)
                 self._emit_log(
                     conn, node_id,
@@ -610,6 +630,15 @@ class DemoFaultInjector(threading.Thread):
         return call_id
 
     def _write_sample(self, conn, node: dict, row: dict, sample: dict, *, state_after: str) -> None:
+        # `row` was read at the START of this tick; a clear (or a TTL) can have landed
+        # since. Re-read before doing anything, so a superseded tick does not write a
+        # stale breaching sample, and keep the write a compare-and-set on the state
+        # this tick observed: an unconditional write RESURRECTED a cleared injection
+        # (`active` over `recovering`) and re-breached the series the clear had just
+        # restored. Losing the race is not an error — the operator's clear is newer.
+        fresh = get_fault(conn, row["injection_id"])
+        if fresh is None or fresh["state"] != row["state"]:
+            return
         seq = self._next_seq(conn, row, node["id"])
         sample["seq"] = seq
         if self._insert_sample(conn, node, sample) is None:
@@ -619,6 +648,7 @@ class DemoFaultInjector(threading.Thread):
         update_fault(
             conn, row["injection_id"], next_seq=seq + 1,
             samples_written=int(row["samples_written"] or 0) + 1, state=state_after,
+            where_state=row["state"],
         )
 
     # ------------------------------------------------------------ console API
