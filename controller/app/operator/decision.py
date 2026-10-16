@@ -381,6 +381,56 @@ def build_allowed_action_space(allowed_actions: Iterable[str] | None = None) -> 
     return out
 
 
+# The monotonic cumulative counters whose diagnostic signal is the DELTA over the
+# evidence window, not the raw total (research t_cae0dfa8 rows 2/3/7; the infra
+# collector hand-off's "cumulative, not rates"). Each delta is computed by the
+# controller and labelled derived in the `derived` object — never presented as a
+# raw sample.
+_CUMULATIVE_COUNTERS: tuple[str, ...] = (
+    "oom_kill_count", "pgmajfault_count", "tcp_retransmit_segs",
+)
+
+
+def _is_counter(value: Any) -> bool:
+    """True when ``value`` is a usable cumulative counter (finite non-negative)."""
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and value >= 0
+    )
+
+
+def build_window_deltas(evidence: list) -> dict:
+    """Derived deltas over the evidence window for the cumulative counters (§3.1).
+
+    Each delta is ``newest - oldest`` over the (oldest-first, already capped)
+    evidence window, emitted only when BOTH ends carry a finite non-negative
+    counter and the counter did not reset (``newest >= oldest`` — a node reboot
+    or a counter wrap is omitted, never a negative delta, and a missing field is
+    omitted, never a fabricated 0, matching the collector's omit-not-fabricate
+    rule). Returns at least ``{"window_samples": n}``.
+
+    Pure and C0-only: the result is a flat object of non-negative ints built
+    from the same C0 samples the provider already hands to the model.
+    """
+    samples = [s for s in (evidence or []) if isinstance(s, dict)]
+    out: dict = {"window_samples": len(samples)}
+    if len(samples) < 2:
+        return out
+    oldest, newest = samples[0], samples[-1]
+    for name in _CUMULATIVE_COUNTERS:
+        a = oldest.get(name)
+        b = newest.get(name)
+        if not (_is_counter(a) and _is_counter(b)):
+            continue
+        delta = int(b) - int(a)  # type: ignore[operator,arg-type]
+        if delta < 0:
+            continue
+        out[f"{name}_delta"] = delta
+    return out
+
+
 def build_decision_input(context: DecisionContext, request_id: str | None = None) -> DecisionInput:
     """Assemble the §3 ``DecisionInput`` from a ``DecisionContext``."""
     event = context.event
@@ -406,6 +456,7 @@ def build_decision_input(context: DecisionContext, request_id: str | None = None
             "instances": list(context.instances or []),
         },
         allowed_action_space=build_allowed_action_space(context.allowed_actions),
+        derived=build_window_deltas(context.evidence or []),
         schema_version=SCHEMA_VERSION,
     )
 
@@ -1476,6 +1527,7 @@ __all__ = [
     "build_decision_input",
     "build_decision_provider",
     "build_fallback_incident",
+    "build_window_deltas",
     "in_forced_cooldown",
     "safe_int_display",
     "sha256_display",

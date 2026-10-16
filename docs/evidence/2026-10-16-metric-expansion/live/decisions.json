@@ -1,0 +1,129 @@
+{
+  "decisions": [
+    {
+      "action_kind": "instance.restart",
+      "action_params": {
+        "_vm_id": "01M4349RPXWDC52ZDAVMPCMJSH",
+        "force": true,
+        "instance_name": "01M4349RPXWDC52ZDAVMPCMJSH",
+        "timeout_s": 30
+      },
+      "confidence": 0.9,
+      "decided_at": "2026-10-16T22:01:41.317Z",
+      "decision_source": "model",
+      "decision_trace": {
+        "decided_by": "model",
+        "steps": [
+          {
+            "detail": "rule_id=oom-guard-01 event_id=01M53BRCB8Y6K5VZ5ENW27F3QQ fired_at=2026-10-16T22:01:40.958Z detection_latency_ms=1958",
+            "label": "rule oom-guard-01 fired",
+            "state": "ok",
+            "step": "threshold_fired",
+            "ts": "2026-10-16T22:01:41.509Z"
+          },
+          {
+            "detail": "seq 1..2 (2 samples) C0 fields: conntrack_count, conntrack_max, cpu_core_count, cpu_temp_celsius, cpu_util_pct, disk, kernel_version, load_avg_1m, lxd_cluster_role, lxd_instances, mem_available_bytes, net, oom_kill_count, os_name, os_version, pgmajfault_count, pressure, ram_total_bytes, ram_used_bytes, seq, services, swap_used_bytes, tcp_retransmit_segs, ts, uptime_sec",
+            "label": "evidence window captured",
+            "state": "ok",
+            "step": "evidence_window",
+            "ts": "2026-10-16T22:01:41.510Z"
+          },
+          {
+            "detail": "template=operator-decision v2 sha256=52276e31-8e5189a2-1f001e60-7c65b87b-ea60210f-e8669d77-8ea732aa-79aadaa3 substituted_fields=430 C0_assertion=ok",
+            "label": "prompt rendered (C0 assertion ok)",
+            "state": "ok",
+            "step": "prompt_built",
+            "ts": "2026-10-16T22:01:41.807Z"
+          },
+          {
+            "detail": "endpoint=local model=unknown answered_by=unknown latency_ms=202 request_id=01M53BRCW638DB0ESRTF8B8SS9",
+            "label": "model answered",
+            "state": "ok",
+            "step": "model_call",
+            "ts": "2026-10-16T22:01:41.807Z"
+          },
+          {
+            "detail": "[dropped: C2]",
+            "label": "model reply received",
+            "state": "rejected",
+            "step": "reply_received",
+            "truncated": false,
+            "ts": "2026-10-16T22:01:41.811Z"
+          },
+          {
+            "detail": "rule=G7 field=rationale decision=accept (C0-safe, within bounds)",
+            "label": "G7 rationale",
+            "state": "ok",
+            "step": "gates",
+            "ts": "2026-10-16T22:01:41.811Z"
+          },
+          {
+            "detail": "rule=G9 decision=accept (record clean or absent)",
+            "label": "G9 incident record",
+            "state": "ok",
+            "step": "gates",
+            "ts": "2026-10-16T22:01:41.811Z"
+          },
+          {
+            "detail": "rule=G9 field=trace.reply_received.detail decision=drop (C2 signature in model reply: : phone-number signature)",
+            "label": "G9 trace detail",
+            "state": "dropped",
+            "step": "gates",
+            "ts": "2026-10-16T22:01:41.811Z"
+          },
+          {
+            "detail": "action_kind=instance.restart target=01M4349RPXWDC52ZDAVMPCMJSH",
+            "label": "action decided: instance.restart",
+            "state": "ok",
+            "step": "action_decided",
+            "ts": "2026-10-16T22:01:41.811Z"
+          }
+        ],
+        "trace_version": 1
+      },
+      "event_id": "01M53BRCB8Y6K5VZ5ENW27F3QQ",
+      "fallback_reason": null,
+      "id": "01M53BRD6KXHMB0KAY69925KVG",
+      "incident_actions": [
+        {
+          "action_kind": "instance.restart",
+          "note": "instance.restart is the action the oom-guard-01 rule maps to; it removes the load named above",
+          "target": "01M4349RPXWDC52ZDAVMPCMJSH"
+        }
+      ],
+      "incident_evidence": [
+        {
+          "field": "pressure.memory_some_avg10",
+          "seq": 2,
+          "ts": "2026-10-16T22:01:40.000Z",
+          "value": 92.1
+        },
+        {
+          "field": "pressure.cpu_some_avg10",
+          "seq": 2,
+          "ts": "2026-10-16T22:01:40.000Z",
+          "value": 12.3
+        },
+        {
+          "field": "ram_used_bytes",
+          "seq": 2,
+          "ts": "2026-10-16T22:01:40.000Z",
+          "value": 66200000000
+        },
+        {
+          "field": "lxd_instances.ram_used_bytes",
+          "seq": 2,
+          "value": 10000000000
+        }
+      ],
+      "incident_explanation": "ram_used_bytes is at 96.3% of ram_total_bytes, and one instance holds 14.6% of the node's RAM by itself. That points at a single workload rather than fleet-wide pressure, so acting on that instance addresses the breach without touching the node.",
+      "incident_generated": "model",
+      "incident_title": "Memory exhaustion on node 01M53BRAZKYXAZ6WXJ4EYECXHK",
+      "node_id": "01M53BRAZKYXAZ6WXJ4EYECXHK",
+      "playbook": "oom-guard-01",
+      "reason": "ram_used_bytes at 96.3 on node 01M53BRAZKYXAZ6WXJ4EYECXHK crossed the oom-guard-01 threshold; instance.restart on 01M4349RPXWDC52ZDAVMPCMJSH reclaims it",
+      "rule_id": "oom-guard-01",
+      "trace_version": 1
+    }
+  ]
+}

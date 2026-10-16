@@ -192,7 +192,13 @@ classes before the call is made).
     { "action_id": "instance.delete",
       "params_schema": { "instance_name": "string" } },
     { "action_id": "image.prune", "params_schema": {} }
-  ]
+  ],
+  "derived": {
+    "window_samples": 20,
+    "oom_kill_count_delta": 3,
+    "pgmajfault_count_delta": 4512,
+    "tcp_retransmit_segs_delta": 18
+  }
 }
 ```
 
@@ -212,10 +218,38 @@ classes before the call is made).
 | `target_resource.node_id` | string (ULID) | yes | target node (== `node_id`) |
 | `target_resource.instances` | array | yes | the node's `lxd_instances[]`; the model's only valid `instance_name` targets |
 | `allowed_action_space` | array | yes | the whitelist the model may choose from (generated from §5 `ACTION_SPACE`, intersected with `allowed_actions`) |
+| `derived` | object | yes | controller-computed deltas over the evidence window (see §3.2); `{}` when no delta could be computed |
 
 `state`, `evidence`, and `target_resource.instances` are serialized **verbatim**
 from the telemetry store — no transformation, no C1/C2 content (the store already
-holds only validated C0/C1 samples).
+holds only validated C0/C1 samples). `derived` is the one controller-computed
+field: it is built from the same C0 samples, so it stays C0, but it is a derived
+aggregate, never a raw sample.
+
+### 3.2 The `derived` object (controller-computed, never raw)
+
+The cumulative counters in `state`/`evidence` — `oom_kill_count`,
+`pgmajfault_count`, `tcp_retransmit_segs` (and the per-array cumulative
+counters in `disk[]`/`net[]`/`lxd_instances[]`) — are **monotonic** totals. Their
+diagnostic signal is the *delta over the window* ("is it rising?"), not the raw
+total at one sample. The controller therefore computes the window delta for the
+three flat node-level counters and ships it under `derived`, labelled as derived:
+
+| key | type | meaning |
+|-----|------|---------|
+| `window_samples` | integer | the number of samples in the evidence window |
+| `oom_kill_count_delta` | integer | `newest - oldest` of `oom_kill_count` over the window |
+| `pgmajfault_count_delta` | integer | `newest - oldest` of `pgmajfault_count` over the window |
+| `tcp_retransmit_segs_delta` | integer | `newest - oldest` of `tcp_retransmit_segs` over the window |
+
+A delta is **omitted** (never a fabricated `0`, never negative) when the field is
+absent at either end or the counter reset (`newest < oldest`, e.g. a node
+reboot). This mirrors the collector's omit-not-fabricate rule (`node-telemetry.md`
+§4.12–§4.14): a missing `pressure{}` is an absent key, not a `0.0`. The per-array
+cumulative counters remain raw samples in the window and are read across it; a
+delta over them is still derived, never presented as a raw sample. `derived` is
+additive within schema `1` (§12) and is validated deny-by-default by
+`externalModelCall()` exactly like every other substituted field (§7.2).
 
 ---
 
@@ -304,6 +338,30 @@ file contents, prompt text), and `field` may not be an invented path — the G9 
 (§7) runs the same C2 signature scan over every incident string that G7 runs over
 `rationale`.
 
+**The new metric groups are quotable by name, with no pattern change
+(t_922b3268).** The `^[a-z0-9_]+(\.[a-z0-9_]+)*$` field-name pattern already
+admits every new name, so they are *added to the accepted set*, never enabled by
+loosening the pattern. The quotable names are: `pressure.cpu_some_avg10`,
+`pressure.io_some_avg10`, `pressure.memory_some_avg10`,
+`pressure.memory_full_avg10`, `oom_kill_count`, `pgmajfault_count`,
+`mem_available_bytes`, `tcp_retransmit_segs`, `conntrack_count`, `conntrack_max`,
+`disk.io_ticks_ms`, `disk.io_in_flight`, `disk.inode_used`, `disk.inode_total`,
+`net.rx_errors`, `net.tx_errors`, `net.rx_dropped`, `net.tx_dropped`,
+`lxd_instances.oom_kill_count`, `lxd_instances.pgmajfault_count`.
+
+- `pressure.*` is the remediation-changing group (research `t_cae0dfa8` row 1):
+  cpu/memory PSI high means memory-bound (restart is right); io PSI high with
+  healthy RAM means I/O-bound (shed I/O, restart is wrong). The model quotes
+  `pressure.*` **first** in `evidence[]` when it is present.
+- The cumulative counters (`oom_kill_count`, `pgmajfault_count`,
+  `tcp_retransmit_segs`, and the per-array counters) are raw monotonic totals
+  in the samples; their **delta is derived** (the `derived` object, §3.2) and is
+  never quoted in `evidence[]` as if it were a raw sample value. A quoted
+  cumulative counter must carry its raw value and `seq`, never a delta.
+- A field that is absent from the sample is not quotable at all — there is no
+  value to quote, and a quoted `0.0` must be a *measured* `0.0` (genuinely no
+  stall), not a stand-in for "unreadable".
+
 `actions[]` is what the model **decided**; the *executed* result and its audit id
 are joined by the reader (the controller API pairs the decision row with its
 `remediation_audits` row), so the record never asserts an outcome the executor has
@@ -336,7 +394,7 @@ the panel can show a thinking log rather than only a conclusion.
       "state": "ok" },
     { "step": "prompt_built", "ts": "…",
       "label": "prompt rendered (C0 assertion ok)",
-      "detail": "template=operator-decision v1 sha256=<payload-sha256> substituted_fields=N C0_assertion=ok",
+      "detail": "template=operator-decision v2 sha256=<payload-sha256> substituted_fields=N C0_assertion=ok",
       "state": "ok" },
     { "step": "model_call", "ts": "…",
       "label": "model answered",
@@ -373,6 +431,12 @@ the panel can show a thinking log rather than only a conclusion.
 | 7 | `action_decided` | provider | `action_kind`, `target` (or the fallback action + reason) |
 | 8 | `executed` | loop, in the audit transaction | the audit row's result + remediation latency, or the error |
 | 9 | `audit_recorded` | loop, in the audit transaction | the audit id and decision id |
+
+The `evidence_window` step's `detail` names the C0 fields the prompt carried via
+`_c0_field_names` — so with the metric groups it reads e.g.
+`C0 fields: conntrack_count, conntrack_max, disk, lxd_instances, mem_available_bytes,
+net, oom_kill_count, pgmajfault_count, pressure, tcp_retransmit_segs, …` — the new
+field *names*, never their C1 identifiers or values.
 
 #### Field reference
 
@@ -480,7 +544,7 @@ sibling of `termini/intent/` (mirrors its structure exactly).
 | module | contents |
 |--------|----------|
 | `types.py` | `DecisionInput`, `DecisionResponse`, `DecisionError`, `ACTION_SPACE`, `FALLBACK_REASONS`, frozen bounds |
-| `prompt.py` | versioned template `operator-decision v1` + JSON schema + few-shot; `build_messages(input)` |
+| `prompt.py` | versioned template `operator-decision v2` + JSON schema + few-shot; `build_messages(input)` |
 | `adapter.py` | `render(input) -> messages`, `parse(content) -> DecisionResponse | DecisionError`, `decide(input, client, config) -> DecisionResponse | DecisionError` |
 | `config.py` | `DecisionModelConfig` (reuses `TERMINI_INFERENCE_*`, model `deepseek-flash`) |
 
@@ -514,7 +578,7 @@ X-Termini-Request-Id: <request_id>
 ```json
 {
   "model": "deepseek-flash",
-  "messages": [ {"role": "system", "content": "<operator-decision v1 system prompt>"},
+  "messages": [ {"role": "system", "content": "<operator-decision v2 system prompt>"},
                  ...few-shot...,
                  {"role": "user", "content": "<JSON-serialized DecisionInput>"} ],
   "temperature": 0,
@@ -524,7 +588,7 @@ X-Termini-Request-Id: <request_id>
 }
 ```
 
-- The system prompt is the versioned `operator-decision v1` template
+- The system prompt is the versioned `operator-decision v2` template
   (`governance.md` §7.2: static template, typed C0 placeholders only).
 - The user message is the `DecisionInput` serialized as compact JSON, embedded in
   the template's single `{{decision_input}}` placeholder.
@@ -578,6 +642,27 @@ explanation carrying C2 material is a hard fallback, exactly as `rationale` is.
 The all-or-nothing rule from `controller-api.md` §5.3 does **not** apply here — a
 fallback produces a deterministic action, not a rejection.
 
+**No new gate for the metric groups (t_922b3268).** None of the §4.12–§4.14
+fields introduces a new remediation precondition (the research card `t_cae0dfa8`
+§4 reached the same conclusion): they change *which* action the model chooses and
+how it is explained, not *whether* an action is safe to execute. G1–G9 run
+unchanged, and G9's `evidence[].field` pattern already admits every new dotted
+name, so no G9 bound changes either. The new `derived` object is guarded by the
+§7.2 class assertion in `externalModelCall()` (deny-by-default on its keys), not
+by a new guardrail rule — removal of that assertion is pinned by a test.
+
+**No new detection rule either (same reason, t_922b3268).** The §4.12–§4.14
+fields carry **no threshold and no rule id**: `node-telemetry.md` §5 still lists
+only the four frozen rules (`oom-guard-01`, `disk-fail-01`, `disk-degrade-01`,
+`gpu-oos-01`), and none of the new fields participates in deterministic
+detection. They are **model inputs only** — the diagnosis reads `pressure.*` /
+`oom_kill_count` / the deltas in the prompt and reasons over them, within the
+existing G1–G9 boundary. A dashboard must render their values without inventing
+a client-side threshold (a client-side flag would be a second, silently-diverging
+rule set), and a deterministic PSI/OOM rule — if one is ever wanted — is a
+separate contract + detection change (`node-telemetry.md` §5 + the controller's
+detection layer), owned by a follow-up card, not something to assume exists.
+
 The guardrail returns a `RemediationAction` (built from the *validated* response,
 never the raw output) plus the `guardrail` decision list for the audit record.
 
@@ -621,6 +706,13 @@ the fired `HealthEvent` (its `rule_id`, `metric`, `value`, `threshold`, sample
 model's own validated output (i.e. `source == "model"` and the response passed
 G9). A record with `generated: "model"` that did not come from a model is a
 contract violation, and the test suite pins the two paths apart.
+
+**Fallback parity with the metric groups (t_922b3268).** The fallback record is
+built only from the fired event's own C0 fields (`metric`, `value`, `threshold`,
+sample `seq`). None of the §4.12–§4.14 fields is part of the `HealthEvent`, so
+there is nothing new to fill — and the fallback never fabricates a pressure or
+counter value. The labelled record therefore stays exactly as it was: a fallback
+is labelled, not blank, and the metric groups change nothing on this path.
 
 In `deterministic` mode (`TERMINI_OPERATOR_DECISION_MODE=deterministic`, §12) no
 incident record is written at all: that mode must stay **byte-identical** to the
@@ -753,6 +845,11 @@ dashboard's live AI-operator panel therefore shows the decision source inline.
 - The deterministic provider's output must be **byte-identical** to today's
   `playbook.choose`, so existing operator-loop tests pass unchanged in
   `deterministic` mode.
+- `derived` (and the metric groups in the prompt) are computed/assembled only on
+  the model path (`build_decision_input`); the deterministic provider never
+  reaches it, so deterministic mode writes no `derived`, no incident and no trace
+  columns — the byte-identical guarantee is unchanged by the metric groups, and a
+  test pins it.
 - A controller run with `mode=deterministic` must have **zero** code paths
   reachable that construct a model request (verifier checks this explicitly).
 
@@ -800,7 +897,7 @@ All added to `controller/app/config.py` `Config` + `load()`.
 |------|--------|
 | `termini/decision/__init__.py` | **NEW** — package exports |
 | `termini/decision/types.py` | **NEW** — `DecisionInput`, `DecisionResponse`, `DecisionError`, `ACTION_SPACE`, `FALLBACK_REASONS`, bounds |
-| `termini/decision/prompt.py` | **NEW** — `operator-decision v1` template + JSON schema + few-shot + `build_messages` |
+| `termini/decision/prompt.py` | **NEW** — `operator-decision v2` template + JSON schema + few-shot + `build_messages` |
 | `termini/decision/adapter.py` | **NEW** — `render`, `parse`, `decide` (§6) |
 | `termini/decision/config.py` | **NEW** — `DecisionModelConfig` (reuses `TERMINI_INFERENCE_*`) |
 | `termini/decision/README.md` | **NEW** — local-run doc against §15 example payloads |
@@ -827,7 +924,7 @@ All added to `controller/app/config.py` `Config` + `load()`.
 | path | change |
 |------|--------|
 | `termini/decision/types.py` | `DecisionResponse` gains `incident_title`/`explanation`/`evidence`/`actions` + the §4.2 bound constants |
-| `termini/decision/prompt.py` | the JSON schema, the rules block and the few-shot examples carry the incident record (template stays `operator-decision v1`: §12 additive) |
+| `termini/decision/prompt.py` | the JSON schema, the rules block and the few-shot examples carry the incident record (template then `operator-decision v1`; bumped to `operator-decision v2` by t_922b3268 for the metric groups) |
 | `termini/decision/adapter.py` | parse + light repair of the four fields (bounded, typed, entries dropped when malformed) |
 | `controller/app/operator/decision.py` | `DecisionResult.incident`, `GuardrailResult.incident`, guardrail **G9**, and the §8.1 labelled fallback record |
 | `controller/app/operator/store.py` | `insert_decision(..., incident=None)` writes the five columns in the same statement |
@@ -848,6 +945,17 @@ All added to `controller/app/config.py` `Config` + `load()`.
 | `controller/app/operator/loop.py` | passes `result.trace` to `insert_decision`; appends `executed`/`audit_recorded` in the audit's transaction |
 | `controller/app/migrations/0017_decision_trace.sql` | **NEW** — §11 DDL |
 | `tests/test_decision_trace.py` | **NEW** — step order, caps, C2 in a step detail and in a reply, deterministic writes no trace, labelled fallback trace |
+
+### 14.7 Metric expansion in the diagnosis — exact call sites (t_922b3268)
+
+| path | change |
+|------|--------|
+| `termini/decision/types.py` | `DecisionInput` gains `derived` (additive within schema `1`, §3.2) |
+| `termini/decision/prompt.py` | template bumped `operator-decision v1` → `v2`; the system prompt documents the §4.12–§4.14 fields and the `derived` deltas; the few-shot OOM example quotes `pressure.memory_some_avg10` first |
+| `termini/decision/adapter.py` | unchanged (the additive `derived` field rides the existing `to_dict`/`from_dict` path) |
+| `controller/app/operator/decision.py` | **NEW** `build_window_deltas()` (the controller-computed derived deltas, §3.2); `build_decision_input` fills `derived` |
+| `controller/app/operator/external_call.py` | `derived` admitted to `_DECISION_INPUT_KEYS` + a deny-by-default check over `_DERIVED_KEYS`; template fallback literal bumped to `operator-decision v2` |
+| `tests/test_metric_expansion_diagnosis.py` | **NEW** — new fields reach the payload + are provably C0; derived deltas (positive, missing, reset); a wrongly-classed field fires the assertion and never reaches the model; fallback still records; deterministic computes nothing |
 
 ---
 

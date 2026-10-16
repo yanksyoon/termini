@@ -132,11 +132,39 @@ def _heaviest(instances: list) -> dict | None:
     return best
 
 
+def _pressure_evidence(state: dict, seq, ts) -> list[dict]:
+    """Quote the PSI group first (the remediation-changing metric, research
+    t_cae0dfa8 row 1): the two highest stall percentages among the four pressure
+    scalars, as ``pressure.<name>`` fields — only when the request carries them.
+    Values are rounded to one decimal; a measured ``0.0`` is quoted as such,
+    never invented."""
+    pressure = state.get("pressure")
+    if not isinstance(pressure, dict):
+        return []
+    scalars = {
+        name: pressure[name]
+        for name in ("cpu_some_avg10", "io_some_avg10",
+                     "memory_some_avg10", "memory_full_avg10")
+        if isinstance(pressure.get(name), (int, float))
+        and not isinstance(pressure.get(name), bool)
+    }
+    out: list[dict] = []
+    for name, _ in sorted(scalars.items(), key=lambda kv: kv[1], reverse=True)[:2]:
+        entry: dict = {"field": f"pressure.{name}", "value": round(float(scalars[name]), 1)}
+        if isinstance(seq, int) and not isinstance(seq, bool):
+            entry["seq"] = seq
+        if isinstance(ts, str) and ts:
+            entry["ts"] = ts
+        out.append(entry)
+    return out
+
+
 def _evidence_from_state(state: dict, heaviest: dict | None) -> list[dict]:
     """Quote the fields the request itself carries — nothing else, nothing new."""
     out: list[dict] = []
     seq = state.get("seq")
     ts = state.get("ts")
+    out.extend(_pressure_evidence(state, seq, ts))
     metric = None
     for name in ("ram_used_bytes", "disk_write_latency_ms", "net_latency_ms", "ram_total_bytes"):
         if name in state and isinstance(state[name], (int, float)):

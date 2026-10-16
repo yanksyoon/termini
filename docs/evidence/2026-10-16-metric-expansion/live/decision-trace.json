@@ -1,0 +1,70 @@
+{
+  "decided_by": "model",
+  "steps": [
+    {
+      "detail": "rule_id=oom-guard-01 event_id=01M53BRCB8Y6K5VZ5ENW27F3QQ fired_at=2026-10-16T22:01:40.958Z detection_latency_ms=1958",
+      "label": "rule oom-guard-01 fired",
+      "state": "ok",
+      "step": "threshold_fired",
+      "ts": "2026-10-16T22:01:41.509Z"
+    },
+    {
+      "detail": "seq 1..2 (2 samples) C0 fields: conntrack_count, conntrack_max, cpu_core_count, cpu_temp_celsius, cpu_util_pct, disk, kernel_version, load_avg_1m, lxd_cluster_role, lxd_instances, mem_available_bytes, net, oom_kill_count, os_name, os_version, pgmajfault_count, pressure, ram_total_bytes, ram_used_bytes, seq, services, swap_used_bytes, tcp_retransmit_segs, ts, uptime_sec",
+      "label": "evidence window captured",
+      "state": "ok",
+      "step": "evidence_window",
+      "ts": "2026-10-16T22:01:41.510Z"
+    },
+    {
+      "detail": "template=operator-decision v2 sha256=52276e31-8e5189a2-1f001e60-7c65b87b-ea60210f-e8669d77-8ea732aa-79aadaa3 substituted_fields=430 C0_assertion=ok",
+      "label": "prompt rendered (C0 assertion ok)",
+      "state": "ok",
+      "step": "prompt_built",
+      "ts": "2026-10-16T22:01:41.807Z"
+    },
+    {
+      "detail": "endpoint=local model=unknown answered_by=unknown latency_ms=202 request_id=01M53BRCW638DB0ESRTF8B8SS9",
+      "label": "model answered",
+      "state": "ok",
+      "step": "model_call",
+      "ts": "2026-10-16T22:01:41.807Z"
+    },
+    {
+      "detail": "[dropped: C2]",
+      "label": "model reply received",
+      "state": "rejected",
+      "step": "reply_received",
+      "truncated": false,
+      "ts": "2026-10-16T22:01:41.811Z"
+    },
+    {
+      "detail": "rule=G7 field=rationale decision=accept (C0-safe, within bounds)",
+      "label": "G7 rationale",
+      "state": "ok",
+      "step": "gates",
+      "ts": "2026-10-16T22:01:41.811Z"
+    },
+    {
+      "detail": "rule=G9 decision=accept (record clean or absent)",
+      "label": "G9 incident record",
+      "state": "ok",
+      "step": "gates",
+      "ts": "2026-10-16T22:01:41.811Z"
+    },
+    {
+      "detail": "rule=G9 field=trace.reply_received.detail decision=drop (C2 signature in model reply: : phone-number signature)",
+      "label": "G9 trace detail",
+      "state": "dropped",
+      "step": "gates",
+      "ts": "2026-10-16T22:01:41.811Z"
+    },
+    {
+      "detail": "action_kind=instance.restart target=01M4349RPXWDC52ZDAVMPCMJSH",
+      "label": "action decided: instance.restart",
+      "state": "ok",
+      "step": "action_decided",
+      "ts": "2026-10-16T22:01:41.811Z"
+    }
+  ],
+  "trace_version": 1
+}
