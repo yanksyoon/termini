@@ -1,0 +1,37 @@
+{
+  "incident_actions": [
+    {
+      "action_kind": "instance.restart",
+      "note": "instance.restart is the action the oom-guard-01 rule maps to; it removes the load named above",
+      "target": "01M4349RPXWDC52ZDAVMPCMJSH"
+    }
+  ],
+  "incident_evidence": [
+    {
+      "field": "pressure.memory_some_avg10",
+      "seq": 2,
+      "ts": "2026-10-16T22:01:40.000Z",
+      "value": 92.1
+    },
+    {
+      "field": "pressure.cpu_some_avg10",
+      "seq": 2,
+      "ts": "2026-10-16T22:01:40.000Z",
+      "value": 12.3
+    },
+    {
+      "field": "ram_used_bytes",
+      "seq": 2,
+      "ts": "2026-10-16T22:01:40.000Z",
+      "value": 66200000000
+    },
+    {
+      "field": "lxd_instances.ram_used_bytes",
+      "seq": 2,
+      "value": 10000000000
+    }
+  ],
+  "incident_explanation": "ram_used_bytes is at 96.3% of ram_total_bytes, and one instance holds 14.6% of the node's RAM by itself. That points at a single workload rather than fleet-wide pressure, so acting on that instance addresses the breach without touching the node.",
+  "incident_generated": "model",
+  "incident_title": "Memory exhaustion on node 01M53BRAZKYXAZ6WXJ4EYECXHK"
+}

@@ -13,7 +13,7 @@ Sibling of `termini/intent/` and structured the same way.
 termini/decision/
   types.py      DecisionInput / DecisionResponse / DecisionError, ACTION_SPACE,
                 FALLBACK_REASONS, frozen bounds  (§3/§4/§5/§10.1)
-  prompt.py     operator-decision v1 template + JSON schema + few-shot,
+  prompt.py     operator-decision v2 template + JSON schema + few-shot,
                 build_messages()  (§6.1)
   adapter.py    render() / parse() / decide()  (§6)
   config.py     DecisionModelConfig — reuses the frozen TERMINI_INFERENCE_* (§13)

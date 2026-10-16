@@ -69,13 +69,23 @@ log = logging.getLogger("termini.operator.external_call")
 # The frozen prompt-template id (§7.2: "a versioned template").
 # Imported lazily from termini.decision.prompt to avoid a hard import cycle; the
 # literal here is the fallback used when the package is unavailable.
-_FALLBACK_TEMPLATE_VERSION = "operator-decision v1"
+_FALLBACK_TEMPLATE_VERSION = "operator-decision v2"
 
 # The DecisionInput top-level keys (§3 wire shape). Anything else at the top
 # level is not part of the frozen request and is refused.
 _DECISION_INPUT_KEYS = {
     "schema_version", "request_id", "project_id", "node_id", "rule_id", "type",
     "trigger", "state", "evidence", "target_resource", "allowed_action_space",
+    "derived",
+}
+
+# The controller-computed `derived` object keys (operator-decision.md §3.1,
+# t_922b3268): a window size plus one delta per cumulative counter. All values
+# are non-negative ints; a delta is omitted (never 0-invented) when it cannot be
+# computed. Anything else under `derived` is not provably C0 and is refused.
+_DERIVED_KEYS = {
+    "window_samples", "oom_kill_count_delta", "pgmajfault_count_delta",
+    "tcp_retransmit_segs_delta",
 }
 
 # The trigger sub-object keys (§3).
@@ -91,7 +101,7 @@ _ACTION_SPACE_ENTRY_KEYS = {"action_id", "params_schema"}
 
 
 def template_version() -> str:
-    """The frozen prompt-template version (``operator-decision v1``)."""
+    """The frozen prompt-template version (``operator-decision v2``)."""
     try:
         from termini.decision.prompt import TEMPLATE_VERSION  # noqa: WPS433
         return TEMPLATE_VERSION
@@ -214,6 +224,24 @@ def assert_allowed_classes(payload: Any) -> List[str]:
                         )
     elif space is not None:
         violations.append("allowed_action_space: expected a list")
+
+    # `derived` is controller-computed (operator-decision.md §3.1): a flat object
+    # of non-negative ints, deny-by-default like every other frozen sub-object.
+    derived = payload.get("derived")
+    if derived is not None:
+        if not isinstance(derived, dict):
+            violations.append("derived: expected an object")
+        else:
+            for key in derived:
+                if key not in _DERIVED_KEYS:
+                    violations.append(f"derived.{key}: not a frozen derived field")
+            for key in _DERIVED_KEYS:
+                if key in derived:
+                    value = derived[key]
+                    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                        violations.append(
+                            f"derived.{key}: must be a non-negative int"
+                        )
 
     # Value-signature scan + C1 transform check over the whole payload: this
     # catches C2 *carried in an allowed field* (governance.md §6 fail-closed).

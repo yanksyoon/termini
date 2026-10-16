@@ -199,13 +199,13 @@ class WrapperTest(unittest.TestCase):
         with self.assertRaises(ExternalCallViolation) as cm:
             external_model_call(
                 build_decision_input(ctx), lambda: "x",
-                template_version_expected="operator-decision v1",
-                template_version_actual="operator-decision v2",
+                template_version_expected="operator-decision v2",
+                template_version_actual="operator-decision v1",
             )
         self.assertTrue(any("template version" in v for v in cm.exception.violations))
 
     def test_expected_template_version_is_the_frozen_one(self):
-        self.assertEqual(template_version(), "operator-decision v1")
+        self.assertEqual(template_version(), "operator-decision v2")
 
     def test_audit_sink_records_before_and_after(self):
         ctx = make_context()
@@ -218,7 +218,7 @@ class WrapperTest(unittest.TestCase):
         self.assertEqual(seen[0]["outcome"], "ok")
         self.assertEqual(seen[1]["outcome"], "returned")
         self.assertEqual(seen[0]["destination"], "http://10.10.0.13:8080")
-        self.assertEqual(seen[0]["template_version"], "operator-decision v1")
+        self.assertEqual(seen[0]["template_version"], "operator-decision v2")
         self.assertTrue(seen[0]["payload_sha256"])
 
     def test_audit_sink_records_a_rejection(self):

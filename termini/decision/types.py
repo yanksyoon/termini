@@ -269,6 +269,11 @@ class DecisionInput:
     evidence: List[Dict[str, Any]] = field(default_factory=list)
     target_resource: Dict[str, Any] = field(default_factory=dict)
     allowed_action_space: List[Dict[str, Any]] = field(default_factory=list)
+    # Controller-computed derived aggregates over the evidence window (§3.1,
+    # t_922b3268): deltas of the cumulative counters, computed by the controller
+    # and labelled derived — never presented as raw samples. Empty when no delta
+    # could be computed. C0-only (non-negative ints + a window size).
+    derived: Dict[str, Any] = field(default_factory=dict)
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -305,6 +310,7 @@ class DecisionInput:
             "evidence": self.evidence,
             "target_resource": self.target_resource,
             "allowed_action_space": self.allowed_action_space,
+            "derived": self.derived,
         }
 
     @classmethod
@@ -327,6 +333,7 @@ class DecisionInput:
             evidence=list(data.get("evidence") or []),
             target_resource=dict(data.get("target_resource") or {}),
             allowed_action_space=list(data.get("allowed_action_space") or []),
+            derived=dict(data.get("derived") or {}),
             schema_version=int(data.get("schema_version", SCHEMA_VERSION)),
         )
 

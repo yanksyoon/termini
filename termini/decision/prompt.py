@@ -1,6 +1,6 @@
 """Static, versioned prompt for the model-driven operator decision step.
 
-Template ``operator-decision v1`` (``docs/contracts/operator-decision.md`` §6.1).
+Template ``operator-decision v2`` (``docs/contracts/operator-decision.md`` §6.1).
 The template is frozen and ``governance.md`` §7.2-compliant: it is a static
 system prompt containing only typed, C0 prompt placeholders, and its single
 dynamic placeholder (``{{decision_input}}``) receives the C0 ``DecisionInput``
@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Union
 
 from .types import ACTION_SPACE, DecisionInput
 
-TEMPLATE_VERSION = "operator-decision v1"
+TEMPLATE_VERSION = "operator-decision v2"
 
 # The template's single typed placeholder (§6.1).
 DECISION_INPUT_PLACEHOLDER = "{{decision_input}}"
@@ -35,7 +35,7 @@ DECISION_JSON_SCHEMA = """{
   "incident_title": "<one line naming the INCIDENT, <= 160 chars>",
   "explanation": "<why the evidence implies that incident, <= 2048 chars>",
   "evidence": [
-    { "field": "<a telemetry field name from the input, e.g. ram_used_bytes>",
+    { "field": "<a telemetry field name from the input, e.g. ram_used_bytes or pressure.cpu_some_avg10>",
       "value": <the value you actually read for it>,
       "seq": <the sample seq it came from> }
   ],
@@ -92,6 +92,28 @@ validated it, so it must name exactly one action and a concrete, in-scope target
 Allowed action space:
 {ACTION_SPACE_TEXT}
 
+Telemetry fields the input may carry (node-telemetry contract §4.12-§4.14), in
+the "state" sample, the "evidence" samples, and the "derived" object:
+
+- "pressure" — the PSI stall percentages: cpu_some_avg10, io_some_avg10,
+  memory_some_avg10, memory_full_avg10 (each 0-100). This is the
+  remediation-changing group: high cpu/memory pressure means the stall is
+  compute/memory-bound (a restart helps); high io pressure with healthy RAM
+  means it is I/O-bound (shed I/O, a restart does NOT help). Quote these first.
+- "oom_kill_count", "pgmajfault_count", "tcp_retransmit_segs" — monotonic
+  cumulative counters. Their values in samples are raw cumulative totals; the
+  "derived" object carries the controller-computed delta over the evidence
+  window (e.g. "oom_kill_count_delta"). Read the delta for "rising vs flat";
+  never quote a delta as if it were a raw sample value.
+- "mem_available_bytes" — the kernel's own "would not swap" free memory.
+- "conntrack_count", "conntrack_max" — connection-track table occupancy vs cap.
+- "disk[]" rows may add io_ticks_ms / io_in_flight / inode_used / inode_total;
+  "net[]" rows may add rx_errors / tx_errors / rx_dropped / tx_dropped;
+  "lxd_instances[]" rows may add oom_kill_count / pgmajfault_count (per
+  instance). These are cumulative too — read them across the window.
+- A field is ABSENT (there is no key), never a fabricated 0, when its source was
+  unreadable. A measured 0.0 means genuinely no stall.
+
 Rules:
 - Output ONLY one JSON object, no prose, no markdown fences, no trailing text.
 - "action_id" MUST be exactly one of the quoted action ids above, and MUST be
@@ -111,9 +133,11 @@ Rules:
   reason from the numbers in the input, not restate the title.
 - "evidence" MUST be the concrete telemetry the decision rests on: one entry per
   field you actually used, with "field" spelled exactly as it appears in the
-  input (e.g. "ram_used_bytes", "lxd_instances.ram_used_bytes"), the "value" you
+  input (e.g. "ram_used_bytes", "pressure.cpu_some_avg10", "oom_kill_count",
+  "lxd_instances.ram_used_bytes", "lxd_instances.oom_kill_count"), the "value" you
   read, and the sample "seq" it came from. Never invent a field name, never
-  quote an application log line, a command line or an environment variable.
+  quote an application log line, a command line or an environment variable, and
+  never present a derived delta (from "derived") as a raw sample value.
 - "actions" MUST list what you decided, one entry per action, with the chosen
   "action_id" as "action_kind" and the same target you put in "params".
 - Do NOT describe what was executed: you decide, the controller executes.
@@ -196,13 +220,15 @@ FEW_SHOT: List[Dict[str, str]] = [
                 ),
                 "incident_title": "Host memory exhaustion from one runaway instance",
                 "explanation": (
-                    "ram_used_bytes is at 94.7% of ram_total_bytes and the "
-                    "heaviest instance alone holds 29% of the node's RAM, so the "
-                    "pressure comes from that single workload rather than from "
-                    "the node's baseline load. Reclaiming its memory drops the "
-                    "host below the OOM threshold."
+                    "pressure.memory_some_avg10 is high (91.7) and ram_used_bytes "
+                    "is at 94.7% of ram_total_bytes with the heaviest instance "
+                    "alone holding 29% of the node's RAM, so the stall is "
+                    "memory-bound and comes from that single workload rather than "
+                    "the node's baseline load. Restarting it reclaims its memory "
+                    "and drops the host below the OOM threshold."
                 ),
                 "evidence": [
+                    {"field": "pressure.memory_some_avg10", "value": 91.7, "seq": 1050},
                     {"field": "ram_used_bytes", "value": 32641751449, "seq": 1050},
                     {"field": "ram_total_bytes", "value": 34359738368, "seq": 1050},
                     {"field": "lxd_instances.ram_used_bytes", "value": 10000000000,
