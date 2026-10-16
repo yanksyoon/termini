@@ -37,11 +37,25 @@ Reproduce with `bash infra/inference/evidence/split-surfaces-2026-10-15/capture-
   pre-split script refuses, and asserts the two surfaces' `/health` are
   independent (16 tests include two live in-process listeners with faked
   upstreams: one `local` with a worker, one `gemini-proxy` whose worker is dead).
-* `python3 -m unittest discover -s tests` → **Ran 742 tests … OK**.
+* `python3 -m unittest discover -s tests` → **Ran 785 tests … OK** (rev 2, on the
+  rebased base `266fa55`; rev 1 ran 742 on its shorter base — same suite, more
+  tests landed underneath it).
 * `scripts/check-doc-ulids.py` → pass; `scripts/check-readme-links.py` → 58 targets resolve.
-* `shellcheck -S warning` over every changed shell script → clean (rc=0).
+* `shellcheck -S warning` over **every tracked shell script** (102 files — the
+  same command `ci / sanity` runs) → clean (rc=0).
 * `cmp infra/inference/proxy.py <rendered>` → identical
   (`sha256 6aebb74ee02f8923c365d14ab2d545dec8c024ea47ba0691afaf82b0cd7eade1`).
+
+### Rev 2 — why this revision exists
+
+Rev 1 (`2827cfa`/`2065536`) went RED on `ci / sanity`: `shellcheck -S warning`
+flagged the evidence script itself (`capture-offline.sh`: SC2164 `cd` without
+`|| exit`, SC1083 unquoted `^{tree}`). Rev 1's own shellcheck step checked a
+hand-listed subset of scripts and so never saw it — that step now runs
+`git ls-files '*.sh' | xargs -r shellcheck -S warning`, i.e. exactly what CI
+runs, so the miss cannot repeat. Fix verified here before pushing:
+`bash infra/inference/evidence/split-surfaces-2026-10-15/capture-offline.sh`
+exits 0 with the shellcheck step green over all 102 tracked scripts.
 
 ## Live acceptance — **PENDING an approved fleet window**
 

@@ -2,7 +2,7 @@
 # Capture the OFFLINE verification evidence for the inference-surface split
 # (kanban t_aa7a70f9). No GCP: everything here runs from the checkout.
 set -uo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/../../../.."   # repo root
+cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." || exit 1   # repo root
 RENDER="$(mktemp -d -t termini-render-XXXXXX)"
 
 echo "################################################################################"
@@ -10,7 +10,7 @@ echo "# t_aa7a70f9 — inference surface split: OFFLINE verification"
 echo "# commit under test: $(git rev-parse HEAD)"
 echo "#   (this evidence file is committed AFTER the run, so the sha above is the"
 echo "#    revision the code was verified at; compare with 'git diff <sha> -- .' )"
-echo "# tree:   $(git rev-parse HEAD^{tree})"
+echo "# tree:   $(git rev-parse "HEAD^{tree}")"
 echo "# dirty:  $(git status --porcelain | wc -l) uncommitted path(s) at capture time"
 echo "# date:   $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "# host:   $(uname -srm)"
@@ -69,16 +69,8 @@ echo "\$ python3 scripts/check-doc-ulids.py"
 python3 scripts/check-doc-ulids.py
 echo "\$ python3 scripts/check-readme-links.py"
 python3 scripts/check-readme-links.py
-echo "\$ shellcheck -S warning <changed shell scripts>"
-shellcheck -S warning \
-  infra/inference/setup-inference-surfaces.sh \
-  infra/inference/install-inference-proxy.sh \
-  infra/cloudrun/setup-operator-node-c.sh \
-  infra/gcp/cloud-init/node-c-serve-block.sh \
-  infra/gcp/cloud-init/llama-serve.sh \
-  infra/gcp/verify-cloud-init.sh \
-  infra/gcp/provision.sh \
-  infra/gcp/tools/raise-standing-fleet.sh \
-  && echo "shellcheck: clean (rc=0)"
+echo "\$ shellcheck -S warning \$(git ls-files '*.sh')   (exactly what ci / sanity runs)"
+git ls-files '*.sh' | xargs -r shellcheck -S warning \
+  && echo "shellcheck: clean (rc=0) — all $(git ls-files '*.sh' | wc -l) tracked shell scripts"
 echo
 echo "### DONE"
