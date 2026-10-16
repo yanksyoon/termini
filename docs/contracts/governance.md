@@ -112,6 +112,14 @@ content and are required by the AI operator and charts. Canonical definitions:
 | `inference{}` | `node-telemetry.md` §4.7 | llama.cpp router health/throughput (present on the inference node only). |
 | `services[]` | `node-telemetry.md` §4.8 | systemd unit state, fixed name allowlist. |
 | `agents[]` | `agent-runtime.md` §13.2 | Per-agent-VM C0 status counters (state, queue depth, task counters). |
+| `processes[]` | `node-telemetry.md` §4.10 | Top-20 per sample, anchored by `pid`. **Metrics only**: the kernel task name (`comm`, ≤15 printable ASCII chars), state, CPU%, RSS, thread count and age. No `argv`, no `cmdline`, no `exe`, no environment, no file paths — those remain C2 (§4.3). |
+| `services[].journal_errors` / `services[].journal_warnings` | `node-telemetry.md` §4.11 | **Counts** of journal entries at priority `err`+ / `warning` for a unit over a 300 s window. A count is an aggregate, not a log line; the messages stay C2. Omitted, never `0`, when the journal is unreadable. |
+
+`processes[]` and the journal counts were added under the same deny-by-default
+review as the groups above (t_957956e5). Neither narrows §4.3: the C2 field-name
+denylist is applied at every nesting depth, so a `cmdline`/`environ`/`message`
+nested inside a `processes[]` entry or a `services[]` entry fail-closes the batch
+exactly as a top-level one does.
 
 ### 4.2 C1 fields — allow only after transformation
 
@@ -132,6 +140,8 @@ Any of the following in an egress structure causes fail-closed (see §6):
 - Customer payloads: prompts, agent conversation text, task bodies, code, documents
 - File contents or paths under customer data dirs
 - Process command lines (`/proc/*/cmdline`), environment variables, usernames, `/etc/passwd`-derived data
+- A process's executable path or working directory (`exe`, `cwd`) — *paths*, not
+  the process metrics `node-telemetry.md` §4.10 admits
 - SSH keys (public or private), certificates, tokens, credentials
 - MAC addresses in raw form, full IP addresses, serial numbers, asset tags
 - Any field not listed in 4.1 or 4.2 (deny-by-default)

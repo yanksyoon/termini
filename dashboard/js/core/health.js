@@ -13,6 +13,46 @@
 
 export const SERVICE_ALLOWLIST = ["termini-bootstrap", "lxd", "sshd", "llama-cpp"];
 
+/**
+ * `processes[]` (node-telemetry.md §4.10) — metrics only, bounded top-20.
+ *
+ * The dashboard renders what the contract admits and nothing more: `pid`,
+ * `name`, `state`, `cpu_util_pct`, `ram_used_bytes`, `threads`, `age_sec`. Any
+ * other key on an entry is dropped here, so a node (or a compromised node) that
+ * sends `cmdline`/`argv`/`env` cannot have it displayed even though ingest
+ * already rejects it — the panel is not a second egress path for C2 content.
+ */
+export const PROCESSES_MAX = 20;
+export const PROCESS_STATES = [
+  "running",
+  "sleeping",
+  "disk_sleep",
+  "zombie",
+  "stopped",
+  "tracing",
+  "dead",
+];
+const PROCESS_NAME_RE = /^[\x20-\x7e]{1,15}$/;
+
+export function processes(sample) {
+  const rows = arr(sample && sample.processes);
+  const out = [];
+  for (const p of rows) {
+    if (!p || typeof p !== "object") continue;
+    if (!Number.isInteger(p.pid) || p.pid < 1) continue;
+    const row = { pid: p.pid };
+    if (typeof p.name === "string" && PROCESS_NAME_RE.test(p.name)) row.name = p.name;
+    if (PROCESS_STATES.includes(p.state)) row.state = p.state;
+    if (isNum(p.cpu_util_pct)) row.cpu_util_pct = p.cpu_util_pct;
+    if (isNum(p.ram_used_bytes)) row.ram_used_bytes = Math.max(0, p.ram_used_bytes);
+    if (Number.isInteger(p.threads) && p.threads >= 1) row.threads = p.threads;
+    if (Number.isInteger(p.age_sec) && p.age_sec >= 0) row.age_sec = p.age_sec;
+    out.push(row);
+    if (out.length >= PROCESSES_MAX) break;
+  }
+  return out;
+}
+
 export const DEGRADED_REASONS = [
   "heartbeat_late",
   "disk_read_only",
@@ -54,6 +94,7 @@ export function deriveHealth(node, sample) {
       gpu_ok: null,
       inference_ok: null,
       services: [],
+      processes: [],
       degraded_reasons: [],
     };
   }
@@ -101,6 +142,7 @@ export function deriveHealth(node, sample) {
     gpu_ok: gpuOk,
     inference_ok: inferenceOk,
     services: svcs,
+    processes: processes(s),
     degraded_reasons: degradedReasons,
   };
 }
@@ -149,6 +191,7 @@ function mergeHealth(server, derived) {
   // Never let a server value erase a flag the client can compute, but keep the
   // server's `degraded_reasons` verbatim — an empty list is a real answer.
   if (!Array.isArray(out.services) || out.services.length === 0) out.services = derived.services;
+  if (!Array.isArray(out.processes) || out.processes.length === 0) out.processes = derived.processes;
   if (!Array.isArray(out.degraded_reasons)) out.degraded_reasons = derived.degraded_reasons;
   return out;
 }
