@@ -136,10 +136,20 @@ tonight's footprint while that footprint forwards the call — the substitution 
 changes, not the design, and the demo now says so out loud (see `docs/demo-script.md`,
 `docs/spec-answers.md`, `SUBMISSION.md`).
 
-**One nuance worth pinning, because a demo script used to assert it.** The intent
-extraction endpoint is `TERMINI_INTENT_INFERENCE_BASE_URL`, and it defaults to **empty** —
-which means extraction follows the front door and is therefore **forwarded in tonight's
-demo**. Pinning it at the node's own dedicated instance (`termini-llama-intent`, `:8090`)
-is what would keep the extraction prompt on-prem. The demo script no longer claims the
-prompt stays on the premises; if you want to make that claim on stage, pin that variable
-first and say so.
+**The intent path is NOT forwarded — corrected.** An earlier revision of this section said
+the extraction "follows the front door and is therefore forwarded"; that was wrong. The
+deployment **pins** `TERMINI_INTENT_INFERENCE_BASE_URL` at Node C's own dedicated
+small-context `llama.cpp` instance on `:8090` (`infra/cloudrun/setup-operator-node-c.sh` sets
+`http://${NODE_C}:8090`; `infra/inference/setup-inference-surfaces.sh` sets the same;
+`tests/test_inference_surfaces.py` asserts it), and that instance is **deliberately not
+fronted by the proxy**. So the user-facing intent prompt is answered by the node's own
+weights and does **not** leave the premises — the code default is empty, but the deployed
+configuration is pinned, and it is the deployed configuration that runs.
+
+What tonight's demo actually forwards, precisely:
+
+| Surface | Tonight | Leaves the premises? |
+|---|---|---|
+| **Intent extraction** (controller → Node C `:8090`, pinned) | the node's own `llama.cpp`, not fronted by the proxy | **no** |
+| **Agent traffic** (agent VMs → Node C `:8080` front door) | `gemini-proxy` → `aiplatform.googleapis.com` | **yes** — the disclosed stand-in |
+| **Diagnosis** (controller → `127.0.0.1:8085`, provider-only) | `gemini-2.5-flash` on Vertex AI, C0-only substituted prompt | **yes**, by design (owner's Q1b) |

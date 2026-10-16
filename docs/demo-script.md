@@ -107,11 +107,10 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
 - `[TALK]` "Now the fun part. I type a plain-English request and we watch it
   become a validated plan."
 - `[CLICK]` type: `deploy 3 worker agents for coding, plus a fast LLM`.
-- `[TALK]` "Three worker agents, plus a fast LLM. Our product runs this model
-  on-prem, on Node C, so data never leaves. Tonight the GPU that node would use
-  isn't available to us, so the demo proxies this one call to Google's managed
-  model — and the answer tells you which one answered, in-band. What comes back is
-  a structured allocation: three agent VMs, plus an inference reference to Node C's
+- `[TALK]` "Three worker agents, plus a fast LLM. This sentence is read by a model
+  on Node C's own hardware — its own small local instance, deliberately not the
+  forwarded one — so the request never leaves the premises. What comes back is a
+  structured allocation: three agent VMs, plus an inference reference to Node C's
   host service."
 - `[CLICK]` submit; show the extracted JSON (agent_vm ×3 + inference_vm → host_service).
 - `[TALK]` "The model recommends. Then the guardrail decides. Watch what happens
@@ -142,8 +141,12 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
 - `[CLICK]` open web terminal → agent VM on Node A.
 - `[CLICK]` type: `curl http://10.10.0.13:8080/v1/models`
 - `[TALK]` "The model list, served over plain HTTP on the underlay IP — no
-  tunnel on this leg, no MTU black holes. And a streamed completion, tokens
-  flowing Node A to Node C."
+  tunnel on this leg, no MTU black holes. One disclosure while we're here: this is
+  the agent-facing port, and because we have no GPU node for Node C, tonight's demo
+  forwards this particular call to Google's managed model instead of the node's own
+  weights. In the product, that call is served on the node. Either way the answer
+  says in-band which backend answered it."
+- `[CLICK]` run a streamed chat completion; show tokens streaming.
 - `[CLICK]` run a streamed chat completion; show tokens streaming.
 - `[TALK]` "One static route. It works, or it doesn't — there's nothing to
   misconfigure."
