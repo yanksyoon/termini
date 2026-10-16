@@ -162,8 +162,8 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
 - `[TALK]` "Ninety-five percent, two consecutive samples — a frozen threshold
   rule fires. The model reads that telemetry and picks the action: restart the heaviest workload."
 - `[CLICK]` show operator log: `oom-guard-01` → `instance.restart`.
-- `[TALK]` "The rule only *detects* — the decision is made by Gemma, Google's
-  open-weights model, on an L4. It can only choose from our allowlist: a command
+- `[TALK]` "The rule only *detects* — the decision is made by a managed model — Gemini on
+  Vertex AI — with C0 telemetry only. It can only choose from our allowlist: a command
   outside it has no valid encoding, so the model *cannot* emit it. Then the action
   executes against LXD and lands in the audit trail."
 - `[CLICK]` show `instance.restart` acked `succeeded`; the workload recovers.

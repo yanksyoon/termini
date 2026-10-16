@@ -213,7 +213,8 @@ would make the demo's model decision non-interactive. The audit row
 | Agent VM → inference | Bearer token + underlay-scoped `:8080` only. | Router auth + Node C firewall |
 | Node → Controller (egress) | **C0/C1 hardware/OS telemetry only.** C2 never egresses; fail-closed. | On-node redactor + controller `governanceGate` |
 | Controller → Node (inbound) | Typed commands only; task envelope may carry C2 **transiently** (never persisted/model-processed). | `commandAllowlist()` + inbound shape check |
-| Controller → model (Node C, on-prem) | **In the demo loop** — the operator's decision step. C0 telemetry + transformed C1 + the static versioned template only; C2 never reaches it. No external egress. | `governance.md` §7.1/§7.2, `externalModelCall()` (`controller/app/operator/external_call.py`) |
+| Controller → model (diagnosis, provider-only) | **In the demo loop** — the operator's decision step, on the controller's loopback provider listener (`127.0.0.1:8085`, `backend=gemini-proxy` → `aiplatform.googleapis.com`). C0 telemetry + transformed C1 + the static versioned template only; C2 never reaches it. **This call does leave the premises** — a deliberate, C0-only egress (D9, user's Q1b), recorded as `egress=external destination=aiplatform.googleapis.com`. | `governance.md` §7.1/§7.2, `externalModelCall()` (`controller/app/operator/external_call.py`) |
+| Controller → model (agent/intent, on-prem) | Node C's `:8080` (`backend=local`), Gemma 3 4B IT, CPU-only — serves agents and intent extraction; never forwards; nothing it touches leaves the premises. | `governance.md` §7.1 |
 | User SSH | Controller-held SSH CA signing short-lived (≤8 h), principal-bound user certs from browser-local keys; surfaced as a one-click web terminal + `ssh` string (`auth_model: ssh_ca`). | Controller-held CA (D4) |
 
 ---

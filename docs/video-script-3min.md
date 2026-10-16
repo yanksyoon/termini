@@ -55,8 +55,8 @@ shown, not described.
 > then let it sit on screen. Zoom so the rule id, the action and the confidence are legible.
 > **[VO]** "Watch the operator log. A threshold rule just fired — telemetry crossed
 > 95% of memory, twice in a row. That rule is only a wake-up signal. The decision is
-> made by **Gemma**, Google's open-weights model, running on an NVIDIA L4 on Cloud
-> Run. The model reads the telemetry, reasons about the fault, and chooses the
+> made by a **managed model** — Gemini on Vertex AI, reached from the controller with
+> C0 telemetry only. The model reads the telemetry, reasons about the fault, and chooses the
 > remediation — restarting the hung workload.
 >
 > And here is the discipline: the model cannot do anything we did not sanction. A
@@ -85,7 +85,7 @@ shown, not described.
 >   https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/nodes | head -c 400
 > ```
 > Or show the deck's "Built on Google AI & Google Cloud" slide.
-> **[VO]** "Under the hood: **Gemma on Cloud Run GPU**, the dashboard on **Firebase
+> **[VO]** "Under the hood: **Gemini on Vertex AI** for the diagnosis, **Gemma on Node C** for the agents, the dashboard on **Firebase
 > Hosting**, the controller on **Compute Engine**, weights in **Cloud Storage**.
 > Deployed, not mocked — the links are in the submission."
 
@@ -128,7 +128,7 @@ is to show the AI acting, not to assert. If you ad-lib, keep to these:
 - ✅ On the gate, be precise: a **C2-class field is rejected fail-closed (`422`)**,
   while a merely *unknown* field is **stripped** (deny-by-default, §3 — that is what
   keeps forward-compatibility). Both prevent storage; only the first is a rejection.
-- ✅ Gemma is **Google's open-weights model**; the closed API (Gemini) is not used.
+- ✅ The **agent-facing** model is **Gemma** (Google's open weights) on Node C; the **diagnosis** uses **Gemini** (Vertex AI) with C0 telemetry only — say which one, don't conflate them.
 - ✅ A node from the pre-baked image registers in **150 ms** (measured against a 5 s
   budget). Say "150 ms"; do not round it down to "instant".
 - ❌ Do not quote a live decision count — it changes every minute.
