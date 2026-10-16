@@ -5,6 +5,7 @@ and dashboard.md §1–§4):
 
     POST /v1/nodes/register                       (bootstrap_token)  -> 201
     POST /v1/bootstrap-tokens                     (project_token, loopback) -> 201
+    GET  /install/termini-node.sh                 (public, static)   -> 200
     POST /v1/nodes/{nid}/heartbeat                (node_token)       -> 204/200
     GET  /v1/projects/{pid}/nodes                 (project_token)    -> 200
     GET  /v1/projects/{pid}/nodes/{nid}           (project_token)    -> 200
@@ -84,6 +85,40 @@ WS_CLOSE_UNAUTHORIZED = 4401
 # REMOTE request still arrives with a loopback TCP peer; these headers are what
 # distinguish it from the seeder's direct loopback call (see `_is_loopback_client`).
 PROXY_REQUEST_HEADERS = ("X-Forwarded-For", "X-Real-Ip", "Forwarded", "Via")
+
+# Public client-install surface (docs/contracts/controller-api.md §4.7, task
+# t_70bd0f2b). STATIC, UNAUTHENTICATED, and deliberately SECRET-FREE: the node
+# installer a customer pipes into `sh`, the client status helper it installs, and
+# the two node-runtime files a machine that did not come from the Termini node
+# image needs (the image ships them pre-baked).
+#
+# Lookup is by NAME from this table and nothing else — no part of the request
+# path reaches the filesystem, so there is no traversal to escape. Serving them
+# from the controller is deliberate: it is the one surface a customer can already
+# reach, and it removes the second distribution channel (and its drift) that a
+# separate download host would be.
+INSTALL_ARTIFACTS = {
+    "termini-node.sh": ("client/termini-node-install.sh", "text/x-shellscript"),
+    "termini-node-status.py": ("client/termini-node-status.py", "text/x-python"),
+    "termini-bootstrap.py": ("node/termini-bootstrap.py", "text/x-python"),
+    "termini-bootstrap.service": ("node/termini-bootstrap.service", "text/plain"),
+}
+
+
+def install_root() -> str:
+    """Directory holding the install artifacts (`TERMINI_INSTALL_DIR` or the tree).
+
+    Default resolution is the repo tree this controller was deployed from: the
+    controller runs from `<tree>/controller/app`, so `<tree>/infra/bootstrap` is
+    where the artifacts live. `TERMINI_INSTALL_DIR` overrides it for an install
+    that stages them elsewhere.
+    """
+    override = os.environ.get("TERMINI_INSTALL_DIR", "").strip()
+    if override:
+        return override
+    app_dir = os.path.dirname(os.path.abspath(__file__))          # <tree>/controller/app
+    tree = os.path.dirname(os.path.dirname(app_dir))              # <tree>
+    return os.path.join(tree, "infra", "bootstrap")
 
 
 class ControllerServer(ThreadingHTTPServer):
@@ -175,6 +210,18 @@ class ControllerHandler(BaseHTTPRequestHandler):
 
     def _send_error(self, e: errors.ApiError) -> None:
         self._send_json(e.status, errors.envelope(e.code, e.message, e.details))
+
+    def _send_bytes(self, status: int, content_type: str, data: bytes) -> None:
+        """Raw-body response (the static client-install artifacts, not JSON)."""
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("X-Termini-Version", "1")
+        # A customer may be installing while the provider rolls a new artifact
+        # out; never let a proxy or the browser serve a stale installer.
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _bearer(self) -> str | None:
         auth = self.headers.get("Authorization", "")
@@ -331,10 +378,52 @@ class ControllerHandler(BaseHTTPRequestHandler):
         if len(segs) == 4 and segs[:2] == ["v1", "projects"] and segs[3] == "logs":
             self._handle_sse_logs(segs[2])
             return
+        if segs[:1] == ["install"]:
+            # Public static client-install surface — no DB connection, no token.
+            try:
+                self._check_version()
+                self._serve_install(segs)
+            except errors.ApiError as e:
+                self._send_error(e)
+            return
         self._route("GET")
 
     def _is_websocket(self) -> bool:
         return self.headers.get("Upgrade", "").lower() == "websocket"
+
+    # ------------------------------------------------------------------ client install surface
+    def _serve_install(self, segs: list[str]) -> None:
+        """GET /install/<artifact> — the public, unauthenticated install surface.
+
+        Static files only, chosen by name out of `INSTALL_ARTIFACTS`; no part of
+        the request path is used to build a filesystem path. These artifacts carry
+        no credential of any kind (that is what the customer's own enrollment
+        credential is for), so there is nothing here to protect with a token — and
+        requiring one would defeat the point, since the customer does not have
+        (and must never hold) the controller's project token.
+        """
+        name = segs[1] if len(segs) == 2 else ""
+        entry = INSTALL_ARTIFACTS.get(name)
+        if entry is None:
+            raise errors.not_found(
+                "no install artifact: GET /install/"
+                + (name or "<name>")
+                + " (available: " + ", ".join(sorted(INSTALL_ARTIFACTS)) + ")"
+            )
+        rel, content_type = entry
+        path = os.path.join(install_root(), *rel.split("/"))
+        try:
+            with open(path, "rb") as fh:
+                data = fh.read()
+        except OSError as e:
+            log.error("install artifact %s missing on this controller (%s): %s",
+                      name, path, e)
+            raise errors.err(
+                503, "INTERNAL",
+                f"install artifact {name} is not deployed on this controller "
+                f"(expected at {path})"
+            ) from None
+        self._send_bytes(200, content_type, data)
 
     # ------------------------------------------------------------------ auth
     def _require_bootstrap(self, conn) -> str:

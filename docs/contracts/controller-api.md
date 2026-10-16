@@ -960,6 +960,61 @@ Nothing existing changed.
 
 ---
 
+## 4.8 Client install surface (public, unauthenticated, secret-free)
+
+The routes a **customer's own machine** uses to join the deployment. They serve
+**static files** from the controller itself and carry **no credential of any
+class**: the credential in this flow is the customer's own single-use
+`bootstrap_token`, which their provider mints for them (§4.6) and the customer
+passes to the installer. The controller's `project_token` is never part of this
+flow — not in the artifact, not in the URL, not in a step of the install — which
+is exactly what this surface exists to make possible.
+
+| Route | Serves |
+|---|---|
+| `GET /install/termini-node.sh` | the customer-facing installer (`infra/bootstrap/client/termini-node-install.sh`), meant to be piped into `sh` |
+| `GET /install/termini-node-status.py` | `termini-node-status`, the client's own view of its node (installed by the installer) |
+| `GET /install/termini-bootstrap.py` | the node daemon, for a machine that did not come from the Termini node image |
+| `GET /install/termini-bootstrap.service` | the daemon's systemd unit |
+
+Rules:
+
+- **No token of any class.** `/install/` is the only unauthenticated prefix on the
+  controller. Requiring a token here would defeat the purpose: the only credential
+  the customer holds at this point is their one-time enrollment token, and the
+  project token must never reach a client (the card's guardrail).
+- **Named artifacts only.** The artifact is chosen by exact name from a table in
+  `controller/app/server.py` (`INSTALL_ARTIFACTS`); no part of the request path is
+  ever used to build a filesystem path, so there is no traversal to escape.
+  Anything that is not exactly `/install/<known-name>` is `404 NOT_FOUND`.
+- **Content type is the artifact's own** (`text/x-shellscript`, `text/x-python`,
+  `text/plain`) with `Cache-Control: no-store`, so rolling out a new installer
+  cannot be masked by an intermediary's cache.
+- **Deployment.** The artifacts are read from `infra/bootstrap/` in the deployed
+  tree (`TERMINI_INSTALL_DIR` overrides the location);
+  `infra/gcp/tools/deploy-termini-tree.sh` ships that directory with the
+  controller. A controller deployed without it answers `503 INTERNAL` rather than
+  `404`, so a missing artifact cannot be mistaken for a missing feature.
+
+The command a customer runs, end to end:
+
+```
+curl -fsSL https://<controller-host>/install/termini-node.sh | sudo sh -s -- \
+  --controller https://<controller-host> --token <their single-use credential>
+```
+
+After registration the customer reads the node back with the node's **own**
+`node_token` (`GET /v1/nodes/{node_id}/telemetry/recent`, §4.1) — never with the
+project token. Provider-side: `infra/bootstrap/client/issue-enrollment.py` mints
+the credential, preflights this surface, prints the command above and writes the
+handover file. Customer-facing documentation: `infra/bootstrap/client/README.md`.
+
+Additive contract note (§1.2): a public, unauthenticated, static `/install/`
+prefix is added to the controller's route surface. No existing route, payload or
+token rule changed.
+
+---
+
 ## 5. Guardrail & Clamp Validator
 
 The deterministic choke point between "DeepSeek/Gemini recommends" and "LXD

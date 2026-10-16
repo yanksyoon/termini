@@ -1,0 +1,51 @@
+# Sidecar for 05-audit-detail-dialog.png (acceptance 05)
+# Purpose: the audit record behind the row in 01, in full (audit id, result, endpoint, LXD call, idempotency key, detail) - what the client checks after an action
+# Captured (UTC): 2026-10-15T16:19:45Z
+# Exact URL in the address bar: https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token&synthetic=1&decisionLimit=200
+# Window: 1280x900, headful Chromium in Xvfb :99, browser chrome included, no crop/annotation.
+# Raw text behind the pixels follows.
+
+## The dialog as rendered (read back out of the live DOM)
+Audit 01M505SCDF6WXN3W565XJYW18Binstance.restart on 01M4NZK474BVARFBXYQBMVA8GV — result errorAPI call behind this viewdecision01M505SCCW44GJGNAJBVCMPQ44health event01M505S8QW5G7E92X0A4GFJ2GTnode01M4NZK474BVARFBXYQBMVA8GVruleoom-guard-01actioninstance.restartresulterrorexecuted at2026-10-15T16:19:35.306Zendpointhttps://10.10.0.11:8443LXD callGET /1.0/instances/01M4N827979BD9D2762EFE24A0idempotency key01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:01M4N827979BD9D2762EFE24A0:792dry runnodetailtarget_missing: refused PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state — no LXD instance '01M4N827979BD9D2762EFE24A0' on https://10.10.0.11:8443 (probe GET /1.0/instances/01M4N827979BD9D2762EFE24A0 -> not found). The decision's target does not exist on the node this executor dials, so no LXD state change was issued; the node's live instance inventory is the only authority on which targets exist.{ "id": "01M505SCDF6WXN3W565XJYW18B", "decision_id": "01M505SCCW44GJGNAJBVCMPQ44", "event_id": "01M505S8QW5G7E92X0A4GFJ2GT", "node_id": "01M4NZK474BVARFBXYQBMVA8GV", "rule_id": "oom-guard-01", "action_kind": "instance.restart", "result": "error", "detail": "target_missing: refused PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state — no LXD instance '01M4N827979BD9D2762EFE24A0' on https://10.10.0.11:8443 (probe GET /1.0/instances/01M4N827979BD9D2762EFE24A0 -> not found). The decision's target does not exist on the node this executor dials, so no LXD state change was issued; the node's live instance inventory is the only authority on which targets exist.", "lxd_method": "GET", "lxd_path": "/1.0/instances/01M4N827979BD9D2762EFE24A0", "lxd_body": "", "idempotency_key": "01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:01M4N827979BD9D2762EFE24A0:792", "dry_run": 0, "executed_at": "2026-10-15T16:19:35.306Z", "lxd_endpoint": "https://10.10.0.11:8443" }Copy JSONClose
+
+## Raw audit object as the API returned it
+GET https://34-93-190-64.sslip.io/v1/operator/audits?limit=200
+
+{
+  "action_kind": "instance.restart",
+  "decision_id": "01M505SCCW44GJGNAJBVCMPQ44",
+  "detail": "target_missing: refused PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state \u2014 no LXD instance '01M4N827979BD9D2762EFE24A0' on https://10.10.0.11:8443 (probe GET /1.0/instances/01M4N827979BD9D2762EFE24A0 -> not found). The decision's target does not exist on the node this executor dials, so no LXD state change was issued; the node's live instance inventory is the only authority on which targets exist.",
+  "dry_run": 0,
+  "event_id": "01M505S8QW5G7E92X0A4GFJ2GT",
+  "executed_at": "2026-10-15T16:19:35.306Z",
+  "id": "01M505SCDF6WXN3W565XJYW18B",
+  "idempotency_key": "01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:01M4N827979BD9D2762EFE24A0:792",
+  "lxd_body": "",
+  "lxd_endpoint": "https://10.10.0.11:8443",
+  "lxd_method": "GET",
+  "lxd_path": "/1.0/instances/01M4N827979BD9D2762EFE24A0",
+  "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+  "result": "error",
+  "rule_id": "oom-guard-01"
+}
+
+## Raw decision object for the decision this audit executed
+{
+  "action_kind": "instance.restart",
+  "action_params": {
+    "_vm_id": "01M4N827979BD9D2762EFE24A0",
+    "force": true,
+    "instance_name": "01M4N827979BD9D2762EFE24A0",
+    "timeout_s": 30
+  },
+  "confidence": 0.9,
+  "decided_at": "2026-10-15T16:16:05.622Z",
+  "decision_source": "model",
+  "event_id": "01M505JVZ8KZCSPD4NFKZEFBVF",
+  "fallback_reason": null,
+  "id": "01M505K18KTSZ6W3G1Z3VGQ42R",
+  "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+  "playbook": "oom-guard-01",
+  "reason": "ram_used_bytes is 96.04% of total, and instance 01M4N827979BD9D2762EFE24A0 is the heaviest consumer, restarting it should free up memory.",
+  "rule_id": "oom-guard-01"
+}

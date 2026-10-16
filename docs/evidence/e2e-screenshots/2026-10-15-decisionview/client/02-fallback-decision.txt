@@ -1,0 +1,53 @@
+# Sidecar for 02-fallback-decision.png (acceptance 02)
+# Purpose: the same panel showing a decision the MODEL did not make: decision_source=fallback, no confidence, with fallback_reason instead of a rationale - rendered in a visibly different style from 01
+# Captured (UTC): 2026-10-15T16:26:41Z
+# Exact URL in the address bar: https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token&synthetic=1&decisionLimit=200
+# Window: 1280x900, headful Chromium in Xvfb :99, browser chrome included, no crop/annotation.
+# Raw text behind the pixels follows.
+
+## As rendered on the published page (read back out of the live DOM)
+{"renderedRow":"16:25:57FALLBACKdemo-node-a (demo)disk-degrade-01→instance.stop 01M4N7F8B8823D650DF40D614Derror · 10.10.0.11:8443breachdisk_free_bytesdisk free=120.00 (raw)threshold: free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/sfired 16:25:57fallback reasoninference_unavailable — disk free space degraded below threshold or falling steeply; drain the heaviest workload so it can be migrated off the degraded node.audit 01M5064Z3E…K7JPtelemetry sampleshow on chartdecision 01M5064Z2T…A4B1","rowClass":"decision-row src-fallback","auditId":"01M5064Z3EB65JGCT4HJWQK7JP","eventId":"01M5064Y707RC5R1YG7GZPJEKA","decisionId":"01M5064Z2TM7EWENC3P9ZCA4B1","filter":"fallback","decisionsCount":"20 shown / 200 decisions · model 173 · fallback 20","deciderText":"decider: forwarded managed model · gemini-2.5-flashbackend=gemini-proxy · model=gemini-2.5-flash · egress=external · destination=aiplatform.googleapis.com · answered by=forwarded-managed-model · endpoint=http://10.10.0.13:8080the decision was not computed by local weights on this fleet: the operator's model call was answered by a forwarded managed model reached over egress"}
+
+## Raw API object behind that row (newest decision with decision_source=fallback)
+GET https://34-93-190-64.sslip.io/v1/operator/decisions?limit=200
+
+{
+  "action_kind": "instance.stop",
+  "action_params": {
+    "_vm_id": "01M4N7F8B8823D650DF40D614D",
+    "force": true,
+    "instance_name": "01M4N7F8B8823D650DF40D614D"
+  },
+  "confidence": null,
+  "decided_at": "2026-10-15T16:25:57.746Z",
+  "decision_source": "fallback",
+  "event_id": "01M5064Y707RC5R1YG7GZPJEKA",
+  "fallback_reason": "inference_unavailable",
+  "id": "01M5064Z2TM7EWENC3P9ZCA4B1",
+  "node_id": "01M4NZK46WXG5ZEFAGAAV5JRXM",
+  "playbook": "disk-degrade-01",
+  "reason": "disk free space degraded below threshold or falling steeply; drain the heaviest workload so it can be migrated off the degraded node.",
+  "rule_id": "disk-degrade-01"
+}
+
+## For contrast, the same call for a model decision (confidence + rationale, no fallback_reason)
+
+{
+  "action_kind": "instance.restart",
+  "action_params": {
+    "_vm_id": "01M4N827979BD9D2762EFE24A0",
+    "force": true,
+    "instance_name": "01M4N827979BD9D2762EFE24A0",
+    "timeout_s": 30
+  },
+  "confidence": 0.9,
+  "decided_at": "2026-10-15T16:26:05.746Z",
+  "decision_source": "model",
+  "event_id": "01M5065612Y7TDG4ASW5MPAEQT",
+  "fallback_reason": null,
+  "id": "01M506599VRR11NJPSYHDMM32C",
+  "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+  "playbook": "oom-guard-01",
+  "reason": "Host RAM is at 96.04% of total, and instance 01M4N827979BD9D2762EFE24A0 is using 16.5GB of RAM, exceeding its 4.29GB limit; restarting it should reclaim memory.",
+  "rule_id": "oom-guard-01"
+}

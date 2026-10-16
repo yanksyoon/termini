@@ -6,7 +6,7 @@
 import { $ } from "./ui/dom.js";
 import { ApiClient, ApiError } from "./api.js";
 import { LogStream } from "./stream.js";
-import { resolveConfig, apiUrl } from "./core/config.js";
+import { resolveConfig, apiUrl, stripKeysFromQuery } from "./core/config.js";
 import { CHART_GROUPS, windowQuery, metricsQuery } from "./core/series.js";
 import { parseEgressLine, annotationsForNode, sourceMeta } from "./core/decisions.js";
 import { renderOverview } from "./ui/overview.js";
@@ -16,11 +16,19 @@ import { MetricsPanel } from "./ui/metrics.js";
 import { ControlsPanel } from "./ui/controls.js";
 import { confirmDialog, detailDialog } from "./ui/modal.js";
 import { showBanner, hideBanner } from "./ui/banner.js";
-import { ok as toastOk, err as toastErr, warn as toastWarn } from "./ui/toast.js";
+import { ok as toastOk, err as toastErr, warn as toastWarn, toast } from "./ui/toast.js";
 import { formatError } from "./ui/errors.js";
 import { OfflineBackend, OfflineStream } from "./offline.js";
+import { MyNodePanel } from "./ui/mynode.js";
+import { registrationView, healthSummary } from "./core/client-node.js";
 
+// Non-secret connection settings live in localStorage; the CREDENTIALS do not.
+// The project credential and the client's node credential are held in
+// sessionStorage — one tab, gone when the tab closes, never in a URL and so
+// never inside a link that anyone can copy or share (task t_5649d117).
 const STORE_KEY = "termini.dashboard.cfg";
+const TOKEN_KEY = "termini.dashboard.token";
+const NODE_KEY = "termini.dashboard.node";
 
 const dom = {
   pillNodes: $("#pill-nodes"),
@@ -74,6 +82,20 @@ const dom = {
   setProject: $("#set-project"),
   setToken: $("#set-token"),
   setOffline: $("#set-offline"),
+  mynodeEmpty: $("#mynode-empty"),
+  mynodeLive: $("#mynode-live"),
+  mynodeStateDot: $("#mynode-state-dot"),
+  mynodeStateText: $("#mynode-state-text"),
+  mynodeDetail: $("#mynode-detail"),
+  mynodeEnrolled: $("#mynode-enrolled"),
+  mynodeLastSeen: $("#mynode-last-seen"),
+  mynodeError: $("#mynode-error"),
+  mynodeCards: $("#mynode-cards"),
+  mynodeEndpoint: $("#mynode-endpoint"),
+  mynodeNodeId: $("#mynode-node-id"),
+  mynodeToken: $("#mynode-node-token"),
+  mynodeConnect: $("#btn-mynode-connect"),
+  mynodeForget: $("#btn-mynode-forget"),
 };
 
 const state = {
@@ -167,11 +189,20 @@ function readInputs() {
   const params = new URLSearchParams(location.search);
   const query = {};
   for (const [k, v] of params.entries()) query[k] = v;
+  // `query` may still carry ?token=… — resolveConfig refuses it by rule and
+  // reports it back as `urlTokenIgnored`; the app then scrubs it from the
+  // address bar (scrubUrlCredential()). Nothing below honours it.
   let stored = {};
   try {
     stored = JSON.parse(localStorage.getItem(STORE_KEY) || "{}") || {};
   } catch {
     stored = {};
+  }
+  try {
+    const token = sessionStorage.getItem(TOKEN_KEY) || "";
+    if (token) stored = { ...stored, token };
+  } catch {
+    /* storage may be disabled — non-fatal */
   }
   const file = (typeof window !== "undefined" && window.TERMINI_CONFIG) || {};
   return { query, stored, file };
@@ -179,13 +210,76 @@ function readInputs() {
 
 function persistConfig() {
   try {
+    // The credential is deliberately NOT written here: localStorage outlives the
+    // tab and is readable by any script on the origin, so it holds only
+    // non-secret connection settings.
     localStorage.setItem(
       STORE_KEY,
-      JSON.stringify({ apiBase: cfg.apiBase, projectId: cfg.projectId, token: cfg.token, offline: cfg.offline }),
+      JSON.stringify({ apiBase: cfg.apiBase, projectId: cfg.projectId, offline: cfg.offline }),
     );
   } catch {
     /* storage may be disabled — non-fatal */
   }
+  persistToken(cfg.token);
+}
+
+function persistToken(token) {
+  try {
+    if (token) sessionStorage.setItem(TOKEN_KEY, token);
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readNodeCredential() {
+  try {
+    const raw = sessionStorage.getItem(NODE_KEY);
+    if (!raw) return { nodeId: "", nodeToken: "" };
+    const obj = JSON.parse(raw) || {};
+    return { nodeId: String(obj.nodeId || ""), nodeToken: String(obj.nodeToken || "") };
+  } catch {
+    return { nodeId: "", nodeToken: "" };
+  }
+}
+
+function persistNodeCredential(cred) {
+  try {
+    if (cred && cred.nodeId && cred.nodeToken) sessionStorage.setItem(NODE_KEY, JSON.stringify(cred));
+    else sessionStorage.removeItem(NODE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * A legacy link carrying `?token=…` is not honoured: a credential in a URL is
+ * shareable by construction (address bar, history, Referer, any copied link).
+ * Strip it from the address bar and the history entry, and tell the viewer to
+ * sign in instead.
+ */
+function scrubUrlCredential() {
+  if (!cfg.urlTokenIgnored) return false;
+  try {
+    const clean = stripKeysFromQuery(location.search);
+    history.replaceState(null, "", `${location.pathname}${clean}${location.hash || ""}`);
+  } catch {
+    /* non-fatal */
+  }
+  return true;
+}
+
+/** The controller origin (install one-liner / docs) from the REST base. */
+function controllerOrigin() {
+  const base = (cfg.apiBase || "").replace(/\/+$/, "").replace(/\/v1$/, "");
+  return base || "";
+}
+
+/** The REST root incl. the version segment — the same normalisation apiUrl uses. */
+function restRoot() {
+  const base = (cfg.apiBase || "").replace(/\/+$/, "");
+  if (!base) return "/v1";
+  return base.endsWith("/v1") || base.includes("/v1") ? base : `${base}/v1`;
 }
 
 /* ------------------------------------------------------------------ backend */
@@ -221,6 +315,88 @@ function streamHandlers() {
       /* EventSource retries on its own; state is surfaced via onStatus. */
     },
   };
+}
+
+/* -------------------------------------------------- the client's own node */
+
+/**
+ * Client view (task t_5649d117). One node, read with THAT NODE's own
+ * credential: `GET /v1/nodes/{node_id}/telemetry/recent` — own node only, a
+ * cross-node id is refused with 403. That per-node `node_token` is the only
+ * read credential the frozen enrollment contract gives a client (no client
+ * identity store, no fleet list), so isolation is a property of the credential
+ * itself: this view cannot address anyone else's node. The credential travels
+ * in the Authorization header and is never part of a URL.
+ */
+let nodeApi = null;
+let nodeCredential = readNodeCredential();
+let nodeTimer = null;
+
+const myNodePanel = new MyNodePanel(
+  {
+    empty: dom.mynodeEmpty,
+    live: dom.mynodeLive,
+    stateDot: dom.mynodeStateDot,
+    stateText: dom.mynodeStateText,
+    detail: dom.mynodeDetail,
+    enrolledAt: dom.mynodeEnrolled,
+    lastSeen: dom.mynodeLastSeen,
+    error: dom.mynodeError,
+    cards: dom.mynodeCards,
+    endpoint: dom.mynodeEndpoint,
+    nodeId: dom.mynodeNodeId,
+    token: dom.mynodeToken,
+    connectBtn: dom.mynodeConnect,
+    forgetBtn: dom.mynodeForget,
+  },
+  {
+    onConnect: ({ nodeId, nodeToken }) => {
+      nodeCredential = { nodeId, nodeToken };
+      persistNodeCredential(nodeCredential);
+      nodeApi = null;
+      myNodePanel.setCredential(nodeCredential);
+      if (!nodeId || !nodeToken) {
+        toastWarn("Enter both values from your node: the node_id and the node_token.");
+      }
+      refreshClientNode();
+    },
+    onForget: () => {
+      nodeCredential = { nodeId: "", nodeToken: "" };
+      persistNodeCredential(nodeCredential);
+      nodeApi = null;
+      myNodePanel.setCredential(nodeCredential);
+      myNodePanel.render(registrationView({}), null, {});
+      dom.mynodeEndpoint.textContent = "—";
+      toastOk("Forgot this node's credential in this tab.");
+    },
+  },
+);
+
+function clientNodeApi() {
+  if (!nodeApi || nodeApi.cfg.token !== nodeCredential.nodeToken) {
+    // Its OWN client: the node credential never mixes with the project
+    // credential above, and this path sends no project id at all.
+    nodeApi = new ApiClient({ ...cfg, token: nodeCredential.nodeToken });
+  }
+  return nodeApi;
+}
+
+async function refreshClientNode() {
+  if (!nodeCredential.nodeId || !nodeCredential.nodeToken) {
+    myNodePanel.render(registrationView({}), null, {});
+    return;
+  }
+  const endpoint = `${restRoot()}/nodes/${nodeCredential.nodeId}/telemetry/recent`;
+  let samples = [];
+  let error = null;
+  try {
+    const res = await clientNodeApi().nodeTelemetryRecent(nodeCredential.nodeId, 5);
+    samples = (res && res.samples) || [];
+  } catch (e) {
+    error = e;
+  }
+  const view = registrationView({ ...nodeCredential, samples, error, now: Date.now() });
+  myNodePanel.render(view, healthSummary(view.sample), { endpoint, stateValue: view.state });
 }
 
 /* ------------------------------------------------------------------ polling */
@@ -837,6 +1013,7 @@ function bindUi() {
     if (document.visibilityState === "visible") {
       refreshNodes();
       refreshMetrics();
+      refreshClientNode();
     }
   });
 }
@@ -877,13 +1054,32 @@ function init() {
 
   backend = makeBackend();
 
+  myNodePanel.setController(controllerOrigin());
+  myNodePanel.setCredential(nodeCredential);
+
   if (missingConfig()) {
     showBanner({
       kind: "warn",
-      text: "No project configured. Open Settings to set the controller URL, project id and token (or use the offline demo).",
+      text: "No project configured. Open Settings to set the controller URL and project id and sign in (or use the offline demo).",
       actionLabel: "Open settings",
       onAction: () => dom.settingsBtn.click(),
     });
+  }
+
+  if (scrubUrlCredential()) {
+    // A warning banner is not enough on its own here: the very next poll is
+    // likely to 401 for someone arriving on a legacy link, and that error
+    // banner replaces this one. The toast survives it.
+    const text =
+      "A credential in the URL (?token=…) is not accepted and has been removed from the address bar. " +
+      "Open Settings and sign in — from then on it is sent in the Authorization header only.";
+    showBanner({
+      kind: "warn",
+      text,
+      actionLabel: "Open settings",
+      onAction: () => dom.settingsBtn.click(),
+    });
+    toast("warn", "Credential in the URL refused", text, 20000);
   }
 
   renderOverview(dom.overview, state, overviewHandlers());
@@ -895,6 +1091,8 @@ function init() {
     refreshMetrics();
     refreshDecisions();
   });
+  refreshClientNode();
+  nodeTimer = setInterval(refreshClientNode, 5000);
   startPolling();
 }
 

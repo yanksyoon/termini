@@ -119,6 +119,20 @@ export class ApiClient {
     return this._request("GET", "/telemetry/recent", { query: { node: nodeId, limit: 1 } });
   }
 
+  /**
+   * The CLIENT view of one node (task t_5649d117). Authenticated with that
+   * node's own `node_token` — never the project token — and project-scoped
+   * nowhere: `GET /v1/nodes/{node_id}/telemetry/recent` reads exactly the node
+   * the credential was issued to (a cross-node id is refused with 403). The
+   * credential rides in the Authorization header; the URL carries only the
+   * limit.
+   */
+  nodeTelemetryRecent(nodeId, limit = 5) {
+    return this._request("GET", `/nodes/${encodeURIComponent(nodeId)}/telemetry/recent`, {
+      query: { limit },
+    });
+  }
+
   rebootNode(nodeId, delayS = 0) {
     return this._request("POST", `/projects/${this._project()}/nodes/${encodeURIComponent(nodeId)}/actions/reboot`, {
       body: { delay_s: delayS },
