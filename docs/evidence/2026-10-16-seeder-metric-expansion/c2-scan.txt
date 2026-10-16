@@ -1,0 +1,17 @@
+== controller validator (app.validate.validate_sample) + C2 scan ==
+  healthy: validate errors=[]  scan_c2=[]  check_c1=[]  clean==raw=True
+    pressure={'cpu_some_avg10': 0.0, 'io_some_avg10': 0.0, 'memory_some_avg10': 0.0, 'memory_full_avg10': 0.0}  mem_available_bytes=42949672960
+    disk[0] io_ticks_ms=6200000 io_in_flight=0 write_latency_ms=3.0
+    oom_kill_count=0 pgmajfault_count=21000 lxd_instances[0]={'oom_kill_count': 0, 'pgmajfault_count': 15000}
+  disk-degrade: validate errors=[]  scan_c2=[]  check_c1=[]  clean==raw=True
+    pressure={'cpu_some_avg10': 12.4, 'io_some_avg10': 68.9, 'memory_some_avg10': 0.0, 'memory_full_avg10': 0.0}  mem_available_bytes=32212254720
+    disk[0] io_ticks_ms=6840000 io_in_flight=42 write_latency_ms=120.0
+    oom_kill_count=0 pgmajfault_count=21240 lxd_instances[0]={'oom_kill_count': 0, 'pgmajfault_count': 15000}
+  memory-pressure: validate errors=[]  scan_c2=[]  check_c1=[]  clean==raw=True
+    pressure={'cpu_some_avg10': 18.6, 'io_some_avg10': 0.0, 'memory_some_avg10': 72.4, 'memory_full_avg10': 41.3}  mem_available_bytes=536870912
+    disk[0] io_ticks_ms=6260000 io_in_flight=0 write_latency_ms=3.0
+    oom_kill_count=4 pgmajfault_count=31800 lxd_instances[0]={'oom_kill_count': 3, 'pgmajfault_count': 24800}
+
+== cumulative counter evolution over 9 faulted ticks ==
+  memory node (FAULT_MEMORY): [{"tick": 1, "oom_kill_count": 0, "pgmajfault_count": 163, "instance_oom_kill_count": 0, "instance_pgmajfault_count": 130}, {"tick": 2, "oom_kill_count": 0, "pgmajfault_count": 326, "instance_oom_kill_count": 0, "instance_pgmajfault_count": 260}, {"tick": 3, "oom_kill_count": 1, "pgmajfault_count": 489, "instance_oom_kill_count": 1, "instance_pgmajfault_count": 390}, {"tick": 4, "oom_kill_count": 1, "pgmajfault_count": 652, "instance_oom_kill_count": 1, "instance_pgmajfault_count": 520}, {"tick": 5, "oom_kill_count": 1, "pgmajfault_count": 815, "instance_oom_kill_count": 1, "instance_pgmajfault_count": 650}, {"tick": 6, "oom_kill_count": 2, "pgmajfault_count": 978, "instance_oom_kill_count": 2, "instance_pgmajfault_count": 780}, {"tick": 7, "oom_kill_count": 2, "pgmajfault_count": 1141, "instance_oom_kill_count": 2, "instance_pgmajfault_count": 910}, {"tick": 8, "oom_kill_count": 2, "pgmajfault_count": 1304, "instance_oom_kill_count": 2, "instance_pgmajfault_count": 1040}, {"tick": 9, "oom_kill_count": 3, "pgmajfault_count": 1467, "instance_oom_kill_count": 3, "instance_pgmajfault_count": 1170}]
+  disk node (FAULT_DISK):     [{"tick": 1, "io_ticks_ms": 3240, "oom_kill_count": 0}, {"tick": 2, "io_ticks_ms": 6480, "oom_kill_count": 0}, {"tick": 3, "io_ticks_ms": 9720, "oom_kill_count": 0}, {"tick": 4, "io_ticks_ms": 12960, "oom_kill_count": 0}, {"tick": 5, "io_ticks_ms": 16200, "oom_kill_count": 0}, {"tick": 6, "io_ticks_ms": 19440, "oom_kill_count": 0}, {"tick": 7, "io_ticks_ms": 22680, "oom_kill_count": 0}, {"tick": 8, "io_ticks_ms": 25920, "oom_kill_count": 0}, {"tick": 9, "io_ticks_ms": 29160, "oom_kill_count": 0}]

@@ -1,0 +1,394 @@
+{
+  "counter_evolution": {
+    "disk-node": [
+      {
+        "io_ticks_ms": 3240,
+        "oom_kill_count": 0,
+        "tick": 1
+      },
+      {
+        "io_ticks_ms": 6480,
+        "oom_kill_count": 0,
+        "tick": 2
+      },
+      {
+        "io_ticks_ms": 9720,
+        "oom_kill_count": 0,
+        "tick": 3
+      },
+      {
+        "io_ticks_ms": 12960,
+        "oom_kill_count": 0,
+        "tick": 4
+      },
+      {
+        "io_ticks_ms": 16200,
+        "oom_kill_count": 0,
+        "tick": 5
+      },
+      {
+        "io_ticks_ms": 19440,
+        "oom_kill_count": 0,
+        "tick": 6
+      },
+      {
+        "io_ticks_ms": 22680,
+        "oom_kill_count": 0,
+        "tick": 7
+      },
+      {
+        "io_ticks_ms": 25920,
+        "oom_kill_count": 0,
+        "tick": 8
+      },
+      {
+        "io_ticks_ms": 29160,
+        "oom_kill_count": 0,
+        "tick": 9
+      }
+    ],
+    "memory-node": [
+      {
+        "instance_oom_kill_count": 0,
+        "instance_pgmajfault_count": 130,
+        "oom_kill_count": 0,
+        "pgmajfault_count": 163,
+        "tick": 1
+      },
+      {
+        "instance_oom_kill_count": 0,
+        "instance_pgmajfault_count": 260,
+        "oom_kill_count": 0,
+        "pgmajfault_count": 326,
+        "tick": 2
+      },
+      {
+        "instance_oom_kill_count": 1,
+        "instance_pgmajfault_count": 390,
+        "oom_kill_count": 1,
+        "pgmajfault_count": 489,
+        "tick": 3
+      },
+      {
+        "instance_oom_kill_count": 1,
+        "instance_pgmajfault_count": 520,
+        "oom_kill_count": 1,
+        "pgmajfault_count": 652,
+        "tick": 4
+      },
+      {
+        "instance_oom_kill_count": 1,
+        "instance_pgmajfault_count": 650,
+        "oom_kill_count": 1,
+        "pgmajfault_count": 815,
+        "tick": 5
+      },
+      {
+        "instance_oom_kill_count": 2,
+        "instance_pgmajfault_count": 780,
+        "oom_kill_count": 2,
+        "pgmajfault_count": 978,
+        "tick": 6
+      },
+      {
+        "instance_oom_kill_count": 2,
+        "instance_pgmajfault_count": 910,
+        "oom_kill_count": 2,
+        "pgmajfault_count": 1141,
+        "tick": 7
+      },
+      {
+        "instance_oom_kill_count": 2,
+        "instance_pgmajfault_count": 1040,
+        "oom_kill_count": 2,
+        "pgmajfault_count": 1304,
+        "tick": 8
+      },
+      {
+        "instance_oom_kill_count": 3,
+        "instance_pgmajfault_count": 1170,
+        "oom_kill_count": 3,
+        "pgmajfault_count": 1467,
+        "tick": 9
+      }
+    ]
+  },
+  "samples": {
+    "disk-degrade": {
+      "conntrack_count": 457,
+      "conntrack_max": 262144,
+      "cpu_core_count": 16,
+      "cpu_util_pct": 31.2,
+      "disk": [
+        {
+          "free_bytes": 214748364800,
+          "inode_total": 12976128,
+          "inode_used": 1129359,
+          "io_in_flight": 42,
+          "io_ticks_ms": 6840000,
+          "mount_ro": false,
+          "path": "/dev/sda",
+          "total_bytes": 274877906944,
+          "write_latency_ms": 120.0
+        }
+      ],
+      "hostname": "e8fca32fbe0ea2d7",
+      "ip_local": "10.14.100.0/24",
+      "kernel_version": "6.8.0-142-generic",
+      "load_avg_1m": 1.42,
+      "lxd_cluster_role": "member",
+      "lxd_instances": [
+        {
+          "cpu_util_pct": 12.0,
+          "disk_used_bytes": 2362232012,
+          "oom_kill_count": 0,
+          "pgmajfault_count": 15000,
+          "ram_limit_bytes": 4294967296,
+          "ram_used_bytes": 4500000000,
+          "state": "running",
+          "vm_id": "NNB9287WRHGFDPEZ995TKCXDNW"
+        },
+        {
+          "cpu_util_pct": 12.0,
+          "disk_used_bytes": 2362232012,
+          "oom_kill_count": 0,
+          "pgmajfault_count": 0,
+          "ram_limit_bytes": 4294967296,
+          "ram_used_bytes": 4500000000,
+          "state": "running",
+          "vm_id": "8MY0TVQBQEVETTESB9ZZVNHM2S"
+        }
+      ],
+      "mac_address": "a17863e95a2f524b",
+      "mem_available_bytes": 32212254720,
+      "net": [
+        {
+          "iface": "eth0",
+          "latency_ms": 0.8,
+          "rx_bytes": 123100,
+          "rx_dropped": 0,
+          "rx_errors": 0,
+          "tx_bytes": 11100,
+          "tx_dropped": 0,
+          "tx_errors": 0
+        }
+      ],
+      "oom_kill_count": 0,
+      "os_name": "Ubuntu",
+      "os_version": "24.04",
+      "pgmajfault_count": 21240,
+      "pressure": {
+        "cpu_some_avg10": 12.4,
+        "io_some_avg10": 68.9,
+        "memory_full_avg10": 0.0,
+        "memory_some_avg10": 0.0
+      },
+      "project_id": "01M539DJ5WDFPAH3NR9NNXXVS2",
+      "ram_total_bytes": 68719476736,
+      "ram_used_bytes": 18000000000,
+      "seq": 100,
+      "services": [
+        {
+          "name": "termini-bootstrap",
+          "status": "running"
+        },
+        {
+          "name": "lxd",
+          "status": "running"
+        },
+        {
+          "name": "sshd",
+          "status": "running"
+        }
+      ],
+      "swap_used_bytes": 0,
+      "tcp_retransmit_segs": 4802,
+      "ts": "2026-10-16T21:58:17.000Z",
+      "uptime_sec": 3600
+    },
+    "healthy": {
+      "conntrack_count": 457,
+      "conntrack_max": 262144,
+      "cpu_core_count": 16,
+      "cpu_util_pct": 31.2,
+      "disk": [
+        {
+          "free_bytes": 214748364800,
+          "inode_total": 12976128,
+          "inode_used": 1129359,
+          "io_in_flight": 0,
+          "io_ticks_ms": 6200000,
+          "mount_ro": false,
+          "path": "/dev/sda",
+          "total_bytes": 274877906944,
+          "write_latency_ms": 3.0
+        }
+      ],
+      "hostname": "e8fca32fbe0ea2d7",
+      "ip_local": "10.14.100.0/24",
+      "kernel_version": "6.8.0-142-generic",
+      "load_avg_1m": 1.42,
+      "lxd_cluster_role": "member",
+      "lxd_instances": [
+        {
+          "cpu_util_pct": 12.0,
+          "disk_used_bytes": 2362232012,
+          "oom_kill_count": 0,
+          "pgmajfault_count": 15000,
+          "ram_limit_bytes": 4294967296,
+          "ram_used_bytes": 4500000000,
+          "state": "running",
+          "vm_id": "NNB9287WRHGFDPEZ995TKCXDNW"
+        },
+        {
+          "cpu_util_pct": 12.0,
+          "disk_used_bytes": 2362232012,
+          "oom_kill_count": 0,
+          "pgmajfault_count": 0,
+          "ram_limit_bytes": 4294967296,
+          "ram_used_bytes": 4500000000,
+          "state": "running",
+          "vm_id": "8MY0TVQBQEVETTESB9ZZVNHM2S"
+        }
+      ],
+      "mac_address": "a17863e95a2f524b",
+      "mem_available_bytes": 42949672960,
+      "net": [
+        {
+          "iface": "eth0",
+          "latency_ms": 0.8,
+          "rx_bytes": 123100,
+          "rx_dropped": 0,
+          "rx_errors": 0,
+          "tx_bytes": 11100,
+          "tx_dropped": 0,
+          "tx_errors": 0
+        }
+      ],
+      "oom_kill_count": 0,
+      "os_name": "Ubuntu",
+      "os_version": "24.04",
+      "pgmajfault_count": 21000,
+      "pressure": {
+        "cpu_some_avg10": 0.0,
+        "io_some_avg10": 0.0,
+        "memory_full_avg10": 0.0,
+        "memory_some_avg10": 0.0
+      },
+      "project_id": "01M539DJ5WDFPAH3NR9NNXXVS2",
+      "ram_total_bytes": 68719476736,
+      "ram_used_bytes": 18000000000,
+      "seq": 100,
+      "services": [
+        {
+          "name": "termini-bootstrap",
+          "status": "running"
+        },
+        {
+          "name": "lxd",
+          "status": "running"
+        },
+        {
+          "name": "sshd",
+          "status": "running"
+        }
+      ],
+      "swap_used_bytes": 0,
+      "tcp_retransmit_segs": 4800,
+      "ts": "2026-10-16T21:58:17.000Z",
+      "uptime_sec": 3600
+    },
+    "memory-pressure": {
+      "conntrack_count": 457,
+      "conntrack_max": 262144,
+      "cpu_core_count": 16,
+      "cpu_util_pct": 31.2,
+      "disk": [
+        {
+          "free_bytes": 214748364800,
+          "inode_total": 12976128,
+          "inode_used": 1129359,
+          "io_in_flight": 0,
+          "io_ticks_ms": 6260000,
+          "mount_ro": false,
+          "path": "/dev/sda",
+          "total_bytes": 274877906944,
+          "write_latency_ms": 3.0
+        }
+      ],
+      "hostname": "e8fca32fbe0ea2d7",
+      "ip_local": "10.14.100.0/24",
+      "kernel_version": "6.8.0-142-generic",
+      "load_avg_1m": 1.42,
+      "lxd_cluster_role": "member",
+      "lxd_instances": [
+        {
+          "cpu_util_pct": 12.0,
+          "disk_used_bytes": 2362232012,
+          "oom_kill_count": 3,
+          "pgmajfault_count": 24800,
+          "ram_limit_bytes": 4294967296,
+          "ram_used_bytes": 16500000000,
+          "state": "running",
+          "vm_id": "NNB9287WRHGFDPEZ995TKCXDNW"
+        },
+        {
+          "cpu_util_pct": 12.0,
+          "disk_used_bytes": 2362232012,
+          "oom_kill_count": 0,
+          "pgmajfault_count": 0,
+          "ram_limit_bytes": 4294967296,
+          "ram_used_bytes": 16500000000,
+          "state": "running",
+          "vm_id": "8MY0TVQBQEVETTESB9ZZVNHM2S"
+        }
+      ],
+      "mac_address": "a17863e95a2f524b",
+      "mem_available_bytes": 536870912,
+      "net": [
+        {
+          "iface": "eth0",
+          "latency_ms": 0.8,
+          "rx_bytes": 123100,
+          "rx_dropped": 0,
+          "rx_errors": 0,
+          "tx_bytes": 11100,
+          "tx_dropped": 0,
+          "tx_errors": 0
+        }
+      ],
+      "oom_kill_count": 4,
+      "os_name": "Ubuntu",
+      "os_version": "24.04",
+      "pgmajfault_count": 31800,
+      "pressure": {
+        "cpu_some_avg10": 18.6,
+        "io_some_avg10": 0.0,
+        "memory_full_avg10": 41.3,
+        "memory_some_avg10": 72.4
+      },
+      "project_id": "01M539DJ5WDFPAH3NR9NNXXVS2",
+      "ram_total_bytes": 68719476736,
+      "ram_used_bytes": 66000000000,
+      "seq": 100,
+      "services": [
+        {
+          "name": "termini-bootstrap",
+          "status": "running"
+        },
+        {
+          "name": "lxd",
+          "status": "running"
+        },
+        {
+          "name": "sshd",
+          "status": "running"
+        }
+      ],
+      "swap_used_bytes": 0,
+      "tcp_retransmit_segs": 4803,
+      "ts": "2026-10-16T21:58:17.000Z",
+      "uptime_sec": 3600
+    }
+  }
+}
