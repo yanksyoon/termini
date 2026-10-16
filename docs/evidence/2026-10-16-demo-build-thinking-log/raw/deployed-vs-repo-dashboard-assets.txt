@@ -1,0 +1,11 @@
+asset                                 deployed          @6fb58d0             @main  match
+index.html                    ce199a0970bd50e2  ce199a0970bd50e2  ce199a0970bd50e2  deployed==6fb58d0
+js/ui/decisions.js            0768a33756523f1d  0768a33756523f1d  91251aa2ebd12cb6  deployed==6fb58d0
+js/core/decisions.js          221e159bb82ebffe  221e159bb82ebffe  798d99d89665d173  deployed==6fb58d0
+js/offline.js                 771a23a34e0f4e20  771a23a34e0f4e20  e1d819327bf9a2d7  deployed==6fb58d0
+assets/styles.css             a58b413822f889e9  a58b413822f889e9  20eebf0b889fa6b6  deployed==6fb58d0
+js/main.js                    df0d548996c0e959  df0d548996c0e959  72492a46719e74f4  deployed==6fb58d0
+6fb58d0 js/ui/decisions.js: bytes=16931 decision_trace=0 decided_by=0 thinking=0
+6fb58d0 js/core/decisions.js: bytes=21446 decision_trace=0 decided_by=0 thinking=0
+origin/main js/ui/decisions.js: bytes=29923 decision_trace=0 decided_by=4 thinking=8
+origin/main js/core/decisions.js: bytes=34279 decision_trace=6 decided_by=14 thinking=2

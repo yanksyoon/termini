@@ -1,0 +1,1 @@
+metric=run.googleapis.com/container/instance_count extra='' series=0
