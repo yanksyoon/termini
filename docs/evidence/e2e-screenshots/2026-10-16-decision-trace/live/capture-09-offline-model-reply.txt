@@ -1,0 +1,5 @@
+MODEL OUTPUT — NOT EXECUTED (RAW REPLY, `REPLY_RECEIVED` STEP)
+OK
+NOT EXECUTED
+received 21:40:13
+{"schema_version":1,"action_id":"instance.stop","confidence":0.85,"rationale":"disk write latency on /dev/sda is 120ms against a 50ms threshold; stopping the write-heavy instance removes the load","incident":{"title":"Disk write latency on /dev/sda","explanation":"write_latency_ms reached 120 ms while free space stayed above the 5% floor","evidence":[{"field":"disk_write_latency_ms","value":120}],"actions":[{"action_kind":"instance.stop"}]}}

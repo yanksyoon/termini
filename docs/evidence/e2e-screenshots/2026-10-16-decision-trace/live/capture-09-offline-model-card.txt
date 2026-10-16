@@ -1,0 +1,117 @@
+21:40:09
+AI MODEL 0.85
+termini-node-c
+disk-degrade-01
+→
+instance.stop 01H4KZ9Q2R3T5V7W9X1Y3Z5E4H
+OK · 10.10.0.11:8443
+AI-GENERATED INCIDENT
+incident_generated: "model"
+AI model
+Disk write latency on /dev/sda
+
+write_latency_ms on /dev/sda reached 120 ms against a 50 ms threshold while free space stayed above the 5% floor, so this is I/O contention rather than a full disk. The single instance on this node holds the write path, so stopping it removes the load without draining the node.
+
+AI THINKING LOG
+thinking log · 10 steps · decided_by "model" · trace_version 1 · raw reply recorded — not executed
+expand for the ordered steps
+1.
+21:40:09
+OK
+threshold_fired
+rule disk-degrade-01 fired
+rule_id=disk-degrade-01 event_id=01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000010 fired_at=2026-10-16T21:40:09.258Z detection_latency_ms=2000
+2.
+21:40:10
+OK
+evidence_window
+evidence window captured
+seq 1108..1110 (3 samples) C0 fields: cpu_util_pct, ram_total_bytes, ram_used_bytes
+3.
+21:40:11
+OK
+prompt_built
+prompt rendered (C0 assertion ok)
+template=operator-decision v1 sha256=9f2c1e77 substituted_fields=14 C0_assertion=ok
+4.
+21:40:12
+OK
+model_call
+model answered
+endpoint=external model=deepseek-flash answered_by=forwarded-managed-model latency_ms=812 request_id=01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000010
+5.
+21:40:13
+OK
+reply_received
+model reply received
+{"schema_version":1,"action_id":"instance.stop","confidence":0.85,"rationale":"disk write latency on /dev/sda is 120ms against a 50ms threshold; stopping the write-heavy instance removes the load","incident":{"title":"Disk write latency on /dev/sda","explanation":"write_latency_ms reached 120 ms while free space stayed above the 5% floor","evidence":[{"field":"disk_write_latency_ms","value":120}],"actions":[{"action_kind":"instance.stop"}]}}
+6.
+21:40:14
+OK
+gates
+G7 rationale
+rule=G7 field=rationale decision=accept (C0-safe, within bounds)
+7.
+21:40:15
+OK
+gates
+G9 incident record
+rule=G9 decision=accept (record clean or absent)
+8.
+21:40:16
+OK
+action_decided
+action decided: instance.stop
+action_kind=instance.stop target=01H4KZ9Q2R3T5V7W9X1Y3Z5E4H
+9.
+21:40:17
+OK
+executed
+action executed: ok
+result=ok latency_ms=45
+10.
+21:40:18
+OK
+audit_recorded
+audit row written
+decision_id=01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000010
+MODEL OUTPUT — NOT EXECUTED (RAW REPLY, `REPLY_RECEIVED` STEP)
+OK
+NOT EXECUTED
+received 21:40:13
+{"schema_version":1,"action_id":"instance.stop","confidence":0.85,"rationale":"disk write latency on /dev/sda is 120ms against a 50ms threshold; stopping the write-heavy instance removes the load","incident":{"title":"Disk write latency on /dev/sda","explanation":"write_latency_ms reached 120 ms while free space stayed above the 5% floor","evidence":[{"field":"disk_write_latency_ms","value":120}],"actions":[{"action_kind":"instance.stop"}]}}
+EVIDENCE · 2 TELEMETRY FIELDS QUOTED
+disk_write_latency_ms
+=
+120.0 ms
+seq 1120
+21:40:09
+disk_free_bytes
+=
+68.92 GiB
+seq 1120
+DECIDED · 1 ACTION NAMED IN THE RECORD (A DECISION, NOT AN OUTCOME)
+instance.stop
+01H4KZ9Q2R3T5V7W9X1Y3Z5E4H
+stop the instance holding the write path
+EXECUTED · WHAT THE FLEET ANSWERED (REMEDIATION_AUDITS, JOINED BY DECISION ID)
+OK
+10.10.0.11:8443
+PUT /1.0/instances/01H4KZ9Q2R3T5V7W9X1Y3Z5E4H/state
+idempotency_key 01H4KZ9Q2R3T5V7W9X1Y3Z5D3G:disk-degrade-01:instance.stop:01H4KZ9Q2R3T5V7W9X1Y3Z5E4H:0
+instance restarted
+executed 21:40:09
+· audit 01H4KZ9Q2R…0030
+BREACH
+disk_write_latency_ms
+write latency
+=
+120.00 (raw)
+threshold: free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s
+fired 21:40:09
+MODEL RATIONALE
+disk write latency on /dev/sda is 120ms, exceeding the 50ms threshold; stopping the instance with the highest disk usage will reduce disk I/O.
+audit 01H4KZ9Q2R…0030
+telemetry sample
+show on chart
+decision 01H4KZ9Q2R…0020

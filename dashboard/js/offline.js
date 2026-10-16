@@ -20,6 +20,91 @@ function wobble(seed, t, lo, hi) {
   return lo + ((v + 1) / 2) * (hi - lo);
 }
 
+/**
+ * A §4.3 decision trace shaped exactly as `GET /v1/operator/decisions` returns
+ * it (the JSON column, already parsed). Built here so the offline demo shows the
+ * thinking log with no controller — including the two states that must never be
+ * flattened: a `decided_by: "fallback"` controller trace and a reply the C2
+ * guardrail withheld.
+ */
+function offlineTrace({ t0, decidedBy, rule_id, event_id, action_kind, target, reply, reason, rejectingGate }) {
+  const at = (s) => new Date(t0 + s * 1000).toISOString();
+  const steps = [
+    {
+      step: "threshold_fired", ts: at(0), label: `rule ${rule_id} fired`,
+      detail: `rule_id=${rule_id} event_id=${event_id} fired_at=${at(0)} detection_latency_ms=2000`,
+      state: "ok",
+    },
+    {
+      step: "evidence_window", ts: at(1), label: "evidence window captured",
+      detail: "seq 1108..1110 (3 samples) C0 fields: cpu_util_pct, ram_total_bytes, ram_used_bytes",
+      state: "ok",
+    },
+    {
+      step: "prompt_built", ts: at(2), label: "prompt rendered (C0 assertion ok)",
+      detail: "template=operator-decision v1 sha256=9f2c1e77 substituted_fields=14 C0_assertion=ok",
+      state: "ok",
+    },
+  ];
+  if (decidedBy === "model") {
+    steps.push(
+      {
+        step: "model_call", ts: at(3), label: "model answered",
+        detail: "endpoint=external model=deepseek-flash answered_by=forwarded-managed-model latency_ms=812 request_id=" + event_id,
+        state: "ok",
+      },
+      {
+        step: "reply_received", ts: at(4),
+        label: reply.withheld ? "model reply (parse=ok)" : "model reply received",
+        detail: reply.text,
+        state: reply.withheld ? "rejected" : "ok",
+      },
+      {
+        step: "gates", ts: at(5), label: reply.withheld ? "G9 incident record" : "G7 rationale",
+        detail: reply.withheld
+          ? "rule=G9 field=reply_received decision=drop reason=C2_signature"
+          : "rule=G7 field=rationale decision=accept (C0-safe, within bounds)",
+        state: reply.withheld ? "dropped" : "ok",
+      },
+      {
+        step: "gates", ts: at(6), label: "G9 incident record",
+        detail: "rule=G9 decision=accept (record clean or absent)",
+        state: "ok",
+      },
+      {
+        step: "action_decided", ts: at(7), label: `action decided: ${action_kind}`,
+        detail: `action_kind=${action_kind} target=${target}`,
+        state: "ok",
+      },
+    );
+  } else {
+    // A fallback trace is a CONTROLLER trace. Two flavours exist: the model
+    // never answered at all (no reply text was retained), or it answered and a
+    // guardrail rejected the answer (the reply is here, and `rejecting_gate`
+    // names the gate that refused it).
+    const hasReply = !!(reply && reply.text);
+    steps.push(
+      {
+        step: "reply_received", ts: at(4),
+        label: hasReply ? "model reply received" : "model reply (parse=error)",
+        detail: hasReply ? reply.text : "no raw reply text retained",
+        state: hasReply ? (reply.withheld ? "rejected" : "ok") : "skipped",
+      },
+      {
+        step: "action_decided", ts: at(5), label: "fallback to deterministic action",
+        detail: `decided_by=fallback reason=${reason} action_kind=${action_kind}` +
+          (rejectingGate ? ` rejecting_gate=${rejectingGate}` : ""),
+        state: "fallback",
+      },
+    );
+  }
+  steps.push(
+    { step: "executed", ts: at(8), label: "action executed: ok", detail: "result=ok latency_ms=45", state: "ok" },
+    { step: "audit_recorded", ts: at(9), label: "audit row written", detail: `decision_id=${event_id}`, state: "ok" },
+  );
+  return { trace_version: 1, decided_by: decidedBy, steps };
+}
+
 export class OfflineBackend {
   constructor() {
     this.started = Date.now();
@@ -130,6 +215,22 @@ export class OfflineBackend {
         incident_evidence: over.incident_evidence ?? null,
         incident_actions: over.incident_actions ?? null,
         incident_generated: over.incident_generated ?? null,
+        // §4.3 decision trace. `null` for a deterministic-mode row, exactly as
+        // the controller writes it (no trace columns at all, §8.1) — the panel
+        // must render "no decision trace" there, never an empty timeline.
+        decision_trace: over.source === "deterministic"
+          ? null
+          : offlineTrace({
+              t0: Date.parse(decided_at),
+              decidedBy: over.source,
+              rule_id: over.rule_id,
+              event_id,
+              action_kind: over.action_kind,
+              target: instance,
+              reply: over.trace_reply || null,
+              reason: over.fallback_reason,
+              rejectingGate: over.trace_rejecting_gate || null,
+            }),
       };
       const event = {
         id: event_id,
@@ -166,6 +267,8 @@ export class OfflineBackend {
     };
     const rows = [
       mk(0, { node_id: c.node_id, rule_id: "disk-degrade-01", type: "disk_degrade", metric: "disk_write_latency_ms", value: 120, threshold: "free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s", action_kind: "instance.stop", action_params: { instance_name: instance, force: true }, reason: "disk write latency on /dev/sda is 120ms, exceeding the 50ms threshold; stopping the instance with the highest disk usage will reduce disk I/O.", source: "model", confidence: 0.85, result: "ok",
+        // §4.3: the raw reply the model returned (the `reply_received` step).
+        trace_reply: { text: '{"schema_version":1,"action_id":"instance.stop","confidence":0.85,"rationale":"disk write latency on /dev/sda is 120ms against a 50ms threshold; stopping the write-heavy instance removes the load","incident":{"title":"Disk write latency on /dev/sda","explanation":"write_latency_ms reached 120 ms while free space stayed above the 5% floor","evidence":[{"field":"disk_write_latency_ms","value":120}],"actions":[{"action_kind":"instance.stop"}]}}' },
         // §4.2 record as the model returned it (generated: "model").
         incident_generated: "model",
         incident_title: "Disk write latency on /dev/sda",
@@ -179,6 +282,7 @@ export class OfflineBackend {
         ],
       }),
       mk(1, { node_id: a.node_id, rule_id: "oom-guard-01", type: "oom", metric: "ram_used_bytes", value: 33114165248, threshold: ">= 95% of ram_total_bytes for 2 consecutive samples", action_kind: "instance.restart", action_params: { instance_name: instance, force: true, timeout_s: 30 }, reason: "host RAM at 96.4% of total with one instance holding 29%; restarting it reclaims memory.", source: "model", confidence: 0.9, result: "ok",
+        trace_reply: { text: '{"schema_version":1,"action_id":"instance.restart","confidence":0.9,"rationale":"host RAM at 96.4% of total with one instance holding 29%; restarting it reclaims the memory","incident":{"title":"Memory exhaustion on node a","explanation":"ram_used_bytes stayed above 95% of ram_total_bytes for two consecutive samples","evidence":[{"field":"ram_used_bytes","value":33114165248}],"actions":[{"action_kind":"instance.restart"}]}}' },
         incident_generated: "model",
         incident_title: "Memory exhaustion on node a",
         incident_explanation: "ram_used_bytes reached 96.4% of ram_total_bytes and stayed there for two consecutive samples, and one instance holds 29% of the node's RAM by itself. That is a single-instance leak rather than fleet-wide pressure, so restarting that instance reclaims the memory without touching the node.",
@@ -211,6 +315,21 @@ export class OfflineBackend {
         incident_explanation: "model unavailable (parse_error); the deterministic playbook chose image.prune for rule gpu-oos-01",
         incident_evidence: [
           { field: "gpu_vram_used_bytes", value: 27000000000, seq: 986, ts: new Date(now - 384_000).toISOString() },
+        ],
+        incident_actions: [{ action_kind: "image.prune" }],
+      }),
+      // The other fallback flavour: the model DID answer and the guardrail
+      // refused the answer, so the trace carries both the raw reply and the
+      // gate that rejected it (`rejecting_gate=G6`) — the case the panel must
+      // render without ever letting that reply read as the decision.
+      mk(5, { node_id: c.node_id, rule_id: "gpu-oos-01", type: "gpu_oos", metric: "gpu_vram_used_bytes", value: 27500000000, threshold: "gpu_vram_used_bytes >= 95% of gpu_vram_total_bytes", action_kind: "image.prune", action_params: {}, reason: "playbook: prune images (VRAM 96% of total)", source: "fallback", fallback_reason: "low_confidence", result: "ok",
+        trace_reply: { text: '{"schema_version":1,"action_id":"image.prune","confidence":0.12,"rationale":"VRAM is nearly full; pruning images may free space","incident":null}' },
+        trace_rejecting_gate: "G6",
+        incident_generated: "fallback",
+        incident_title: "gpu_oos on node c",
+        incident_explanation: "model unavailable (low_confidence); the deterministic playbook chose image.prune for rule gpu-oos-01",
+        incident_evidence: [
+          { field: "gpu_vram_used_bytes", value: 27500000000, seq: 990, ts: new Date(now - 480_000).toISOString() },
         ],
         incident_actions: [{ action_kind: "image.prune" }],
       }),

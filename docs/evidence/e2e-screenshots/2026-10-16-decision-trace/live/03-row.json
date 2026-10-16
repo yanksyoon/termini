@@ -1,0 +1,30 @@
+{
+  "decisions": 3,
+  "found": true,
+  "row": {
+    "action_kind": "instance.restart",
+    "action_params": {
+      "_vm_id": "01M53A3BYWV76W4A8MRDW2GC7R",
+      "force": true,
+      "instance_name": "agent-c1",
+      "timeout_s": 30
+    },
+    "confidence": null,
+    "decided_at": "2026-10-16T21:37:29.995Z",
+    "decision_source": "deterministic",
+    "decision_trace": null,
+    "event_id": "01M53AC3BP3H5HAF6WEC09J3EG",
+    "fallback_reason": null,
+    "id": "01M53AC3CFPHRM70DZCS1F2KTP",
+    "incident_actions": null,
+    "incident_evidence": null,
+    "incident_explanation": null,
+    "incident_generated": null,
+    "incident_title": null,
+    "node_id": "01M53A3CQ3PPC0QG0EEMEK48SJ",
+    "playbook": "oom-guard-01",
+    "reason": "host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.",
+    "rule_id": "oom-guard-01",
+    "trace_version": null
+  }
+}

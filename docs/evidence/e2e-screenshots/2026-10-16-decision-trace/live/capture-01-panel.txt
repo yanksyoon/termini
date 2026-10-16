@@ -1,0 +1,140 @@
+21:37:29
+DETERMINISTIC
+evidence-node-a-machine
+oom-guard-01
+→
+instance.restart agent-c1
+ERROR · 127.0.0.1:60535
+INCIDENT RECORD
+no incident record (deterministic mode)
+THINKING LOG
+no decision trace (deterministic mode writes none — §8.1)
+BREACH
+ram_used_bytes
+RAM used
+=
+97.00% of ram_total_bytes
+threshold: >= 95% of ram_total_bytes for 2 consecutive samples
+fired 21:37:29
+PLAYBOOK RATIONALE
+host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.
+audit 01M53AFS0K…678Y
+telemetry sample
+show on chart
+decision 01M53AC3CF…2KTP
+21:35:07
+FALLBACK
+evidence-node-a-machine
+oom-guard-01
+→
+instance.restart agent-c1
+ERROR · 127.0.0.1:60535
+CONTROLLER-GENERATED · MODEL UNAVAILABLE
+incident_generated: "fallback"
+controller-generated, model unavailable
+oom on node 01M53A3CQ3PPC0QG0EEMEK48SJ
+
+model unavailable (inference_unavailable); the deterministic playbook chose instance.restart on agent-c1 for rule oom-guard-01
+
+FALLBACK
+the model did not answer — the controller decided: fallback reason inference_unavailable · no guardrail gate rejected the model's answer (the model call itself failed)
+NOT OK
+reply_received (skipped): model reply (parse=inference_unavailable) · executed (rejected): action executed: error
+CONTROLLER THINKING LOG · FALLBACK
+thinking log · 8 steps · decided_by "fallback" · trace_version 1 · no raw reply text retained
+expand for the ordered steps
+EVIDENCE · 1 TELEMETRY FIELD QUOTED
+ram_used_bytes
+=
+97 B
+seq 30
+DECIDED · 1 ACTION NAMED IN THE RECORD (A DECISION, NOT AN OUTCOME)
+instance.restart
+agent-c1
+EXECUTED · WHAT THE FLEET ANSWERED (REMEDIATION_AUDITS, JOINED BY DECISION ID)
+ERROR
+127.0.0.1:60535
+PUT /1.0/instances/agent-c1/state
+idempotency_key 01M53A3CQ3PPC0QG0EEMEK48SJ:oom-guard-01:instance.restart:agent-c1:2
+operation still pending after 120.0s: /1.0/operations/01M53A7RDPYJ7CNSWKKMJKP55J
+executed 21:35:07
+· audit 01M53ABE20…HWW8
+BREACH
+ram_used_bytes
+RAM used
+=
+97.00% of ram_total_bytes
+threshold: >= 95% of ram_total_bytes for 2 consecutive samples
+fired 21:35:07
+FALLBACK REASON
+inference_unavailable — host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.
+audit 01M53ABE20…HWW8
+telemetry sample
+show on chart
+decision 01M53A7RD5…HY9J
+21:32:47
+AI MODEL 0.90
+evidence-node-a-machine
+oom-guard-01
+→
+instance.restart agent-c1
+ERROR · 127.0.0.1:60535
+AI-GENERATED INCIDENT
+incident_generated: "model"
+AI model
+Memory exhaustion on node 01M53A3CQ3PPC0QG0EEMEK48SJ
+
+ram_used_bytes is at 97.0% of ram_total_bytes, and one instance holds 5.3% of the node's RAM by itself. That points at a single workload rather than fleet-wide pressure, so acting on that instance addresses the breach without touching the node.
+
+NOT OK
+reply_received (rejected): model reply received · gates (dropped): G9 trace detail · executed (rejected): action executed: error
+REPLY WITHHELD
+the model's reply carried material the C2 scanner rejects — the trace holds the controller's marker, not the reply text, and it was NOT executed
+AI THINKING LOG
+thinking log · 11 steps · decided_by "model" · trace_version 1 · raw reply withheld (C2) — not executed
+expand for the ordered steps
+EVIDENCE · 4 TELEMETRY FIELDS QUOTED
+ram_used_bytes
+=
+62.08 GiB
+seq 3
+21:32:46
+ram_total_bytes
+=
+64.00 GiB
+seq 3
+21:32:46
+cpu_util_pct
+=
+92.0%
+seq 3
+21:32:46
+lxd_instances.ram_used_bytes
+=
+3.40 GiB
+seq 3
+DECIDED · 1 ACTION NAMED IN THE RECORD (A DECISION, NOT AN OUTCOME)
+instance.restart
+01M53A3BYWV76W4A8MRDW2GC7R
+instance.restart is the action the oom-guard-01 rule maps to; it removes the load named above
+EXECUTED · WHAT THE FLEET ANSWERED (REMEDIATION_AUDITS, JOINED BY DECISION ID)
+ERROR
+127.0.0.1:60535
+PUT /1.0/instances/agent-c1/state
+idempotency_key 01M53A3CQ3PPC0QG0EEMEK48SJ:oom-guard-01:instance.restart:agent-c1:1
+operation still pending after 120.0s: /1.0/operations/01M53A3F536SYDP6X0T7HE8RHF
+executed 21:32:47
+· audit 01M53A74SJ…91DB
+BREACH
+ram_used_bytes
+RAM used
+=
+97.00% of ram_total_bytes
+threshold: >= 95% of ram_total_bytes for 2 consecutive samples
+fired 21:32:47
+MODEL RATIONALE
+ram_used_bytes at 97.0 on node 01M53A3CQ3PPC0QG0EEMEK48SJ crossed the oom-guard-01 threshold; instance.restart on 01M53A3BYWV76W4A8MRDW2GC7R reclaims it
+audit 01M53A74SJ…91DB
+telemetry sample
+show on chart
+decision 01M53A3F4G…ATDR

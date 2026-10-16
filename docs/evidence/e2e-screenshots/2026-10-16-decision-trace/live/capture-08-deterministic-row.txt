@@ -1,0 +1,24 @@
+21:37:29
+DETERMINISTIC
+evidence-node-a-machine
+oom-guard-01
+→
+instance.restart agent-c1
+ERROR · 127.0.0.1:60535
+INCIDENT RECORD
+no incident record (deterministic mode)
+THINKING LOG
+no decision trace (deterministic mode writes none — §8.1)
+BREACH
+ram_used_bytes
+RAM used
+=
+97.00% of ram_total_bytes
+threshold: >= 95% of ram_total_bytes for 2 consecutive samples
+fired 21:37:29
+PLAYBOOK RATIONALE
+host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.
+audit 01M53AFS0K…678Y
+telemetry sample
+show on chart
+decision 01M53AC3CF…2KTP

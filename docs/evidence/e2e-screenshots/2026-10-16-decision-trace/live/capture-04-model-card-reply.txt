@@ -1,0 +1,6 @@
+MODEL OUTPUT — NOT EXECUTED · TEXT WITHHELD BY THE C2 GUARDRAIL
+REJECTED
+NOT EXECUTED
+received 21:32:47
+[dropped: C2]
+the reply tripped the C2 scanner, so the controller replaced its text with a `[dropped: C2]` marker: that marker is what the trace holds, not the model's words, and it was never executed

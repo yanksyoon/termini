@@ -27,6 +27,14 @@ import {
   incidentActions,
   evidenceValueText,
   noIncidentReason,
+  traceView,
+  traceStepView,
+  traceDeciderMeta,
+  noTraceReason,
+  TRACE_MAX_STEPS,
+  TRACE_STEP_LABEL_MAX_CHARS,
+  TRACE_STEP_DETAIL_MAX_CHARS,
+  TRACE_REPLY_MAX_CHARS,
 } from "../js/core/decisions.js";
 import { FIRST_CURSOR } from "../js/stream.js";
 
@@ -725,4 +733,331 @@ test("decisions: incidentView returns null for a decision that carries no record
   assert.equal(partial.title, "");
   assert.equal(partial.explanation, "");
   assert.equal(partial.evidence.length, 1);
+});
+
+/* ------------------------------------- decision trace / thinking log (§4.3) */
+
+// A step as the controller writes it. `extra` lets a test inject keys the
+// contract does not define (they must not survive the mapper).
+const step = (name, ts, over = {}) => ({
+  step: name,
+  ts,
+  label: `${name} label`,
+  detail: `${name}=ok`,
+  state: "ok",
+  ...(over.extra || {}),
+  ...over,
+});
+
+// A model trace in the controller's canonical order (§4.3 step table).
+const TRACE = {
+  trace_version: 1,
+  decided_by: "model",
+  steps: [
+    step("threshold_fired", "2026-10-15T15:45:11.000Z", {
+      label: "rule oom-guard-01 fired",
+      detail: "rule_id=oom-guard-01 event_id=01M53E fired_at=2026-10-15T15:45:11.000Z detection_latency_ms=2000",
+    }),
+    step("evidence_window", "2026-10-15T15:45:11.100Z", {
+      detail: "seq 1..3 (3 samples) C0 fields: cpu_util_pct, ram_total_bytes, ram_used_bytes",
+    }),
+    step("prompt_built", "2026-10-15T15:45:11.200Z", {
+      detail: "template=operator-decision v1 sha256=9f2c1e77 substituted_fields=14 C0_assertion=ok",
+    }),
+    step("model_call", "2026-10-15T15:45:12.000Z", {
+      label: "model answered",
+      detail: "endpoint=external model=deepseek-flash answered_by=forwarded-managed-model latency_ms=812",
+    }),
+    step("reply_received", "2026-10-15T15:45:12.010Z", {
+      label: "model reply received",
+      detail: '{"schema_version":1,"action_id":"instance.restart","confidence":0.9}',
+    }),
+    step("gates", "2026-10-15T15:45:12.020Z", {
+      label: "G7 rationale",
+      detail: "rule=G7 field=rationale decision=accept (C0-safe, within bounds)",
+    }),
+    step("action_decided", "2026-10-15T15:45:12.030Z", {
+      label: "action decided: instance.restart",
+      detail: "action_kind=instance.restart target=agent-01",
+    }),
+    step("executed", "2026-10-15T15:45:12.300Z", {
+      label: "action executed: error",
+      detail: "result=error latency_ms=45",
+    }),
+    step("audit_recorded", "2026-10-15T15:45:12.310Z", {
+      label: "audit row written",
+      detail: "audit_id=01M53B decision_id=01M53A",
+    }),
+  ],
+};
+
+const rowWithTrace = (trace, decision = DECISION) =>
+  buildDecisionRows({ decisions: [{ ...decision, decision_trace: trace }], events: [EVENT], audits: [AUDIT] })[0];
+
+test("decisions: the §4.3 trace lands in the row view model, in order, with only its own keys", () => {
+  const r = rowWithTrace(TRACE);
+  assert.equal(r.trace.present, true);
+  assert.equal(r.traceSource, "model");
+  assert.equal(r.traceMeta.byModel, true);
+  assert.equal(r.trace.version, 1);
+  assert.equal(r.trace.truncated, false);
+  assert.equal(r.trace.shownSteps, 9);
+  assert.equal(r.noTraceReason, null);
+  assert.equal(r.traceBug, false);
+  assert.deepEqual(r.trace.steps.map((s) => s.step), TRACE.steps.map((s) => s.step));
+  // the raw reply is exposed as its own thing, not joined into the steps
+  assert.equal(r.trace.reply.text, TRACE.steps[4].detail);
+  assert.equal(r.trace.reply.state, "ok");
+  assert.equal(r.trace.reply.withheld, false);
+  assert.equal(r.trace.reply.available, true);
+  // ONLY the contract's step keys survive — the panel is not a second egress path
+  assert.deepEqual(Object.keys(r.trace.steps[0]).sort(), ["detail", "label", "state", "step", "ts"]);
+});
+
+test("decisions: unknown keys in the trace and in a step are dropped, never rendered", () => {
+  const dirty = traceView({
+    trace_version: 1,
+    decided_by: "model",
+    prompt_text: "the rendered prompt (never client-visible)",
+    tokens: { total: 42 },
+    steps: [
+      step("threshold_fired", "2026-10-15T15:45:11.000Z", {
+        extra: { prompt: "SECRET PROMPT", raw_reply: "not the reply step", nested: { a: 1 } },
+      }),
+      // a step name the §4.3 table does not define: withheld, and counted
+      { step: "telemetry_read", ts: "2026-10-15T15:45:11.500Z", label: "read telemetry", detail: "seq=3", state: "ok" },
+      "not an object",
+      null,
+    ],
+  });
+  assert.equal(dirty.present, true);
+  assert.deepEqual(Object.keys(dirty.steps[0]).sort(), ["detail", "label", "state", "step", "ts"]);
+  assert.equal("prompt" in dirty.steps[0], false);
+  assert.equal("prompt_text" in dirty, false);
+  // the refused steps are gone from the timeline but NOT hidden from the reader
+  assert.deepEqual(dirty.steps.map((s) => s.step), ["threshold_fired"]);
+  assert.equal(dirty.droppedSteps, 3);
+});
+
+test("decisions: the mapper re-enforces the §4.3 caps client-side and reports what it cut", () => {
+  const many = {
+    trace_version: 1,
+    decided_by: "model",
+    steps: Array.from({ length: 30 }, (_, i) =>
+      step("gates", `2026-10-15T15:45:${String(10 + i).padStart(2, "0")}.000Z`, { label: `gate ${i}` }),
+    ),
+  };
+  const t = traceView(many);
+  assert.equal(t.cap, TRACE_MAX_STEPS);
+  assert.equal(t.totalSteps, 30);
+  assert.equal(t.shownSteps, TRACE_MAX_STEPS);
+  assert.equal(t.steps.length, TRACE_MAX_STEPS);
+  assert.equal(t.truncated, true); // the panel says "showing first 24 of 30 steps"
+
+  const long = traceView({
+    trace_version: 1,
+    decided_by: "model",
+    steps: [
+      step("evidence_window", "2026-10-15T15:45:11.100Z", {
+        label: "L".repeat(TRACE_STEP_LABEL_MAX_CHARS + 80),
+        detail: "D".repeat(TRACE_STEP_DETAIL_MAX_CHARS + 300),
+      }),
+      {
+        step: "reply_received",
+        ts: "2026-10-15T15:45:12.010Z",
+        label: "model reply received",
+        detail: "R".repeat(TRACE_REPLY_MAX_CHARS + 500),
+        state: "ok",
+        truncated: true,
+      },
+    ],
+  });
+  const [ev, rep] = long.steps;
+  assert.equal(ev.label.length, TRACE_STEP_LABEL_MAX_CHARS);
+  assert.equal(ev.detail.length, TRACE_STEP_DETAIL_MAX_CHARS);
+  assert.equal(ev.clamped, true);
+  // the reply step keeps the reply bound, not the 512-char detail bound
+  assert.equal(rep.detail.length, TRACE_REPLY_MAX_CHARS);
+  assert.equal(rep.clamped, true); // cut HERE, at the reply bound — and it says so
+  assert.equal(rep.truncated, true);
+  assert.equal(long.reply.truncated, true);
+  assert.equal(long.clampedSteps, 2); // the over-long label/detail step AND the over-long reply
+});
+
+test("decisions: an absent or NULL trace stays absent — never an empty timeline", () => {
+  for (const missing of [null, undefined, "", "   ", "{not json", 42, [1, 2], {}]) {
+    const t = traceView(missing);
+    assert.equal(t.present, false, `${JSON.stringify(missing)} must not render a timeline`);
+    assert.deepEqual(t.steps, []);
+    assert.equal(t.decidedBy, null);
+    assert.equal(t.version, null);
+    assert.equal(t.truncated, false);
+  }
+  assert.match(traceView("{not json").problem, /not JSON/);
+  assert.match(traceView({}).problem, /none of the §4.3 keys/);
+  // a deterministic-mode row carries no trace columns at all (§8.1)
+  const det = { id: "01M53D", event_id: "01M53E", node_id: "N1", rule_id: "latency-01", decision_source: "deterministic", action_kind: "instance.restart", action_params: {}, decided_at: "2026-10-15T15:45:11.242Z" };
+  const r = buildDecisionRows({ decisions: [det], events: [EVENT], audits: [] })[0];
+  assert.equal(r.trace.present, false);
+  assert.equal(r.traceSource, null);
+  assert.equal(r.traceMeta, null);
+  assert.equal(r.traceBug, false);
+  assert.equal(r.trace.steps.length, 0);
+  assert.match(r.noTraceReason, /deterministic mode writes none/);
+  // ...and the incident half of the same rule still holds
+  assert.equal(r.incident, null);
+  assert.equal(r.noIncidentReason, "no incident record (deterministic mode)");
+  // a fallback row with no trace is the contradiction §4.3 says it is
+  assert.match(noTraceReason({ decision_source: "fallback" }), /a fallback row records one/);
+});
+
+test("decisions: a rejected step survives the mapper and is never silently hidden", () => {
+  // What the controller persists when the raw reply tripped the C2 scanner:
+  // the step stays, its text is replaced with the marker, state becomes rejected.
+  const c2 = {
+    trace_version: 1,
+    decided_by: "model",
+    steps: [
+      step("threshold_fired", "2026-10-15T15:45:11.000Z"),
+      {
+        step: "reply_received",
+        ts: "2026-10-15T15:45:12.010Z",
+        label: "model reply received",
+        detail: "[dropped: C2]",
+        state: "rejected",
+        truncated: false,
+      },
+      step("gates", "2026-10-15T15:45:12.020Z", {
+        label: "G9 trace detail",
+        detail: "rule=G9 field=reply_received decision=drop reason=C2_signature",
+        state: "dropped",
+      }),
+      step("action_decided", "2026-10-15T15:45:12.030Z", { state: "ok" }),
+    ],
+  };
+  const t = traceView(c2);
+  assert.equal(t.present, true);
+  // the step AND the guardrail step that recorded the drop are both in the log
+  assert.deepEqual(t.steps.map((s) => s.state), ["ok", "rejected", "dropped", "ok"]);
+  assert.equal(t.steps[1].detail, "[dropped: C2]");
+  // ...and both are listed as warnings, so a collapsed card can say so out loud
+  assert.deepEqual(t.warnings, [
+    { step: "reply_received", state: "rejected", label: "model reply received" },
+    { step: "gates", state: "dropped", label: "G9 trace detail" },
+  ]);
+  // the reply is still shown, but marked as the controller's marker rather than
+  // the model's words — the panel must not paint it as model output text
+  assert.equal(t.reply.available, true);
+  assert.equal(t.reply.withheld, true);
+});
+
+test("decisions: a fallback trace renders as controller text, with its reason and rejecting gate", () => {
+  const fb = {
+    trace_version: 1,
+    decided_by: "fallback",
+    steps: [
+      step("threshold_fired", "2026-10-15T15:45:11.000Z"),
+      step("evidence_window", "2026-10-15T15:45:11.100Z"),
+      step("reply_received", "2026-10-15T15:45:12.010Z", {
+        label: "model reply (parse=step)",
+        detail: "no raw reply text retained",
+        state: "skipped",
+      }),
+      step("action_decided", "2026-10-15T15:45:12.030Z", {
+        label: "fallback to deterministic action",
+        detail: "decided_by=fallback reason=low_confidence action_kind=instance.restart rejecting_gate=G6",
+        state: "fallback",
+      }),
+    ],
+  };
+  const r = rowWithTrace(fb, { ...DECISION, decision_source: "fallback", confidence: null, fallback_reason: "low_confidence" });
+  assert.equal(r.trace.present, true);
+  assert.equal(r.traceSource, "fallback");
+  // NEVER attributed to the model
+  assert.equal(r.traceMeta.byModel, false);
+  assert.equal(r.traceMeta.tone, "fallback");
+  assert.match(r.traceMeta.note, /did NOT answer/);
+  assert.equal(r.traceBug, false);
+  assert.notEqual(r.traceMeta.tone, sourceMeta("model").tone);
+  // the reason and the gate that rejected the model's answer come from the trace
+  assert.equal(r.trace.fallback.reason, "low_confidence");
+  assert.equal(r.trace.fallback.rejectingGate, "G6");
+  // ...and the model's reply, when the trace has none, is not invented
+  assert.equal(r.trace.reply.available, false);
+  assert.equal(r.trace.reply.text, "no raw reply text retained");
+
+  // the metadata table itself: model is the only label that claims model output
+  assert.equal(traceDeciderMeta("model").byModel, true);
+  assert.equal(traceDeciderMeta("fallback").byModel, false);
+  assert.equal(traceDeciderMeta("deterministic").byModel, false);
+  assert.equal(traceDeciderMeta(null).byModel, false);
+  // a trace claiming deterministic, or carrying no decided_by, is a violation
+  assert.equal(traceDeciderMeta("deterministic").bug, true);
+  assert.equal(traceDeciderMeta(null).bug, true);
+  assert.equal(traceDeciderMeta(undefined).bug, true);
+  assert.equal(traceDeciderMeta("fallback").bug, undefined);
+});
+
+test("decisions: a step with no valid state is shown unclassified, never as ok", () => {
+  const t = traceView({
+    trace_version: 1,
+    decided_by: "model",
+    steps: [
+      step("threshold_fired", "2026-10-15T15:45:11.000Z"),
+      { step: "gates", ts: "2026-10-15T15:45:12.020Z", label: "gate", detail: "rule=G7 decision=accept", state: "succeeded" },
+    ],
+  });
+  assert.equal(t.steps[1].state, null);
+  assert.equal(t.steps[1].unclassified, true);
+  assert.equal(t.unclassifiedSteps, 1);
+  // and it is in `warnings`, so the collapsed card still reports it
+  assert.equal(t.warnings.length, 1);
+  assert.equal(t.warnings[0].state, null);
+});
+
+test("decisions: steps are ordered by ts, and a reorder is reported rather than silent", () => {
+  const t = traceView({
+    trace_version: 1,
+    decided_by: "model",
+    steps: [
+      step("action_decided", "2026-10-15T15:45:12.030Z"),
+      step("threshold_fired", "2026-10-15T15:45:11.000Z"),
+      step("evidence_window", "2026-10-15T15:45:11.100Z"),
+    ],
+  });
+  assert.deepEqual(t.steps.map((s) => s.step), ["threshold_fired", "evidence_window", "action_decided"]);
+  assert.equal(t.reordered, true);
+  // a step with no parseable ts keeps the array order the contract wrote
+  const partly = traceView({
+    trace_version: 1,
+    decided_by: "model",
+    steps: [step("threshold_fired", ""), step("evidence_window", "2026-10-15T15:45:11.100Z")],
+  });
+  assert.deepEqual(partly.steps.map((s) => s.step), ["threshold_fired", "evidence_window"]);
+  assert.equal(partly.reordered, false);
+});
+
+test("decisions: a trace that contradicts the row is flagged, not smoothed over", () => {
+  // version drift
+  const v2 = rowWithTrace({ ...TRACE, trace_version: 2 });
+  assert.equal(v2.trace.versionMismatch, true);
+  assert.equal(v2.traceBug, true);
+  // the row says the controller decided, the trace says the model did
+  const lying = rowWithTrace({ ...TRACE, decided_by: "model" }, { ...DECISION, decision_source: "fallback", fallback_reason: "low_confidence" });
+  assert.equal(lying.trace.sourceMismatch, true);
+  assert.equal(lying.traceBug, true);
+  // ...and a trace with no decided_by cannot be attributed to anyone
+  const unlabelled = rowWithTrace({ trace_version: 1, steps: [step("executed", "2026-10-15T15:45:12.300Z")] });
+  assert.equal(unlabelled.trace.decidedBy, null);
+  assert.equal(unlabelled.traceMeta.byModel, false);
+  assert.equal(unlabelled.traceBug, true);
+});
+
+test("decisions: traceStepView refuses anything outside the §4.3 step table", () => {
+  assert.equal(traceStepView(null), null);
+  assert.equal(traceStepView("threshold_fired"), null);
+  assert.equal(traceStepView({ ts: "T", label: "l", detail: "d", state: "ok" }), null);
+  assert.equal(traceStepView(step("made_up_step", "T")), null);
+  const ok = traceStepView(step("gates", "T"));
+  assert.deepEqual(Object.keys(ok).sort(), ["detail", "label", "state", "step", "ts"]);
 });
