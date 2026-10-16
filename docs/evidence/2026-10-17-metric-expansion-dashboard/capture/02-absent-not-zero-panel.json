@@ -1,0 +1,13 @@
+{
+  "sample_cards": 6,
+  "panel": "PSI pressure (latest sample)\nRAW SAMPLE\nRANK 1\nnot reported \u2014 no \u00a74.12\u2013\u00a74.14 fields on this node's latest sample (absent, not zero)\nraw sample: kernel 10 s average per task class, not an aggregate of samples | leading indicator for oom-guard-01 \u00b7 disk-degrade-01 \u00b7 latency-01\n\nMemory pressure (latest sample)\nRAW SAMPLE\nRANK 2\nnot reported \u2014 no \u00a74.12\u2013\u00a74.14 fields on this node's latest sample (absent, not zero)\nraw sample: cumulative counters where marked, instant values otherwise | leading indicator for oom-guard-01\n\nDisk saturation / inodes (latest sample)\nRAW SAMPLE\nRANK 4\nnot reported \u2014 no \u00a74.12\u2013\u00a74.14 fields on this node's latest sample (absent, not zero)\nraw sample: cumulative counters where marked, instant values otherwise | leading indicator for disk-degrade-01 | 2 entries\n\nNetwork errors / drops (latest sample)\nRAW SAMPLE\nRANK 6\nnot reported \u2014 no \u00a74.12\u2013\u00a74.14 fields on this node's latest sample (absent, not zero)\nraw sample: cumulative counters where marked, instant values otherwise | leading indicator for latency-01 | 1 entry\n\nTransport / conntrack (latest sample)\nRAW SAMPLE\nRANK 7\nnot reported \u2014 no \u00a74.12\u2013\u00a74.14 fields on this node's latest sample (absent, not zero)\nraw sample: cumulative counters where marked, instant values otherwise | leading indicator for latency-01\n\nPer-instance OOM / faults (latest sample)\nRAW SAMPLE\nRANK 9\nnot reported \u2014 no \u00a74.12\u2013\u00a74.14 fields on this node's latest sample (absent, not zero)\nraw sample: cumulative counters where marked, instant values otherwise | leading indicator for oom-guard-01 (instance attribution) | 7 entries",
+  "flat_chart_captions": [
+    "Top processes\n10 of 10\nllama-serversleeping\u20146.04 GiB18t\nllama-serversleeping\u20145.18 GiB18t\nhermessleeping\u2014609.6 MiB24t\nhermessleeping\u2014487.6 MiB24t\npython3sleeping\u2014394.5 MiB28t\nhermessleeping\u2014389.3 MiB17t\nnode-MainThreadsleeping\u2014332.5 MiB7t\nhermessleeping\u2014312.8 MiB20t\nnode-MainThreadsleeping\u2014311.4 MiB11t\nhermessleeping\u2014271.9 MiB21t"
+  ],
+  "url": "http://127.0.0.1:55035/?apiBase=http://127.0.0.1:40183/v1&projectId=01J0DEM0WARM000000000000AB",
+  "waited": {
+    "cards": 6,
+    "ms": 257
+  },
+  "captured_at": "2026-10-16T22:05:18Z"
+}

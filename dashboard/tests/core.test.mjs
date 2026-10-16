@@ -7,8 +7,35 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { pct, num, bytes, scaleForUnit, ago, uptime, shortId, hhmm, clock } from "../js/core/format.js";
-import { deriveHealth, nodeView, SERVICE_ALLOWLIST, PROCESSES_MAX } from "../js/core/health.js";
-import { buildCharts, windowQuery, metricsQuery, METRIC_UNITS, CHART_GROUPS } from "../js/core/series.js";
+import {
+  deriveHealth,
+  nodeView,
+  SERVICE_ALLOWLIST,
+  PROCESSES_MAX,
+  pressureFacts,
+  memoryFacts,
+  transportFacts,
+  diskFacts,
+  netFacts,
+  instanceFacts,
+  DISK_MAX,
+  NET_MAX,
+  INSTANCES_MAX,
+} from "../js/core/health.js";
+import {
+  buildCharts,
+  buildSampleView,
+  sampleField,
+  requestedMetrics,
+  windowQuery,
+  metricsQuery,
+  METRIC_UNITS,
+  CHART_GROUPS,
+  SAMPLE_GROUPS,
+  CONTROLLER_METRICS,
+  SERIES_SOURCE,
+  SAMPLE_SOURCE,
+} from "../js/core/series.js";
 import { normalizeLine, appendLines, SEVERITIES, severityVisible, isControlLine } from "../js/core/logs.js";
 import { resolveConfig, apiUrl, DEFAULTS } from "../js/core/config.js";
 import {
@@ -194,11 +221,43 @@ test("health: server-provided status/health is respected", () => {
 
 /* --------------------------------------------------------------- series */
 
-test("series: chart groups only reference allowlisted metrics", () => {
+test("series: chart groups only reference allowlisted metrics, and split by source", () => {
+  const seriesNames = [];
   for (const g of CHART_GROUPS) {
+    assert.ok(
+      g.source === SERIES_SOURCE || g.source === SAMPLE_SOURCE,
+      `group ${g.id} declares no source`,
+    );
     for (const m of g.metrics) assert.ok(METRIC_UNITS[m], `unknown metric ${m}`);
+    if (g.source === SERIES_SOURCE) seriesNames.push(...g.metrics);
   }
-  assert.equal(Object.keys(METRIC_UNITS).length, 19);
+  // Every charted name comes from the frozen §1.4 allowlist. The allowlist has
+  // one name with no chart group (`ram_total_bytes`, which `mem` shows via
+  // ram_used/swap), so 18 of the 19 are charted — and the query can never exceed
+  // the allowlist.
+  for (const n of new Set(seriesNames)) {
+    assert.ok(CONTROLLER_METRICS.includes(n), `${n} is not a controller metric`);
+  }
+  assert.equal(CONTROLLER_METRICS.length, 19);
+  assert.equal(new Set(seriesNames).size, 18);
+  // …and no §4.12–§4.14 name is inside it: those come from the raw sample.
+  for (const g of SAMPLE_GROUPS) {
+    for (const m of g.metrics) {
+      assert.ok(!CONTROLLER_METRICS.includes(m), `${m} must not be a controller metric`);
+    }
+  }
+});
+
+test("series: the ?metrics= query never names a sample metric (a 400 would blank the panel)", () => {
+  const sampleNames = SAMPLE_GROUPS.flatMap((g) => g.metrics);
+  for (const includeAll of [false, true]) {
+    const asked = requestedMetrics(includeAll);
+    for (const n of asked) {
+      assert.ok(CONTROLLER_METRICS.includes(n), `${n} is not a controller metric`);
+      assert.ok(!sampleNames.includes(n), `${n} must never be requested from /metrics`);
+    }
+  }
+  assert.equal(requestedMetrics(true).length, 18); // the 18 names the panel actually charts
 });
 
 test("series: buildCharts scales bytes to GiB and skips empty series", () => {
@@ -228,6 +287,246 @@ test("series: window query maps to contract resolutions", () => {
 
 test("series: metrics query is de-duplicated", () => {
   assert.equal(metricsQuery(["a", "a", "b"]), "a,b");
+});
+
+/* ------------------------------------------- metric expansion (§4.12–§4.14) */
+
+/**
+ * The real payload shape, from the collector card
+ * (`docs/evidence/2026-10-16-metric-expansion/node-payload.json`).
+ */
+const EXPANSION = {
+  seq: 412,
+  ts: "2026-10-16T21:20:49Z",
+  pressure: { cpu_some_avg10: 0.0, io_some_avg10: 0.0, memory_some_avg10: 0.0, memory_full_avg10: 0.0 },
+  oom_kill_count: 37,
+  pgmajfault_count: 2670694,
+  mem_available_bytes: 2411364352,
+  disk: [
+    {
+      path: "/dev/root", total_bytes: 102888095744, free_bytes: 43319939072,
+      write_latency_ms: 0.0, mount_ro: false,
+      io_ticks_ms: 62361848, io_in_flight: 0, inode_used: 1129359, inode_total: 12976128,
+    },
+  ],
+  net: [{ iface: "enp5s0", rx_bytes: 1, tx_bytes: 1, latency_ms: 0.05, rx_errors: 0, tx_errors: 0, rx_dropped: 0, tx_dropped: 0 }],
+  tcp_retransmit_segs: 297295,
+  conntrack_count: 457,
+  conntrack_max: 262144,
+  lxd_instances: [
+    { vm_id: "01M4349RPTT29RNTC6VBCXQ0RC", state: "running", oom_kill_count: 0, pgmajfault_count: 30730 },
+  ],
+};
+
+const groupOf = (view, id) => view.find((g) => g.id === id);
+const rowOf = (group, metric) => group.rows.find((r) => r.metric === metric);
+
+test("series: a sample-sourced group is never charted, even if a payload names it", () => {
+  const t = "2026-10-04T07:49:00.000Z";
+  const payload = {
+    resolution: "raw",
+    series: [
+      { name: "cpu_util_pct", unit: "percent", points: [{ t, v: 31.2 }] },
+      { name: "pressure.cpu_some_avg10", unit: "percent", points: [{ t, v: 9 }] },
+      { name: "oom_kill_count", unit: "count", points: [{ t, v: 3 }] },
+    ],
+  };
+  const groups = buildCharts(payload, { includeAll: true });
+  assert.deepEqual(groups.map((g) => g.id), ["cpu"]);
+});
+
+test("series: derived vs raw is stated — a bucket mean and a disk[0] mapping are aggregates", () => {
+  const t = "2026-10-04T07:49:00.000Z";
+  const pts = [{ t, v: 1024 }];
+  const raw = buildCharts({ resolution: "raw", series: [{ name: "ram_used_bytes", unit: "bytes", points: pts }] });
+  assert.equal(raw[0].basis, "raw");
+  assert.equal(raw[0].derived, false);
+  assert.equal(raw[0].basisLabel, "raw stored samples (not aggregated)");
+  assert.equal(raw[0].series[0].derived, false);
+
+  const mean = buildCharts({ resolution: "5s", series: [{ name: "ram_used_bytes", unit: "bytes", points: pts }] });
+  assert.equal(mean[0].basis, "derived");
+  assert.equal(mean[0].derived, true);
+  assert.match(mean[0].aggregateLabel, /mean over 5 s buckets/);
+
+  // §1.4's nested→flat mapping is an aggregate whose source must be named: a
+  // chart that calls disk[0] "the node's write latency" is the mislabel this rule
+  // exists to prevent.
+  const disk = buildCharts({ resolution: "raw", series: [{ name: "disk_write_latency_ms", unit: "ms", points: pts }] });
+  assert.equal(disk[0].derived, true);
+  assert.match(disk[0].aggregateLabel, /disk\[0\]/);
+  assert.equal(disk[0].series[0].derived, true);
+  assert.match(disk[0].series[0].derivedFrom, /disk\[0\]/);
+  assert.equal(disk[0].basis, "raw"); // the samples are raw; the MAPPING is the derived part
+});
+
+test("series: the real §4.12–§4.14 payload fills every sample group", () => {
+  const view = buildSampleView(EXPANSION);
+  assert.deepEqual(view.map((g) => g.id), SAMPLE_GROUPS.map((g) => g.id));
+  for (const g of view) assert.ok(g.reported, `${g.id} came back empty for a full payload`);
+
+  const p = groupOf(view, "pressure");
+  assert.equal(rowOf(p, "pressure.cpu_some_avg10").value, 0.0);
+  assert.equal(rowOf(p, "pressure.cpu_some_avg10").reported, true); // measured 0 IS a value
+  assert.equal(rowOf(p, "pressure.cpu_some_avg10").cumulative, false);
+  assert.equal(rowOf(p, "pressure.cpu_some_avg10").derived, false);
+
+  const mem = groupOf(view, "mem_pressure");
+  assert.equal(rowOf(mem, "oom_kill_count").value, 37);
+  assert.equal(rowOf(mem, "oom_kill_count").cumulative, true); // a count, never a rate
+  assert.equal(rowOf(mem, "mem_available_bytes").unitLabel, "GiB");
+  assert.match(rowOf(mem, "mem_available_bytes").display, /^2\.2[45]$/);
+
+  const disk = groupOf(view, "disk_io_sat");
+  assert.equal(rowOf(disk, "disk[].io_ticks_ms").unitLabel, "ms");
+  assert.equal(rowOf(disk, "disk[].io_ticks_ms").cumulative, true);
+  assert.equal(rowOf(disk, "disk[].io_in_flight").value, 0); // a measured 0, not "absent"
+  const ratio = rowOf(disk, "inode_used_pct");
+  assert.equal(ratio.derived, true); // computed here => derived, and it says so
+  assert.equal(ratio.derivedFrom, "inode_used / inode_total");
+  assert.match(ratio.display, /^8\.7$/);
+
+  const transport = groupOf(view, "transport");
+  assert.equal(rowOf(transport, "conntrack_used_pct").derived, true);
+  assert.equal(rowOf(transport, "conntrack_count").value, 457);
+
+  const inst = groupOf(view, "instance_faults");
+  assert.equal(inst.entryCount, 1);
+  assert.equal(rowOf(inst, "lxd_instances[].pgmajfault_count").value, 30730);
+  assert.match(rowOf(inst, "lxd_instances[].oom_kill_count").entry, /^instance 01M434/);
+});
+
+test("series: absent ≠ zero — an unreported group renders as not reported, never 0", () => {
+  // A node whose §4.12–§4.14 sources were unreadable, or a role that does not
+  // have them: the collector omits the keys (that is its contract), and the panel
+  // must not fill the gap with a zero line.
+  const bare = {
+    seq: 7,
+    ts: "2026-10-16T21:20:49Z",
+    cpu_util_pct: 4.2,
+    disk: [{ path: "/dev/root", total_bytes: 1, free_bytes: 1, write_latency_ms: 0, mount_ro: false }],
+  };
+  const view = buildSampleView(bare);
+  assert.deepEqual(view.map((g) => g.id), SAMPLE_GROUPS.map((g) => g.id)); // still rendered
+  for (const g of view) {
+    assert.equal(g.reportedCount, 0, `${g.id} invented a value`);
+    assert.equal(g.reported, false);
+    for (const r of g.rows) {
+      assert.equal(r.reported, false);
+      assert.equal(r.value, null); // NOT 0
+      assert.equal(r.display, "not reported");
+    }
+  }
+  // the one group with an entry is reported as an entry with nothing in it
+  assert.equal(groupOf(view, "disk_io_sat").entryCount, 1);
+  assert.equal(groupOf(view, "net_errors").entryCount, null); // no net[] at all
+  assert.equal(groupOf(view, "net_errors").rows.length, 0);
+
+  // …and a MEASURED zero stays zero (the collector reports a real 0 as 0)
+  const zeros = buildSampleView({ ...EXPANSION, oom_kill_count: 0, pressure: { cpu_some_avg10: 0, io_some_avg10: 0, memory_some_avg10: 0, memory_full_avg10: 0 } });
+  assert.equal(rowOf(groupOf(zeros, "mem_pressure"), "oom_kill_count").value, 0);
+  assert.equal(rowOf(groupOf(zeros, "mem_pressure"), "oom_kill_count").display, "0");
+  assert.equal(rowOf(groupOf(zeros, "mem_pressure"), "oom_kill_count").reported, true);
+});
+
+test("series: a disk with unreadable extension fields keeps its OWN entry index", () => {
+  const sample = {
+    seq: 9,
+    ts: "2026-10-16T21:20:49Z",
+    disk: [
+      { path: "/dev/a", total_bytes: 1, free_bytes: 1, write_latency_ms: 0, mount_ro: false },
+      { path: "/dev/b", total_bytes: 1, free_bytes: 1, write_latency_ms: 0, mount_ro: false, io_ticks_ms: 4242, io_in_flight: 1, inode_used: 5, inode_total: 10 },
+    ],
+  };
+  const disk = groupOf(buildSampleView(sample), "disk_io_sat");
+  const first = disk.rows.filter((r) => r.entry === "disk 0");
+  const second = disk.rows.filter((r) => r.entry === "disk 1");
+  assert.ok(first.length > 0 && second.length > 0);
+  for (const r of first) assert.equal(r.reported, false); // disk 0 has none of the §4.13 fields
+  assert.equal(second.find((r) => r.metric === "disk[].io_ticks_ms").value, 4242);
+  assert.equal(disk.entryCount, 2);
+  assert.equal(disk.truncated, 0);
+});
+
+test("series: the sample groups are bounded and say what they cut", () => {
+  const many = {
+    seq: 1,
+    ts: "2026-10-16T21:20:49Z",
+    disk: Array.from({ length: 12 }, (_, i) => ({ io_ticks_ms: i, inode_used: i, inode_total: 10 })),
+    net: Array.from({ length: 3 }, (_, i) => ({ rx_errors: i })),
+    lxd_instances: Array.from({ length: 12 }, () => ({ vm_id: "01M4349RPTT29RNTC6VBCXQ0RC", oom_kill_count: 1 })),
+  };
+  assert.equal(diskFacts(many).length, DISK_MAX);
+  assert.equal(netFacts(many).length, NET_MAX);
+  assert.equal(instanceFacts(many).length, INSTANCES_MAX);
+  const view = buildSampleView(many);
+  assert.equal(groupOf(view, "disk_io_sat").truncated, 12 - DISK_MAX);
+  assert.equal(groupOf(view, "net_errors").truncated, 3 - NET_MAX);
+  assert.equal(groupOf(view, "instance_faults").truncated, 12 - INSTANCES_MAX);
+});
+
+test("health: the §4.12–§4.14 selectors drop every key the contract does not admit", () => {
+  const poisoned = {
+    pressure: {
+      cpu_some_avg10: 3.5, // the only readable one
+      io_some_avg10: -1,
+      memory_some_avg10: "9",
+      memory_full_avg10: 101, // out of the 0–100 range
+      cmdline: "/usr/bin/llama --token=abc",
+      env: { AWS_KEY: "x" },
+    },
+    oom_kill_count: 4,
+    pgmajfault_count: -2,
+    mem_available_bytes: 1.5,
+    tcp_retransmit_segs: 7,
+    conntrack_count: 5,
+    conntrack_max: 0, // a capacity is never 0
+    disk: [{ io_ticks_ms: 1, inode_total: 0, inode_used: -1, io_in_flight: 2.5, path: "/home/customer/secret", cmdline: "rm -rf" }],
+    net: [{ rx_errors: 1, tx_dropped: "3", iface: "eth0", env: "leak" }],
+    lxd_instances: [
+      { vm_id: "customer-prod-db-01", oom_kill_count: 1 }, // an instance NAME is not a vm_id
+      { vm_id: "01M4349RPTT29RNTC6VBCXQ0RC", state: "running", oom_kill_count: 2, pgmajfault_count: 3 },
+    ],
+  };
+  assert.deepEqual(pressureFacts(poisoned), { cpu_some_avg10: 3.5 });
+  assert.deepEqual(memoryFacts(poisoned), { oom_kill_count: 4 });
+  assert.deepEqual(transportFacts(poisoned), { tcp_retransmit_segs: 7, conntrack_count: 5 });
+  assert.deepEqual(diskFacts(poisoned), [{ index: 0, io_ticks_ms: 1 }]);
+  assert.deepEqual(netFacts(poisoned), [{ index: 0, rx_errors: 1 }]);
+  assert.deepEqual(instanceFacts(poisoned), [
+    { vm_id: "01M4349RPTT29RNTC6VBCXQ0RC", index: 1, oom_kill_count: 2, pgmajfault_count: 3 },
+  ]);
+
+  // …and none of it can reach the panel: the view model carries no free-form
+  // string except the ULID, so the panel is not a second egress path for C2.
+  const text = JSON.stringify(buildSampleView(poisoned));
+  for (const leak of ["cmdline", "token=abc", "customer-prod-db-01", "/home/customer", "rm -rf", "eth0", "AWS_KEY", "leak"]) {
+    assert.ok(!text.includes(leak), `${leak} leaked into the panel view model`);
+  }
+});
+
+test("health: the new selectors return nothing for a missing sample, never a zero", () => {
+  assert.equal(pressureFacts(null), null);
+  assert.equal(pressureFacts({}), null);
+  assert.equal(pressureFacts({ pressure: {} }), null);
+  assert.equal(pressureFacts({ pressure: { cmdline: "x" } }), null);
+  assert.equal(memoryFacts(undefined), null);
+  assert.equal(memoryFacts({}), null);
+  assert.equal(transportFacts({}), null);
+  assert.deepEqual(diskFacts(null), []);
+  assert.deepEqual(diskFacts({ disk: "not a list" }), []);
+  assert.deepEqual(netFacts({}), []);
+  assert.deepEqual(instanceFacts({}), []);
+});
+
+test("series: sampleField reads the contract's own path notation", () => {
+  assert.equal(sampleField(EXPANSION, "oom_kill_count"), 37);
+  assert.equal(sampleField(EXPANSION, "pressure.io_some_avg10"), 0);
+  assert.deepEqual(sampleField(EXPANSION, "disk[].inode_used"), [1129359]);
+  assert.equal(sampleField(EXPANSION, "net[].rx_errors")[0], 0);
+  assert.equal(sampleField(EXPANSION, "pressure.not_a_field"), undefined);
+  assert.equal(sampleField(EXPANSION, "nope.at.all"), undefined);
+  assert.equal(sampleField(null, "oom_kill_count"), undefined);
 });
 
 /* --------------------------------------------------------------- logs */

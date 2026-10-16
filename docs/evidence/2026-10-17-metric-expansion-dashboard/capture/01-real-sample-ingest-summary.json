@@ -1,0 +1,50 @@
+{
+  "node_id": "01M53BYSEHFR0KVWSYDP923BMW",
+  "real": {
+    "ingest": {
+      "accepted": 1,
+      "rejected": 0,
+      "backpressure": "none"
+    },
+    "stored_seqs": [
+      1
+    ],
+    "latest_seq": 1,
+    "expansion_fields": [
+      "conntrack_count",
+      "conntrack_max",
+      "disk[].inode_total",
+      "disk[].inode_total",
+      "disk[].inode_used",
+      "disk[].inode_used",
+      "disk[].io_in_flight",
+      "disk[].io_in_flight",
+      "disk[].io_ticks_ms",
+      "disk[].io_ticks_ms",
+      "lxd_instances[].oom_kill_count",
+      "lxd_instances[].oom_kill_count",
+      "lxd_instances[].oom_kill_count",
+      "lxd_instances[].oom_kill_count",
+      "lxd_instances[].oom_kill_count",
+      "lxd_instances[].oom_kill_count",
+      "lxd_instances[].oom_kill_count",
+      "lxd_instances[].pgmajfault_count",
+      "lxd_instances[].pgmajfault_count",
+      "lxd_instances[].pgmajfault_count",
+      "lxd_instances[].pgmajfault_count",
+      "lxd_instances[].pgmajfault_count",
+      "lxd_instances[].pgmajfault_count",
+      "lxd_instances[].pgmajfault_count",
+      "mem_available_bytes",
+      "net[].rx_dropped",
+      "net[].rx_errors",
+      "net[].tx_dropped",
+      "net[].tx_errors",
+      "oom_kill_count",
+      "pgmajfault_count",
+      "pressure",
+      "tcp_retransmit_segs"
+    ]
+  },
+  "absent": null
+}

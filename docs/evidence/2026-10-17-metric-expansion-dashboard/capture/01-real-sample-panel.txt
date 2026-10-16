@@ -1,0 +1,200 @@
+PSI pressure (latest sample)
+RAW SAMPLE
+RANK 1
+CPU stall (some)
+0.0
+%
+I/O stall (some)
+0.0
+%
+mem stall (some)
+0.0
+%
+mem stall (full)
+0.0
+%
+raw sample: kernel 10 s average per task class, not an aggregate of samples | leading indicator for oom-guard-01 · disk-degrade-01 · latency-01
+
+Memory pressure (latest sample)
+RAW SAMPLE
+RANK 2
+OOM kills
+37
+#
+cumulative
+major faults
+2,670,694
+#
+cumulative
+mem available
+2.25
+GiB
+raw sample: cumulative counters where marked, instant values otherwise | leading indicator for oom-guard-01
+
+Disk saturation / inodes (latest sample)
+RAW SAMPLE
+RANK 4
+disk 0
+I/O busy
+62,361,848
+ms
+cumulative
+disk 0
+I/O in flight
+0
+#
+disk 0
+inodes used
+1,129,359
+#
+disk 0
+inodes total
+12,976,128
+#
+disk 0
+inodes used
+8.7
+%
+derived: inode_used / inode_total
+disk 1
+I/O busy
+62,361,853
+ms
+cumulative
+disk 1
+I/O in flight
+0
+#
+disk 1
+inodes used
+1,129,359
+#
+disk 1
+inodes total
+12,976,128
+#
+disk 1
+inodes used
+8.7
+%
+derived: inode_used / inode_total
+raw sample: cumulative counters where marked, instant values otherwise | leading indicator for disk-degrade-01 | 2 entries
+
+Network errors / drops (latest sample)
+RAW SAMPLE
+RANK 6
+net 0
+RX errors
+0
+#
+cumulative
+net 0
+TX errors
+0
+#
+cumulative
+net 0
+RX dropped
+0
+#
+cumulative
+net 0
+TX dropped
+0
+#
+cumulative
+raw sample: cumulative counters where marked, instant values otherwise | leading indicator for latency-01 | 1 entry
+
+Transport / conntrack (latest sample)
+RAW SAMPLE
+RANK 7
+TCP retransmits
+297,295
+#
+cumulative
+conntrack entries
+457
+#
+conntrack max
+262,144
+#
+conntrack table used
+0.2
+%
+derived: conntrack_count / conntrack_max
+raw sample: cumulative counters where marked, instant values otherwise | leading indicator for latency-01
+
+Per-instance OOM / faults (latest sample)
+RAW SAMPLE
+RANK 9
+instance 4FZ922…CXSS
+OOM kills
+0
+#
+cumulative
+instance 4FZ922…CXSS
+major faults
+30,730
+#
+cumulative
+instance HWHS4Q…DYT6
+OOM kills
+0
+#
+cumulative
+instance HWHS4Q…DYT6
+major faults
+104,483
+#
+cumulative
+instance CJYABW…YH8B
+OOM kills
+0
+#
+cumulative
+instance CJYABW…YH8B
+major faults
+96,416
+#
+cumulative
+instance T81M7C…YQNQ
+OOM kills
+0
+#
+cumulative
+instance T81M7C…YQNQ
+major faults
+96,101
+#
+cumulative
+instance G91GMN…RBCB
+OOM kills
+0
+#
+cumulative
+instance G91GMN…RBCB
+major faults
+31,837
+#
+cumulative
+instance KRZ3W7…D02Y
+OOM kills
+0
+#
+cumulative
+instance KRZ3W7…D02Y
+major faults
+31,103
+#
+cumulative
+instance RW07QA…KFXW
+OOM kills
+0
+#
+cumulative
+instance RW07QA…KFXW
+major faults
+35,910
+#
+cumulative
+raw sample: cumulative counters where marked, instant values otherwise | leading indicator for oom-guard-01 (instance attribution) | 7 entries

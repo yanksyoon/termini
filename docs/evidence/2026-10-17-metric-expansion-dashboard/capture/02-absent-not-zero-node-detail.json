@@ -1,0 +1,264 @@
+{
+  "node_id": "01M53BYSEHFR0KVWSYDP923BMW",
+  "registration_id": "evidence-metric-node-machine",
+  "role": "compute",
+  "synthetic": false,
+  "status": "online",
+  "last_seen_at": "2026-10-16T22:05:17Z",
+  "uptime_sec": 1125414,
+  "hardware": {
+    "cpu": {
+      "model": "AMD EPYC 7B13",
+      "sockets": 1,
+      "cores": 8,
+      "threads": 16
+    },
+    "memory": {
+      "total_bytes": 68719476736
+    },
+    "gpus": [],
+    "disks": [
+      {
+        "device": "/dev/sda",
+        "type": "ssd",
+        "size_bytes": 274877906944,
+        "health": "ok"
+      }
+    ]
+  },
+  "capacity": {
+    "cpu_cores": 16,
+    "ram_gb": 64,
+    "disk_gb": 256,
+    "disk_known": true,
+    "gpu_free": 0,
+    "cpu_allocated": 0,
+    "ram_allocated_gb": 0,
+    "disk_allocated_gb": 0,
+    "cpu_free": 30,
+    "ram_free_gb": 62,
+    "disk_free_gb": 231
+  },
+  "health": {
+    "cpu_util_pct": 6.61,
+    "ram_used_pct": 88.5,
+    "disk_ok": true,
+    "gpu_ok": null,
+    "inference_ok": null,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "name": "lxd",
+        "status": "running"
+      },
+      {
+        "name": "sshd",
+        "status": "running"
+      }
+    ],
+    "degraded_reasons": []
+  },
+  "metrics_latest": {
+    "cpu_core_count": 8,
+    "cpu_util_pct": 6.61,
+    "disk": [
+      {
+        "free_bytes": 43319939072,
+        "mount_ro": false,
+        "path": "/dev/root",
+        "total_bytes": 102888095744,
+        "write_latency_ms": 0.0
+      },
+      {
+        "free_bytes": 43319939072,
+        "mount_ro": false,
+        "path": "/dev/termini",
+        "total_bytes": 102888095744,
+        "write_latency_ms": 5.545
+      }
+    ],
+    "hostname": "051375546db9782e",
+    "ip_local": "10.201.0.0/24",
+    "kernel_version": "6.8.0-142-generic",
+    "load_avg_1m": 0.6943359375,
+    "lxd_cluster_role": "member",
+    "lxd_instances": [
+      {
+        "disk_used_bytes": 0,
+        "ram_limit_bytes": 20948180992,
+        "ram_used_bytes": 80850944,
+        "state": "running",
+        "vm_id": "4FZ922X02JSKERK8KSBZMMCXSS"
+      },
+      {
+        "disk_used_bytes": 0,
+        "ram_limit_bytes": 1073741824,
+        "ram_used_bytes": 263634944,
+        "state": "running",
+        "vm_id": "HWHS4QFAJW9625H9FQ897FDYT6"
+      },
+      {
+        "disk_used_bytes": 0,
+        "ram_limit_bytes": 1073741824,
+        "ram_used_bytes": 252481536,
+        "state": "running",
+        "vm_id": "CJYABWA2F2XW82YYCKZE1SYH8B"
+      },
+      {
+        "disk_used_bytes": 0,
+        "ram_limit_bytes": 8589934592,
+        "ram_used_bytes": 6742220800,
+        "state": "running",
+        "vm_id": "T81M7CV1CP3866E2KQNNKAYQNQ"
+      },
+      {
+        "disk_used_bytes": 0,
+        "ram_limit_bytes": 1073741824,
+        "ram_used_bytes": 81440768,
+        "state": "running",
+        "vm_id": "G91GMNHY1NW8PX32S7AGZTRBCB"
+      },
+      {
+        "disk_used_bytes": 0,
+        "ram_limit_bytes": 1073741824,
+        "ram_used_bytes": 80449536,
+        "state": "running",
+        "vm_id": "KRZ3W7C46ZBQSK0NN17DEYD02Y"
+      },
+      {
+        "disk_used_bytes": 0,
+        "ram_limit_bytes": 8589934592,
+        "ram_used_bytes": 5651652608,
+        "state": "running",
+        "vm_id": "RW07QAZXPWG5TYBREC2R5MKFXW"
+      }
+    ],
+    "mac_address": "70675b0d86c14be2",
+    "net": [
+      {
+        "iface": "enp5s0",
+        "latency_ms": 0.055,
+        "rx_bytes": 50069722681,
+        "tx_bytes": 47496939625
+      }
+    ],
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "processes": [
+      {
+        "age_sec": 439794,
+        "name": "llama-server",
+        "pid": 617793,
+        "ram_used_bytes": 6486466560,
+        "state": "sleeping",
+        "threads": 18
+      },
+      {
+        "age_sec": 1062937,
+        "name": "llama-server",
+        "pid": 1172916,
+        "ram_used_bytes": 5557460992,
+        "state": "sleeping",
+        "threads": 18
+      },
+      {
+        "age_sec": 1093604,
+        "name": "hermes",
+        "pid": 44089,
+        "ram_used_bytes": 639225856,
+        "state": "sleeping",
+        "threads": 24
+      },
+      {
+        "age_sec": 20816,
+        "name": "hermes",
+        "pid": 4021914,
+        "ram_used_bytes": 511315968,
+        "state": "sleeping",
+        "threads": 24
+      },
+      {
+        "age_sec": 13201,
+        "name": "python3",
+        "pid": 4106428,
+        "ram_used_bytes": 413642752,
+        "state": "sleeping",
+        "threads": 28
+      },
+      {
+        "age_sec": 1124506,
+        "name": "hermes",
+        "pid": 3668,
+        "ram_used_bytes": 408174592,
+        "state": "sleeping",
+        "threads": 17
+      },
+      {
+        "age_sec": 509,
+        "name": "node-MainThread",
+        "pid": 135180,
+        "ram_used_bytes": 348643328,
+        "state": "sleeping",
+        "threads": 7
+      },
+      {
+        "age_sec": 2644,
+        "name": "hermes",
+        "pid": 93050,
+        "ram_used_bytes": 328019968,
+        "state": "sleeping",
+        "threads": 20
+      },
+      {
+        "age_sec": 13201,
+        "name": "node-MainThread",
+        "pid": 4106420,
+        "ram_used_bytes": 326565888,
+        "state": "sleeping",
+        "threads": 11
+      },
+      {
+        "age_sec": 584,
+        "name": "hermes",
+        "pid": 133553,
+        "ram_used_bytes": 285122560,
+        "state": "sleeping",
+        "threads": 21
+      }
+    ],
+    "project_id": "01M539DJ5WDFPAH3NR9NNXXVS2",
+    "ram_total_bytes": 20948180992,
+    "ram_used_bytes": 18532724736,
+    "seq": 2,
+    "services": [
+      {
+        "name": "termini-bootstrap",
+        "status": "running"
+      },
+      {
+        "journal_errors": 0,
+        "journal_warnings": 0,
+        "last_exit_code": 0,
+        "name": "lxd",
+        "restart_count": 0,
+        "state_age_sec": 1080018,
+        "status": "running"
+      },
+      {
+        "journal_errors": 0,
+        "journal_warnings": 0,
+        "last_exit_code": 0,
+        "name": "sshd",
+        "restart_count": 0,
+        "state_age_sec": 134193,
+        "status": "running"
+      }
+    ],
+    "swap_used_bytes": 0,
+    "ts": "2026-10-16T21:21:49Z",
+    "uptime_sec": 1125414
+  }
+}

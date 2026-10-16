@@ -1,0 +1,35 @@
+PSI pressure (latest sample)
+RAW SAMPLE
+RANK 1
+not reported — no §4.12–§4.14 fields on this node's latest sample (absent, not zero)
+raw sample: kernel 10 s average per task class, not an aggregate of samples | leading indicator for oom-guard-01 · disk-degrade-01 · latency-01
+
+Memory pressure (latest sample)
+RAW SAMPLE
+RANK 2
+not reported — no §4.12–§4.14 fields on this node's latest sample (absent, not zero)
+raw sample: cumulative counters where marked, instant values otherwise | leading indicator for oom-guard-01
+
+Disk saturation / inodes (latest sample)
+RAW SAMPLE
+RANK 4
+not reported — no §4.12–§4.14 fields on this node's latest sample (absent, not zero)
+raw sample: cumulative counters where marked, instant values otherwise | leading indicator for disk-degrade-01 | 2 entries
+
+Network errors / drops (latest sample)
+RAW SAMPLE
+RANK 6
+not reported — no §4.12–§4.14 fields on this node's latest sample (absent, not zero)
+raw sample: cumulative counters where marked, instant values otherwise | leading indicator for latency-01 | 1 entry
+
+Transport / conntrack (latest sample)
+RAW SAMPLE
+RANK 7
+not reported — no §4.12–§4.14 fields on this node's latest sample (absent, not zero)
+raw sample: cumulative counters where marked, instant values otherwise | leading indicator for latency-01
+
+Per-instance OOM / faults (latest sample)
+RAW SAMPLE
+RANK 9
+not reported — no §4.12–§4.14 fields on this node's latest sample (absent, not zero)
+raw sample: cumulative counters where marked, instant values otherwise | leading indicator for oom-guard-01 (instance attribution) | 7 entries
