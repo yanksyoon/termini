@@ -1,0 +1,6 @@
+MODEL OUTPUT — NOT EXECUTED (THE TRACE RETAINED NO REPLY TEXT)
+SKIPPED
+NOT EXECUTED
+received 21:35:07
+the trace recorded that no raw reply text was retained (state skipped) — there is nothing to show
+this reply did not become the decision — the controller's fallback did (decided_by=fallback); the executed action below is the playbook's, not this reply's

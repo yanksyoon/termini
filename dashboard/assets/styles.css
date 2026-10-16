@@ -370,6 +370,104 @@ textarea { width: 100%; resize: vertical; }
 .badge.inc-none-badge { color: var(--muted); }
 .incident-none-text { font-size: .82rem; color: var(--muted); }
 
+/* ---------------------------------------------- thinking log (§4.3 trace) */
+/* Secondary to the card on purpose: the conclusion (title / explanation /
+   evidence / resolution) stays the primary surface, and the reasoning sits in a
+   collapsed disclosure under the explanation. What must never be secondary is
+   the HONESTY: the alerts below render OUTSIDE the disclosure, so a rejected
+   step, a withheld reply, a truncated trace or a provenance contradiction is
+   visible with the log closed. */
+.incident-trace { display: flex; flex-direction: column; gap: 5px; }
+.trace-alerts { display: flex; flex-direction: column; gap: 3px; }
+.trace-alert {
+  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+  border-left: 2px solid var(--line-2); padding: 3px 0 3px 8px;
+  font-size: .78rem; color: var(--fg-dim);
+}
+.trace-alert-fallback { border-left-color: var(--warn); color: #ffdca8; }
+.trace-alert-reject, .trace-alert-bug { border-left-color: #ff5f56; color: #ffc0bb; }
+.trace-alert-state { border-left-color: #8a6a1f; color: #ffdca8; }
+.badge.trace-warn { color: #ffdca8; border-color: #8a6a1f; background: #2a2010; }
+.badge.trace-bug { color: #ffc0bb; border-color: #8a2f28; background: #2a1311; }
+
+details.trace-details {
+  border: 1px dashed var(--line-2); border-radius: 8px; background: #080d16;
+  padding: 5px 9px;
+}
+details.trace-details > summary.trace-summary {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  cursor: pointer; list-style: none;
+}
+details.trace-details > summary.trace-summary::-webkit-details-marker { display: none; }
+details.trace-details > summary.trace-summary::before {
+  content: "▸"; color: var(--muted); font-size: .78rem; flex: 0 0 auto;
+}
+details.trace-details[open] > summary.trace-summary::before { content: "▾"; }
+.trace-summary-text { font-size: .78rem; color: var(--fg-dim); }
+.trace-summary-hint { font-size: .74rem; }
+.badge.trace-model { color: #9fe0ff; border-color: #2b83c0; background: #10283a; }
+.badge.trace-fallback { color: #ffdca8; border-color: #8a6a1f; background: #2a2010; }
+.badge.trace-det { color: #e3c6ff; border-color: #6b3f8f; background: #241333; }
+.badge.trace-bug { color: #ffc0bb; border-color: #8a2f28; background: #2a1311; }
+
+.trace-body { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.trace-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.trace-step {
+  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+  border-left: 2px solid var(--line-2); padding-left: 8px;
+  font-size: .79rem;
+}
+.trace-state-ok { border-left-color: #2f8a4d; }
+.trace-state-clamped { border-left-color: #8a6a1f; }
+.trace-state-dropped, .trace-state-rejected { border-left-color: #8a2f28; }
+.trace-state-skipped { border-left-color: #3a4353; }
+.trace-state-fallback { border-left-color: var(--warn); }
+.trace-state-unclassified { border-left-color: #ff5f56; }
+.trace-idx { font-variant-numeric: tabular-nums; font-size: .74rem; }
+.trace-ts { font-variant-numeric: tabular-nums; font-size: .74rem; }
+.trace-chip { font-size: .68rem; }
+.badge.trace-chip-ok { color: #b6f0c8; border-color: #2f8a4d; }
+.badge.trace-chip-clamped { color: #ffdca8; border-color: #8a6a1f; }
+.badge.trace-chip-dropped, .badge.trace-chip-rejected { color: #ffc0bb; border-color: #8a2f28; }
+.badge.trace-chip-skipped { color: var(--muted); }
+.badge.trace-chip-fallback { color: #ffdca8; border-color: var(--warn); }
+.badge.trace-chip-unclassified { color: #ffc0bb; border-color: #ff5f56; background: #2a1311; }
+.trace-name { font-family: ui-monospace, monospace; font-size: .76rem; color: #9fe0ff; }
+.trace-label { color: #cbd5e6; }
+.trace-detail { font-family: ui-monospace, monospace; font-size: .74rem; color: var(--fg-dim); word-break: break-word; }
+.trace-detail-reply {
+  flex: 1 1 100%; margin: 0; padding: 4px 6px; border-radius: 5px;
+  background: #0a0810; border: 1px solid #2a1d3a;
+  max-height: 6rem; overflow: auto; white-space: pre-wrap; word-break: break-word;
+}
+.trace-flag, .badge.trace-clip { font-size: .7rem; color: #ffdca8; }
+.badge.trace-clip { border-color: #8a6a1f; }
+
+/* The raw model reply: its OWN block, dashed and never the solid "executed" box,
+   so it cannot be read as the action that ran on the fleet. */
+.trace-reply {
+  display: flex; flex-direction: column; gap: 4px;
+  border: 1px dashed #6b3f8f; border-radius: 8px; background: #140f1f;
+  padding: 6px 9px;
+}
+.trace-reply-none { border-color: var(--line-2); background: #0a0f1a; }
+.trace-reply-withheld { border-color: #8a2f28; background: #1f1113; }
+.trace-reply-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.badge.trace-noexec { color: #e3c6ff; border-color: #6b3f8f; background: #241333; }
+.trace-reply-text {
+  margin: 0; padding: 6px 8px; border-radius: 6px; background: #0a0810;
+  border: 1px solid #2a1d3a; color: #e3c6ff;
+  font-family: ui-monospace, monospace; font-size: .74rem; line-height: 1.4;
+  white-space: pre-wrap; word-break: break-word; max-height: 16rem; overflow: auto;
+}
+.trace-reply-note { font-size: .74rem; color: #ffdca8; }
+.trace-none {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  border: 1px dashed var(--line-2); border-radius: 8px; padding: 5px 9px; background: #0a0f1a;
+}
+.badge.trace-none-badge { color: var(--muted); }
+.trace-none-text { font-size: .78rem; color: var(--muted); }
+
 /* The log stream is the SECONDARY surface: collapsed by default, expanded with
    a native disclosure so no JS has to keep a toggle in sync with the stream. */
 details.panel > summary.panel-head { margin-bottom: 0; cursor: pointer; list-style: none; }

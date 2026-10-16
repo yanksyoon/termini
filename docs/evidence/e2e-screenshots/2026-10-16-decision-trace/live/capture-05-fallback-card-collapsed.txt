@@ -1,0 +1,50 @@
+21:35:07
+FALLBACK
+evidence-node-a-machine
+oom-guard-01
+→
+instance.restart agent-c1
+ERROR · 127.0.0.1:60535
+CONTROLLER-GENERATED · MODEL UNAVAILABLE
+incident_generated: "fallback"
+controller-generated, model unavailable
+oom on node 01M53A3CQ3PPC0QG0EEMEK48SJ
+
+model unavailable (inference_unavailable); the deterministic playbook chose instance.restart on agent-c1 for rule oom-guard-01
+
+FALLBACK
+the model did not answer — the controller decided: fallback reason inference_unavailable · no guardrail gate rejected the model's answer (the model call itself failed)
+NOT OK
+reply_received (skipped): model reply (parse=inference_unavailable) · executed (rejected): action executed: error
+CONTROLLER THINKING LOG · FALLBACK
+thinking log · 8 steps · decided_by "fallback" · trace_version 1 · no raw reply text retained
+expand for the ordered steps
+EVIDENCE · 1 TELEMETRY FIELD QUOTED
+ram_used_bytes
+=
+97 B
+seq 30
+DECIDED · 1 ACTION NAMED IN THE RECORD (A DECISION, NOT AN OUTCOME)
+instance.restart
+agent-c1
+EXECUTED · WHAT THE FLEET ANSWERED (REMEDIATION_AUDITS, JOINED BY DECISION ID)
+ERROR
+127.0.0.1:60535
+PUT /1.0/instances/agent-c1/state
+idempotency_key 01M53A3CQ3PPC0QG0EEMEK48SJ:oom-guard-01:instance.restart:agent-c1:2
+operation still pending after 120.0s: /1.0/operations/01M53A7RDPYJ7CNSWKKMJKP55J
+executed 21:35:07
+· audit 01M53ABE20…HWW8
+BREACH
+ram_used_bytes
+RAM used
+=
+97.00% of ram_total_bytes
+threshold: >= 95% of ram_total_bytes for 2 consecutive samples
+fired 21:35:07
+FALLBACK REASON
+inference_unavailable — host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.
+audit 01M53ABE20…HWW8
+telemetry sample
+show on chart
+decision 01M53A7RD5…HY9J

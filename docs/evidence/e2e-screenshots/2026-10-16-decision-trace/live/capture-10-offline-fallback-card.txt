@@ -1,0 +1,97 @@
+21:32:09
+FALLBACK
+termini-node-c
+gpu-oos-01
+→
+image.prune
+OK · 10.10.0.11:8443
+CONTROLLER-GENERATED · MODEL UNAVAILABLE
+incident_generated: "fallback"
+controller-generated, model unavailable
+gpu_oos on node c
+
+model unavailable (low_confidence); the deterministic playbook chose image.prune for rule gpu-oos-01
+
+FALLBACK
+the model did not answer — the controller decided: fallback reason low_confidence · the gate that rejected the model's answer: G6
+CONTROLLER THINKING LOG · FALLBACK
+thinking log · 7 steps · decided_by "fallback" · trace_version 1 · raw reply recorded — not executed
+expand for the ordered steps
+1.
+21:32:09
+OK
+threshold_fired
+rule gpu-oos-01 fired
+rule_id=gpu-oos-01 event_id=01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0000G0 fired_at=2026-10-16T21:32:09.258Z detection_latency_ms=2000
+2.
+21:32:10
+OK
+evidence_window
+evidence window captured
+seq 1108..1110 (3 samples) C0 fields: cpu_util_pct, ram_total_bytes, ram_used_bytes
+3.
+21:32:11
+OK
+prompt_built
+prompt rendered (C0 assertion ok)
+template=operator-decision v1 sha256=9f2c1e77 substituted_fields=14 C0_assertion=ok
+4.
+21:32:13
+OK
+reply_received
+model reply received
+{"schema_version":1,"action_id":"image.prune","confidence":0.12,"rationale":"VRAM is nearly full; pruning images may free space","incident":null}
+5.
+21:32:14
+FALLBACK
+action_decided
+fallback to deterministic action
+decided_by=fallback reason=low_confidence action_kind=image.prune rejecting_gate=G6
+6.
+21:32:17
+OK
+executed
+action executed: ok
+result=ok latency_ms=45
+7.
+21:32:18
+OK
+audit_recorded
+audit row written
+decision_id=01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C0000G0
+MODEL OUTPUT — NOT EXECUTED (RAW REPLY, `REPLY_RECEIVED` STEP)
+OK
+NOT EXECUTED
+received 21:32:13
+{"schema_version":1,"action_id":"image.prune","confidence":0.12,"rationale":"VRAM is nearly full; pruning images may free space","incident":null}
+this reply did not become the decision — the controller's fallback did (decided_by=fallback); the executed action below is the playbook's, not this reply's
+EVIDENCE · 1 TELEMETRY FIELD QUOTED
+gpu_vram_used_bytes
+=
+25.61 GiB
+seq 990
+21:33:45
+DECIDED · 1 ACTION NAMED IN THE RECORD (A DECISION, NOT AN OUTCOME)
+image.prune
+(no target in the record)
+EXECUTED · WHAT THE FLEET ANSWERED (REMEDIATION_AUDITS, JOINED BY DECISION ID)
+OK
+10.10.0.11:8443
+PUT /1.0/instances/01H4KZ9Q2R3T5V7W9X1Y3Z5E4H/state
+idempotency_key 01H4KZ9Q2R3T5V7W9X1Y3Z5D3G:gpu-oos-01:image.prune:01H4KZ9Q2R3T5V7W9X1Y3Z5E4H:5
+instance restarted
+executed 21:32:09
+· audit 01H4KZ9Q2R…00J0
+BREACH
+gpu_vram_used_bytes
+VRAM used
+=
+25.61 GiB
+threshold: gpu_vram_used_bytes >= 95% of gpu_vram_total_bytes
+fired 21:32:09
+FALLBACK REASON
+low_confidence — playbook: prune images (VRAM 96% of total)
+audit 01H4KZ9Q2R…00J0
+telemetry sample
+show on chart
+decision 01H4KZ9Q2R…00H0

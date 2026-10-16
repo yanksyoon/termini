@@ -229,6 +229,298 @@ export function incidentView(decision) {
   };
 }
 
+/* ------------------------------------------------ decision trace (§4.3) */
+
+/** The frozen §4.3 step vocabulary — the nine names, in the contract's order. */
+export const TRACE_STEPS = [
+  "threshold_fired",
+  "evidence_window",
+  "prompt_built",
+  "model_call",
+  "reply_received",
+  "gates",
+  "action_decided",
+  "executed",
+  "audit_recorded",
+];
+
+/** The §4.3 step states. `ok` is the only one that has nothing to report. */
+export const TRACE_STATES = ["ok", "clamped", "dropped", "rejected", "fallback", "skipped"];
+
+/** `decided_by` (§4.3) — who wrote the trace. */
+export const TRACE_DECIDED_BY = ["model", "fallback", "deterministic"];
+
+/**
+ * Client-side caps, mirroring the controller's. The panel re-enforces them
+ * rather than trusting the response: it is a reader of the trace, never a
+ * second egress path, so it must not paint more than the contract allows even
+ * if a row arrives carrying more.
+ */
+export const TRACE_MAX_STEPS = 24;
+export const TRACE_STEP_LABEL_MAX_CHARS = 128;
+export const TRACE_STEP_DETAIL_MAX_CHARS = 512;
+export const TRACE_REPLY_MAX_CHARS = 4096;
+export const TRACE_VERSION = 1;
+
+/** The single step whose `detail` IS the raw model reply. */
+export const TRACE_REPLY_STEP = "reply_received";
+
+/**
+ * What `decided_by` MEANS, and how loudly the UI must say it (§4.3).
+ *
+ * A `fallback` trace is a CONTROLLER document: the model did not answer, and the
+ * controller recorded the fallback. It must never be presented as the model's
+ * reasoning, exactly as §8.1's controller-built record is never presented as
+ * model output. A trace that arrives without `decided_by` cannot be attributed
+ * to anyone (`bug: true`), and one that claims `deterministic` contradicts §8.1
+ * (deterministic mode writes no trace at all) — both are shown as violations
+ * rather than quietly rendered as a reasoning record.
+ */
+export function traceDeciderMeta(decidedBy) {
+  switch (decidedBy) {
+    case "model":
+      return {
+        key: "model",
+        label: "AI model",
+        tone: "model",
+        byModel: true,
+        badge: "AI THINKING LOG",
+        note: 'decided_by: "model" — the steps were recorded on the model call path (§4.3)',
+      };
+    case "fallback":
+      return {
+        key: "fallback",
+        label: "controller-generated (fallback)",
+        tone: "fallback",
+        byModel: false,
+        badge: "CONTROLLER THINKING LOG · FALLBACK",
+        note: 'decided_by: "fallback" — the model did NOT answer: this trace was written by the controller when it fell back to the deterministic playbook (§4.3/§8.1)',
+      };
+    case "deterministic":
+      return {
+        key: "deterministic",
+        label: "playbook (deterministic)",
+        tone: "det",
+        byModel: false,
+        bug: true,
+        badge: "TRACE CLAIMING decided_by: deterministic",
+        note: 'deterministic mode writes no trace at all (§8.1) — a trace that claims decided_by: "deterministic" contradicts the contract and is shown as written, never as a reasoning record',
+      };
+    default:
+      return {
+        key: "unknown",
+        label: "trace with no decided_by",
+        tone: "bug",
+        byModel: false,
+        bug: true,
+        badge: "TRACE WITH NO decided_by",
+        note: "the trace arrived without its required `decided_by`, so a reader could not tell model reasoning from controller text — a §4.3 violation, shown unlabelled rather than as model output",
+      };
+  }
+}
+
+/** Clamp text to a cap, reporting whether anything was cut (never silently). */
+function clampText(value, cap) {
+  const text = typeof value === "string" ? value : value === undefined || value === null ? "" : String(value);
+  if (text.length <= cap) return { text, clamped: false };
+  return { text: text.slice(0, cap), clamped: true, cut: text.length - cap };
+}
+
+/** First `key=value` in a step detail, or null. Details are `k=v` space-joined. */
+function detailField(detail, key) {
+  if (typeof detail !== "string") return null;
+  const m = new RegExp(`(?:^|\\s)${key}=(\\S+)`).exec(detail);
+  return m ? m[1] : null;
+}
+
+/**
+ * One trace step, or `null` when the mapper refuses it (the caller counts the
+ * refusals and SAYS SO — a withheld step is never rendered and never silently
+ * dropped either).
+ *
+ * Only the §4.3 step keys survive (`step`, `ts`, `label`, `detail`, `state`, and
+ * the reply step's `truncated`); anything else in the object is discarded. The
+ * step NAME is the trace's own index into the §4.3 step table, so a name that
+ * table does not define cannot be placed in a chronological reasoning log
+ * without inventing what it means: it is withheld and counted.
+ */
+export function traceStepView(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (typeof raw.step !== "string" || !TRACE_STEPS.includes(raw.step)) return null;
+  // The reply step carries the raw model reply, so it gets the reply bound
+  // (§4.3: ≤4096 chars, truncation flagged) — every other step gets 512.
+  const detailCap = raw.step === TRACE_REPLY_STEP ? TRACE_REPLY_MAX_CHARS : TRACE_STEP_DETAIL_MAX_CHARS;
+  const label = clampText(raw.label, TRACE_STEP_LABEL_MAX_CHARS);
+  const detail = clampText(raw.detail, detailCap);
+  const step = {
+    step: raw.step,
+    ts: typeof raw.ts === "string" && raw.ts.trim() ? raw.ts : null,
+    label: label.text,
+    detail: detail.text,
+    // A missing or unknown state is NOT flattened to `ok`: the reader must be
+    // able to see that the trace did not classify this step.
+    state: typeof raw.state === "string" && TRACE_STATES.includes(raw.state) ? raw.state : null,
+  };
+  if (step.state === null) step.unclassified = true;
+  if (label.clamped || detail.clamped) step.clamped = true;
+  // `truncated` belongs to the reply step only (§4.3 field reference).
+  if (raw.step === TRACE_REPLY_STEP && raw.truncated === true) step.truncated = true;
+  return step;
+}
+
+const TRACE_ABSENT = {
+  present: false,
+  steps: [],
+  decidedBy: null,
+  decidedByMeta: null,
+  version: null,
+  versionMismatch: false,
+  truncated: false,
+  totalSteps: 0,
+  shownSteps: 0,
+  cap: TRACE_MAX_STEPS,
+  droppedSteps: 0,
+  clampedSteps: 0,
+  unclassifiedSteps: 0,
+  reordered: false,
+  warnings: [],
+  reply: null,
+  fallback: null,
+  problem: null,
+};
+
+/**
+ * The §4.3 decision trace of one decision row as the view model keeps it.
+ *
+ * `present:false` means NO trace was recorded for this row (a deterministic-mode
+ * row writes none, §8.1). It must stay `false`: an empty timeline would assert a
+ * reasoning record the controller never wrote.
+ *
+ * The mapper keeps only what the contract defines — unknown keys are dropped
+ * (the panel is not a second egress path), the caps are re-enforced client-side,
+ * and the steps are put in chronological order. Nothing is hidden: steps the
+ * mapper refuses are counted (`droppedSteps`), non-`ok` states are listed in
+ * `warnings`, and a truncated array reports `totalSteps` alongside `shownSteps`.
+ */
+export function traceView(raw) {
+  const absent = { ...TRACE_ABSENT };
+  let obj = raw;
+  if (typeof obj === "string") {
+    const text = obj.trim();
+    if (!text) return { ...absent, problem: "the row carries decision_trace as an empty string" };
+    try {
+      obj = JSON.parse(text);
+    } catch {
+      return {
+        ...absent,
+        problem:
+          "the row carries decision_trace as a string that is not JSON (the API parses it — §11); no timeline is drawn from it",
+      };
+    }
+  }
+  if (obj === null || obj === undefined) return absent;
+  if (typeof obj !== "object" || Array.isArray(obj)) {
+    return { ...absent, problem: `the row carries decision_trace as a ${Array.isArray(obj) ? "list" : typeof obj}, not the §4.3 object` };
+  }
+  const known = ["trace_version", "decided_by", "steps"].some((k) => obj[k] !== undefined && obj[k] !== null);
+  if (!known) return { ...absent, problem: "the row carries a decision_trace object with none of the §4.3 keys" };
+
+  const version = Number.isInteger(obj.trace_version) ? obj.trace_version : null;
+  const decidedBy = typeof obj.decided_by === "string" && obj.decided_by ? obj.decided_by : null;
+  const rawSteps = Array.isArray(obj.steps) ? obj.steps : [];
+  const totalSteps = rawSteps.length;
+  const truncated = totalSteps > TRACE_MAX_STEPS;
+  const kept = truncated ? rawSteps.slice(0, TRACE_MAX_STEPS) : rawSteps;
+
+  let steps = [];
+  let droppedSteps = 0;
+  for (const entry of kept) {
+    const step = traceStepView(entry);
+    if (step) steps.push(step);
+    else droppedSteps += 1;
+  }
+
+  // Chronological order: the array order is the contract's (§4.3 writes oldest
+  // first), so it is only overridden when the timestamps contradict it — and
+  // then the fact is reported instead of silently fixed.
+  const times = steps.map((s) => Date.parse(s.ts || ""));
+  let reordered = false;
+  if (steps.length > 1 && times.every((t) => Number.isFinite(t))) {
+    const outOfOrder = times.some((t, i) => i > 0 && t < times[i - 1]);
+    if (outOfOrder) {
+      const order = steps.map((_, i) => i).sort((a, b) => times[a] - times[b] || a - b);
+      steps = order.map((i) => steps[i]);
+      reordered = true;
+    }
+  }
+
+  const replyStep = [...steps].reverse().find((s) => s.step === TRACE_REPLY_STEP) || null;
+  const reply = replyStep
+    ? {
+        at: replyStep.ts,
+        state: replyStep.state,
+        text: clampText(replyStep.detail, TRACE_REPLY_MAX_CHARS).text,
+        truncated: !!replyStep.truncated,
+        // `skipped` is the controller saying it retained no reply text at all
+        // ("no raw reply text retained") — so there is no model output to show.
+        available: replyStep.state !== "skipped",
+        // `rejected` means the reply text was replaced by the C2 marker: the
+        // trace carries a guardrail verdict, not the model's words.
+        withheld: replyStep.state === "rejected",
+      }
+    : null;
+
+  const actionStep = [...steps].reverse().find((s) => s.step === "action_decided") || null;
+  const fallback =
+    decidedBy === "fallback"
+      ? {
+          reason: actionStep ? detailField(actionStep.detail, "reason") : null,
+          rejectingGate: actionStep ? detailField(actionStep.detail, "rejecting_gate") : null,
+        }
+      : null;
+
+  const clampedSteps = steps.filter((s) => s.clamped).length;
+  const unclassifiedSteps = steps.filter((s) => s.unclassified).length;
+  return {
+    present: true,
+    steps,
+    decidedBy,
+    decidedByMeta: traceDeciderMeta(decidedBy),
+    version,
+    versionMismatch: version !== TRACE_VERSION,
+    truncated,
+    totalSteps,
+    shownSteps: steps.length,
+    cap: TRACE_MAX_STEPS,
+    droppedSteps,
+    clampedSteps,
+    unclassifiedSteps,
+    reordered,
+    // Every step that is not a plain `ok`: the collapsed card must be able to
+    // say "1 rejected" out loud instead of burying it in an unopened log.
+    warnings: steps
+      .filter((s) => s.state !== "ok")
+      .map((s) => ({ step: s.step, state: s.state, label: s.label })),
+    reply,
+    fallback,
+    problem: null,
+    sourceMismatch: false, // filled by buildDecisionRows, which knows decision_source
+  };
+}
+
+/**
+ * Why a row has no thinking log. Same distinction as `noIncidentReason`:
+ * deterministic mode records none (§8.1), the model path may legitimately have
+ * recorded none, but a `fallback` row with no trace contradicts §4.3.
+ */
+export function noTraceReason(decision) {
+  const source = decision ? decision.decision_source : null;
+  if (source === "deterministic") return "no decision trace (deterministic mode writes none — §8.1)";
+  if (source === "fallback") return "no decision trace (a fallback row records one — §4.3)";
+  if (source === "model") return "no decision trace (the model path recorded none for this decision)";
+  return "no decision trace";
+}
+
 /**
  * Why a row has no incident card. The distinction is the point: deterministic
  * mode writes no record (§8.1), the model may legitimately return none of the
@@ -472,6 +764,17 @@ export function buildDecisionRows({ decisions = [], events = [], audits = [], se
       : null;
     const threshold = event ? thresholdMarker(event, series) : null;
     const incident = incidentView(d);
+    // §4.3 thinking log. The trace rides in on the SAME decisions response (the
+    // API returns the row with `decision_trace` parsed), so nothing extra is
+    // fetched here — the panel joins it exactly as it joins the audit row.
+    const trace = traceView(d.decision_trace);
+    if (trace.present) {
+      trace.sourceMismatch = !!(
+        trace.decidedBy &&
+        d.decision_source &&
+        trace.decidedBy !== d.decision_source
+      );
+    }
     return {
       id: d.id,
       decidedAt: d.decided_at || null,
@@ -493,6 +796,17 @@ export function buildDecisionRows({ decisions = [], events = [], audits = [], se
       incidentSource: incident ? incident.generated : null,
       incidentMeta: incident ? incident.meta : null,
       noIncidentReason: incident ? null : noIncidentReason(d),
+      // §4.3 decision trace: the ordered reasoning steps behind the answer.
+      // `trace.present === false` for a deterministic-mode row (no trace
+      // columns at all, §8.1) — the card says so instead of drawing an empty
+      // timeline that would assert a record nobody wrote.
+      trace,
+      traceSource: trace.present ? trace.decidedBy : null,
+      traceMeta: trace.present ? trace.decidedByMeta : null,
+      traceBug:
+        trace.present &&
+        (!!trace.decidedByMeta.bug || trace.sourceMismatch || trace.versionMismatch),
+      noTraceReason: trace.present ? null : noTraceReason(d),
       eventId: d.event_id || null,
       event,
       breach,
