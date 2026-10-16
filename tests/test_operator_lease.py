@@ -89,6 +89,8 @@ class LeaseLoopTest(unittest.TestCase):
         self.lxd = StubLxd()
         self.lxd.start()
         self.addCleanup(self.lxd.stop)
+        # The remediation target must exist on the node (see test_operator_loop).
+        self.lxd.set_state("agent-c1", "Running")
 
         self.cfg = SimpleNamespace(
             db_path=self.db_path,

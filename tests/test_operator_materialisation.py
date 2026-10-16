@@ -175,9 +175,12 @@ class StartInstanceTest(unittest.TestCase):
 
         self.assertEqual(r.result, "ok")
         self.assertEqual(r.operation, self.OP)          # waited, not fire-and-forget
-        self.assertEqual([c[0] for c in ex.calls], ["PUT", "GET"])
-        self.assertEqual(ex.calls[0][1], self.PATH)
-        self.assertEqual(ex.calls[0][2], {"action": "start"})
+        # The existence probe comes first (`GET /1.0/instances/agent-1`, the
+        # fail-closed guard), then the start, then the operation poll.
+        self.assertEqual([c[0] for c in ex.calls], ["GET", "PUT", "GET"])
+        self.assertEqual(ex.calls[0][1], "/1.0/instances/agent-1")
+        self.assertEqual(ex.calls[1][1], self.PATH)
+        self.assertEqual(ex.calls[1][2], {"action": "start"})
 
     def test_start_of_an_already_running_instance_is_already_applied(self):
         # LXD errors on starting a running instance; a replay must be a no-op.
@@ -185,7 +188,7 @@ class StartInstanceTest(unittest.TestCase):
             400, json.dumps({"error": 'Instance "agent-1" is already running'}))})
         r = ex.start_instance("agent-1")
         self.assertEqual(r.result, "already_applied")
-        self.assertEqual(len(ex.calls), 1)              # no wait attempted
+        self.assertEqual(len(ex.calls), 2)              # probe + PUT, no wait attempted
 
     def test_start_of_a_missing_instance_is_an_error(self):
         ex = _FakeTransport({("PUT", self.PATH): (
@@ -242,7 +245,8 @@ class StartInstanceTest(unittest.TestCase):
                                    params={"instance_name": "agent-1"})
         r = ex.execute(action)
         self.assertEqual(r.result, "ok")
-        self.assertEqual(ex.calls[0][2], {"action": "start"})
+        self.assertEqual(ex.calls[0][1], "/1.0/instances/agent-1")   # existence probe
+        self.assertEqual(ex.calls[1][2], {"action": "start"})
 
 
 class DeleteInstanceTest(unittest.TestCase):

@@ -73,6 +73,10 @@ class LoopIntegrationTest(unittest.TestCase):
         self.lxd = StubLxd()
         self.lxd.start()
         self.addCleanup(self.lxd.stop)
+        # The loop's remediation target must EXIST on the node, or the executor's
+        # fail-closed guard refuses it (target_missing) — the live defect
+        # (model decides -> HTTP 404) these tests must not reproduce silently.
+        self.lxd.set_state("agent-c1", "Running")
 
         self.cfg = SimpleNamespace(
             db_path=self.db_path,

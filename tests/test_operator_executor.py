@@ -19,6 +19,13 @@ class ExecutorTest(unittest.TestCase):
         self.lxd = StubLxd()
         self.lxd.start()
         self.addCleanup(self.lxd.stop)
+        # Every state change is now gated on LXD's own existence probe
+        # (`GET /1.0/instances/<name>` -> 404 refuses the action as
+        # `target_missing`, executor.py), so a test that expects a remediation to
+        # LAND must declare the instance it acts on. The stub answers 404 for an
+        # instance it does not know, exactly as real LXD does — which is the
+        # failure this guard exists to prevent (model decides -> HTTP 404).
+        self.lxd.set_state("agent-c1", "Running")
 
     def test_restart_issues_real_http_call(self):
         ex = LxdExecutor(self.lxd.base_url)
@@ -71,9 +78,11 @@ class ExecutorTest(unittest.TestCase):
         r = ex.restart_instance("agent-c1")
         self.assertEqual(r.result, "error")
 
-    def test_delete_instance_404_is_idempotent_ok(self):
+    def test_delete_through_stub_is_ok(self):
         ex = LxdExecutor(self.lxd.base_url)
         # Stub always returns 200; here we assert the delete path is exercised.
+        # The 404 fold (an instance that is NOT there -> `already_applied`, never
+        # `ok`) is covered by tests/test_operator_target_missing.py.
         r = ex.delete_instance("agent-c1")
         self.assertEqual(r.result, "ok")
         self.assertEqual(r.path, "/1.0/instances/agent-c1")

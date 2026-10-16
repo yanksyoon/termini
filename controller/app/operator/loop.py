@@ -50,11 +50,30 @@ import threading
 import time
 
 from .. import db, store, ulid
-from . import decision, detect, executor, target, triggers
+from . import decision, detect, executor, target, triggers, vmids
 from . import store as opstore
 from .models import ExecResult, RemediationAction
 
 log = logging.getLogger("termini.operator.loop")
+
+
+def _refusal_summary(result) -> str:
+    """One-line reason an action was refused, for the operator log / client UI.
+
+    Returns "" for an action that actually ran. `ExecResult.reason` is the
+    machine-readable code (`executor.TARGET_MISSING`); the first clause of the
+    detail carries the human-readable explanation. Both are printed so the log
+    line says *why* nothing was issued — the previous line said only
+    `-> error`, with the reason buried in the audit detail, which on the demo
+    screen is indistinguishable from the AI failing.
+    """
+    reason = str(getattr(result, "reason", "") or "")
+    if not reason:
+        return ""
+    detail = str(getattr(result, "detail", "") or "").strip()
+    body = detail[len(reason):].lstrip(": ").strip() if detail.startswith(reason) else detail
+    head = body.split(". ", 1)[0].strip()
+    return f"{reason}: {head}" if head else reason
 
 
 class OperatorLoop(threading.Thread):
@@ -145,6 +164,14 @@ class OperatorLoop(threading.Thread):
         self._stop = threading.Event()
         self._polls = 0
         self._max_lag_s = 0.0
+        # {node_id: (monotonic_at, {vm_id -> LXD instance name})} — the LIVE
+        # instance inventory of a node, refreshed when a remediation is about to
+        # run (see `_live_instance_names`). It is what makes a model-chosen
+        # `vm_id` resolvable to a target that exists, instead of a config table
+        # that has to be kept in step with the fleet by hand.
+        self._live_names: dict[str, tuple[float, dict[str, str]]] = {}
+        self.live_inventory_ttl_s = max(
+            0.0, float(getattr(cfg, "operator_live_inventory_ttl_s", 30.0) or 0.0))
 
     # -------------------------------------------------------------- lifecycle
     def run(self) -> None:
@@ -227,6 +254,47 @@ class OperatorLoop(threading.Thread):
                 return len(store.list_nodes(conn, self.project["id"]))
         except Exception:
             return -1
+
+    def _live_instance_names(self, node_id: str) -> dict[str, str]:
+        """`{vm_id -> LXD instance name}` for the instances present on `node_id`.
+
+        The guardrail resolves a model-chosen target through
+        `DecisionContext.instance_names`; production wires that to a static
+        `TERMINI_LXD_INSTANCE_NAMES` map, which cannot know what is actually
+        running. On the live demo nothing filled the map, so a model target was
+        passed through verbatim and the executor PUT an instance name that did not
+        exist on the node -> the audit read `HTTP 404 ... Instance not found`.
+
+        This reads the node's OWN inventory instead (`GET /1.0/instances`, the
+        same authenticated probe reconciliation already uses) and derives each
+        `vm_id` with `vmids.vm_id_for_instance`, so:
+
+          * a vm_id the node reported in telemetry resolves to the instance it
+            was derived from — and the remediation lands on that instance;
+          * a vm_id that does NOT hash from any instance on this node resolves to
+            nothing, the guardrail keeps the value as given, and the executor
+            refuses it fail-closed (`executor.TARGET_MISSING`) instead of 404ing.
+
+        Never called with a transaction open (it is an HTTP call); a node that
+        cannot be read contributes no mapping and is never treated as empty.
+        """
+        cached = self._live_names.get(node_id)
+        now = time.monotonic()
+        if cached and (now - cached[0]) < self.live_inventory_ttl_s:
+            return cached[1]
+        ex = self._executor_for(node_id)
+        try:
+            reachable, names = ex.list_instance_names()
+        except Exception:  # noqa: BLE001 — a lookup failure must not stop a remediation
+            log.exception("could not read the live instance inventory of node %s", node_id)
+            return cached[1] if cached else {}
+        if not reachable:
+            log.info("node %s instance inventory unreadable (%s); keeping configured names",
+                     node_id, ex.base_url)
+            return cached[1] if cached else {}
+        mapping = vmids.instance_names_for_vm_ids(names)
+        self._live_names[node_id] = (now, mapping)
+        return mapping
 
     # ------------------------------------------------------------------- core
     def run_once(self) -> list[dict]:
@@ -345,6 +413,15 @@ class OperatorLoop(threading.Thread):
                 return None
 
         now = triggers.now_iso_ms()
+        # Resolve the node's LIVE instance inventory into the decision context
+        # BEFORE the decision, with no transaction open (it is an HTTP call to the
+        # node's LXD). Without it a model-chosen `vm_id` cannot resolve to the
+        # instance it came from and the write 404s (see `_live_instance_names`).
+        live_names = self._live_instance_names(node_id)
+        if live_names:
+            merged = dict(ctx.instance_names or {})
+            merged.update(live_names)
+            ctx.instance_names = merged
         # Start the remediation clock BEFORE the chooser so chooser/selection time
         # is included in remediation_latency_s (t_2c00b7fe). A model-driven
         # chooser can dominate the wall-clock cost.
@@ -398,6 +475,14 @@ class OperatorLoop(threading.Thread):
         # chooser/selection time, which the previous `fired_at -> now` calc omitted).
         remed_lat = round(time.monotonic() - remed_start, 3)
         message = f"{event.rule_id}: {action.kind} {target} -> {result.result}".strip()
+        # A refused action says WHY, in the operator log the client UI renders.
+        # Without this the live demo showed `-> error (threshold: ...)` with the
+        # reason (`HTTP 404 ... Instance not found`) buried in the audit detail,
+        # which reads as the AI failing rather than as the guard refusing a target
+        # that is not on the node.
+        refusal = _refusal_summary(result)
+        if refusal:
+            message += f" ({refusal})"
         threshold = getattr(event, "threshold", None)
         if threshold:
             message += f" (threshold: {threshold})"
@@ -406,7 +491,8 @@ class OperatorLoop(threading.Thread):
                 conn, audit_id, decision_id, event, action, result, idem_key, now, dry_run,
                 lxd_endpoint=getattr(ex, "base_url", ""),
             )
-            self._emit_log(conn, node_id, message)
+            self._emit_log(conn, node_id, message,
+                           severity="warn" if refusal else "info")
         log.info("node %s rule %s -> %s %s: %s (remediation_latency=%ss)",
                  node_id, event.rule_id, action.kind, target, result.result, remed_lat)
         return {

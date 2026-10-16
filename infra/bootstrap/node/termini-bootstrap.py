@@ -477,229 +477,8 @@ def inference_snapshot(cfg: dict) -> dict | None:
     }
 
 
-# ------------------------------------------------------- per-instance inventory
-# `lxd_instances[]` — node-telemetry.md §4.6, C0.
-#
-# This is the field the AI operator resolves a remediation target through: the
-# guardrail's G5 requires the model's target to resolve against
-# `target_resource.instances[]`, and the executor then turns the resolved target
-# into `PUT /1.0/instances/<instance>/state` on THIS node's LXD. A node that
-# reports no inventory therefore makes every model-chosen action unresolvable
-# (`fallback_reason=invalid_target` — the model is consulted and always
-# discarded), which is what every real node did before this block existed: the
-# field was missing by construction (task t_8b66366d).
-#
-# `vm_id` is a C0 id and the ingest validator requires a 26-character Crockford
-# ULID (`controller/app/fields.py`: `"ulid": True`), while an LXD instance name is
-# lowercase/DNS-ish and may carry customer hostname data — so the name can never
-# BE the id, and it is never sent. The id is DERIVED from the name instead:
-#
-#     vm_id = 26 Crockford base32 characters of SHA-256("termini-vm-id:" + name)
-#
-# deterministic and one-way. The controller derives the same id from the instance
-# names it reads back over the node's own LXD REST API
-# (`controller/app/operator/vmids.py`) and resolves a reported id back to the
-# instance it belongs to — so an id that matches no instance on the node being
-# dialled is, by construction, not a target (the executor's fail-closed path).
-# The demo seeder carries the same rule. `tests/test_node_instance_inventory.py`
-# pins this implementation's output so the three copies cannot drift silently.
-CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-VM_ID_PREFIX = "termini-vm-id:"
-VM_ID_LEN = 26
-
-# LXD's daemon socket. Snap LXD (the baked node image) keeps it under
-# /var/snap; a distro-packaged LXD under /var/lib. Same order as `lxc` itself.
-LXD_SOCKETS = ("/var/snap/lxd/common/lxd/unix.socket", "/var/lib/lxd/unix.socket")
-# Wall-clock ceiling for one LXD API call. A sample is produced every second, so
-# a hung LXD must not hold the telemetry loop: a call that does not answer in
-# time is "no inventory this sample", never an empty node (see below).
-LXD_PROBE_TIMEOUT_S = float(os.environ.get("TERMINI_LXD_PROBE_TIMEOUT_S", "5") or 5)
 # Wall-clock ceiling for one systemd probe (services[]).
 SERVICE_PROBE_TIMEOUT_S = float(os.environ.get("TERMINI_SERVICE_PROBE_TIMEOUT_S", "3") or 3)
-
-# LXD status string -> the contract's `state` enum (§4.6).
-_LXD_STATE = {
-    "running": "running",
-    "stopped": "stopped",
-    "frozen": "frozen",
-    "paused": "paused",
-    "error": "error",
-    "ready": "starting",
-    "starting": "starting",
-}
-
-# Previous (monotonic seconds, cumulative CPU nanoseconds) per instance, for the
-# per-instance CPU percentage — LXD reports cumulative usage, not a rate.
-_CPU_PREV: dict[str, tuple[float, int]] = {}
-
-
-def vm_id_for_instance(name: str) -> str:
-    """The `vm_id` this node reports for LXD instance `name` (see above).
-
-    Byte-for-byte the rule the controller resolves with
-    (`controller/app/operator/vmids.py`). 130 bits of SHA-256 are emitted MSB-first
-    as 26 Crockford characters, so the result is a valid controller ULID.
-    """
-    digest = hashlib.sha256((VM_ID_PREFIX + str(name)).encode("utf-8")).digest()
-    value = int.from_bytes(digest[:17], "big") >> 6
-    out = []
-    for _ in range(VM_ID_LEN):
-        out.append(CROCKFORD[value & 0x1F])
-        value >>= 5
-    return "".join(reversed(out))
-
-
-class _LxdUnixConnection(http.client.HTTPConnection):
-    """HTTP over LXD's unix socket (the stdlib has no unix-socket transport)."""
-
-    def __init__(self, socket_path: str, timeout: float):
-        super().__init__("localhost", timeout=timeout)
-        self._socket_path = socket_path
-
-    def connect(self) -> None:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(self.timeout)
-        sock.connect(self._socket_path)
-        self.sock = sock
-
-
-def lxd_socket_path() -> str | None:
-    """Path of the local LXD socket, or None when LXD is not installed."""
-    for path in LXD_SOCKETS:
-        if os.path.exists(path):
-            return path
-    return None
-
-
-def lxd_api_get(path: str, timeout: float | None = None) -> object | None:
-    """GET `path` from this node's own LXD daemon over its unix socket.
-
-    Returns the decoded `metadata`, or None when the call cannot be made or does
-    not answer 200. Never raises: a stopped LXD, a missing socket or a junk
-    response must leave the telemetry loop running.
-    """
-    sock_path = lxd_socket_path()
-    if sock_path is None:
-        return None
-    conn = None
-    try:
-        conn = _LxdUnixConnection(sock_path, LXD_PROBE_TIMEOUT_S if timeout is None else timeout)
-        conn.request("GET", path)
-        resp = conn.getresponse()
-        body = resp.read()
-        if resp.status != 200:
-            log(f"lxd api {path}: HTTP {resp.status}")
-            return None
-        payload = json.loads(body.decode("utf-8") or "null")
-    except (OSError, ValueError, http.client.HTTPException) as e:
-        log(f"lxd api {path}: {type(e).__name__}: {e}")
-        return None
-    finally:
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:  # pragma: no cover - close() on a dead socket
-                pass
-    if isinstance(payload, dict) and "metadata" in payload:
-        return payload["metadata"]
-    return None
-
-
-def _instance_cpu_pct(name: str, usage_ns: object, now: float) -> float | None:
-    """Per-instance CPU utilisation, in percent of this node's total capacity.
-
-    LXD's `state.cpu.usage` is cumulative nanoseconds, so a rate needs two
-    readings: the first sample for an instance reports NOTHING rather than a
-    fabricated 0 (the contract field is optional; the daemon does the same for
-    `net[].latency_ms` before its first measurement).
-    """
-    if not isinstance(usage_ns, (int, float)) or isinstance(usage_ns, bool):
-        return None
-    prev = _CPU_PREV.get(name)
-    _CPU_PREV[name] = (now, int(usage_ns))
-    if prev is None:
-        return None
-    dt = now - prev[0]
-    d_ns = int(usage_ns) - prev[1]
-    if dt <= 0 or d_ns < 0:          # clock jumped or the counter reset
-        return None
-    cores = max(1, os.cpu_count() or 1)
-    pct = 100.0 * (d_ns / 1e9) / (dt * cores)
-    return round(min(100.0, max(0.0, pct)), 2)
-
-
-def _int_or_zero(value: object) -> int:
-    """LXD byte counters as a non-negative int (bool is not a byte count)."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return 0
-    return int(value) if value > 0 else 0
-
-
-def _dict_of(value: object) -> dict:
-    """`value` when it is a mapping, else an empty mapping (never None)."""
-    return value if isinstance(value, dict) else {}
-
-
-def lxd_instance_inventory(cfg: dict) -> list | None:
-    """`lxd_instances[]` for this node, from its own LXD (contract §4.6).
-
-    One entry per RUNNING instance (§4.6: "one entry per running VM"), with the
-    contract fields. LXD is asked over its unix socket (`GET /1.0/instances?
-    recursion=2`), which is the same view `lxc list` shows — no network, no trust
-    prompt, and no subprocess on the sample path.
-
-    Returns None when the inventory cannot be read (no LXD socket, LXD not
-    answering, junk response) so the caller OMITS the field: "this node did not
-    report an inventory" is the truth, whereas an empty list would claim a node
-    running nothing and would make every model-chosen target unresolvable.
-    `lxd_inventory: 0` in config.yaml disables collection explicitly.
-    """
-    if str(cfg.get("lxd_inventory", "1")).strip().lower() in ("0", "false", "no", "off"):
-        return None
-    items = lxd_api_get("/1.0/instances?recursion=2")
-    if not isinstance(items, list):
-        return None
-
-    now = time.monotonic()
-    out: list = []
-    seen: set[str] = set()
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        name = it.get("name")
-        if not isinstance(name, str) or not name:
-            continue
-        state = _LXD_STATE.get(str(it.get("status") or "").strip().lower())
-        if state != "running":
-            continue
-        seen.add(name)
-        lxd_state = _dict_of(it.get("state"))
-        memory = _dict_of(lxd_state.get("memory"))
-        disk = _dict_of(lxd_state.get("disk"))
-        root = _dict_of(disk.get("root"))
-        cpu = _dict_of(lxd_state.get("cpu"))
-        entry = {
-            "vm_id": vm_id_for_instance(name),
-            "state": state,
-            "ram_used_bytes": _int_or_zero(memory.get("usage")),
-            # LXD's effective memory limit for the instance (the configured
-            # limits.memory, or the node's total when the instance is unlimited):
-            # exactly the number `lxc list` prints in its MEMORY column.
-            "ram_limit_bytes": _int_or_zero(memory.get("total")),
-            # What LXD reports for the root volume. 0 on a storage driver that
-            # does not track per-instance usage (the `dir` driver, which is what
-            # the baked node image initialises) — the same value `lxc list` shows.
-            "disk_used_bytes": _int_or_zero(root.get("usage")),
-        }
-        pct = _instance_cpu_pct(name, cpu.get("usage"), now)
-        if pct is not None:
-            entry["cpu_util_pct"] = pct
-        out.append(entry)
-    # Drop readings for instances that are gone, so a long-lived node does not
-    # accumulate state for every instance it has ever run.
-    for gone in [n for n in _CPU_PREV if n not in seen]:
-        _CPU_PREV.pop(gone, None)
-    return out
 
 
 # ------------------------------------------------------------- service status
@@ -1185,6 +964,344 @@ def _swap_used() -> int:
         return max(0, total - free)
     except OSError:
         return 0
+
+
+# --------------------------------------------------------------------------- per-instance inventory
+# `lxd_instances[]` — contract field, node-telemetry.md §4.6, C0.
+#
+# This is the field the operator's guardrail resolves a remediation target
+# through (G5: `params.instance_name` must resolve against
+# `target_resource.instances[]`), and the field the executor then turns into
+# `PUT /1.0/instances/<name>/state`. Reporting the node's REAL instances is what
+# makes the loop solvable: with the array absent, every model-chosen action is
+# unresolvable and falls back (`fallback_reason=invalid_target`), and with the
+# array carrying invented ids the write 404s at the node.
+#
+# ONE reader (task t_dfe6acf9). #166 (main) and #167 (this branch) each wrote a
+# copy of this field, and merging them left two definitions of it in this file —
+# Python silently kept the later one. The socket transport below is the
+# surviving one (it is the reason #167 exists: the `lxc` CLI is dead on a
+# deployed node, see `_lxd_instances_over_socket`), and it carries §4.6's
+# SEMANTICS as #166 implemented them: only instances in LXD's `Running` state are
+# advertised, junk entries are skipped rather than fatal, and the CPU history of
+# an instance that is gone is dropped.
+#
+# `vm_id` is a C0 id and the ingest validator requires a 26-char Crockford ULID
+# (`controller/app/fields.py`), so an instance *name* can never be reported here
+# (names are lowercase/DNS-ish and may carry customer data). The id is therefore
+# DERIVED from the name:
+#
+#     vm_id = 26 Crockford base32 chars of SHA-256("termini-vm-id:" + <name>)
+#
+# deterministic and one-way, so the controller can derive the same id from the
+# instance names it reads back over the LXD REST API and resolve a model-chosen
+# vm_id to the instance it belongs to — with no config table to keep in sync and
+# no name on the wire. `controller/app/operator/vmids.py` carries the
+# byte-identical implementation; `tests/test_vm_id_derivation.py` fails the build
+# if the two drift, and `tests/test_node_instance_inventory.py` pins the derived
+# literals against the controller's and the seeder's copies.
+CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+VM_ID_LEN = 26
+VM_ID_PREFIX = "termini-vm-id:"
+
+# Wall-clock ceiling for the local LXD inventory probe. One sample per second means
+# a hung LXD must not hold the telemetry loop; a probe that does not answer in
+# time is reported as "no inventory this sample", never as an empty node.
+LXD_INVENTORY_TIMEOUT_S = float(os.environ.get("TERMINI_LXD_INVENTORY_TIMEOUT_S", "5") or 5)
+
+# LXD's own unix socket, in probe order — snap LXD (the baked node image) keeps it
+# under /var/snap, a distro-packaged LXD under /var/lib, and some builds under
+# /run. The REST API over this socket answers the same
+# `GET /1.0/instances?recursion=2` view `lxc list` renders, and it needs no
+# privilege escalation — which is the whole point (see `_lxd_instances_over_socket`).
+LXD_UNIX_SOCKETS = (
+    "/var/snap/lxd/common/lxd/unix.socket",
+    "/var/lib/lxd/unix.socket",
+    "/run/lxd/unix.socket",
+)
+
+# How long the `lxc` CLI is left alone after it has failed once. The agent samples
+# every second, so an unguarded retry of a probe that cannot succeed (the CLI is
+# blocked by the unit's own hardening — see below) costs a subprocess per sample
+# AND writes a journal line per sample.
+LXD_CLI_BACKOFF_S = 60.0
+
+# monotonic of the last "inventory unavailable" log line (rate limited) and the
+# monotonic until which the `lxc` CLI is not retried at all.
+_INVENTORY_WARN_AT = 0.0
+_INVENTORY_CLI_DEAD_UNTIL = 0.0
+
+
+def _warn_inventory_unavailable(reason: str) -> None:
+    """Say once a minute that this node is reporting no inventory — and why.
+
+    Rate limited on purpose: at 1 Hz an unguarded line here floods the journal
+    with thousands of identical entries while the operator's guardrail quietly
+    has nothing to resolve a target against.
+    """
+    global _INVENTORY_WARN_AT
+    now = time.monotonic()
+    if now - _INVENTORY_WARN_AT >= LXD_CLI_BACKOFF_S:
+        _INVENTORY_WARN_AT = now
+        log(f"lxd inventory unavailable: {reason}")
+
+# LXD's status strings -> the contract's enum (`node-telemetry.md` §4.6).
+_LXD_STATE = {
+    "running": "running",
+    "stopped": "stopped",
+    "frozen": "frozen",
+    "paused": "paused",
+    "error": "error",
+    "ready": "starting",
+    "starting": "starting",
+}
+
+# name -> (monotonic_s, cpu.usage_ns) from the previous sample, for the
+# per-instance CPU percentage (LXD reports cumulative CPU nanoseconds).
+_CPU_PREV: dict[str, tuple[float, int]] = {}
+
+
+def vm_id_for_instance(name: str) -> str:
+    """Controller-issued `vm_id` for LXD instance `name` (see the block above).
+
+    Byte-for-byte compatible with `controller/app/operator/vmids.py`.
+    """
+    digest = hashlib.sha256((VM_ID_PREFIX + str(name)).encode("utf-8")).digest()
+    value = int.from_bytes(digest[:17], "big") >> 6
+    out = []
+    for _ in range(VM_ID_LEN):
+        out.append(CROCKFORD[value & 0x1F])
+        value >>= 5
+    return "".join(reversed(out))
+
+
+def lxd_socket_path() -> str | None:
+    """Path of the local LXD socket, or None when LXD is not installed.
+
+    `service_facts` uses this to tell "LXD is not running" from "systemd is not
+    readable"; the inventory probe below walks the same list for its transport.
+    """
+    for path in LXD_UNIX_SOCKETS:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _int_or_zero(value: object) -> int:
+    """An LXD byte counter as a non-negative int (bool is not a byte count)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    return int(value) if value > 0 else 0
+
+
+def _dict_of(value: object) -> dict:
+    """`value` when it is a mapping, else an empty mapping (never None)."""
+    return value if isinstance(value, dict) else {}
+
+
+def _instance_cpu_pct(name: str, usage_ns: object, now: float) -> float | None:
+    """Per-instance CPU utilisation (% of this node's total CPU capacity).
+
+    LXD's `state.cpu.usage` is cumulative nanoseconds, so a percentage needs two
+    samples: the first sample for an instance reports nothing rather than a
+    fabricated 0. Returns None when the delta cannot be computed (first sample,
+    clock going backwards, counter reset).
+    """
+    if not isinstance(usage_ns, (int, float)) or isinstance(usage_ns, bool):
+        return None
+    prev = _CPU_PREV.get(name)
+    _CPU_PREV[name] = (now, int(usage_ns))
+    if prev is None:
+        return None
+    dt = now - prev[0]
+    d_ns = int(usage_ns) - prev[1]
+    if dt <= 0 or d_ns < 0:
+        return None
+    cores = max(1, os.cpu_count() or 1)
+    pct = 100.0 * (d_ns / 1e9) / (dt * cores)
+    return round(min(100.0, max(0.0, pct)), 2)
+
+
+class _LxdUnixConnection(http.client.HTTPConnection):
+    """An HTTP connection to LXD over its own unix socket.
+
+    `http.client` speaks to a TCP host; this subclass only replaces the socket it
+    connects, which is the whole difference between `http://localhost:8443` and
+    the daemon's local socket.
+    """
+
+    def __init__(self, socket_path: str, timeout: float):
+        super().__init__("localhost", timeout=timeout)
+        self._socket_path = socket_path
+
+    def connect(self) -> None:  # noqa: D102 (http.client API)
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self._socket_path)
+        self.sock = sock
+
+
+def _lxd_instances_over_socket() -> tuple[list | None, str]:
+    """`GET /1.0/instances?recursion=2` over LXD's unix socket -> (items, why-not).
+
+    This is the transport that actually works on a deployed node, and the reason
+    is worth recording: the unit runs with `NoNewPrivileges=true`, so the `lxc`
+    CLI — a snap wrapper that needs to change its AppArmor profile for the exec —
+    dies with `cannot change profile for the next exec call: Operation not
+    permitted` (measured on termini-node-a, 2026-10-15). The agent then reported
+    NO `lxd_instances[]` at all, which is invisible in the dashboard and leaves
+    the operator's guardrail with nothing to resolve a target against. Talking to
+    the daemon's own socket needs no privilege at all.
+
+    `recursion=2`, not `1`: LXD only attaches per-instance `state` (memory, CPU,
+    disk) at depth 2. At depth 1 every instance comes back with no state at all,
+    which would report a running workload as `ram_used_bytes: 0` — telemetry that
+    reads as "idle" for the instance the fault is actually in, and that the
+    operator's heaviest-instance rule would then rank below an empty one.
+    Measured on node-a: depth 2 carries `state.memory.usage`; depth 1 does not.
+    """
+    last = "no LXD unix socket found"
+    for path in LXD_UNIX_SOCKETS:
+        if not os.path.exists(path):
+            continue
+        conn = None
+        try:
+            conn = _LxdUnixConnection(path, timeout=LXD_INVENTORY_TIMEOUT_S)
+            conn.request("GET", "/1.0/instances?recursion=2")
+            resp = conn.getresponse()
+            raw = resp.read()
+            status = resp.status
+        except (OSError, http.client.HTTPException) as e:
+            last = f"{path}: {type(e).__name__}: {e}"
+            continue
+        finally:
+            if conn is not None:
+                conn.close()
+        if status != 200:
+            last = f"{path}: HTTP {status}"
+            continue
+        try:
+            payload = json.loads(raw or b"{}")
+        except json.JSONDecodeError as e:
+            last = f"{path}: non-JSON answer: {e}"
+            continue
+        items = payload.get("metadata") if isinstance(payload, dict) else None
+        if isinstance(items, list):
+            return items, ""
+        last = f"{path}: unexpected body shape"
+    return None, last
+
+
+def _lxd_instances_over_cli() -> tuple[list | None, str]:
+    """`lxc list --format=json` -> (items, why-not). Fallback transport.
+
+    Kept for a node whose agent can run the CLI (no `NoNewPrivileges`, or an
+    `lxc` that is a plain binary rather than the snap wrapper). It renders the
+    same REST view `_lxd_instances_over_socket` does.
+    """
+    try:
+        proc = subprocess.run(
+            ["lxc", "list", "--format=json"],
+            capture_output=True, text=True, timeout=LXD_INVENTORY_TIMEOUT_S, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, f"lxc list: {type(e).__name__}: {e}"
+    if proc.returncode != 0:
+        return None, (f"lxc list exit {proc.returncode}: "
+                      f"{(proc.stderr or '').strip()[:200]}")
+    try:
+        items = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError as e:
+        return None, f"lxc list returned non-JSON: {e}"
+    if not isinstance(items, list):
+        return None, "lxc list returned a non-list"
+    return items, ""
+
+
+def lxd_instance_inventory(cfg: dict) -> list | None:
+    """`lxd_instances[]` for this node, from its OWN LXD (contract §4.6).
+
+    Reads the local LXD through its unix socket, falling back to the `lxc` CLI —
+    no network, no trust prompt, and the same view LXD itself serves over the REST
+    API (the node's own daemon, not the controller's copy of it).
+
+    One entry per RUNNING instance. §4.6 is explicit: "only instances in LXD's
+    `Running` state are reported; a stopped instance is not a remediation target
+    and is not advertised" — and this array is exactly what the guardrail
+    resolves a model-chosen target against.
+
+    Returns None when the inventory cannot be read (no socket, no `lxc` binary,
+    LXD not initialised, a probe that times out or answers junk) so the caller
+    OMITS the field: "this node did not report an inventory" is the truth, whereas
+    an empty list would claim a node with no instances and would make every
+    model-chosen target unresolvable. `lxd_inventory: 0` in config.yaml disables
+    it explicitly.
+    """
+    if str(cfg.get("lxd_inventory", "1")).strip().lower() in ("0", "false", "no", "off"):
+        return None
+
+    global _INVENTORY_CLI_DEAD_UNTIL
+    items, reason = _lxd_instances_over_socket()
+    if items is None:
+        if time.monotonic() >= _INVENTORY_CLI_DEAD_UNTIL:
+            cli_items, cli_reason = _lxd_instances_over_cli()
+            if cli_items is None:
+                # Do not pay for a subprocess (or a journal line) every single
+                # sample while the CLI is known to be blocked.
+                _INVENTORY_CLI_DEAD_UNTIL = time.monotonic() + LXD_CLI_BACKOFF_S
+                reason = f"{reason}; {cli_reason}"
+            else:
+                items = cli_items
+        else:
+            reason = f"{reason}; lxc CLI not retried yet (last attempt failed)"
+    if items is None:
+        _warn_inventory_unavailable(reason)
+        return None
+    # A transport that answered a non-list is an unreadable LXD, not an empty
+    # node: an empty list is a legitimate answer and is reported as one.
+    if not isinstance(items, list):
+        return None
+
+    now = time.monotonic()
+    out: list = []
+    seen: set[str] = set()
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        name = it.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        state = _LXD_STATE.get(str(it.get("status") or "").strip().lower())
+        if state != "running":
+            continue
+        seen.add(name)
+        lxd_state = _dict_of(it.get("state"))
+        memory = _dict_of(lxd_state.get("memory"))
+        disk = _dict_of(lxd_state.get("disk"))
+        root = _dict_of(disk.get("root"))
+        cpu = _dict_of(lxd_state.get("cpu"))
+        entry = {
+            "vm_id": vm_id_for_instance(name),
+            "state": state,
+            "ram_used_bytes": _int_or_zero(memory.get("usage")),
+            # LXD's effective memory limit for the instance (the configured
+            # limits.memory, or the node's total when the instance is unlimited):
+            # exactly the number `lxc list` prints in its MEMORY column.
+            "ram_limit_bytes": _int_or_zero(memory.get("total")),
+            # What LXD reports for the root volume. 0 on a storage driver that
+            # does not track per-instance usage (the `dir` driver, which is what
+            # the baked node image initialises) — the same value `lxc list` shows.
+            "disk_used_bytes": _int_or_zero(root.get("usage")),
+        }
+        pct = _instance_cpu_pct(name, cpu.get("usage"), now)
+        if pct is not None:
+            entry["cpu_util_pct"] = pct
+        out.append(entry)
+    # Drop readings for instances that are gone (or no longer running), so a
+    # long-lived node does not accumulate state for every instance it has ever run.
+    for gone in [n for n in _CPU_PREV if n not in seen]:
+        _CPU_PREV.pop(gone, None)
+    return out
 
 
 def telemetry_batch(cfg: dict, node_id: str, seq: int) -> dict:
