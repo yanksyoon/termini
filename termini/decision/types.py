@@ -63,6 +63,40 @@ ACTION_NOTE_MAX_CHARS = 256
 INCIDENT_GENERATED_MODEL = "model"
 INCIDENT_GENERATED_FALLBACK = "fallback"
 
+# ---------------------------------------------------------------------------
+# Decision trace bounds (operator-decision.md §4.3, t_e07abffc)
+# ---------------------------------------------------------------------------
+# Additive within schema 1 (§12): the trace is a controller-built, controller-
+# sanitized record that rides the decision row. It never bumps the version.
+TRACE_VERSION = 1
+TRACE_MAX_STEPS = 24
+TRACE_STEP_DETAIL_MAX_CHARS = 512
+TRACE_REPLY_MAX_CHARS = 4096
+
+# Per-step state (closed enum, §4.3). A step is dropped on a C2 hit; the model
+# reply step is truncated to `[dropped: C2]` and marked rejected instead.
+TRACE_STATE_OK = "ok"
+TRACE_STATE_CLAMPED = "clamped"
+TRACE_STATE_DROPPED = "dropped"
+TRACE_STATE_REJECTED = "rejected"
+TRACE_STATE_FALLBACK = "fallback"
+TRACE_STATE_SKIPPED = "skipped"
+TRACE_STEP_STATES = (
+    TRACE_STATE_OK,
+    TRACE_STATE_CLAMPED,
+    TRACE_STATE_DROPPED,
+    TRACE_STATE_REJECTED,
+    TRACE_STATE_FALLBACK,
+    TRACE_STATE_SKIPPED,
+)
+
+# `decided_by` labels WHO made the decision (§4.3/§6 requirement). A fallback
+# trace is a controller trace and must say so; a model trace must name the
+# endpoint class and `answered_by`.
+TRACE_DECIDED_BY_MODEL = "model"
+TRACE_DECIDED_BY_FALLBACK = "fallback"
+TRACE_DECIDED_BY_DETERMINISTIC = "deterministic"
+
 # confidence: §4.1 — 0.0 .. 1.0.
 CONFIDENCE_MIN = 0.0
 CONFIDENCE_MAX = 1.0
@@ -323,6 +357,15 @@ class DecisionResponse:
     explanation: str = ""
     evidence: List[Dict[str, Any]] = field(default_factory=list)
     actions: List[Dict[str, Any]] = field(default_factory=list)
+    # The raw model completion text (operator-decision.md §4.3, t_e07abffc). It
+    # is the same class of content as `explanation`, so it is in scope for the
+    # decision trace; the controller's trace builder bounds it and re-runs the
+    # G9 C2 scan over it before persisting. Never serialized in `to_dict()`.
+    raw: Optional[str] = None
+    # Token counts, when the backend reports them (OpenAI-style `usage`). The
+    # default transport does not forward the envelope's `usage` block; a future
+    # or injected transport may set it, and the trace records it when present.
+    usage: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         out: Dict[str, Any] = {

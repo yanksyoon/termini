@@ -15,6 +15,7 @@ from .decision import (  # noqa: F401
     DecisionContext,
     DecisionProvider,
     DecisionResult,
+    DecisionTrace,
     DeterministicDecisionProvider,
     Guardrail,
     ModelDecisionProvider,
@@ -27,7 +28,7 @@ from .triggers import TriggerEngine
 
 __all__ = [
     "Thresholds", "LxdExecutor", "OperatorLoop", "TriggerEngine",
-    "DecisionContext", "DecisionProvider", "DecisionResult",
+    "DecisionContext", "DecisionProvider", "DecisionResult", "DecisionTrace",
     "DeterministicDecisionProvider", "ModelDecisionProvider",
     "Guardrail", "build_decision_provider",
 ]

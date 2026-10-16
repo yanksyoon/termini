@@ -428,6 +428,7 @@ class OperatorLoop(threading.Thread):
         remed_start = time.monotonic()
         result = self._decide(node_id, event, ctx, now)
         action = result.action
+        trace = result.trace
         if action is None:
             log.info("event %s (%s) has no playbook action; recorded only",
                      event.rule_id, node_id)
@@ -441,6 +442,7 @@ class OperatorLoop(threading.Thread):
                 source=result.source, confidence=result.confidence,
                 fallback_reason=result.fallback_reason,
                 incident=result.incident,
+                trace=trace,
             )
 
         target = action.params.get("instance_name", "")
@@ -475,13 +477,27 @@ class OperatorLoop(threading.Thread):
         # Remediation latency: chooser start -> remediation completed (includes
         # chooser/selection time, which the previous `fired_at -> now` calc omitted).
         remed_lat = round(time.monotonic() - remed_start, 3)
-        message = f"{event.rule_id}: {action.kind} {target} -> {result.result}".strip()
         # A refused action says WHY, in the operator log the client UI renders.
         # Without this the live demo showed `-> error (threshold: ...)` with the
         # reason (`HTTP 404 ... Instance not found`) buried in the audit detail,
         # which reads as the AI failing rather than as the guard refusing a target
         # that is not on the node.
         refusal = _refusal_summary(result)
+        # §4.3 trace: the `executed` and `audit_recorded` steps exist only now,
+        # after the executor has produced its result — appended in the audit's
+        # transaction so a trace never asserts an outcome before it is real.
+        if trace is not None:
+            exec_state = (decision.TRACE_STATE_REJECTED if result.result == "error"
+                          else decision.TRACE_STATE_OK)
+            exec_detail = f"result={result.result} latency_ms={decision.safe_int_display(remed_lat * 1000)}"
+            if refusal:
+                exec_detail += f" reason={refusal}"
+            trace.add("executed", f"action executed: {result.result}", exec_detail,
+                      state=exec_state)
+            trace.add("audit_recorded", "audit row written",
+                      f"audit_id={audit_id} decision_id={decision_id}",
+                      state=decision.TRACE_STATE_OK)
+        message = f"{event.rule_id}: {action.kind} {target} -> {result.result}".strip()
         if refusal:
             message += f" ({refusal})"
         threshold = getattr(event, "threshold", None)
@@ -492,6 +508,8 @@ class OperatorLoop(threading.Thread):
                 conn, audit_id, decision_id, event, action, result, idem_key, now, dry_run,
                 lxd_endpoint=getattr(ex, "base_url", ""),
             )
+            if trace is not None:
+                opstore.append_decision_trace(conn, decision_id, trace)
             self._emit_log(conn, node_id, message,
                            severity="warn" if refusal else "info")
         log.info("node %s rule %s -> %s %s: %s (remediation_latency=%ss)",

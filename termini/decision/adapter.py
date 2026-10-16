@@ -362,6 +362,7 @@ def parse(
         explanation=incident["explanation"],
         evidence=incident["evidence"],
         actions=incident["actions"],
+        raw=content,
     )
 
 

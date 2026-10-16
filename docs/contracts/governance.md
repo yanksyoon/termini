@@ -120,6 +120,7 @@ content and are required by the AI operator and charts. Canonical definitions:
 | `net[].rx_errors` / `tx_errors` / `rx_dropped` / `tx_dropped` + `tcp_retransmit_segs` | `node-telemetry.md` §4.13 | NIC error/drop counters + node-level TCP retransmit. C0 ints riding the bounded `net[]` array (plus one flat scalar); omitted, never `0`, when unreadable. |
 | `conntrack_count` / `conntrack_max` | `node-telemetry.md` §4.13 | **Count-only.** The two `nf_conntrack_count`/`nf_conntrack_max` files are C0; the conntrack *table* (`/proc/net/nf_conntrack`, per-flow 5-tuples of IPs and ports) is C2 and must never be read for telemetry (§4.3). |
 | `lxd_instances[].oom_kill_count` / `pgmajfault_count` | `node-telemetry.md` §4.14 | Per-instance OOM/fault attribution from the instance cgroup (`memory.events`/`memory.stat`), **not** the LXD API. C0 ints riding the bounded `lxd_instances[]` array; omitted, never `0`, when unreadable. |
+| `decision_trace` | `operator-decision.md` §4.3 | Controller-**generated** C0-derived record (never egresses): one ordered array of `{step, ts, label, detail, state}` reasoning steps, persisted on the decision row. Derived from C0 telemetry field names + the frozen template version/hash + bounded model output that has passed guardrail G9 (`governance.scan_c2`). The rendered prompt text and C2 material never appear in it. |
 
 `processes[]` and the journal counts were added under the same deny-by-default
 review as the groups above (t_957956e5). Neither narrows §4.3: the C2 field-name
