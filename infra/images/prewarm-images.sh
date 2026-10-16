@@ -7,7 +7,7 @@
 # Two pre-baked images matter to a node:
 #   * the HOST node image  (alias `agentic-os/w3`)  — the OS the node itself booted;
 #   * the AGENT VM image   (alias `agent-vm/2026.10.0`) — the workload image the
-#     node launches agent VMs from, per-node alias `agent-os/w4`.
+#     node launches agent VMs from, per-node alias `agent-os/w5`.
 #
 # For each node this script:
 #   1. (idempotently) ensures the node's stock LXD is set up: a `local` dir
@@ -17,7 +17,7 @@
 #      /var/lib/termini/images/, each with a sha256 sidecar — the on-disk
 #      artifacts D3 says the workload image is imported from;
 #   3. imports the AGENT image INTO the node's local LXD image store from that
-#      cached tarball under the pinned alias, so `lxc launch agent-os/w4` resolves
+#      cached tarball under the pinned alias, so `lxc launch agent-os/w5` resolves
 #      on-box with no registry/remote pull.
 #
 # Idempotent: a re-run is a no-op once the node alias fingerprint and every
@@ -29,7 +29,7 @@
 #     --nodes "N1 N2 N3"    nodes to pre-warm (default demo-node-a demo-node-b demo-node-c)
 #     --host-alias ALIAS    host node image alias   (default agentic-os/w3)
 #     --agent-alias ALIAS   host agent image alias  (default agent-vm/2026.10.0)
-#     --node-alias ALIAS    per-node agent alias    (default agent-os/w4)
+#     --node-alias ALIAS    per-node agent alias    (default agent-os/w5)
 #     --cache-dir DIR       on-node image cache dir (default /var/lib/termini/images)
 #     --host-cache DIR      host export cache dir   (default $HOME/.cache/termini/images)
 #     --pool NAME           nested storage pool     (default local)
@@ -40,7 +40,7 @@ set -euo pipefail
 
 HOST_ALIAS="${TERMINI_HOST_IMAGE_ALIAS:-agentic-os/w3}"
 AGENT_ALIAS="${TERMINI_AGENT_HOST_IMAGE_ALIAS:-agent-vm/2026.10.0}"
-NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w4}"
+NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w5}"
 NODES_STR="${TERMINI_NODES:-demo-node-a demo-node-b demo-node-c}"
 CACHE_DIR="${TERMINI_IMAGE_CACHE_DIR:-/var/lib/termini/images}"
 HOST_CACHE="${TERMINI_HOST_IMAGE_CACHE:-$HOME/.cache/termini/images}"

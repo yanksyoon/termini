@@ -1,7 +1,7 @@
 #cloud-config
 # Termini agent VM — launch-time user-data (W4, task t_7c40f9a3).
 #
-# Injected on every `lxc launch agent-os/w4 ... -p termini-agent`. It does two
+# Injected on every `lxc launch agent-os/w5 ... -p termini-agent`. It does two
 # things and nothing else:
 #   1. writes the *project* SSH public key into /root/.ssh/authorized_keys
 #      (project.md §"SSH And Terminal": "Inject the project's public SSH key into

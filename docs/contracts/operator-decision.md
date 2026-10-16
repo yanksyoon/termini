@@ -300,13 +300,27 @@ sibling of `termini/intent/` (mirrors its structure exactly).
 
 ### 6.1 Transport (the model call)
 
-The adapter calls the **existing** on-prem inference endpoint — the same surface
-the intent extractor uses (`agent-runtime.md` §8/§14.1, `termini/intent/extractor.py`).
-No new endpoint, no new service.
+The adapter calls the endpoint named by `TERMINI_INFERENCE_BASE_URL` and nothing
+else. **Since the inference split (`infra-decisions.md` D9) that endpoint is the
+CONTROLLER's own provider-only listener on loopback**
+(`http://127.0.0.1:8085`, `backend=gemini-proxy` → `aiplatform.googleapis.com`):
+the diagnosis is served by a managed model and the prompt leaves the premises.
+That is the user's decision of 2026-10-15 (Q1/Q1b) and it is what keeps the demo's
+model decision at seconds instead of the minutes the CPU node needs.
+
+The seam is unchanged — one base URL, one OpenAI-compatible call, the same
+`externalModelCall()` guard (governance §7.2/§9.3), which still asserts the
+template version and the C0 class of every substituted field before anything is
+sent. What the split changes is only *which* listener answers: the agent-facing
+surface on Node C (`10.10.0.13:8080`) serves local weights and is no longer the
+diagnosis target. `setup-inference-surfaces.sh` installs the provider listener and
+writes the controller drop-in; the pre-split wiring
+(`infra/cloudrun/setup-operator-node-c.sh`) now refuses to run without
+`--allow-unsplit`.
 
 ```
 POST {TERMINI_INFERENCE_BASE_URL}/v1/chat/completions
-Authorization: Bearer {TERMINI_INFERENCE_TOKEN}
+Authorization: Bearer {TERMI...KEN}
 Content-Type: application/json
 X-Termini-Request-Id: <request_id>
 ```
@@ -476,7 +490,12 @@ dashboard's live AI-operator panel therefore shows the decision source inline.
   - `model`: `ModelDecisionProvider` with the mandatory deterministic fallback.
     **This is what the shipped demo sets** (`TERMINI_OPERATOR_DECISION_MODE=model`
     on the controller); the code default remains `deterministic` so an unconfigured
-    controller never makes an external call by accident.
+    controller never makes an external call by accident. The shipped `model` mode
+    dials the controller's own provider-only listener (`127.0.0.1:8085`,
+    `infra-decisions.md` D9), so the external call in that mode is deliberate,
+    bounded (`TERMINI_OPERATOR_DECISION_TIMEOUT_S=120`) and labelled on every
+    response, log line and `externalModelCall()` audit row
+    (`egress=external destination=aiplatform.googleapis.com`).
 - `schema_version: 1` on both payloads. Additive field additions do not bump it;
   removal, renaming, or type-change bumps to `2` (`controller-api.md` §1.2 convention).
 - The deterministic provider's output must be **byte-identical** to today's

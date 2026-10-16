@@ -158,15 +158,15 @@ else
 fi
 # The card's requirement 2, asserted on the RENDERED user-data: what a fresh node
 # serves, and that the CPU path is one variable away.
-if python3 "$CHECKER" --backend gemini-proxy "$WORK/node-c.yaml" >/dev/null 2>&1; then
-  ok "first-boot backend is the shipped default (gemini-proxy)"
-else
-  bad "first-boot backend is not gemini-proxy in the Terraform render"
-fi
 if python3 "$CHECKER" --backend local "$WORK/node-c.yaml" >/dev/null 2>&1; then
-  bad "the render does not actually pin the backend (a 'local' expectation passed too)"
+  ok "first-boot backend is the shipped default (local — the agent surface, D9)"
 else
-  ok "the backend in the render is pinned (a 'local' expectation is rejected)"
+  bad "first-boot backend is not local in the Terraform render"
+fi
+if python3 "$CHECKER" --backend gemini-proxy "$WORK/node-c.yaml" >/dev/null 2>&1; then
+  bad "the render does not actually pin the backend (a 'gemini-proxy' expectation passed too)"
+else
+  ok "the backend in the render is pinned (a 'gemini-proxy' expectation is rejected)"
 fi
 for pair in "terraform:$WORK/node-c.yaml" "provision.sh:$WORK/prov/node-c.yaml"; do
   f="${pair#*:}"

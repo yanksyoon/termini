@@ -85,7 +85,7 @@ There is **no LXD overlay network** in the demo — cross-node traffic routes ov
 | Controller | `10.10.0.10:443` | Public HTTPS; also reachable from nodes as outbound target |
 | Node A (seed) | `10.10.0.11:8443` | LXD cluster seed; controller addresses the cluster here |
 | Node B | `10.10.0.12` | LXD cluster member |
-| Node C (CPU) | `10.10.0.13:8080` | Host-exposed llama.cpp inference service (D5), CPU-only |
+| Node C (CPU) | `10.10.0.13:8080` | Host-exposed llama.cpp inference service (D5), CPU-only — the **agent-facing** surface, serving LOCAL weights (`backend=local`, D9). The **provider-only** diagnosis surface is loopback on the controller (`127.0.0.1:8085`, `gemini-proxy`) and is not a node address |
 | Guest bridges | `10.20.1.0/24`, `10.20.2.0/24`, `10.20.3.0/24` | Per-node NAT bridges (`lxdbr0`) |
 
 Ports: `443` controller (public + node outbound); `8443` LXD API (peers + controller);
@@ -142,9 +142,15 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
 5. The decision step is **model-driven in the shipped demo** (a selectable mode,
    `docs/contracts/operator-decision.md`): `TERMINI_OPERATOR_DECISION_MODE=model`
    routes the threshold→action choice through the `termini/decision` adapter to the
-   **llama.cpp service on Node C** (`http://10.10.0.13:8080`, CPU-only, alias
-   `gemma` = Gemma 3 4B IT) over the underlay — the model is on-prem, not an external
-   call. A hard guardrail (allowed-action whitelist, param bounds, confidence gate)
+   **provider-only inference listener on the controller** (`http://127.0.0.1:8085`,
+   `backend=gemini-proxy` → `aiplatform.googleapis.com`; `infra-decisions.md` D9,
+   kanban `t_aa7a70f9`). The substituted prompt is **C0 telemetry only** (rule /
+   metric context + the instance inventory, no workload payloads) and the user
+   decided on 2026-10-15 that this diagnosis may leave the premises as part of the
+   managed service — which is also what keeps the model decision at **seconds**:
+   the same prompt served by Node C's CPU weights measured **402 s**. The two
+   surfaces are separate listeners, so the agent path stays strictly on-prem. A
+   hard guardrail (allowed-action whitelist, param bounds, confidence gate)
    applies and the deterministic playbook mapping is the **default and mandatory
    fallback**. `deterministic` makes **no model call** and is identical to the
    original loop. Per `governance.md` §7.1 the model is used *only* for the operator
@@ -174,16 +180,25 @@ Ports: `443` controller (public + node outbound); `8443` LXD API (peers + contro
    no silent substitution except opt-in `X-Termini-Allow-Degrade`.
 4. Results (C2) stay on-prem; only the C0 result summary egresses via the node daemon.
 
-**Operator-loop path (Node C, on-prem — no egress).** The Day-2 decision step calls
-the llama.cpp service on **Node C** (`http://10.10.0.13:8080`, CPU-only, alias
-`gemma` = Gemma 3 4B IT, Google's open weights) over the underlay, under the static versioned template of
-`governance.md` §7.2. It is **not** a customer-payload path: C2 never reaches it, and
-the controller wraps the call in `externalModelCall()`, which asserts the template
+**Operator-loop path (CONTROLLER, provider-only — egress by decision).** The Day-2
+decision step calls the controller's **provider-only listener** on loopback
+(`http://127.0.0.1:8085`, `backend=gemini-proxy` → `aiplatform.googleapis.com`,
+alias `gemma` on the wire, `gemini-2.5-flash` answering; `infra-decisions.md` D9,
+kanban `t_aa7a70f9`) under the static versioned template of `governance.md` §7.2.
+It is **not** a customer-payload path: C2 never reaches it — the substituted prompt
+is rule/metric context plus the instance inventory (C0) — and the user decided on
+2026-10-15 (Q1/Q1b) that this diagnosis prompt may leave the premises as part of the
+managed service. Node C is **not** on this path any more: its `:8080` is the
+agent-facing surface and serves local weights (above), so the two surfaces cannot be
+mistaken for each other. The controller wraps the call in `externalModelCall()`, which asserts the template
 version and the class of every substituted field (C0 / transformed C1) before
 sending and audits before/after (§7.1, §9.3; `controller/app/operator/external_call.py`).
-Because the model is on-prem there is no external egress on this path at all — a
-strictly stronger data-residency position than an off-prem decision model, at the
-cost of CPU latency (see §4.4 step 5).
+The call **does** leave the premises, and that is the deliberate trade of D9: the
+prompt is C0-only, the user's Q1b permits it, and the alternative — the same prompt
+on Node C's CPU weights — measured **402 s** for the 20-sample window, which is what
+would make the demo's model decision non-interactive. The audit row
+(`egress=external destination=aiplatform.googleapis.com`) and the listener's own
+`/health` say so out loud, so the egress is visible rather than assumed away.
 
 ---
 
@@ -222,7 +237,7 @@ Guiding rule everywhere: **a degraded node keeps reporting** so the operator can
 
 1. Identifiers (`node_id`, `project_id`, `vm_id`, `command_id`, `plan_id`, `task_id`, `call_id`,
    `audit_id`, `request_id`) are **ULIDs** (26-char Crockford base32, uppercase, no I/L/O/U).
-2. Addresses/ports are static and frozen (D2 table); `INFERENCE_BASE_URL=http://10.10.0.13:8080`.
+2. Addresses/ports are static and frozen (D2 table); `INFERENCE_BASE_URL=http://10.10.0.13:8080` is the **agent-facing** surface (LOCAL weights, D9); the provider-only diagnosis surface is loopback on the controller (`127.0.0.1:8085`).
 3. Only hardware/OS telemetry leaves a node, always through the bootstrap daemon.
 4. No private keys transit the controller (user keys in browser; node keys on node; only CSR/public keys move).
 5. LXD snap revision is identical across all members (mismatch ⇒ failed join ⇒ degraded).

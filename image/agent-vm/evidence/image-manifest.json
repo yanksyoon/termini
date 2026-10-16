@@ -2,15 +2,15 @@
   "schema_version": "1.0",
   "alias": "agent-vm/2026.10.0",
   "version": "2026.10.0",
-  "immutable_tag": "agent-vm-2026.10.0+gb9f934d8f544",
-  "gitsha": "b9f934d8f544",
+  "immutable_tag": "agent-vm-2026.10.0+g68763f60ef6d",
+  "gitsha": "68763f60ef6d",
   "image_digest": "sha256:3aeaab4d16fa",
   "artifacts": [
     {
-      "name": "agent-vm-2026.10.0-b9f934d8f544.tar.gz",
+      "name": "agent-vm-2026.10.0-68763f60ef6d.tar.gz",
       "format": "lxd-image",
-      "size_bytes": 801492790,
-      "sha256": "c3d039642a619e100ddf680c3d60e4d2641e568f377f5ed9ef420ad886b181e4"
+      "size_bytes": 801808873,
+      "sha256": "eb7806889646eb7b59bcd590b4d1ceae5c3b2ce211490426054e981381af12b1"
     }
   ],
   "pins": {

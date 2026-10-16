@@ -5,6 +5,7 @@ and dashboard.md §1–§4):
 
     POST /v1/nodes/register                       (bootstrap_token)  -> 201
     POST /v1/bootstrap-tokens                     (project_token, loopback) -> 201
+    GET  /install/termini-node.sh                 (public, static)   -> 200
     POST /v1/nodes/{nid}/heartbeat                (node_token)       -> 204/200
     GET  /v1/projects/{pid}/nodes                 (project_token)    -> 200
     GET  /v1/projects/{pid}/nodes/{nid}           (project_token)    -> 200
@@ -21,6 +22,10 @@ and dashboard.md §1–§4):
     GET  /v1/nodes/{nid}/telemetry/recent         (node_token)       -> 200
     GET  /v1/telemetry/recent?node=&limit=        (project_token)    -> 200
     POST /v1/operator/lease                       (project_token)    -> 200
+    POST /v1/projects/{pid}/demo/faults           (project_token)    -> 201   operator-only
+    GET  /v1/projects/{pid}/demo/faults           (project_token)    -> 200   operator-only
+    POST /v1/projects/{pid}/demo/faults/clear     (project_token)    -> 200   operator-only
+    DELETE /v1/projects/{pid}/demo/faults/{iid}   (project_token)    -> 200   operator-only
     GET  /v1/projects/{pid}/logs                  (SSE, token in ?token)
     GET  /stream/v1?token=...                     (WebSocket event stream)
     GET  /terminal/v1/nodes/{node_id}?token=...    (WebSocket terminal)
@@ -38,13 +43,16 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from . import db, errors, governance, health, inventory, registration, role, store, validate, ws as wsmod
+from . import agent_tasks as agent_tasks_mod
 from . import commands as cmd_mod
+from . import demo_faults as demo_faults_mod
 from . import ulid
 from . import sshca as sshca_mod
 from .operator import store as opstore
@@ -80,12 +88,46 @@ WS_CLOSE_UNAUTHORIZED = 4401
 # distinguish it from the seeder's direct loopback call (see `_is_loopback_client`).
 PROXY_REQUEST_HEADERS = ("X-Forwarded-For", "X-Real-Ip", "Forwarded", "Via")
 
+# Public client-install surface (docs/contracts/controller-api.md §4.7, task
+# t_70bd0f2b). STATIC, UNAUTHENTICATED, and deliberately SECRET-FREE: the node
+# installer a customer pipes into `sh`, the client status helper it installs, and
+# the two node-runtime files a machine that did not come from the Termini node
+# image needs (the image ships them pre-baked).
+#
+# Lookup is by NAME from this table and nothing else — no part of the request
+# path reaches the filesystem, so there is no traversal to escape. Serving them
+# from the controller is deliberate: it is the one surface a customer can already
+# reach, and it removes the second distribution channel (and its drift) that a
+# separate download host would be.
+INSTALL_ARTIFACTS = {
+    "termini-node.sh": ("client/termini-node-install.sh", "text/x-shellscript"),
+    "termini-node-status.py": ("client/termini-node-status.py", "text/x-python"),
+    "termini-bootstrap.py": ("node/termini-bootstrap.py", "text/x-python"),
+    "termini-bootstrap.service": ("node/termini-bootstrap.service", "text/plain"),
+}
+
+
+def install_root() -> str:
+    """Directory holding the install artifacts (`TERMINI_INSTALL_DIR` or the tree).
+
+    Default resolution is the repo tree this controller was deployed from: the
+    controller runs from `<tree>/controller/app`, so `<tree>/infra/bootstrap` is
+    where the artifacts live. `TERMINI_INSTALL_DIR` overrides it for an install
+    that stages them elsewhere.
+    """
+    override = os.environ.get("TERMINI_INSTALL_DIR", "").strip()
+    if override:
+        return override
+    app_dir = os.path.dirname(os.path.abspath(__file__))          # <tree>/controller/app
+    tree = os.path.dirname(os.path.dirname(app_dir))              # <tree>
+    return os.path.join(tree, "infra", "bootstrap")
+
 
 class ControllerServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, addr, cfg, project, broker, operator_logs, inventory, terminal_manager,
-                 ca: sshca_mod.SSHCA):
+                 ca: sshca_mod.SSHCA, fault_injector=None):
         super().__init__(addr, ControllerHandler)
         self.cfg = cfg
         self.project = project
@@ -98,6 +140,35 @@ class ControllerServer(ThreadingHTTPServer):
         self.plans: dict[str, dict] = {}        # plan_id -> accepted plan (in-memory, demo)
         self._last_telemetry_at: dict[str, float] = {}
         self._last_status: dict[str, str] = {}
+        # Operator-only demo fault driver (controller-api.md §4.7). None when the
+        # controller runs with injection disabled — the endpoints then refuse 503
+        # rather than pretending to inject.
+        self.fault_injector = fault_injector
+
+    def publish_node_events(self, conn, node: dict, sample: dict | None) -> None:
+        """Push node.telemetry (≤1/s) and node.health_changed (on transition).
+
+        Server-level (not handler-level) because the demo fault driver fans its
+        injected samples out through the same path — an injected sample must light
+        the dashboard's live panels exactly like a node-reported one.
+        """
+        node_id = node["id"]
+        project_id = self.project["id"]
+        now_epoch = time.time()
+
+        status, _ = health.node_status_health(node, sample, now_epoch)
+        if self._last_status.get(node_id) != status:
+            self._last_status[node_id] = status
+            self.broker.publish(
+                "node.health_changed",
+                {"node_id": node_id, "status": status, "last_seen_at": node["last_seen_at"]},
+                project_id,
+            )
+
+        last = self._last_telemetry_at.get(node_id, 0.0)
+        if sample and now_epoch - last >= 1.0:
+            self._last_telemetry_at[node_id] = now_epoch
+            self.broker.publish("node.telemetry", sample, project_id)
 
 
 class ControllerHandler(BaseHTTPRequestHandler):
@@ -120,7 +191,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
         self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers",
                          "Authorization, Content-Type, Idempotency-Key, X-Termini-Version, Last-Event-ID")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 
     def _send_json(self, status: int, obj) -> None:
         if status == 204:
@@ -141,6 +212,18 @@ class ControllerHandler(BaseHTTPRequestHandler):
 
     def _send_error(self, e: errors.ApiError) -> None:
         self._send_json(e.status, errors.envelope(e.code, e.message, e.details))
+
+    def _send_bytes(self, status: int, content_type: str, data: bytes) -> None:
+        """Raw-body response (the static client-install artifacts, not JSON)."""
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("X-Termini-Version", "1")
+        # A customer may be installing while the provider rolls a new artifact
+        # out; never let a proxy or the browser serve a stale installer.
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _bearer(self) -> str | None:
         auth = self.headers.get("Authorization", "")
@@ -231,6 +314,16 @@ class ControllerHandler(BaseHTTPRequestHandler):
             return self._node_action(conn, segs[2], segs[4], segs[6])
         if method == "POST" and segs == ["v1", "bootstrap-tokens"]:
             return self._mint_bootstrap_tokens(conn)
+        # Agent task API (t_1a2c913c, agent-runtime.md §5.6/§7.4).
+        if (method == "POST" and len(segs) == 6 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "agents" and segs[5] == "tasks"):
+            return self._agent_task_submit(conn, segs[2], segs[4])
+        if (method == "GET" and len(segs) == 6 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "agents" and segs[5] == "tasks"):
+            return self._agent_task_list(conn, segs[2], segs[4])
+        if (method == "GET" and len(segs) == 7 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "agents" and segs[5] == "tasks"):
+            return self._agent_task_get(conn, segs[2], segs[4], segs[6])
         if method == "POST" and len(segs) == 4 and segs[:2] == ["v1", "projects"] and segs[3] == "intents":
             return self._intents(conn, segs[2])
         if method == "POST" and len(segs) == 5 and segs[:2] == ["v1", "projects"] and segs[3] == "vms" and segs[4] == "apply":
@@ -259,6 +352,18 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 return self._operator_decisions(conn)
         if method == "POST" and segs[:2] == ["v1", "operator"] and len(segs) == 3 and segs[2] == "lease":
             return self._operator_lease(conn)
+        # Operator-only demo fault injection (controller-api.md §4.7): project_token
+        # only — a node token never authenticates here (see §4.7 "not reachable
+        # from a node context"), and no token means 401.
+        if len(segs) >= 5 and segs[:2] == ["v1", "projects"] and segs[3:5] == ["demo", "faults"]:
+            if method == "POST" and len(segs) == 5:
+                return self._demo_fault_start(conn, segs[2])
+            if method == "GET" and len(segs) == 5:
+                return self._demo_fault_list(conn, segs[2])
+            if method == "POST" and len(segs) == 6 and segs[5] == "clear":
+                return self._demo_fault_clear_all(conn, segs[2])
+            if method == "DELETE" and len(segs) == 6:
+                return self._demo_fault_clear(conn, segs[2], segs[5])
         raise errors.not_found(f"no route: {method} {path}")
 
     def do_OPTIONS(self) -> None:
@@ -270,6 +375,12 @@ class ControllerHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         self._route("POST")
 
+    def do_DELETE(self) -> None:
+        # DELETE /v1/projects/{pid}/demo/faults/{injection_id} — clear one injection
+        # (controller-api.md §4.7). Only the demo-fault routes accept DELETE; the
+        # frozen REST surface is otherwise GET/POST.
+        self._route("DELETE")
+
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
         segs = [s for s in path.split("/") if s]
@@ -279,10 +390,52 @@ class ControllerHandler(BaseHTTPRequestHandler):
         if len(segs) == 4 and segs[:2] == ["v1", "projects"] and segs[3] == "logs":
             self._handle_sse_logs(segs[2])
             return
+        if segs[:1] == ["install"]:
+            # Public static client-install surface — no DB connection, no token.
+            try:
+                self._check_version()
+                self._serve_install(segs)
+            except errors.ApiError as e:
+                self._send_error(e)
+            return
         self._route("GET")
 
     def _is_websocket(self) -> bool:
         return self.headers.get("Upgrade", "").lower() == "websocket"
+
+    # ------------------------------------------------------------------ client install surface
+    def _serve_install(self, segs: list[str]) -> None:
+        """GET /install/<artifact> — the public, unauthenticated install surface.
+
+        Static files only, chosen by name out of `INSTALL_ARTIFACTS`; no part of
+        the request path is used to build a filesystem path. These artifacts carry
+        no credential of any kind (that is what the customer's own enrollment
+        credential is for), so there is nothing here to protect with a token — and
+        requiring one would defeat the point, since the customer does not have
+        (and must never hold) the controller's project token.
+        """
+        name = segs[1] if len(segs) == 2 else ""
+        entry = INSTALL_ARTIFACTS.get(name)
+        if entry is None:
+            raise errors.not_found(
+                "no install artifact: GET /install/"
+                + (name or "<name>")
+                + " (available: " + ", ".join(sorted(INSTALL_ARTIFACTS)) + ")"
+            )
+        rel, content_type = entry
+        path = os.path.join(install_root(), *rel.split("/"))
+        try:
+            with open(path, "rb") as fh:
+                data = fh.read()
+        except OSError as e:
+            log.error("install artifact %s missing on this controller (%s): %s",
+                      name, path, e)
+            raise errors.err(
+                503, "INTERNAL",
+                f"install artifact {name} is not deployed on this controller "
+                f"(expected at {path})"
+            ) from None
+        self._send_bytes(200, content_type, data)
 
     # ------------------------------------------------------------------ auth
     def _require_bootstrap(self, conn) -> str:
@@ -554,6 +707,146 @@ class ControllerHandler(BaseHTTPRequestHandler):
                          "state": cmd["state"], "issued_by": "human"}
 
         raise errors.not_found(f"unknown action {action}")
+
+    # ------------------------------------------------------------ agent tasks
+    def _agent_task_submit(self, conn, project_id: str, vm_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/agents/{vm_id}/tasks — give an agent a task.
+
+        Decision AT-1 (agent-runtime.md §7.4): the controller PROXIES this call onto
+        the agent's loopback task surface through the owning node's LXD exec API. The
+        client never needs a route to the instance and never receives instance
+        credentials; the cost is that task content transits the controller, which is
+        recorded, never logged, never model-processed here (see `agent_tasks.py`).
+
+        Every submission is audited exactly like a node action: an `agent.dispatch_task`
+        command in the same envelope/allowlist (`commands.py`) + an operator-log line,
+        both content-free, plus the enumerable `agent_tasks` row.
+        """
+        self._require_project(conn, project_id)
+        body = self._read_body()
+
+        prompt = body.get("prompt")
+        messages = body.get("messages")
+        if prompt is None and messages:
+            prompt = "\n".join(str(m.get("content", "")) for m in messages
+                               if isinstance(m, dict))
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise errors.err(422, "INVALID_ARGUMENT", "prompt is required",
+                             [{"field": "prompt", "reason": "required"}])
+        size = len(prompt.encode("utf-8"))
+        if size > agent_tasks_mod.MAX_PROMPT_BYTES:
+            raise errors.err(
+                413, "PROMPT_TOO_LARGE",
+                f"prompt is {size} bytes; the per-task limit is "
+                f"{agent_tasks_mod.MAX_PROMPT_BYTES}",
+                [{"field": "prompt", "reason": "too_large"}])
+
+        max_tokens = body.get("max_tokens", 256)
+        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) \
+                or not (1 <= max_tokens <= 4096):
+            raise errors.err(422, "INVALID_ARGUMENT", "max_tokens must be an integer in [1, 4096]",
+                             [{"field": "max_tokens", "reason": "out_of_range"}])
+        model_preference = body.get("model_preference") or body.get("model")
+        if model_preference is not None and not isinstance(model_preference, str):
+            raise errors.err(422, "INVALID_ARGUMENT", "model_preference must be a string",
+                             [{"field": "model_preference", "reason": "not_a_string"}])
+        actor = body.get("actor") or "human"
+        if not isinstance(actor, str):
+            raise errors.err(422, "INVALID_ARGUMENT", "actor must be a string",
+                             [{"field": "actor", "reason": "not_a_string"}])
+
+        node, reason, known = agent_tasks_mod.resolve_agent(
+            conn, self.server.cfg, project_id, vm_id)
+        if node is None:
+            if reason == "node_unreachable":
+                raise errors.err(
+                    503, "NODE_UNREACHABLE",
+                    f"the node holding agent {vm_id} cannot be reached, so its state "
+                    f"cannot be established",
+                    [{"field": "vm_id", "reason": "owning node unreachable"}])
+            raise errors.err(
+                404, "AGENT_NOT_FOUND",
+                f"no agent {vm_id} on this project's nodes",
+                [{"field": "vm_id", "reason": "unknown",
+                  "known_vm_ids": known[:20]}])
+
+        sample = store.latest_sample(conn, node["id"])
+        node_status, _ = health.node_status_health(node, sample, time.time())
+        if node_status == "offline":
+            raise errors.err(503, "NODE_OFFLINE",
+                             f"node {node['id']} is offline; agent {vm_id} cannot be reached",
+                             [{"field": "vm_id", "reason": "node_offline"}])
+
+        command = cmd_mod.issue_command(
+            conn, self.server.operator_logs, project_id, "agent.dispatch_task",
+            {"vm_id": vm_id, "prompt_bytes": size,
+             "model_preference": model_preference, "max_tokens": max_tokens},
+            "human", node_id=node["id"])
+
+        task = agent_tasks_mod.insert_task(
+            conn, project_id=project_id, vm_id=vm_id, node_id=node["id"],
+            command_id=command["command_id"], actor=actor, prompt=prompt,
+            model_preference=model_preference, max_tokens=int(max_tokens),
+            timeout_s=agent_tasks_mod.DEFAULT_TASK_TIMEOUT_S)
+        # Commit BEFORE dispatch: the record (and its audit command) must survive a
+        # dispatch failure, and `_route` rolls the transaction back on any ApiError.
+        conn.commit()
+
+        try:
+            submitted = agent_tasks_mod.submit_to_agent(self.server.cfg, node, task)
+        except agent_tasks_mod.AgentTaskError as exc:
+            agent_tasks_mod.fail_task(
+                conn, project_id, task["task_id"], code=exc.code,
+                message=str(exc), actionable=exc.actionable,
+                logs=self.server.operator_logs)
+            conn.commit()
+            details = [{"field": exc.param or "vm_id",
+                        "reason": exc.actionable or str(exc)}]
+            raise errors.err(exc.status, exc.code, str(exc), details)
+
+        state = submitted.get("state")
+        if state not in (agent_tasks_mod.QUEUED, agent_tasks_mod.RUNNING):
+            state = agent_tasks_mod.QUEUED
+        agent_tasks_mod.update_task(
+            conn, task["task_id"], state=state,
+            agent_task_id=submitted.get("task_id"),
+            started_at=submitted.get("started_at"))
+        conn.commit()
+        self.server.broker.publish(
+            "task.queued",
+            {"task_id": task["task_id"], "vm_id": vm_id, "project_id": project_id},
+            project_id)
+        threading.Thread(
+            target=agent_tasks_mod.poll_until_terminal,
+            args=(self.server.cfg, project_id, task["task_id"], vm_id, node["id"],
+                  self.server.operator_logs),
+            name=f"task-poll-{task['task_id'][-6:]}", daemon=True).start()
+        return 202, agent_tasks_mod.get_task(conn, task["task_id"], project_id) or {}
+
+    def _agent_task_get(self, conn, project_id: str, vm_id: str,
+                        task_id: str) -> tuple[int, dict]:
+        """GET /v1/projects/{pid}/agents/{vm_id}/tasks/{task_id} — state + answer."""
+        self._require_project(conn, project_id)
+        task = agent_tasks_mod.get_task(conn, task_id, project_id)
+        if task is None or task["vm_id"] != vm_id:
+            raise errors.not_found(f"no task {task_id} for agent {vm_id}")
+        return 200, task
+
+    def _agent_task_list(self, conn, project_id: str, vm_id: str) -> tuple[int, dict]:
+        """GET /v1/projects/{pid}/agents/{vm_id}/tasks — the enumerable record.
+
+        The answers are omitted here on purpose (a listing is not the read path for
+        content); each row carries the states/errors for evidence, and the single-task
+        GET returns the body.
+        """
+        self._require_project(conn, project_id)
+        limit = self._query().get("limit", "50")
+        try:
+            limit_i = int(limit)
+        except ValueError:
+            raise errors.invalid_argument("limit must be an integer")
+        tasks = agent_tasks_mod.list_tasks(conn, project_id, vm_id=vm_id, limit=limit_i)
+        return 200, {"vm_id": vm_id, "tasks": tasks, "count": len(tasks)}
 
     def _remediation_decision(self, conn, project_id: str, command_id: str, decision: str) -> tuple[int, dict]:
         self._require_project(conn, project_id)
@@ -1252,6 +1545,22 @@ class ControllerHandler(BaseHTTPRequestHandler):
             )
 
         now = store.now_iso()
+
+        # A running demo fault injection owns this node's series (controller-api.md
+        # §4.7): the injected samples are authoritative, so the node's own samples
+        # are recorded as received but not stored. Without this, a real node's
+        # healthy samples would interleave with the injected fault and the rule
+        # would flap instead of holding across its debounce count.
+        fault = demo_faults_mod.open_fault_for_node(conn, node["project_id"], node_id)
+        if fault is not None:
+            store.insert_batch(conn, clean, node_id, 0, len(samples), now)
+            conn.execute("UPDATE nodes SET last_seen_at = ? WHERE id = ?", (now, node_id))
+            injector = getattr(self.server, "fault_injector", None)
+            if injector is not None:
+                injector.supersede_log(conn, node, fault)
+            self._publish_node_events(conn, node, store.latest_sample(conn, node_id))
+            return 202, {"accepted": 0, "rejected": len(samples), "backpressure": "none"}
+
         inserted, dropped = store.insert_samples(conn, node_id, clean["call_id"], samples)
         store.insert_batch(conn, clean, node_id, inserted, dropped, now)
         conn.execute("UPDATE nodes SET last_seen_at = ? WHERE id = ?", (now, node_id))
@@ -1262,24 +1571,12 @@ class ControllerHandler(BaseHTTPRequestHandler):
         return 202, {"accepted": inserted, "rejected": dropped, "backpressure": "none"}
 
     def _publish_node_events(self, conn, node: dict, sample: dict | None) -> None:
-        """Push node.telemetry (≤1/s) and node.health_changed (on transition)."""
-        node_id = node["id"]
-        project_id = self.server.project["id"]
-        now_epoch = time.time()
+        """Push node.telemetry (≤1/s) and node.health_changed (on transition).
 
-        status, _ = health.node_status_health(node, sample, now_epoch)
-        if self.server._last_status.get(node_id) != status:
-            self.server._last_status[node_id] = status
-            self.server.broker.publish(
-                "node.health_changed",
-                {"node_id": node_id, "status": status, "last_seen_at": node["last_seen_at"]},
-                project_id,
-            )
-
-        last = self.server._last_telemetry_at.get(node_id, 0.0)
-        if sample and now_epoch - last >= 1.0:
-            self.server._last_telemetry_at[node_id] = now_epoch
-            self.server.broker.publish("node.telemetry", sample, project_id)
+        Delegates to the server so the demo fault driver fans an injected sample
+        out through the identical path (see ControllerServer.publish_node_events).
+        """
+        self.server.publish_node_events(conn, node, sample)
 
     def _node_recent(self, conn, node_id: str) -> tuple[int, dict]:
         self._require_node(conn, node_id)
@@ -1342,6 +1639,78 @@ class ControllerHandler(BaseHTTPRequestHandler):
             "acquired_at": lease["acquired_at"] if lease else None,
             "expires_at": lease["expires_at"] if lease else None,
         }
+
+    # ------------------------------------------------- operator fault console (§4.7)
+    def _fault_injector(self):
+        injector = getattr(self.server, "fault_injector", None)
+        if injector is None:
+            raise errors.err(503, "INTERNAL",
+                             "demo fault injection is not enabled on this controller")
+        return injector
+
+    def _demo_fault_start(self, conn, project_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/demo/faults — start one injection.
+
+        Operator-only: `project_token` auth, scoped to its own project. A request
+        with no token is `401 UNAUTHENTICATED`; a `node_token` (or any other
+        credential) is `403 PERMISSION_DENIED` — the route is not reachable from a
+        node context, and nothing here is public (controller-api.md §4.7).
+        """
+        self._require_project(conn, project_id)
+        body = self._read_body()
+        return 201, self._fault_injector().start_injection(conn, project_id, body)
+
+    def _demo_fault_list(self, conn, project_id: str) -> tuple[int, dict]:
+        """GET /v1/projects/{pid}/demo/faults — active + recent injections."""
+        self._require_project(conn, project_id)
+        injector = self._fault_injector()
+        q = self._query()
+        state = (q.get("state") or "all").strip().lower()
+        if state not in ("all", "open"):
+            raise errors.invalid_argument("state must be 'all' or 'open'")
+        faults = [
+            injector.view(row, store.get_node(conn, row["node_id"]),
+                          thresholds=injector.resolve_thresholds(conn))
+            for row in demo_faults_mod.list_faults(conn, project_id, limit=self._limit_param(50))
+        ]
+        if state == "open":
+            faults = [f for f in faults if f["open"]]
+        return 200, {
+            "project_id": project_id,
+            "scenarios": list(demo_faults_mod.SCENARIO_NAMES),
+            "faults": faults,
+            "open_count": sum(1 for f in faults if f["open"]),
+        }
+
+    def _demo_fault_clear(self, conn, project_id: str, injection_id: str) -> tuple[int, dict]:
+        """DELETE /v1/projects/{pid}/demo/faults/{injection_id} — clear one injection.
+
+        Idempotent and never refused on state: a fault must always be clearable
+        (§4.7 safety rule 2). Clearing starts the recovery burst — the driver keeps
+        writing the healthy baseline for as many samples as the rule's hysteresis
+        needs to re-arm — so the caller sees `state: recovering` and the next
+        `GET` reports `cleared`.
+        """
+        self._require_project(conn, project_id)
+        reason = (self._query().get("reason") or "cleared_by_operator")[:200]
+        return 200, self._fault_injector().clear(conn, project_id, injection_id, reason=reason)
+
+    def _demo_fault_clear_all(self, conn, project_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/demo/faults/clear — clear every open injection.
+
+        Body `{"node_id": "<id>", "reason": "<text>"}` (both optional). This is the
+        clear path for environments whose reverse proxy drops DELETE; both are in
+        the contract and both go through the same recovery burst.
+        """
+        self._require_project(conn, project_id)
+        body = self._read_body()
+        node_id = body.get("node_id")
+        if node_id is not None and not isinstance(node_id, str):
+            raise errors.invalid_argument("node_id must be a string when present")
+        reason = str(body.get("reason") or "cleared_by_operator")[:200]
+        return 200, self._fault_injector().clear_all(
+            conn, project_id, node_id=node_id, reason=reason
+        )
 
     def _limit_param(self, default: int = 50) -> int:
         raw = self._query().get("limit", str(default))

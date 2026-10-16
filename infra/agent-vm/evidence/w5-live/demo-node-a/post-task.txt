@@ -1,0 +1,1 @@
+{"task_id": "01M52V40DZS7YXMZCXPWZXMHWA", "state": "queued", "actor": null, "model_preference": null, "model": null, "max_tokens": 256, "temperature": 0.2, "submitted_at": "2026-10-16T17:10:56Z", "started_at": null, "ended_at": null, "duration_ms": null, "tokens": null, "usage": {}, "provenance": {}, "error": null, "result_ref": null}

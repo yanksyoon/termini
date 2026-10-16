@@ -33,7 +33,7 @@
 #     --turns N         number of scripted turns (default 3)
 #     --max-tokens N    per-turn generation cap (default 96)
 #     --timeout S       wall-clock cap for the task (default 900)
-#     --model ALIAS     model alias (default deepseek-flash)
+#     --model ALIAS     model alias (default gemma — the alias Node C serves)
 #     --evidence DIR    evidence dir (default <repo>/infra/agent-vm/evidence)
 #     --keep            leave the agent VM running (post-mortem)
 #     -h|--help
@@ -46,13 +46,13 @@ AGENT_SRC="${REPO_DIR}/image/agent-vm/agent"
 NODE_A="${TERMINI_NODE_A:-demo-node-a}"
 NODE_C="${TERMINI_NODE_C:-demo-node-c}"
 PORT="${TERMINI_INFERENCE_PORT:-8080}"
-MODEL="${TERMINI_MODEL_ALIAS:-deepseek-flash}"
+MODEL="${TERMINI_MODEL_ALIAS:-gemma}"
 INSTANCE="${TERMINI_CALLPATH_INSTANCE:-termini-callpath-$$}"
 TURNS=3
 MAX_TOKENS="${TERMINI_CALLPATH_MAX_TOKENS:-192}"
 RUN_TIMEOUT="${TERMINI_CALLPATH_TIMEOUT:-900}"
 EVIDENCE_DIR="${TERMINI_EVIDENCE_DIR:-${SELF_DIR}/evidence}"
-NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w4}"
+NODE_ALIAS="${TERMINI_NODE_IMAGE_ALIAS:-agent-os/w5}"
 PROFILE="${TERMINI_AGENT_PROFILE:-termini-agent}"
 KEEP=0
 
@@ -167,7 +167,7 @@ agent_image_version: agent-vm-2026.10.0
 inference:
   base_url: ${INFERENCE_URL}
   default_model: ${MODEL}
-  allowed_models: [deepseek-flash, deepseek-v4-pro]
+  allowed_models: [${MODEL}]
   allowed_networks: [10.10.0.0/24, ${NODE_C_NET}]
   token_file: /etc/termini/inference.token
   stream: true

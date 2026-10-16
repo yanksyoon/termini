@@ -1,0 +1,70 @@
+== the instance exists on the node (created by lxc launch) ==
+w5-accept-demo-node-b,10.20.2.208 (eth0),RUNNING,0
+instance_ip=10.20.2.208
+== 1. service state ==
+active
+== 2. baked config (/etc/termini/agent.yaml) ==
+# Termini agent VM runtime config — BAKED DEFAULT.
+#
+# cloud-init renders the authoritative /etc/termini/agent.yaml at launch
+# (agent-runtime.md §4.4). This baked copy lets termini-agent.service start and
+# serve /status even before cloud-init runs (e.g. an offline bake-inspection boot).
+project_id: 01J00000000000000000000000
+vm_id: 01J00000000000000000000001
+node_id: 01J00000000000000000000002
+agent_image_version: agent-vm-2026.10.0
+inference:
+  base_url: http://10.10.0.13:8080
+  default_model: gemma
+  allowed_models: [gemma]
+  token_file: /etc/termini/inference.token
+  stream: true
+  connect_timeout_s: 2
+  request_timeout_s: 120
+broker:
+  endpoint: http://10.20.1.1:7071
+  pull_interval_s: 1
+  max_concurrent_tasks: 2
+# Task-submit surface (agent-runtime.md §5.6). The per-instance bound is what keeps
+# a client's task load from saturating the node.
+tasks:
+  max_concurrent: 2
+  result_sink: /var/lib/termini/agent/results
+logging:
+  sink: /var/log/termini/agent.jsonl
+  local_only: true
+governance:
+  telemetry_class: C0
+  egress: deny
+-- assertions --
+12:  default_model: gemma
+13:  allowed_models: [gemma]
+21:  max_concurrent_tasks: 2
+25:  max_concurrent: 2
+== 3a. task surface is LOOPBACK-ONLY (in-instance listener table) ==
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess                                   
+LISTEN 0      4096      127.0.0.54:53        0.0.0.0:*    users:(("systemd-resolve",pid=143,fd=17))
+LISTEN 0      5          127.0.0.1:9101      0.0.0.0:*    users:(("termini-agent",pid=661,fd=4))   
+LISTEN 0      4096   127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=143,fd=15))
+LISTEN 0      4096         0.0.0.0:22        0.0.0.0:*    users:(("systemd",pid=1,fd=70))          
+LISTEN 0      4096            [::]:22           [::]:*    users:(("systemd",pid=1,fd=71))          
+== 3b. it is LIVE from inside the instance ==
+{"tasks": [], "count": 0, "bound": 2}
+http=200
+== 3d. the surface is LIVE, not just answering: submit a task and read it back ==
+{"task_id": "01M52V5PC3ST1GAYMBQNK1CGNR", "state": "queued", "actor": null, "model_preference": null, "model": null, "max_tokens": 256, "temperature": 0.2, "submitted_at": "2026-10-16T17:11:51Z", "started_at": null, "ended_at": null, "duration_ms": null, "tokens": null, "usage": {}, "provenance": {}, "error": null, "result_ref": null}task_id=01M52V5PC3ST1GAYMBQNK1CGNR
+{"task_id": "01M52V5PC3ST1GAYMBQNK1CGNR", "state": "error", "actor": null, "model_preference": null, "model": null, "max_tokens": 256, "temperature": 0.2, "submitted_at": "2026-10-16T17:11:51Z", "started_at": "2026-10-16T17:11:51Z", "ended_at": "2026-10-16T17:11:53Z", "duration_ms": 2033, "tokens": null, "usage": {}, "provenance": {}, "error": {"code": "INFERENCE_UNREACHABLE", "message": "inference endpoint http://10.10.0.13:8080 is unreachable: timed out", "actionable": "the on-prem inference endpoint is not answering at all: check that node C is up and that inference.base_url names its underlay address"}, "result_ref": null, "answer": null}== 3e. task enumeration (GET /v1/tasks) ==
+{"tasks": [], "count": 0, "bound": 2}
+http=200
+== 3c. and REFUSED from outside (from the node that hosts it) ==
+curl: (7) Failed to connect to 10.20.2.208 port 9101 after 0 ms: Couldn't connect to server
+http=000
+curl: (7) Failed to connect to 10.20.2.208 port 9101 after 0 ms: Couldn't connect to server
+http=000
+== image identity inside the instance ==
+agent-vm-2026.10.0+g68763f60ef6d sha256:3aeaab4d16fa
+sha256:3aeaab4d16fa
+termini-agent 2026.10.0
+pkg= /opt/termini/venv/lib/python3.12/site-packages/termini_agent
+has_taskapi= True
+done -> infra/agent-vm/evidence/w5-live/demo-node-b

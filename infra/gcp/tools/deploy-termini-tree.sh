@@ -12,7 +12,9 @@
 # fresh archive.
 #
 # What it deploys: the directories the controller + seeder actually import/run
-# (`controller/ termini/ console/ chaos/`). Local-only files that are NOT in the
+# (`controller/ termini/ console/ chaos/` plus `infra/bootstrap/`, which holds the
+# client-facing install artifacts the controller serves at /install/ —
+# docs/contracts/controller-api.md §4.7). Local-only files that are NOT in the
 # repo (e.g. the demo's lxd_stub.py / inference-proxy.py) are left untouched —
 # `tar -x` merges, it does not wipe the target.
 #
@@ -29,7 +31,7 @@ REF="${REF:-origin/main}"
 INSTANCE="${INSTANCE:-termini-controller}"
 ZONE="${ZONE:-asia-south1-a}"
 TARGET="${TARGET:-/opt/termini}"
-PATHS=(controller termini console chaos)
+PATHS=(controller termini console chaos infra/bootstrap)
 DO_RESTART=1
 
 while [ "$#" -gt 0 ]; do
@@ -67,7 +69,7 @@ echo "[remote] backup -> \${TARGET}.bak-\${STAMP}"
 sudo tar -czf "\${TARGET}.bak-\${STAMP}.tgz" -C "\$(dirname "\$TARGET")" "\$(basename "\$TARGET")"
 tar -xzf /tmp/termini-tree.tgz -C "\$TARGET"
 echo "\$COMMIT" > "\$TARGET/DEPLOYED_COMMIT"
-( cd "\$TARGET" && find controller termini console chaos -type f ! -path '*__pycache__*' \\
+( cd "\$TARGET" && find controller termini console chaos infra/bootstrap -type f ! -path '*__pycache__*' \\
     | sort | xargs sha256sum ) > "\$TARGET/DEPLOYED_FILES"
 echo "[remote] deployed \$(wc -l < "\$TARGET/DEPLOYED_FILES") files from \$COMMIT"
 REMOTE

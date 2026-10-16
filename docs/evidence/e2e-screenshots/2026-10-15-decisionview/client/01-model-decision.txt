@@ -1,0 +1,213 @@
+# Sidecar for 01-model-decision.png (acceptance 01)
+# Purpose: a live decision whose decision_source=model: breaching metric + threshold, the model rationale, the chosen action + target, the execution result and the audit id
+# Captured (UTC): 2026-10-15T16:26:32Z
+# Exact URL in the address bar: https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token&synthetic=1&decisionLimit=200
+# Window: 1280x900, headful Chromium in Xvfb :99, browser chrome included, no crop/annotation.
+# Raw text behind the pixels follows.
+
+## As rendered on the published page (read back out of the live DOM)
+{"renderedRow":"16:26:05AI MODEL 0.90demo-node-c (demo)oom-guard-01→instance.restart 01M4N827979BD9D2762EFE24A0error · 10.10.0.11:8443breachram_used_bytesRAM used=96.04% of ram_total_bytesthreshold: >= 95% of ram_total_bytes for 2 consecutive samplesfired 16:26:05model rationaleHost RAM is at 96.04% of total, and instance 01M4N827979BD9D2762EFE24A0 is using 16.5GB of RAM, exceeding its 4.29GB limit; restarting it should reclaim memory.audit 01M50659AF…4WMBtelemetry sampleshow on chartdecision 01M506599V…M32C","rowClass":"decision-row src-model","auditId":"01M50659AFYCBSWTSN0RPA4WMB","eventId":"01M5065612Y7TDG4ASW5MPAEQT","decisionId":"01M506599VRR11NJPSYHDMM32C","filter":"AI model","decisionsCount":"173 shown / 200 decisions · model 173 · fallback 20","deciderText":"decider: forwarded managed model · gemini-2.5-flashbackend=gemini-proxy · model=gemini-2.5-flash · egress=external · destination=aiplatform.googleapis.com · answered by=forwarded-managed-model · endpoint=http://10.10.0.13:8080the decision was not computed by local weights on this fleet: the operator's model call was answered by a forwarded managed model reached over egress"}
+
+## Page facts
+{"url":"https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token&synthetic=1&decisionLimit=200","title":"Termini — Operations Dashboard","logRows":750,"logState":"Live AI-operator log live · resumed from the oldest retained line Pause scroll Clear","decisionsCount":"173 shown / 200 decisions · model 173 · fallback 20","deciderText":"decider: forwarded managed model · gemini-2.5-flashbackend=gemini-proxy · model=gemini-2.5-flash · egress=external · destination=aiplatform.googleapis.com · answered by=forwarded-managed-model · endpoint=http://10.10.0.13:8080the decision was not computed by local weights on this fleet: the operator's model call was answered by a forwarded managed model reached over egress","streamState":"Live AI-operator log live · resumed from the oldest retained line Pause scroll Clear"}
+
+## Raw API object behind that row (newest decision with decision_source=model)
+GET https://34-93-190-64.sslip.io/v1/operator/decisions?limit=200   (Authorization: Bearer $DEMO_TOKEN, X-Termini-Version: 1)
+
+{
+  "action_kind": "instance.restart",
+  "action_params": {
+    "_vm_id": "01M4N827979BD9D2762EFE24A0",
+    "force": true,
+    "instance_name": "01M4N827979BD9D2762EFE24A0",
+    "timeout_s": 30
+  },
+  "confidence": 0.9,
+  "decided_at": "2026-10-15T16:26:05.746Z",
+  "decision_source": "model",
+  "event_id": "01M5065612Y7TDG4ASW5MPAEQT",
+  "fallback_reason": null,
+  "id": "01M506599VRR11NJPSYHDMM32C",
+  "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+  "playbook": "oom-guard-01",
+  "reason": "Host RAM is at 96.04% of total, and instance 01M4N827979BD9D2762EFE24A0 is using 16.5GB of RAM, exceeding its 4.29GB limit; restarting it should reclaim memory.",
+  "rule_id": "oom-guard-01"
+}
+
+## The audit row for that decision (the id shown in the row)
+GET https://34-93-190-64.sslip.io/v1/operator/audits?limit=200
+
+{
+  "action_kind": "instance.restart",
+  "decision_id": "01M506599VRR11NJPSYHDMM32C",
+  "detail": "target_missing: refused PUT /1.0/instances/01M4N827979BD9D2762EFE24A0/state \u2014 no LXD instance '01M4N827979BD9D2762EFE24A0' on https://10.10.0.11:8443 (probe GET /1.0/instances/01M4N827979BD9D2762EFE24A0 -> not found). The decision's target does not exist on the node this executor dials, so no LXD state change was issued; the node's live instance inventory is the only authority on which targets exist.",
+  "dry_run": 0,
+  "event_id": "01M5065612Y7TDG4ASW5MPAEQT",
+  "executed_at": "2026-10-15T16:26:05.746Z",
+  "id": "01M50659AFYCBSWTSN0RPA4WMB",
+  "idempotency_key": "01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:01M4N827979BD9D2762EFE24A0:802",
+  "lxd_body": "",
+  "lxd_endpoint": "https://10.10.0.11:8443",
+  "lxd_method": "GET",
+  "lxd_path": "/1.0/instances/01M4N827979BD9D2762EFE24A0",
+  "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+  "result": "error",
+  "rule_id": "oom-guard-01"
+}
+
+## The telemetry sample that fired it (the row links to this health event)
+GET https://34-93-190-64.sslip.io/v1/operator/events?limit=200
+
+{
+  "breach_started_at": "2026-10-15T16:26:04.000Z",
+  "evidence": [
+    {
+      "cpu_core_count": 16,
+      "cpu_util_pct": 31.2,
+      "disk": [
+        {
+          "free_bytes": 214748364800,
+          "mount_ro": false,
+          "path": "/dev/sda",
+          "total_bytes": 274877906944,
+          "write_latency_ms": 3.0
+        }
+      ],
+      "gpu": [
+        {
+          "model": "NVIDIA L4",
+          "temp_celsius": 58.0,
+          "util_pct": 38.0,
+          "vram_total_bytes": 25769803776,
+          "vram_used_bytes": 12884901888
+        }
+      ],
+      "hostname": "061bf633d3ad535a",
+      "ip_local": "10.14.100.0/24",
+      "kernel_version": "6.8.0-142-generic",
+      "load_avg_1m": 1.42,
+      "lxd_cluster_role": "member",
+      "lxd_instances": [
+        {
+          "cpu_util_pct": 12.0,
+          "disk_used_bytes": 2362232012,
+          "ram_limit_bytes": 4294967296,
+          "ram_used_bytes": 16500000000,
+          "state": "running",
+          "vm_id": "01M4N827979BD9D2762EFE24A0"
+        }
+      ],
+      "mac_address": "3874d7396d87b2e7",
+      "net": [
+        {
+          "iface": "eth0",
+          "latency_ms": 0.8,
+          "rx_bytes": 1792204521,
+          "tx_bytes": 1792092521
+        }
+      ],
+      "os_name": "Ubuntu",
+      "os_version": "24.04",
+      "project_id": "01J0DEM0WARM000000000000AB",
+      "ram_total_bytes": 68719476736,
+      "ram_used_bytes": 66000000000,
+      "seq": 1792081521,
+      "services": [
+        {
+          "name": "termini-bootstrap",
+          "status": "running"
+        },
+        {
+          "name": "lxd",
+          "status": "running"
+        },
+        {
+          "name": "sshd",
+          "status": "running"
+        }
+      ],
+      "swap_used_bytes": 0,
+      "ts": "2026-10-15T16:26:04.000Z",
+      "uptime_sec": 6981
+    },
+    {
+      "cpu_core_count": 16,
+      "cpu_util_pct": 31.2,
+      "disk": [
+        {
+          "free_bytes": 214748364800,
+          "mount_ro": false,
+          "path": "/dev/sda",
+          "total_bytes": 274877906944,
+          "write_latency_ms": 3.0
+        }
+      ],
+      "gpu": [
+        {
+          "model": "NVIDIA L4",
+          "temp_celsius": 58.0,
+          "util_pct": 38.0,
+          "vram_total_bytes": 25769803776,
+          "vram_used_bytes": 12884901888
+        }
+      ],
+      "hostname": "061bf633d3ad535a",
+      "ip_local": "10.14.100.0/24",
+      "kernel_version": "6.8.0-142-generic",
+      "load_avg_1m": 1.42,
+      "lxd_cluster_role": "member",
+      "lxd_instances": [
+        {
+          "cpu_util_pct": 12.0,
+          "disk_used_bytes": 2362232012,
+          "ram_limit_bytes": 4294967296,
+          "ram_used_bytes": 16500000000,
+          "state": "running",
+          "vm_id": "01M4N827979BD9D2762EFE24A0"
+        }
+      ],
+      "mac_address": "3874d7396d87b2e7",
+      "net": [
+        {
+          "iface": "eth0",
+          "latency_ms": 0.8,
+          "rx_bytes": 1792204522,
+          "tx_bytes": 1792092522
+        }
+      ],
+      "os_name": "Ubuntu",
+      "os_version": "24.04",
+      "project_id": "01J0DEM0WARM000000000000AB",
+      "ram_total_bytes": 68719476736,
+      "ram_used_bytes": 66000000000,
+      "seq": 1792081522,
+      "services": [
+        {
+          "name": "termini-bootstrap",
+          "status": "running"
+        },
+        {
+          "name": "lxd",
+          "status": "running"
+        },
+        {
+          "name": "sshd",
+          "status": "running"
+        }
+      ],
+      "swap_used_bytes": 0,
+      "ts": "2026-10-15T16:26:05.000Z",
+      "uptime_sec": 6982
+    }
+  ],
+  "evidence_seq_end": 1792081522,
+  "evidence_seq_start": 1792081521,
+  "fired_at": "2026-10-15T16:26:05.730Z",
+  "id": "01M5065612Y7TDG4ASW5MPAEQT",
+  "metric": "ram_used_bytes",
+  "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+  "rule_id": "oom-guard-01",
+  "threshold": ">= 95% of ram_total_bytes for 2 consecutive samples",
+  "type": "oom",
+  "value": 96.04264050722122
+}

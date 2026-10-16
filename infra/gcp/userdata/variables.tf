@@ -21,9 +21,9 @@ variable "inference_front_door_files" {
 }
 
 variable "inference_backend" {
-  description = "Backend a FRESH Node C serves through the front door: gemini-proxy (the shipped demo configuration) or local. Substituted for __INFERENCE_BACKEND__ in the serve script."
+  description = "Backend a FRESH Node C serves through the front door: local (shipped since the inference split — D9) or gemini-proxy. Substituted for __INFERENCE_BACKEND__ in the serve script."
   type        = string
-  default     = "gemini-proxy"
+  default     = "local"
 }
 
 variable "node_spec" {

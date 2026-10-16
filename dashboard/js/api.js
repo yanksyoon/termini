@@ -78,8 +78,30 @@ export class ApiClient {
     return parsed;
   }
 
-  listNodes() {
-    return this._request("GET", `/projects/${this._project()}/nodes`);
+  listNodes({ includeSynthetic = false } = {}) {
+    return this._request("GET", `/projects/${this._project()}/nodes`, {
+      // contract §1.1: `?include=synthetic` returns every row (labelled). The
+      // default view is the real fleet, so this is opt-in only.
+      query: includeSynthetic ? { include: "synthetic" } : undefined,
+    });
+  }
+
+  /**
+   * Operator decision log (operator-decision.md §11). Token-scoped, NOT
+   * project-scoped: GET /v1/operator/decisions.
+   */
+  operatorDecisions(limit = 50) {
+    return this._request("GET", "/operator/decisions", { query: { limit } });
+  }
+
+  /** The health events the decisions were made for (§5 trigger linkage). */
+  operatorEvents(limit = 50) {
+    return this._request("GET", "/operator/events", { query: { limit } });
+  }
+
+  /** The remediation audit rows: what was executed, against which endpoint. */
+  operatorAudits(limit = 50) {
+    return this._request("GET", "/operator/audits", { query: { limit } });
   }
 
   getNode(nodeId) {
@@ -95,6 +117,20 @@ export class ApiClient {
   /** As-built fallback when the node list omits `health` (server.py _node_view). */
   latestSample(nodeId) {
     return this._request("GET", "/telemetry/recent", { query: { node: nodeId, limit: 1 } });
+  }
+
+  /**
+   * The CLIENT view of one node (task t_5649d117). Authenticated with that
+   * node's own `node_token` — never the project token — and project-scoped
+   * nowhere: `GET /v1/nodes/{node_id}/telemetry/recent` reads exactly the node
+   * the credential was issued to (a cross-node id is refused with 403). The
+   * credential rides in the Authorization header; the URL carries only the
+   * limit.
+   */
+  nodeTelemetryRecent(nodeId, limit = 5) {
+    return this._request("GET", `/nodes/${encodeURIComponent(nodeId)}/telemetry/recent`, {
+      query: { limit },
+    });
   }
 
   rebootNode(nodeId, delayS = 0) {

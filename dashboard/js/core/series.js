@@ -54,10 +54,16 @@ export const CHART_GROUPS = [
 
 /**
  * Build chart-ready groups from a `/metrics` response.
- * @returns [{id,title,unit,labels[],series:[{name,label,points:[{t,v}]}],hasData}]
+ *
+ * `annotations` (optional) are raw-API decision/threshold marks:
+ *   [{metric, t, kind, label, value, threshold:{value,basis,label}}]
+ * Each is attached to the group that actually carries its metric and scaled with
+ * that group's unit, so the chart and the decisions panel share one axis.
+ *
+ * @returns [{id,title,unit,labels[],series:[{name,label,points:[{t,v}]}],markers[],thresholds[],hasData}]
  *   points are display-scaled (bytes -> GiB) and `t` is epoch ms.
  */
-export function buildCharts(payload, { includeAll = false } = {}) {
+export function buildCharts(payload, { includeAll = false, annotations = [] } = {}) {
   const byName = new Map();
   for (const s of (payload && payload.series) || []) {
     if (s && typeof s.name === "string") byName.set(s.name, s);
@@ -79,14 +85,32 @@ export function buildCharts(payload, { includeAll = false } = {}) {
           .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v)),
       });
     }
-    if (series.length === 0) continue;
+    const groupScale = scaleForUnit(g.unit);
+    const markers = [];
+    const thresholds = [];
+    for (const a of annotations || []) {
+      if (!a || !g.metrics.includes(a.metric)) continue;
+      if (Number.isFinite(a.t)) {
+        markers.push({ t: a.t, kind: a.kind || "det", label: a.label || a.metric });
+      }
+      if (a.threshold && Number.isFinite(a.threshold.value)) {
+        thresholds.push({
+          value: Number(a.threshold.value) / groupScale.divisor,
+          label: a.threshold.label || `threshold ${a.threshold.basis || ""}`.trim(),
+        });
+      }
+    }
+    if (series.length === 0 && markers.length === 0) continue;
     out.push({
       id: g.id,
       title: g.title,
       unit: g.unit,
       yMax: g.yMax,
       series,
+      markers,
+      thresholds,
       hasData: series.some((s) => s.points.length > 0),
+      fault: markers.length > 0 || thresholds.length > 0,
     });
   }
   return out;

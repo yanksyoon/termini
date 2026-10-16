@@ -9,8 +9,8 @@ node_id: 01J00000000000000000000002
 agent_image_version: agent-vm-2026.10.0
 inference:
   base_url: http://10.10.0.13:8080
-  default_model: deepseek-flash
-  allowed_models: [deepseek-flash, deepseek-v4-pro]
+  default_model: gemma
+  allowed_models: [gemma]
   token_file: /etc/termini/inference.token
   stream: true
   connect_timeout_s: 2
@@ -19,6 +19,11 @@ broker:
   endpoint: http://10.20.1.1:7071
   pull_interval_s: 1
   max_concurrent_tasks: 2
+# Task-submit surface (agent-runtime.md §5.6). The per-instance bound is what keeps
+# a client's task load from saturating the node.
+tasks:
+  max_concurrent: 2
+  result_sink: /var/lib/termini/agent/results
 logging:
   sink: /var/log/termini/agent.jsonl
   local_only: true

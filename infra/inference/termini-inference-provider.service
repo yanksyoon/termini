@@ -1,0 +1,39 @@
+[Unit]
+# The PROVIDER-ONLY half of the inference split (docs/contracts/infra-decisions.md
+# D9). This unit runs on the CONTROLLER, bound to loopback, in `gemini-proxy`
+# mode: it is the surface the operator's DIAGNOSIS call uses, and the only place
+# in the footprint where a model request may leave for
+# aiplatform.googleapis.com.
+#
+# It is deliberately NOT a second copy of Node C's front door: Node C's `:8080`
+# serves the AGENT surface from that node's local weights and must never forward.
+# Same proxy code, different env file, different address, different guarantee.
+Description=Termini inference provider listener (controller loopback :8085) — diagnosis via Gemini ONLY
+Documentation=file:/opt/termini/inference/proxy.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=termini-infer
+Group=termini-infer
+# Configuration decides the backend (gemini-proxy here, always); nothing is
+# compiled in, and no other value is shipped for this unit.
+EnvironmentFile=-/etc/termini/inference-proxy.env
+ExecStart=/usr/bin/python3 /opt/termini/inference/proxy.py
+Restart=always
+RestartSec=3
+# The controller's OWN identity is the only credential: the OAuth token is minted
+# from the metadata server per request (roles/aiplatform.user + cloud-platform).
+# There is no service-account key file, and none may be added.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/run/termini /var/log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=termini-inference-provider
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[place] host alias agent-vm/2026.10.0 fingerprint=eb7806889646eb7b59bcd590b4d1ceae5c3b2ce211490426054e981381af12b1
+[place] === node demo-node-a ===
+[place] demo-node-a: exporting agent-vm/2026.10.0 from this host -> /home/ubuntu/.hermes/profiles/infra/cache/scratch/tmp.eanzAc9q8j/agent-vm-image.tar.gz
+[place] demo-node-a: pushing 765M image tarball
+[place] demo-node-a: importing into local image store as agent-os/w5
+Image imported with fingerprint: eb7806889646eb7b59bcd590b4d1ceae5c3b2ce211490426054e981381af12b1
+[place] demo-node-a: placed — agent-os/w5,eb7806889646
+lxc exec demo-node-a -- lxc launch agent-os/w5 agent-test -p termini-agent -c cloud-init.user-data="$(cat /root/agent-user-data.yaml)"
+[place] === node demo-node-b ===
+[place] demo-node-b: pushing 765M image tarball
+[place] demo-node-b: importing into local image store as agent-os/w5
+Image imported with fingerprint: eb7806889646eb7b59bcd590b4d1ceae5c3b2ce211490426054e981381af12b1
+[place] demo-node-b: placed — agent-os/w5,eb7806889646
+lxc exec demo-node-b -- lxc launch agent-os/w5 agent-test -p termini-agent -c cloud-init.user-data="$(cat /root/agent-user-data.yaml)"
+[place] done: demo-node-a demo-node-b

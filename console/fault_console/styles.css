@@ -1,0 +1,121 @@
+/* Operator fault console — deliberately plain, dark, and separate from the
+   client-facing dashboard's design system: this is an operator tool, not a
+   customer surface (it must not look like part of the demo UI). */
+:root {
+  color-scheme: dark;
+  --bg: #101317;
+  --panel: #171c22;
+  --line: #2a323c;
+  --fg: #dfe6ee;
+  --muted: #8d9aa8;
+  --accent: #4ea1ff;
+  --danger: #ff6b6b;
+  --ok: #4fd18b;
+  --warn: #f0b45a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: #0d1014;
+}
+
+.topbar h1 { font-size: 16px; margin: 0; letter-spacing: .3px; }
+
+.tags { display: flex; gap: 8px; }
+.tag {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.tag.danger { color: var(--danger); border-color: #5a2b2b; }
+.tag.muted { opacity: .65; }
+
+main { padding: 18px 20px 40px; max-width: 1180px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px 16px;
+  margin-bottom: 16px;
+}
+
+.card h2 { font-size: 13px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.card.disabled { opacity: .5; pointer-events: none; }
+
+.grid { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; }
+
+label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+
+input, select, button {
+  font: inherit;
+  color: var(--fg);
+  background: #0e1216;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px 8px;
+  min-width: 150px;
+}
+
+select { min-width: 200px; }
+input#token, input#api-base, input#project-id { min-width: 320px; }
+
+button { cursor: pointer; background: #1c2430; }
+button:hover { border-color: var(--accent); }
+button.primary { border-color: #2f5f9c; background: #17304d; }
+button.danger { border-color: #5a2b2b; color: #ffd9d9; }
+button.ghost { background: transparent; color: var(--muted); }
+
+.actions { display: flex; gap: 8px; }
+
+.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.status { margin-top: 10px; font-size: 12px; min-height: 16px; }
+.status.ok { color: var(--ok); }
+.status.err { color: var(--danger); }
+.status.warn { color: var(--warn); }
+
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: normal; text-transform: uppercase; font-size: 11px; letter-spacing: .05em; }
+
+.state { padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); }
+.state.active { color: var(--danger); border-color: #5a2b2b; }
+.state.recovering { color: var(--warn); border-color: #5c4a22; }
+.state.cleared { color: var(--ok); border-color: #27543c; }
+.state.expired { color: var(--muted); }
+
+td button { min-width: 0; padding: 3px 9px; }
+
+pre#responses {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  background: #0b0e12;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+a { color: var(--accent); }
+
+footer { padding: 0 20px 24px; color: var(--muted); font-size: 11.5px; max-width: 1180px; }
+code { color: #c8d6e5; }

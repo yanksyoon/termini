@@ -125,7 +125,7 @@ field. Units are explicit and fixed.
   ],
   "inference": {
     "server_up": true,
-    "model": "deepseek-flash",
+    "model": "gemma",
     "active_requests": 3,
     "queue_depth": 0,
     "tokens_per_s": 48.0,
@@ -226,31 +226,55 @@ present the array is empty (governance's `gpu_present` is derivable: `gpu[].leng
 
 ### 4.6 Per-instance LXD metrics — C0 (extension)
 
-`lxd_instances[]` — one entry per running VM, keyed by the controller-issued
+`lxd_instances[]` — one entry per running instance, keyed by the controller-issued
 `vm_id` (never the LXD instance name, which may carry customer hostname data).
+
+The array is **omitted**, not emptied, when the node cannot read its own LXD
+(no LXD socket, LXD not answering): "this node did not report an inventory" and
+"this node runs nothing" are different facts, and an empty list silently claims
+the second. An empty array is reported only when LXD answers with zero running
+instances. Only instances in LXD's `Running` state are reported; a stopped
+instance is not a remediation target and is not advertised.
+
+`vm_id` is derived from the instance name, identically on both sides:
+
+    vm_id = 26 Crockford base32 characters of SHA-256("termini-vm-id:" + name)
+
+(i.e. the top 130 bits of the digest, MSB-first). It is deterministic and
+one-way, so the name — which may carry customer data — never reaches the
+controller, the model prompt or an audit row, and the controller can turn an
+instance name it reads back over the node's LXD REST API
+(`controller/app/operator/vmids.py`) into the same id, and vice versa. A reported
+`vm_id` that matches no instance on the node being dialled is therefore, by
+construction, not a target: there is no per-instance mapping table that can be
+missing, and no id is ever invented. The node daemon
+(`infra/bootstrap/node/termini-bootstrap.py`), the controller and the demo seeder
+carry the same rule; `tests/test_node_instance_inventory.py` pins the literals so
+a drift between the copies fails the build instead of silently making every
+remediation unresolvable.
 
 | Field | Type | Unit | Range | Description |
 |-------|------|------|-------|-------------|
-| `vm_id` | string (ULID) | — | — | Controller-issued VM id (C0) |
+| `vm_id` | string (ULID) | — | — | Controller-issued VM id (C0); derived per the rule above |
 | `state` | string enum | — | `running|stopped|error|…` | LXD instance state |
-| `cpu_util_pct` | number | percent | 0–100 | Per-VM CPU |
+| `cpu_util_pct` | number | percent | 0–100 | Per-instance CPU, percent of node capacity. Omitted on the sample where no delta is available yet (the first sample after a node or instance start) rather than reported as 0 |
 | `ram_used_bytes` | integer | bytes | ≥ 0 | Current VM RAM usage |
-| `ram_limit_bytes` | integer | bytes | ≥ 0 | Configured memory limit |
-| `disk_used_bytes` | integer | bytes | ≥ 0 | Root volume used |
+| `ram_limit_bytes` | integer | bytes | ≥ 0 | LXD's effective memory limit for the instance (`limits.memory`, or the node's total when the instance is unlimited) |
+| `disk_used_bytes` | integer | bytes | ≥ 0 | Root volume used. 0 on a storage driver that does not track per-instance usage (the `dir` driver) — the same number `lxc list` reports |
 
 ### 4.7 Inference (llama.cpp) — C0 (extension)
 
 Present only on the node hosting the inference **service** (Node C, host-exposed
-per D5). `model` is the currently-served alias: `deepseek-flash` or
-`deepseek-v4-pro` (fixed decision — no other model wired). Under `dual` residency
-both aliases are served simultaneously (`agent-runtime.md` §11.2); `model` then
-reports the alias with in-flight activity, and full residency state is available
-via the router's `/v1/models` endpoint rather than this single field.
+per D5). `model` is the currently-served alias: today exactly `gemma` (Gemma 3 4B
+IT, resident). The image's catalog distills (`deepseek-flash`, `deepseek-v4-pro`)
+remain baked and stay legal in this field, but they are no longer wired for the
+agent or the operator; a node reporting one of them is reporting a catalog pin,
+not a served alias.
 
 | Field | Type | Unit | Range | Description |
 |-------|------|------|-------|-------------|
 | `server_up` | boolean | — | — | llama.cpp HTTP endpoint reachable |
-| `model` | string enum | — | `deepseek-flash|deepseek-v4-pro` | Active model |
+| `model` | string enum | — | `gemma|deepseek-flash|deepseek-v4-pro` | Active model (served alias; catalog pins remain legal) |
 | `active_requests` | integer | count | ≥ 0 | In-flight requests |
 | `queue_depth` | integer | count | ≥ 0 | Waiting requests |
 | `tokens_per_s` | number | tok/s | ≥ 0 | Generation throughput |
@@ -259,7 +283,12 @@ via the router's `/v1/models` endpoint rather than this single field.
 ### 4.8 Service status — C0 (extension)
 
 `services[]` — systemd unit state. `name` is a fixed allowlist; anything else is
-dropped at ingest.
+dropped at ingest. The array is emitted on **every** sample (a missing list renders
+as "no services to show", which is indistinguishable from a node that reports
+none): `termini-bootstrap` is the unit producing the sample, `lxd` and `sshd` are
+reported from their systemd state on every node, and `llama-cpp` appears on the
+node that hosts the inference front door and nowhere else. A service the node does
+not have is omitted, never reported as `stopped`.
 
 Allowlist: `termini-bootstrap`, `lxd`, `sshd`, `llama-cpp`.
 

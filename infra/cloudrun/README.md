@@ -5,7 +5,7 @@ The three deploy targets, and why each sits where it does.
 | component | host | why there |
 |---|---|---|
 | **dashboard** | Firebase Hosting | static site; `firebase deploy --only hosting` |
-| **model (decision step)** | **Node C** — `llama.cpp`, CPU-only, `10.10.0.13:8080` | the operator's decision calls stay on-prem; see "Where the decision model runs" below |
+| **model (decision step)** | **controller loopback** — provider-only listener, `gemini-proxy` → `aiplatform.googleapis.com`; the **agent** surface is Node C (`llama.cpp`, CPU-only, `10.10.0.13:8080`, `backend=local`) | see "Where the decision model runs" below |
 | **model (managed reference)** | Cloud Run GPU, `asia-southeast1` | Google's own open-weights Gemma on a named GCP product, via a Model Garden image; scale-to-zero. Deployed, but the shipped operator does not point at it |
 | **controller** | Compute Engine VM, `asia-south1-a` | it persists to **SQLite** — Cloud Run's filesystem is ephemeral (issue #96) |
 
@@ -54,7 +54,7 @@ body: {"action": "restart", "force": true, "timeout": 30}
 > **On a real node the stub is not needed.** A node booted from the baked image
 > (`image/pipeline`, D3) **initialises LXD itself** (`lxd init --preseed`, API on
 > `:8443`) and **preloads the workload image the operator launches**
-> (`agent-vm/2026.10.0`, per-node `agent-os/w4`) into its local image store — so
+> (`agent-vm/2026.10.0`, per-node `agent-os/w5`) into its local image store — so
 > `instance.create` has a real target with nothing to install at boot. The stub
 > exists only for the single-host demo, where the "nodes" are LXD containers and
 > the controller runs on a Cloud Run VM with no route to a node's `:8443`.
@@ -71,15 +71,29 @@ Two things bite here:
 
 ## Where the decision model runs — and the measured latency
 
-The operator's decision step is served by **`llama.cpp` on Node C** (CPU-only,
-`n2-standard-8`, alias `gemma` = Gemma 3 4B IT), reached over the underlay at
-`http://10.10.0.13:8080`. `setup-operator-node-c.sh` applies that wiring (the
-on-prem counterpart of `setup-operator-model.sh`, which points the same seam at
-the managed Cloud Run model); set `TERMINI_INFERENCE_BASE_URL` to Node C and the
-`termini/decision` adapter's call goes to Node C.
+**Shipped (since the inference split, `infra-decisions.md` D9 / kanban
+`t_aa7a70f9`): the diagnosis runs on the CONTROLLER.** The operator's decision step
+calls the controller's own **provider-only listener** on loopback
+(`http://127.0.0.1:8085`, `backend=gemini-proxy` → `aiplatform.googleapis.com`,
+answering with `gemini-2.5-flash`), installed by
+`infra/inference/setup-inference-surfaces.sh`. The substituted prompt is C0
+telemetry only, and the user decided on 2026-10-15 (Q1/Q1b) that it may leave the
+premises as part of the managed service. A round-trip is **seconds**.
+
+**The agent-facing surface is Node C**, and it is a different listener with a
+different guarantee: `llama.cpp` (CPU-only, `n2-standard-8`, alias `gemma` =
+Gemma 3 4B IT) behind the front door on `http://10.10.0.13:8080` in
+`backend=local`, reached over the underlay. Client/agent traffic is answered by
+that node's own weights and the port offers no forwarded backend.
+
+`setup-operator-node-c.sh` is the **pre-split** wiring (it pointed the diagnosis at
+Node C, the counterpart of `setup-operator-model.sh` pointing it at the managed
+Cloud Run model). It still exists as an explicit opt-in — a fully on-prem decision
+path — but it **refuses to run** without `--allow-unsplit`, because running it would
+put the diagnosis back on the agent surface at the latency below.
 
 **Raw measurement on Node C** (`n2-standard-8`, 8 threads, `--ctx-size 16384 --parallel 1`,
-the pinned `gemma` GGUF = Gemma 3 4B IT Q4_K_M):
+the pinned `gemma` GGUF = Gemma 3 4B IT Q4_K_M) — i.e. what the **local** path costs:
 
 | request | prompt tokens | generation | wall clock |
 |---|---|---|---|

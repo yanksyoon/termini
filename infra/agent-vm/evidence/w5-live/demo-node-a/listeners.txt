@@ -1,0 +1,6 @@
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess                                   
+LISTEN 0      5          127.0.0.1:9101      0.0.0.0:*    users:(("termini-agent",pid=660,fd=4))   
+LISTEN 0      4096         0.0.0.0:22        0.0.0.0:*    users:(("systemd",pid=1,fd=70))          
+LISTEN 0      4096   127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=151,fd=15))
+LISTEN 0      4096      127.0.0.54:53        0.0.0.0:*    users:(("systemd-resolve",pid=151,fd=17))
+LISTEN 0      4096            [::]:22           [::]:*    users:(("systemd",pid=1,fd=71))          

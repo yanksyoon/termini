@@ -1,0 +1,589 @@
+"""Contract-shaped tests for the operator demo fault console (controller-api.md §4.7).
+
+The endpoints are contract, so these tests exercise the *wire*: a real controller
+process on an ephemeral port, a real node registration, real telemetry, and the
+`POST/GET/DELETE /v1/projects/{pid}/demo/faults` routes with and without
+credentials. What they pin:
+
+  * auth — no token `401`, `node_token` `403` (the route is not reachable from a
+    node context), project token `201`;
+  * the injected series drives the frozen rule (`oom-guard-01` …) past its enter
+    threshold and the rule's hysteresis returns below its clear threshold on clear;
+  * while an injection is open, the node's own telemetry is superseded;
+  * refusals — a second injection for the same (node, rule) `409 fault_already_active`,
+    a re-injection while a remediation for that (node, rule) is in flight `409
+    remediation_in_flight`, provenance mismatch `422`;
+  * TTL — an injection ends by itself, loudly, at its TTL (never silently);
+  * restart — an injection a previous process can no longer drive is swept to
+    `expired` at boot;
+  * the console page — `console/serve.py` serves `/console/` with the controller
+    URL and project id but NEVER the project token.
+
+Run: python3 -m unittest tests.test_demo_faults -v   (from the repo root)
+"""
+from __future__ import annotations
+
+import json
+import pathlib
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+import urllib.error
+import urllib.request
+from typing import Any
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+CONTROLLER = REPO / "controller"
+sys.path.insert(0, str(CONTROLLER))
+
+from app import demo_faults  # noqa: E402
+from app.operator import detect  # noqa: E402
+
+GiB = 1024 ** 3
+PROJECT_ID = "01J0DEM0WARM000000000000AB"
+PROJECT_TOKEN = "test-project-token"
+_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def ulid(n: int = 0) -> str:
+    val = ((int(time.time() * 1000) & ((1 << 48) - 1)) << 80) | ((n * 2654435761) & ((1 << 80) - 1))
+    out = []
+    for _ in range(26):
+        out.append(_CROCKFORD[val & 0x1F])
+        val >>= 5
+    return "".join(reversed(out))
+
+
+def http(base: str, method: str, path: str, body=None, token: str | None = None,
+         timeout: float = 15.0) -> tuple[int, Any]:
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read()
+            return r.status, (json.loads(raw) if raw else None)
+    except urllib.error.HTTPError as e:
+        try:
+            raw = e.read()
+        finally:
+            e.close()
+        try:
+            return e.code, (json.loads(raw) if raw else None)
+        except json.JSONDecodeError:
+            return e.code, raw.decode(errors="replace")
+
+
+def free_port() -> int:
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+# --------------------------------------------------------------------------- #
+# pure-function tests (no server)
+# --------------------------------------------------------------------------- #
+class SampleTests(unittest.TestCase):
+    """The injected series must move exactly the metric its scenario names."""
+
+    BASE = {
+        "ram_total_bytes": 8 * GiB, "ram_used_bytes": 1 * GiB, "cpu_util_pct": 1.0,
+        "disk": [{"path": "/dev/sda", "total_bytes": 100 * GiB, "free_bytes": 1,
+                  "write_latency_ms": 99.0, "mount_ro": True}],
+        "net": [{"iface": "eth0", "latency_ms": 42.0}],
+        "lxd_instances": [{"vm_id": "01M4AAAAAAAAAAAAAAAAAAAAAA", "ram_limit_bytes": 4 * GiB,
+                           "ram_used_bytes": 1 * GiB}],
+    }
+
+    def test_healthy_baseline_is_below_every_clear_threshold(self):
+        h = demo_faults.healthy_sample(self.BASE, seq=1, ts="2026-10-15T00:00:00.000Z")
+        rec = detect.recovered([h] * 5, detect.Thresholds())
+        self.assertEqual(rec, {r: True for r in detect.RULE_IDS}, rec)
+        self.assertFalse(h["disk"][0]["mount_ro"])
+
+    def test_each_scenario_breaches_its_own_rule(self):
+        h = demo_faults.healthy_sample(self.BASE, seq=1, ts="2026-10-15T00:00:00.000Z")
+        th = detect.Thresholds()
+        for scenario, rule in demo_faults.RULE_BY_SCENARIO.items():
+            with self.subTest(scenario=scenario):
+                s = demo_faults.fault_sample(h, scenario, None, seq=2,
+                                             ts="2026-10-15T00:00:01.000Z")
+                streak = detect.breach_streak([s], th)[rule]
+                self.assertTrue(streak, f"{scenario} did not breach {rule}")
+                # …and only its own rule: the other scenarios stay healthy.
+                others = [r for r in detect.RULE_IDS if r != rule]
+                for other in others:
+                    self.assertFalse(detect.breach_streak([s], th)[other],
+                                     f"{scenario} also breached {other}")
+
+    def test_clear_sample_count_matches_the_rules_hysteresis(self):
+        th = detect.Thresholds()
+        self.assertEqual(demo_faults.clear_samples_for("oom-guard-01", th),
+                         th.oom_clear_consecutive)
+        self.assertEqual(demo_faults.clear_samples_for("disk-fail-01", th),
+                         th.disk_fail_clear_consecutive)
+        self.assertGreaterEqual(demo_faults.clear_samples_for("nonsense", th), 1)
+
+    def test_recovery_burst_provably_rearms_the_rule(self):
+        """The exact series a clear emits must satisfy `recovered` for the rule."""
+        h = demo_faults.healthy_sample(self.BASE, seq=1, ts="2026-10-15T00:00:00.000Z")
+        th = detect.Thresholds()
+        for scenario, rule in demo_faults.RULE_BY_SCENARIO.items():
+            faulted = demo_faults.fault_sample(h, scenario, None, seq=2,
+                                               ts="2026-10-15T00:00:01.000Z")
+            n = demo_faults.clear_samples_for(rule, th)
+            recovery = [demo_faults.healthy_sample(h, seq=3 + i,
+                                                   ts=f"2026-10-15T00:00:0{3 + i}.000Z")
+                        for i in range(n)]
+            self.assertTrue(detect.recovered([faulted] + recovery, th)[rule],
+                            f"{scenario}: {n} recovery sample(s) did not re-arm {rule}")
+
+
+# --------------------------------------------------------------------------- #
+# wire tests against a real controller process
+# --------------------------------------------------------------------------- #
+class FaultEndpointsTest(unittest.TestCase):
+    """Boots the controller once; every wire test drives the §4.7 routes."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.state = pathlib.Path(tempfile.mkdtemp(prefix="demo-faults-test-"))
+        cls.port = free_port()
+        cls.base = f"http://127.0.0.1:{cls.port}"
+        cls.db_path = str(cls.state / "controller.db")
+        env = dict(
+            __import__("os").environ,
+            TERMINI_HOST="127.0.0.1", TERMINI_PORT=str(cls.port),
+            TERMINI_DB_PATH=cls.db_path,
+            TERMINI_PROJECT_ID=PROJECT_ID, TERMINI_PROJECT_TOKEN=PROJECT_TOKEN,
+            TERMINI_BOOTSTRAP_TOKEN="t-boot-1,t-boot-2",
+            TERMINI_OPERATOR_ENABLED="true", TERMINI_OPERATOR_DRY_RUN="true",
+            TERMINI_OPERATOR_POLL_INTERVAL_S="1", TERMINI_OPERATOR_COOLDOWN_S="3",
+            TERMINI_OOM_CONSECUTIVE="2", TERMINI_OOM_CLEAR_CONSECUTIVE="2",
+            TERMINI_DEMO_FAULT_GUARD_S="120",
+        )
+        cls.log = open(cls.state / "controller.log", "w")
+        cls.proc = subprocess.Popen([sys.executable, "-m", "app.main"], cwd=str(CONTROLLER),
+                                    env=env, stdout=cls.log, stderr=subprocess.STDOUT)
+        deadline = time.time() + 25
+        while time.time() < deadline:
+            try:
+                http(cls.base, "GET", "/v1/telemetry/recent", timeout=2)
+                break
+            except Exception:  # noqa: BLE001
+                time.sleep(0.2)
+        else:
+            raise AssertionError("controller did not start; see " + str(cls.state / "controller.log"))
+        cls._seq = 0
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.proc.terminate()
+        try:
+            cls.proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            cls.proc.kill()
+        cls.log.close()
+
+    def setUp(self):
+        """A fresh node per test.
+
+        The `remediation_in_flight` guard is per `(node, rule)`, so tests that
+        inject the same scenario must not share a node the operator has already
+        remediated — otherwise a test would be refused because of an earlier test's
+        episode rather than because of its own subject.
+        """
+        self.node = self._new_node()
+
+    # ------------------------------------------------------------- fixtures
+    @classmethod
+    def _mint_bootstrap(cls) -> str:
+        st, body = http(cls.base, "POST", "/v1/bootstrap-tokens", {"count": 1},
+                        token=PROJECT_TOKEN)
+        assert st in (200, 201) and body.get("tokens"), (st, body)
+        return body["tokens"][0]
+
+    @classmethod
+    def _new_node(cls, hostname: str | None = None, *, synthetic: bool = False) -> dict:
+        cls._seq += 1
+        host = hostname or f"test-node-{cls._seq:02d}"
+        body = {
+            "schema_version": "1.0", "synthetic": synthetic,
+            "machine": {"machine_id": host, "hostname": host,
+                        "cpu": {"model": "test", "cores": 4, "threads": 8},
+                        "memory": {"total_bytes": 8 * GiB},
+                        "disks": [{"device": "/dev/sda", "size_bytes": 100 * GiB}],
+                        "gpus": []},
+        }
+        st, reg = http(cls.base, "POST", "/v1/nodes/register", body,
+                       token=cls._mint_bootstrap())
+        assert st in (200, 201), (st, reg)
+        reg["synthetic"] = synthetic
+        cls._telemetry(reg, 100)
+        return reg
+
+    @classmethod
+    def _telemetry(cls, node: dict, seq: int):
+        sample = {
+            "seq": seq, "ts": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+            "uptime_sec": 3600 + seq, "cpu_util_pct": 31.2, "cpu_core_count": 8,
+            "ram_total_bytes": 8 * GiB, "ram_used_bytes": int(8 * GiB * 0.62),
+            "hostname": "5f2a9c1e7b4d4a1f", "ip_local": "10.0.0.0/24",
+            "mac_address": "9c1e7b4d4a1f5f2a", "project_id": PROJECT_ID,
+            "disk": [{"path": "/dev/sda", "total_bytes": 100 * GiB,
+                      "free_bytes": int(100 * GiB * 0.78), "write_latency_ms": 3.0,
+                      "mount_ro": False}],
+            "net": [{"iface": "eth0", "rx_bytes": 1, "tx_bytes": 1, "latency_ms": 0.8}],
+            "services": [{"name": "lxd", "status": "running"}],
+            "lxd_instances": [{"vm_id": "01M4AAAAAAAAAAAAAAAAAAAAAA", "state": "running",
+                               "ram_limit_bytes": 4 * GiB, "ram_used_bytes": 1 * GiB}],
+        }
+        env = {"_redaction": {"version": "redactor-config v3", "config_hash": "3f2a1b",
+                              "result": "ok"},
+               "call_id": ulid(seq), "node_id": node["node_id"], "schema_version": 1,
+               "governance_chain_tip": ulid(seq), "samples": [sample]}
+        return http(cls.base, "POST", f"/v1/nodes/{node['node_id']}/telemetry", env,
+                    token=node["node_token"])
+
+    def _inject(self, **body):
+        body.setdefault("node_id", self.node["node_id"])
+        body.setdefault("target", "real")
+        body.setdefault("duration_s", 30)
+        return http(self.base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults", body,
+                    token=PROJECT_TOKEN)
+
+    def _clear(self, injection_id: str):
+        return http(self.base, "DELETE",
+                    f"/v1/projects/{PROJECT_ID}/demo/faults/{injection_id}", token=PROJECT_TOKEN)
+
+    def _metrics(self, node_id: str, metric: str = "ram_used_bytes"):
+        st, body = http(self.base, "GET",
+                        f"/v1/projects/{PROJECT_ID}/nodes/{node_id}/metrics"
+                        f"?metrics={metric}&resolution=raw", token=PROJECT_TOKEN)
+        self.assertEqual(st, 200, body)
+        series = body["series"]
+        return series[0]["points"] if series else []
+
+    def _rows(self, sql: str, args=()) -> list[dict]:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in conn.execute(sql, args).fetchall()]
+        finally:
+            conn.close()
+
+    # ------------------------------------------------------------ auth tests
+    def test_start_requires_a_token(self):
+        st, body = http(self.base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults",
+                        {"node_id": self.node["node_id"], "scenario": "oom", "target": "real"})
+        self.assertEqual(st, 401, body)
+        self.assertEqual(body["error"]["code"], "UNAUTHENTICATED")
+
+    def test_node_token_cannot_inject(self):
+        st, body = http(self.base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults",
+                        {"node_id": self.node["node_id"], "scenario": "oom", "target": "real"},
+                        token=self.node["node_token"])
+        self.assertEqual(st, 403, body)
+        self.assertEqual(body["error"]["code"], "PERMISSION_DENIED")
+
+    def test_list_requires_a_token(self):
+        st, body = http(self.base, "GET", f"/v1/projects/{PROJECT_ID}/demo/faults")
+        self.assertEqual(st, 401, body)
+
+    def test_clear_requires_a_token(self):
+        st, body = http(self.base, "DELETE",
+                        f"/v1/projects/{PROJECT_ID}/demo/faults/{ulid(9)}")
+        self.assertEqual(st, 401, body)
+
+    # ------------------------------------------------------- validation tests
+    def test_unknown_scenario_is_rejected(self):
+        st, body = self._inject(scenario="meltdown")
+        self.assertEqual(st, 422, body)
+        self.assertEqual(body["error"]["code"], "INVALID_ARGUMENT")
+
+    def test_duration_out_of_range_is_rejected(self):
+        st, body = self._inject(scenario="oom", duration_s=1)
+        self.assertEqual(st, 422, body)
+
+    def test_target_must_match_the_nodes_provenance(self):
+        synth = self._new_node(synthetic=True)
+        st, body = http(self.base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults",
+                        {"node_id": synth["node_id"], "scenario": "oom",
+                         "target": "real", "duration_s": 30}, token=PROJECT_TOKEN)
+        self.assertEqual(st, 422, body)
+        self.assertEqual(body["error"]["details"][0]["field"], "target")
+
+    def test_unknown_node_is_not_found(self):
+        st, body = self._inject(node_id=ulid(77), scenario="oom")
+        self.assertEqual(st, 404, body)
+
+    # ------------------------------------------------------- behaviour tests
+    def test_inject_clear_cycle_drives_and_rearms_the_rule(self):
+        """The headline acceptance: inject → the rule fires → clear → it re-arms."""
+        st, inj = self._inject(scenario="oom", duration_s=60)
+        self.assertEqual(st, 201, inj)
+        self.assertEqual(inj["rule_id"], "oom-guard-01")
+        self.assertTrue(inj["open"])
+        injection_id = inj["injection_id"]
+
+        # The injected series is the node's series while it runs, and it breaches.
+        peak = 0.0
+        fired = None
+        for _ in range(12):
+            time.sleep(1.0)
+            points = self._metrics(self.node["node_id"])
+            peak = max([p["v"] / (8 * GiB) * 100 for p in points] or [peak, 0.0])
+            st, events = http(self.base, "GET",
+                              f"/v1/operator/events?node={self.node['node_id']}&limit=5",
+                              token=PROJECT_TOKEN)
+            if events and events.get("events"):
+                fired = events["events"][0]
+            if fired and peak >= 95.0:
+                break
+        self.assertGreaterEqual(peak, 95.0, "injected RAM never crossed the OOM threshold")
+        self.assertIsNotNone(fired, "oom-guard-01 never fired")
+        self.assertEqual(fired["rule_id"], "oom-guard-01")
+
+        # The node's own report is superseded while the injection holds the series.
+        st, resp = self._telemetry(self.node, 200)
+        self.assertEqual(st, 202, resp)
+        self.assertEqual(resp["accepted"], 0)
+        self.assertEqual(resp["rejected"], 1)
+
+        # Operator log: the client dashboard shows who injected it. Scoped to THIS
+        # injection — the class shares one controller DB across tests.
+        logs = self._rows("SELECT actor, message FROM operator_logs ORDER BY log_id")
+        injected = [l for l in logs
+                    if "fault injected by operator" in l["message"] and injection_id in l["message"]]
+        self.assertTrue(injected, logs[-3:])
+        self.assertEqual(injected[0]["actor"], "human")
+
+        # Clear: a recovery burst, then the rule is provably below its threshold.
+        st, cleared = self._clear(injection_id)
+        self.assertEqual(st, 200, cleared)
+        self.assertEqual(cleared["state"], "recovering")
+        need = cleared["clear_samples_needed"]
+        time.sleep(need + 2)
+        st, listing = http(self.base, "GET",
+                           f"/v1/projects/{PROJECT_ID}/demo/faults", token=PROJECT_TOKEN)
+        row = next(f for f in listing["faults"] if f["injection_id"] == injection_id)
+        self.assertEqual(row["state"], "cleared")
+        self.assertEqual(row["recovery_samples"], need)
+        tail = self._metrics(self.node["node_id"])[-need:]
+        self.assertTrue(tail, "no samples after the clear")
+        for p in tail:
+            self.assertLessEqual(p["v"] / (8 * GiB) * 100, 90.0,
+                                 "the restored series is not below the OOM clear band")
+        cleared_logs = [l for l in self._rows("SELECT message FROM operator_logs")
+                        if "back below threshold" in l["message"] and injection_id in l["message"]]
+        self.assertTrue(cleared_logs, "the clear was not recorded in the operator log")
+
+        # Idempotent, and a fault is always clearable.
+        st, again = self._clear(injection_id)
+        self.assertEqual(st, 200)
+        self.assertEqual(again["status"], "already_cleared")
+
+    def test_second_injection_for_the_same_rule_is_refused(self):
+        st, inj = self._inject(scenario="latency", duration_s=120)
+        self.assertEqual(st, 201, inj)
+        try:
+            st, dup = self._inject(scenario="latency", duration_s=30)
+            self.assertEqual(st, 409, dup)
+            self.assertEqual(dup["error"]["code"], "CONFLICT")
+            reasons = [d["reason"] for d in dup["error"]["details"]]
+            self.assertIn("fault_already_active", reasons)
+            self.assertIn(inj["injection_id"], json.dumps(dup))
+            # …but a different rule on the same node is still injectable.
+            st, other = self._inject(scenario="disk-degrade", duration_s=120)
+            self.assertEqual(st, 201, other)
+            self._clear(other["injection_id"])
+        finally:
+            self._clear(inj["injection_id"])
+
+    def test_reinjection_while_a_remediation_is_in_flight_is_refused(self):
+        """Safety rule 3: do not stack a fault on a rule the operator is working."""
+        st, inj = self._inject(scenario="disk-fail", duration_s=60)
+        self.assertEqual(st, 201, inj)
+        # disk-fail-01 fires on its FIRST breaching sample, so the loop remediates
+        # within a couple of seconds; the guard window (600 s here) then holds.
+        fired = False
+        for _ in range(15):
+            time.sleep(1.0)
+            rows = self._rows("SELECT id FROM health_events WHERE rule_id = 'disk-fail-01'")
+            if rows:
+                fired = True
+                break
+        self.assertTrue(fired, "disk-fail-01 never fired")
+        self._clear(inj["injection_id"])
+        time.sleep(3)
+        st, again = self._inject(scenario="disk-fail", duration_s=30)
+        self.assertEqual(st, 409, again)
+        reasons = [d["reason"] for d in again["error"]["details"]]
+        self.assertIn("remediation_in_flight", reasons)
+
+    def test_injection_ends_loudly_at_its_ttl(self):
+        synth = self._new_node(synthetic=True)
+        st, inj = self._inject(node_id=synth["node_id"], target="synthetic",
+                               scenario="latency", duration_s=5)
+        self.assertEqual(st, 201, inj)
+        time.sleep(5 + inj["clear_samples_needed"] + 4)
+        st, listing = http(self.base, "GET", f"/v1/projects/{PROJECT_ID}/demo/faults",
+                           token=PROJECT_TOKEN)
+        row = next(f for f in listing["faults"] if f["injection_id"] == inj["injection_id"])
+        self.assertEqual(row["state"], "cleared")
+        self.assertEqual(row["clear_reason"], "ttl_expired")
+        self.assertEqual(row["cleared_by"], "ttl")
+        self.assertTrue([l for l in self._rows("SELECT message FROM operator_logs")
+                         if "TTL expired" in l["message"]])
+
+    def test_clear_all_closes_every_open_injection(self):
+        a = self._inject(scenario="oom", duration_s=120)[1]
+        b = self._inject(scenario="disk-degrade", duration_s=120)[1]
+        self.assertEqual(a["state"], "active")
+        self.assertEqual(b["state"], "active")
+        st, body = http(self.base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults/clear",
+                        {"reason": "test_clear_all"}, token=PROJECT_TOKEN)
+        self.assertEqual(st, 200, body)
+        self.assertGreaterEqual(body["count"], 2)
+        self.assertTrue(all(f["state"] == "recovering" for f in body["cleared"]))
+        self.assertEqual(body["cleared"][0]["clear_reason"], "test_clear_all")
+        # A clear runs a recovery burst: the injections stay `recovering` (and are
+        # therefore still "open") until each has emitted its re-arm samples.
+        need = max(f["clear_samples_needed"] for f in body["cleared"])
+        time.sleep(need + 2)
+        st, listing = http(self.base, "GET",
+                           f"/v1/projects/{PROJECT_ID}/demo/faults?state=open",
+                           token=PROJECT_TOKEN)
+        self.assertEqual([f["injection_id"] for f in listing["faults"]], [])
+        st, listing = http(self.base, "GET",
+                           f"/v1/projects/{PROJECT_ID}/demo/faults", token=PROJECT_TOKEN)
+        for finished in body["cleared"]:
+            row = next(f for f in listing["faults"]
+                       if f["injection_id"] == finished["injection_id"])
+            self.assertEqual(row["state"], "cleared")
+            self.assertEqual(row["cleared_by"], "human")
+
+    def test_list_reports_every_injection_and_its_scenarios(self):
+        st, listing = http(self.base, "GET", f"/v1/projects/{PROJECT_ID}/demo/faults",
+                           token=PROJECT_TOKEN)
+        self.assertEqual(st, 200)
+        self.assertEqual(listing["scenarios"], list(demo_faults.SCENARIO_NAMES))
+        self.assertIn("open_count", listing)
+        self.assertTrue(all("injection_id" in f for f in listing["faults"]))
+
+
+class RestartSweepTest(unittest.TestCase):
+    """An injection no process can drive must not be reported as live (§4.7)."""
+
+    def test_injection_left_open_by_a_dead_process_is_swept_at_boot(self):
+        import os
+        state = pathlib.Path(tempfile.mkdtemp(prefix="demo-faults-sweep-"))
+        port = free_port()
+        base = f"http://127.0.0.1:{port}"
+        db_path = str(state / "controller.db")
+        env = dict(os.environ, TERMINI_HOST="127.0.0.1", TERMINI_PORT=str(port),
+                   TERMINI_DB_PATH=db_path, TERMINI_PROJECT_ID=PROJECT_ID,
+                   TERMINI_PROJECT_TOKEN=PROJECT_TOKEN,
+                   TERMINI_BOOTSTRAP_TOKEN="t-boot-1",
+                   TERMINI_OPERATOR_ENABLED="false")
+        log = open(state / "controller.log", "w")
+
+        def start():
+            proc = subprocess.Popen([sys.executable, "-m", "app.main"],
+                                    cwd=str(CONTROLLER), env=env,
+                                    stdout=log, stderr=subprocess.STDOUT)
+            deadline = time.time() + 20
+            while time.time() < deadline:
+                try:
+                    http(base, "GET", "/v1/telemetry/recent", timeout=2)
+                    return proc
+                except Exception:  # noqa: BLE001
+                    time.sleep(0.2)
+            raise AssertionError("controller did not start")
+
+        proc = start()
+        try:
+            st, reg = http(base, "POST", "/v1/nodes/register", {
+                "schema_version": "1.0",
+                "machine": {"machine_id": "sweep-node", "hostname": "sweep-node",
+                            "cpu": {"cores": 4, "threads": 8},
+                            "memory": {"total_bytes": 8 * GiB},
+                            "disks": [{"device": "/dev/sda", "size_bytes": 100 * GiB}]},
+            }, token="t-boot-1")
+            self.assertIn(st, (200, 201), reg)
+            st, inj = http(base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults",
+                           {"node_id": reg["node_id"], "scenario": "oom", "duration_s": 120,
+                            "target": "real"}, token=PROJECT_TOKEN)
+            self.assertEqual(st, 201, inj)
+        finally:
+            proc.terminate()
+            proc.wait(timeout=10)
+
+        proc2 = start()
+        try:
+            st, listing = http(base, "GET", f"/v1/projects/{PROJECT_ID}/demo/faults",
+                               token=PROJECT_TOKEN)
+            row = next(f for f in listing["faults"]
+                       if f["injection_id"] == inj["injection_id"])
+            self.assertEqual(row["state"], "expired", row)
+            self.assertEqual(row["cleared_by"], "controller_restart")
+            self.assertFalse(row["open"])
+        finally:
+            proc2.terminate()
+            proc2.wait(timeout=10)
+            log.close()
+
+
+# --------------------------------------------------------------------------- #
+# the console page itself
+# --------------------------------------------------------------------------- #
+class FaultConsolePageTest(unittest.TestCase):
+    """`console/serve.py` serves the console without ever handing out the token."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPO / "console"))
+        import serve  # noqa: E402  (console/serve.py)
+
+        cls.serve = serve
+        cls.cfg = serve.ConsoleConfig()
+        cls.cfg.controller = "http://127.0.0.1:8085"
+        cls.cfg.project = PROJECT_ID
+        cls.cfg.token = "SUPER-SECRET-PROJECT-TOKEN"
+        cls.cfg.key = "~/.ssh/termini_operator"
+
+    def test_index_gets_the_url_and_project_but_never_the_token(self):
+        base = (REPO / "console" / "fault_console" / "index.html").read_bytes()
+        out = self.cfg.fault_index_html(base).decode()
+        self.assertIn("http://127.0.0.1:8085", out)
+        self.assertIn(PROJECT_ID, out)
+        self.assertNotIn("SUPER-SECRET-PROJECT-TOKEN", out)
+        self.assertIn("__TERMINI_FAULT_DEFAULTS__", out)
+
+    def test_missing_anchor_fails_loudly(self):
+        with self.assertRaises(RuntimeError):
+            self.cfg.fault_index_html(b"<html><body>no script here</body></html>")
+
+    def test_console_js_calls_the_contracted_routes(self):
+        js = (REPO / "console" / "fault_console" / "js" / "app.js").read_text()
+        for route in ('"/demo/faults"', "`/demo/faults/${id}`", '"/demo/faults/clear"'):
+            self.assertIn(route, js)
+
+    def test_dashboard_nav_does_not_link_the_console(self):
+        """The guardrail: the client-facing surface must not advertise it."""
+        for path in (REPO / "dashboard" / "index.html").rglob("*"):
+            if path.is_file() and path.suffix in (".html", ".js", ".mjs"):
+                self.assertNotIn("/console/", path.read_text(errors="replace"),
+                                 f"{path} links the operator console")
+
+
+if __name__ == "__main__":
+    unittest.main()

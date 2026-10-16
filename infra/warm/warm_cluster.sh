@@ -28,7 +28,7 @@ set -euo pipefail
 JSON=0; QUIET=0
 HOLD="${TERMINI_CLUSTER_HOLD_S:-8}"
 CADENCE_MS="${TERMINI_TELEMETRY_INTERVAL_MS:-1000}"
-AGENT_IMAGE="${TERMINI_AGENT_IMAGE_ALIAS:-agent-os/w4}"
+AGENT_IMAGE="${TERMINI_AGENT_IMAGE_ALIAS:-agent-os/w5}"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --json) JSON=1 ;;

@@ -75,10 +75,9 @@ export class OfflineBackend {
     return sample;
   }
 
-  async listNodes() {
+  async listNodes({ includeSynthetic = false } = {}) {
     const now = Date.now();
-    return {
-      nodes: NODES.map((n, i) => ({
+    const nodes = NODES.map((n, i) => ({
         ...n,
         status: i === 2 ? "degraded" : "online",
         last_seen_at: new Date(now - (i === 2 ? 22000 : 1200)).toISOString(),
@@ -89,8 +88,94 @@ export class OfflineBackend {
           gpus: i === 2 ? [{ vendor: "nvidia", model: "L4", vram_bytes: 25769803776 }] : [],
         },
         capacity: { cpu_cores: 16, ram_gb: 32, disk_gb: 256, gpu_free: i === 2 ? 1 : 0, cpu_allocated: 4, ram_allocated_gb: 8 },
-      })),
+      }));
+    return { nodes };
+  }
+
+  /**
+   * Offline decision fixtures: shaped exactly like /v1/operator/{decisions,
+   * events,audits} so the decisions panel (and its join) can be exercised with
+   * no controller at all. Deliberately contains BOTH a model decision and a
+   * deterministic fallback, and no egress block is invented here — the decider
+   * label comes from the stream line below.
+   */
+  operatorFixtures() {
+    if (this._fixtures) return this._fixtures;
+    const now = Date.now();
+    const [a, , c] = NODES;
+    const instance = "01H4KZ9Q2R3T5V7W9X1Y3Z5E4H";
+    const mk = (i, over) => {
+      const decided_at = new Date(now - (i + 1) * 96_000).toISOString();
+      const event_id = ulidish();
+      const id = ulidish();
+      const decision = {
+        id,
+        event_id,
+        node_id: over.node_id,
+        rule_id: over.rule_id,
+        playbook: over.rule_id,
+        action_kind: over.action_kind,
+        action_params: over.action_params,
+        reason: over.reason,
+        decided_at,
+        decision_source: over.source,
+        confidence: over.confidence ?? null,
+        fallback_reason: over.fallback_reason ?? null,
+      };
+      const event = {
+        id: event_id,
+        node_id: over.node_id,
+        rule_id: over.rule_id,
+        type: over.type,
+        metric: over.metric,
+        value: over.value,
+        threshold: over.threshold,
+        evidence_seq_start: 1000 + i * 10,
+        evidence_seq_end: 1002 + i * 10,
+        fired_at: decided_at,
+        breach_started_at: new Date(Date.parse(decided_at) - 8000).toISOString(),
+        evidence: [0, 1, 2].map((k) => this._sample(NODES.find((n) => n.node_id === over.node_id) || a, now - (i + 1) * 96_000 + k * 1000)),
+      };
+      const audit = {
+        id: ulidish(),
+        decision_id: id,
+        event_id,
+        node_id: over.node_id,
+        rule_id: over.rule_id,
+        action_kind: over.action_kind,
+        result: over.result,
+        detail: over.result === "ok" ? "instance restarted" : "HTTP 404: Instance not found",
+        lxd_method: "PUT",
+        lxd_path: `/1.0/instances/${instance}/state`,
+        lxd_body: JSON.stringify({ action: over.action_kind.split(".")[1], force: true }),
+        idempotency_key: `${over.node_id}:${over.rule_id}:${over.action_kind}:${instance}:${i}`,
+        dry_run: 0,
+        executed_at: decided_at,
+        lxd_endpoint: "https://10.10.0.11:8443",
+      };
+      return { decision, event, audit };
     };
+    const rows = [
+      mk(0, { node_id: c.node_id, rule_id: "disk-degrade-01", type: "disk_degrade", metric: "disk_write_latency_ms", value: 120, threshold: "free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s", action_kind: "instance.stop", action_params: { instance_name: instance, force: true }, reason: "disk write latency on /dev/sda is 120ms, exceeding the 50ms threshold; stopping the instance with the highest disk usage will reduce disk I/O.", source: "model", confidence: 0.85, result: "ok" }),
+      mk(1, { node_id: a.node_id, rule_id: "oom-guard-01", type: "oom", metric: "ram_used_bytes", value: 33114165248, threshold: ">= 95% of ram_total_bytes for 2 consecutive samples", action_kind: "instance.restart", action_params: { instance_name: instance, force: true, timeout_s: 30 }, reason: "host RAM at 96.4% of total with one instance holding 29%; restarting it reclaims memory.", source: "model", confidence: 0.9, result: "ok" }),
+      mk(2, { node_id: a.node_id, rule_id: "oom-guard-01", type: "oom", metric: "ram_used_bytes", value: 33000000000, threshold: ">= 95% of ram_total_bytes for 2 consecutive samples", action_kind: "instance.restart", action_params: { instance_name: instance, force: true, timeout_s: 30 }, reason: "playbook: restart the heaviest instance (RAM 96%)", source: "fallback", fallback_reason: "inference_unavailable", result: "error" }),
+      mk(3, { node_id: c.node_id, rule_id: "latency-01", type: "latency", metric: "net_latency_ms", value: 240, threshold: "net_latency_ms >= 200 for 3 consecutive samples", action_kind: "instance.restart", action_params: { instance_name: instance }, reason: "network latency 240ms sustained; restart the agent instance.", source: "deterministic", result: "ok" }),
+      mk(4, { node_id: c.node_id, rule_id: "gpu-oos-01", type: "gpu_oos", metric: "gpu_vram_used_bytes", value: 27000000000, threshold: "gpu_vram_used_bytes >= 95% of gpu_vram_total_bytes", action_kind: "image.prune", action_params: {}, reason: "VRAM pressure surfaced only, no autonomous action.", source: "fallback", fallback_reason: "parse_error", result: "error" }),
+    ];
+    this._fixtures = rows;
+    return rows;
+  }
+
+  async operatorDecisions(limit = 50) {
+    return { decisions: this.operatorFixtures().map((r) => r.decision).slice(0, limit) };
+  }
+
+  async operatorEvents(limit = 50) {
+    return { events: this.operatorFixtures().map((r) => r.event).slice(0, limit) };
+  }
+
+  async operatorAudits(limit = 50) {
+    return { audits: this.operatorFixtures().map((r) => r.audit).slice(0, limit) };
   }
 
   async getNode(nodeId) {
@@ -223,6 +308,12 @@ function randomLine(backend) {
     { severity: "info", message: `Telemetry sample accepted from ${node.registration_id}.` },
     { severity: "debug", message: "Sampling interval 1000 ms (demo profile)." },
     { severity: "info", message: `Health flags recomputed for ${node.registration_id}.` },
+    {
+      severity: "info",
+      message:
+        "externalModelCall after endpoint=http://127.0.0.1:8080 backend=local egress=in-vpc " +
+        "model=gemma answered_by=local-weights outcome=returned request_id=" + ulidish(),
+    },
     { severity: "warn", message: `disk-degrade-01 fired on ${node.registration_id}: write_latency_ms ≥ 50 (sample), flag + alert only.` },
     { severity: "error", message: `oom-guard-01 fired on ${node.registration_id}: ram_used_bytes ≥ 95% ×2, advising vm.resize (auto).`, remediation: { type: "vm.resize", status: "succeeded", command_id: ulidish() } },
   ];

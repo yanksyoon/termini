@@ -765,6 +765,293 @@ treated as remote and refused `403`.
 
 ---
 
+## 4.7 Operator demo fault injection (operator-only)
+
+**Operator console, not a client surface.** These endpoints exist for the operator
+who runs the demo (`console/fault_console/`, served at `/console/`). They are
+authenticated with `project_token` only — like §4.2 — and they are **never** part
+of the client-facing dashboard: the route is not linked from the dashboard's
+navigation, and a request that presents a `node_token` (or no token at all) is
+refused. A client must not be able to inject a fault.
+
+**Why the route exists.** Fault injection used to be `console/seed_demo.py`: a CLI
+that registers two synthetic nodes and oscillates their telemetry. There was no way
+to trigger a *specific* fault, no way to target a chosen node, and no way to clear a
+running fault — so a demo run depended on the always-on seeder and on which half of
+its oscillation was on screen. These endpoints make injection an explicit,
+reversible operator action, and they make the seeder *optional* (it remains usable;
+nothing about the demo requires it — see `console/seed_demo.py`).
+
+**What an injection is.** There is no on-node fault agent in this build
+(`node-bootstrap.md` is specified, not shipped), so an injection is a
+**controller-owned telemetry series**: for its TTL the injector writes one sample
+per second for the target node through the *same* store path a node's own telemetry
+goes through (`telemetry_samples` / `telemetry_batches`, plus the `node.telemetry`
+stream). The charts, the frozen §8 rules and the AI-operator loop consume it exactly
+as if the node had reported it. Two consequences are normative:
+
+- **While an injection is open for a node, that node's own telemetry is
+  superseded.** A `POST /v1/nodes/{node_id}/telemetry` from that node is still
+  accepted at the transport level but stores **none** of its samples
+  (`202 {"accepted": 0, "rejected": <n>, "backpressure": "none"}`), so the injected
+  series is authoritative and the rule holds across its debounce count instead of
+  flapping between the fault and the node's healthy reports. Only one injection may
+  hold a node's series per (node, rule) — see the refusals below.
+- **The `demo_faults` row is the durable provenance** (migration `0014`), together
+  with the operator-log lines described below. The stored samples themselves are not
+  individually marked.
+
+### Scenarios
+
+The scenario set is the one the harness already implements (`chaos/chaos.json`), so
+an injected fault has the same signature the chaos runs prove.
+
+| `scenario`     | rule it drives     | injected signal |
+|----------------|--------------------|-----------------|
+| `oom`          | `oom-guard-01`     | host RAM → 97 % of `ram_total_bytes`, CPU raised, nested `lxd_instances[].ram_used_bytes` kept consistent |
+| `disk-degrade` | `disk-degrade-01`  | every `disk[].free_bytes` → 3 % of total, `write_latency_ms` → 80 |
+| `disk-fail`    | `disk-fail-01`     | every `disk[].mount_ro` → `true` (EXT4 remount-ro, Scenario B) |
+| `latency`      | `latency-01`       | every `net[].latency_ms` → 600 |
+
+`clear` is not a scenario: it is the `DELETE` below.
+
+### POST /v1/projects/{project_id}/demo/faults
+
+Start one injection. `project_token` auth, scoped to the token's project.
+
+Request:
+```json
+{ "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
+  "scenario": "oom",
+  "duration_s": 30,
+  "target": "real" }
+```
+
+- `node_id` must be a node of this project (the console offers the fleet listing,
+  `GET …/nodes`, including `?include=synthetic`).
+- `scenario` ∈ the table above.
+- `duration_s` is the injection's TTL, `5 ≤ duration_s ≤ 600` (default `30`).
+- `target` ∈ `real | synthetic` and must match the node's provenance
+  (`nodes.synthetic`); it exists so the operator states which kind of node they are
+  faulting, and a mismatch is refused rather than silently honoured.
+
+Response `201 Created`:
+```json
+{ "schema_version": "1.0",
+  "injection_id": "01M4349RQ3BM21NNW2A68CT3SQ",
+  "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
+  "node_id": "01M4349RPTT29RNTC6VBCXQ0RC",
+  "node_registration_id": "termini-node-a",
+  "node_role": "compute",
+  "scenario": "oom", "rule_id": "oom-guard-01", "target": "real",
+  "state": "active",
+  "duration_s": 30.0,
+  "started_at": "2026-10-04T07:49:00.000Z",
+  "expires_at": "2026-10-04T07:49:30.000Z",
+  "cleared_at": null, "cleared_by": null, "clear_reason": null,
+  "samples_written": 0, "recovery_samples": 0,
+  "clear_samples_needed": 3, "open": true }
+```
+
+`state` ∈ `active | recovering | cleared | expired`. `clear_samples_needed` is the
+number of consecutive healthy samples the driven rule's hysteresis needs to re-arm
+(`operator/detect.recovered`, per-rule `*_clear_consecutive`; 3 by default).
+
+### GET /v1/projects/{project_id}/demo/faults
+
+`project_token` auth. Query: `state=all|open` (default `all`), `limit` (as §4.2).
+Returns every injection this project has run, newest first:
+
+```json
+{ "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
+  "scenarios": ["oom", "disk-degrade", "disk-fail", "latency"],
+  "faults": [ { "…": "injection view as above" } ],
+  "open_count": 1 }
+```
+
+### DELETE /v1/projects/{project_id}/demo/faults/{injection_id}
+
+Clear one injection. `project_token` auth. Optional `?reason=<≤200 chars>`
+(default `cleared_by_operator`). Response `200 OK` with the injection view, whose
+`state` is now `recovering`:
+
+```json
+{ "injection_id": "01M4349RQ3BM21NNW2A68CT3SQ", "state": "recovering",
+  "clear_samples_needed": 3, "recovery_samples": 0,
+  "samples_written": 12, "open": true, "…": "…" }
+```
+
+Clearing **starts a recovery burst** rather than stopping: the injector keeps
+writing the node's healthy baseline for `clear_samples_needed` more samples (one per
+second) and then closes the episode, so the rule provably returns below its clear
+threshold and the operator log records the completion. Clearing an already-cleared
+injection is idempotent — `200` with `"status": "already_cleared"` (and
+`"already_expired"` for one closed by its TTL or a restart); an unknown
+`injection_id` is `404 NOT_FOUND`. A fault is always clearable: this endpoint never
+refuses on state.
+
+### POST /v1/projects/{project_id}/demo/faults/clear
+
+`project_token` auth. Clear every open injection, or just one node's. Body
+`{"node_id": "<id>", "reason": "<text>"}` (both optional) → `200`
+`{"cleared": [<injection view>…], "count": 2}`. This is the clear path for an
+environment whose reverse proxy drops `DELETE` (both are in the contract and both
+run the same recovery burst).
+
+### Refusals (both `409 CONFLICT`)
+
+| Condition | HTTP | `code` | `details[].reason` |
+|---|---|---|---|
+| An open injection already holds this `(node, rule)` while it is `active`/`recovering` | `409` | `CONFLICT` | `fault_already_active` (+ `injection_id`) |
+| A remediation for this `(node, rule)` is **in flight** | `409` | `CONFLICT` | `remediation_in_flight` (+ the shape: `pending_remediation` = the loop fired and its audit is not written yet, `recent_remediation` = an audit within the settle window) |
+| No telemetry and no hardware facts to build a baseline from | `409` | `CONFLICT` | `no_telemetry_baseline` |
+
+The second is safety rule §3 of the card: injecting onto a rule the operator is
+mid-remediation on would stack a second fault on the same episode. The settle window
+is `TERMINI_DEMO_FAULT_GUARD_S` (seconds, default `60`), configurable per
+environment — a demo that wants to re-inject the same scenario quickly lowers it.
+
+Malformed bodies are `422 INVALID_ARGUMENT` (unknown scenario, `duration_s` out of
+range, `target` missing or not matching the node's provenance, unknown `node_id` →
+`404 NOT_FOUND`). No token is `401 UNAUTHENTICATED`; a `node_token` is
+`403 PERMISSION_DENIED` — **the route is not reachable from a node context**.
+
+### TTL and restarts
+
+An injection may never outlive its TTL silently:
+
+- at `expires_at` the driver logs `fault TTL expired after <n>s — auto-clearing: …`
+  and runs the recovery burst (`state: recovering` → `cleared`,
+  `clear_reason: "ttl_expired"`);
+- an injection left `active`/`recovering` by a **previous controller process** is
+  swept at boot (`state: expired`, `cleared_by: "controller_restart"`) and logged —
+  the driver that owned it is gone, so reporting it as live would be a lie.
+
+Both are also events on the operator log (§7.2), which is where the client
+dashboard shows them.
+
+### Operator log (client-visible provenance)
+
+Every transition is appended to the project's operator log with `actor: "human"`, so
+the client dashboard's live AI-operator panel shows the injection the way
+`dashboard.md` §2.1 renders human-actor lines:
+
+```
+fault injected by operator: node termini-node-a scenario=oom rule=oom-guard-01
+  target=real ttl=30s (injection …, node telemetry superseded while active)
+node telemetry superseded by active fault injection … (warn, once per injection)
+fault cleared by operator: node termini-node-a scenario=oom rule=oom-guard-01 —
+  restoring the healthy series, 3 sample(s) to re-arm (injection …)
+fault cleared: node termini-node-a rule oom-guard-01 back below threshold after 3
+  healthy sample(s) (injection …)
+fault TTL expired after 30s — auto-clearing: … (injection …)
+```
+
+### Configuration
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `TERMINI_DEMO_FAULT_GUARD_S` | `60` | settle window during which a remediation for the same `(node, rule)` is treated as still in flight (the `409` above) |
+| `TERMINI_DEMO_FAULTS` | `on` | `off` disables the surface entirely (the endpoints then answer `503 INTERNAL` instead of pretending to inject) |
+
+Additive contract notes (§1.2): the `DELETE` verb is now part of the controller's
+CORS `Access-Control-Allow-Methods`, and the four routes above are added to §4.
+Nothing existing changed.
+
+---
+
+## 4.8 Client install surface (public, unauthenticated, secret-free)
+
+The routes a **customer's own machine** uses to join the deployment. They serve
+**static files** from the controller itself and carry **no credential of any
+class**: the credential in this flow is the customer's own single-use
+`bootstrap_token`, which their provider mints for them (§4.6) and the customer
+passes to the installer. The controller's `project_token` is never part of this
+flow — not in the artifact, not in the URL, not in a step of the install — which
+is exactly what this surface exists to make possible.
+
+| Route | Serves |
+|---|---|
+| `GET /install/termini-node.sh` | the customer-facing installer (`infra/bootstrap/client/termini-node-install.sh`), meant to be piped into `sh` |
+| `GET /install/termini-node-status.py` | `termini-node-status`, the client's own view of its node (installed by the installer) |
+| `GET /install/termini-bootstrap.py` | the node daemon, for a machine that did not come from the Termini node image |
+| `GET /install/termini-bootstrap.service` | the daemon's systemd unit |
+
+Rules:
+
+- **No token of any class.** `/install/` is the only unauthenticated prefix on the
+  controller. Requiring a token here would defeat the purpose: the only credential
+  the customer holds at this point is their one-time enrollment token, and the
+  project token must never reach a client (the card's guardrail).
+- **Named artifacts only.** The artifact is chosen by exact name from a table in
+  `controller/app/server.py` (`INSTALL_ARTIFACTS`); no part of the request path is
+  ever used to build a filesystem path, so there is no traversal to escape.
+  Anything that is not exactly `/install/<known-name>` is `404 NOT_FOUND`.
+- **Content type is the artifact's own** (`text/x-shellscript`, `text/x-python`,
+  `text/plain`) with `Cache-Control: no-store`, so rolling out a new installer
+  cannot be masked by an intermediary's cache.
+- **Deployment.** The artifacts are read from `infra/bootstrap/` in the deployed
+  tree (`TERMINI_INSTALL_DIR` overrides the location);
+  `infra/gcp/tools/deploy-termini-tree.sh` ships that directory with the
+  controller. A controller deployed without it answers `503 INTERNAL` rather than
+  `404`, so a missing artifact cannot be mistaken for a missing feature.
+
+The command a customer runs, end to end:
+
+```
+curl -fsSL https://<controller-host>/install/termini-node.sh | sudo sh -s -- \
+  --controller https://<controller-host> --token <their single-use credential>
+```
+
+After registration the customer reads the node back with the node's **own**
+`node_token` (`GET /v1/nodes/{node_id}/telemetry/recent`, §4.1) — never with the
+project token. Provider-side: `infra/bootstrap/client/issue-enrollment.py` mints
+the credential, preflights this surface, prints the command above and writes the
+handover file. Customer-facing documentation: `infra/bootstrap/client/README.md`.
+
+Additive contract note (§1.2): a public, unauthenticated, static `/install/`
+prefix is added to the controller's route surface. No existing route, payload or
+token rule changed.
+
+## 4.9 Agent tasks (client → controller → agent) — card `t_1a2c913c`
+
+Give an agent a task and read its answer. The agent-facing surface is inside the instance and bound to loopback; the controller **proxies** the call through the owning node's LXD exec (decision **AT-1** in `agent-runtime.md` §7.4), so the client needs no route to the instance and receives no instance credentials. Every submission is audited like a node action.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `POST` | `/v1/projects/{project_id}/agents/{vm_id}/tasks` | `project_token`. Body `{ "prompt": str, "model_preference": str?, "max_tokens": int?, "actor": str? }`. `202` + the task record. |
+| `GET` | `/v1/projects/{project_id}/agents/{vm_id}/tasks/{task_id}` | `project_token`. State + answer (`answer`, `model`, `provenance`, `usage`, `duration_ms`, `error`). |
+| `GET` | `/v1/projects/{project_id}/agents/{vm_id}/tasks?limit=N` | `project_token`. The enumerable record (summaries only — no prompts, no answers). |
+
+`vm_id` is the agent's LXD instance name (`controller-api.md` §5). Task record:
+```json
+{
+  "task_id": "01M506S2JJ5JFCR3K30BJY26NK",
+  "vm_id": "termini-01m4wjhwqr3b8pcav2tvqbgg-0-0",
+  "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+  "command_id": "01M506S2JJP0CJQ5C1C4V3N7T9",
+  "agent_task_id": "01M506S2JK3S4T5V6W7X8Y9Z01",
+  "state": "done",
+  "actor": "human:ops",
+  "model": "gemma",
+  "provenance": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "egress": "external", "forwarded": true},
+  "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
+  "answer": "pong",
+  "error_code": null,
+  "submitted_at": "2026-10-15T16:31:02Z",
+  "ended_at": "2026-10-15T16:31:06Z",
+  "duration_ms": 4120
+}
+```
+
+States: `queued | running | done | error` (agent-runtime §5.6). The controller's deadline for one task is 300 s; a task that outlives it is `error: TASK_TIMEOUT`, and a controller restart fails any inherited row with `TASK_ORPHANED` rather than leaving it looking slow.
+
+**Errors** (§3 envelope): `404 AGENT_NOT_FOUND`, `503 NODE_OFFLINE`, `503 NODE_UNREACHABLE`, `503 AGENT_UNREACHABLE`, `429 TASK_BOUND_EXCEEDED`, `400 MODEL_NOT_ALLOWED`, `413 PROMPT_TOO_LARGE`. Codes the controller adds outside the §3 list are task-specific and always carry `details[0].reason` with the action to take.
+
+**Audit and events.** Each submission writes an `agent.dispatch_task` command (`§6` allowlist, `issued_by: human`, node-scoped) plus a content-free operator-log line, and emits `task.queued` → `task.state_changed` → `task.completed` on the WS stream (§7.1) with `{task_id, vm_id, state, duration_ms, model}` — never content.
+
+---
+
 ## 5. Guardrail & Clamp Validator
 
 The deterministic choke point between "DeepSeek/Gemini recommends" and "LXD
@@ -833,7 +1120,15 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
    holds the agents). The host is identified from the model address the controller
    already knows (`TERMINI_INFERENCE_BASE_URL`) matched against each node's
    reported LXD endpoint / source address, plus any operator-named hosts
-   (`TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`). The exclusion is dropped when it
+   (`TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`).
+   **Since the inference split (`infra-decisions.md` D9) the operator-named list is
+   the ONLY way to name the model host**: `TERMINI_INFERENCE_BASE_URL` is the
+   provider-only diagnosis listener on the controller's loopback
+   (`http://127.0.0.1:8085`), which matches no node at all. The deployed controller
+   therefore sets `TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS=<Node C underlay IP>`
+   explicitly (`infra/inference/setup-inference-surfaces.sh`); the derivation from
+   `TERMINI_INFERENCE_BASE_URL` is kept for the pre-split single-surface wiring and
+   is simply inert when the two disagree. The exclusion is dropped when it
    would leave **no** candidate at all, so a single-node / seeder-only demo stays
    placeable; an explicit `target_node` naming the model host is still honoured,
    because naming a node is not `auto`. This does **not** change role assignment.
@@ -1054,6 +1349,7 @@ uses a short-lived ticket — `dashboard.md` §3.1).
 | Command long-poll      | every 2 s, 25 s block   | WS push preferred |
 | WS telemetry snapshots | ≤ 1/s per node          | throttled from raw cadence |
 | AI operator log        | push on append          | ring buffer 10k lines |
+| Demo fault series      | 1 s while an injection is open | §4.7 — a controller-owned sample per second, superseding the node's own reports for the (node, rule) |
 | Metrics storage        | raw (1 s demo / 15 s default) → 5s/1m/5m downsample | charts read downsampled |
 
 During the demo the operator loop consumes telemetry at 1 s so a remediation can

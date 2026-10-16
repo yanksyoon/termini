@@ -1,0 +1,12 @@
+● termini-agent.service - Termini in-VM agent runtime
+     Loaded: loaded (/etc/systemd/system/termini-agent.service; enabled; preset: enabled)
+     Active: active (running) since Fri 2026-10-16 17:11:44 UTC; 3s ago
+       Docs: https://github.com/yanksyoon/termini
+   Main PID: 661 (termini-agent)
+      Tasks: 5 (limit: 23875)
+     Memory: 50.3M (peak: 50.5M)
+        CPU: 569ms
+     CGroup: /system.slice/termini-agent.service
+             └─661 /opt/termini/venv/bin/python3 /opt/termini/venv/bin/termini-agent run --config /etc/termini/agent.yaml
+
+Oct 16 17:11:44 w5-accept-demo-node-b systemd[1]: Started termini-agent.service - Termini in-VM agent runtime.
