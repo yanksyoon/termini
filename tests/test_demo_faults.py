@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 import urllib.error
 import urllib.request
@@ -371,11 +372,23 @@ class FaultEndpointsTest(unittest.TestCase):
         self.assertEqual(st, 200, cleared)
         self.assertEqual(cleared["state"], "recovering")
         need = cleared["clear_samples_needed"]
-        time.sleep(need + 2)
-        st, listing = http(self.base, "GET",
-                           f"/v1/projects/{PROJECT_ID}/demo/faults", token=PROJECT_TOKEN)
-        row = next(f for f in listing["faults"] if f["injection_id"] == injection_id)
-        self.assertEqual(row["state"], "cleared")
+        # Wait for the FACT, not a fixed duration. The recovery burst writes ONE
+        # healthy sample per driver tick, and `time.sleep(need + 2)` was tighter than
+        # a loaded CI runner's tick budget: main went red on it (2026-10-16) and the
+        # ci-watchdog reverted a good commit. The assertion itself is unchanged.
+        row = None
+        for _ in range(int(need) * 4 + 10):
+            time.sleep(1.0)
+            st, listing = http(self.base, "GET",
+                               f"/v1/projects/{PROJECT_ID}/demo/faults", token=PROJECT_TOKEN)
+            for f in listing["faults"]:
+                if f["injection_id"] == injection_id:
+                    row = f
+            if row is not None and row["state"] == "cleared":
+                break
+        self.assertIsNotNone(row, "the injection disappeared from the console listing")
+        self.assertEqual(row["state"], "cleared",
+                         "the recovery burst never finished (rule still in an OPEN state)")
         self.assertEqual(row["recovery_samples"], need)
         tail = self._metrics(self.node["node_id"])[-need:]
         self.assertTrue(tail, "no samples after the clear")
@@ -448,6 +461,43 @@ class FaultEndpointsTest(unittest.TestCase):
         self.assertEqual(st, 409, again)
         reasons = [d["reason"] for d in again["error"]["details"]]
         self.assertIn("remediation_in_flight", reasons)
+
+    def test_a_stale_tick_cannot_resurrect_a_cleared_injection(self):
+        """A tick that read its row BEFORE a clear must not write that row back.
+
+        Deterministic reproduction of the interleaving that made main red on
+        2026-10-16 (`row["state"] == "cleared"` observed as `"active"` — an EARLIER
+        state, which is what proves a stale write) and cost a good commit a watchdog
+        revert. The driver reads its open rows at the start of `tick()` and writes at
+        the end, so a clear landing mid-tick was overwritten and the series the clear
+        had just restored was re-breached. No sleeps and no load here: the
+        interleaving is driven by hand.
+        """
+        st, inj = self._inject(scenario="oom", duration_s=60)
+        self.assertEqual(st, 201, inj)
+        injection_id = inj["injection_id"]
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            stale = demo_faults.get_fault(conn, injection_id)        # the tick's read
+            self.assertEqual(stale["state"], "active")
+            node = demo_faults.store.get_node(conn, stale["node_id"])
+            injector = demo_faults.DemoFaultInjector(
+                types.SimpleNamespace(db_path=self.db_path), PROJECT_ID)
+            st, _cleared = self._clear(injection_id)                 # the operator's clear
+            self.assertEqual(st, 200)
+            # …and now the in-flight tick finishes, with the row it read BEFORE it
+            sample = demo_faults.fault_sample(
+                json.loads(stale["baseline_json"]), stale["scenario"],
+                json.loads(stale["params_json"] or "{}"), seq=0,
+                ts=demo_faults._now_iso())
+            injector._write_sample(conn, node, stale, sample, state_after="active")
+            fresh = demo_faults.get_fault(conn, injection_id)
+            self.assertEqual(fresh["state"], "recovering",
+                             "a stale tick resurrected a cleared injection "
+                             f"(state={fresh['state']!r})")
+        finally:
+            conn.close()
 
     def test_injection_ends_loudly_at_its_ttl(self):
         synth = self._new_node(synthetic=True)
