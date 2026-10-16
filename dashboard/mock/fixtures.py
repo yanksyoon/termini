@@ -483,7 +483,10 @@ def synthetic_node(project_id: str = PROJECT_ID) -> dict:
 
 def _decision_row(node_id: str, *, rule_id: str, type_: str, metric: str, value: float, threshold: str,
                   action_kind: str, instance: str, reason: str, source: str, confidence=None,
-                  fallback_reason=None, result: str = "ok", decided_ms: int | None = None) -> dict:
+                  fallback_reason=None, result: str = "ok", decided_ms: int | None = None,
+                  incident_generated: str | None = None, incident_title: str | None = None,
+                  incident_explanation: str | None = None, incident_evidence: list | None = None,
+                  incident_actions: list | None = None) -> dict:
     decided_ms = decided_ms if decided_ms is not None else int(time.time() * 1000)
     event_id = ulid(decided_ms - 4000)
     decision_id = ulid(decided_ms)
@@ -514,6 +517,15 @@ def _decision_row(node_id: str, *, rule_id: str, type_: str, metric: str, value:
         "decision_source": source,
         "confidence": confidence,
         "fallback_reason": fallback_reason,
+        # §4.2 incident record (migration 0016). All five stay `None` when the
+        # caller passes no record — the deterministic-mode row (§8.1) writes no
+        # incident columns at all, and the dashboard renders that as
+        # "no incident record (deterministic mode)" rather than an empty card.
+        "incident_title": incident_title,
+        "incident_explanation": incident_explanation,
+        "incident_evidence": incident_evidence,
+        "incident_actions": incident_actions,
+        "incident_generated": incident_generated,
     }
     audit = {
         "id": ulid(decided_ms + 2),
@@ -539,7 +551,11 @@ def operator_decisions(nodes: list[dict], now_ms: int | None = None) -> dict:
     """Decisions + the events they answered + their audit rows (newest first).
 
     Contains a MODEL decision (with confidence + rationale) and a deterministic
-    FALLBACK, because the dashboard must show both and never conflate them.
+    FALLBACK, because the dashboard must show both and never conflate them — plus
+    a deterministic-mode row that carries NO `incident_generated`/incident
+    columns at all (§8.1), which is what the dashboard renders as "no incident
+    record (deterministic mode)". Each row that has one carries the §4.2 incident
+    record the controller persists (migration 0016).
     """
     now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     a = nodes[0]["node_id"] if nodes else ulid()
@@ -552,6 +568,22 @@ def operator_decisions(nodes: list[dict], now_ms: int | None = None) -> dict:
             action_kind="instance.stop", instance=instance,
             reason="disk write latency on /dev/sda is 120ms, exceeding the 50ms threshold; stopping the instance with the highest disk usage will reduce disk I/O.",
             source="model", confidence=0.85, decided_ms=now_ms - 60_000,
+            incident_generated="model",
+            incident_title="Disk write latency on /dev/sda",
+            incident_explanation=(
+                "write_latency_ms on /dev/sda reached 120 ms against a 50 ms threshold while free space "
+                "stayed above the 5% floor, so this is I/O contention rather than a full disk. The only "
+                "instance on the node holds the write path, so stopping it removes the load without "
+                "draining the node."
+            ),
+            incident_evidence=[
+                {"field": "disk_write_latency_ms", "value": 120.0, "seq": 1120, "ts": now_iso(now_ms - 64_000)},
+                {"field": "disk_free_bytes", "value": 74000000000, "seq": 1120},
+            ],
+            incident_actions=[
+                {"action_kind": "instance.stop", "target": instance,
+                 "note": "stop the instance holding the write path"},
+            ],
         ),
         _decision_row(
             a, rule_id="oom-guard-01", type_="oom", metric="ram_used_bytes",
@@ -559,6 +591,22 @@ def operator_decisions(nodes: list[dict], now_ms: int | None = None) -> dict:
             action_kind="instance.restart", instance=instance,
             reason="host RAM is at 96.04% of total, and this instance is the heaviest consumer; restarting it should free memory.",
             source="model", confidence=0.9, decided_ms=now_ms - 180_000,
+            incident_generated="model",
+            incident_title="Memory exhaustion on the node",
+            incident_explanation=(
+                "ram_used_bytes reached 96.4% of ram_total_bytes and stayed there for two consecutive "
+                "samples, and one instance holds 29% of the node's RAM by itself. That is a single-instance "
+                "leak rather than fleet-wide pressure."
+            ),
+            incident_evidence=[
+                {"field": "ram_used_bytes", "value": 33114165248, "seq": 1110, "ts": now_iso(now_ms - 184_000)},
+                {"field": "ram_total_bytes", "value": 34359738368, "seq": 1110, "ts": now_iso(now_ms - 184_000)},
+                {"field": "lxd_instances.ram_used_bytes", "value": 9960000000, "seq": 1110},
+            ],
+            incident_actions=[
+                {"action_kind": "instance.restart", "target": instance,
+                 "note": "restart the heaviest instance to reclaim its resident memory"},
+            ],
         ),
         _decision_row(
             a, rule_id="oom-guard-01", type_="oom", metric="ram_used_bytes",
@@ -567,6 +615,28 @@ def operator_decisions(nodes: list[dict], now_ms: int | None = None) -> dict:
             reason="playbook: restart the heaviest instance (RAM 96%)",
             source="fallback", fallback_reason="inference_unavailable",
             result="error", decided_ms=now_ms - 300_000,
+            # §8.1: the fallback writes a record too — event-derived C0 fields
+            # only, and labelled so it is never read as model output.
+            incident_generated="fallback",
+            incident_title="oom on the node",
+            incident_explanation=(
+                "model unavailable (inference_unavailable); the deterministic playbook chose "
+                f"instance.restart on {instance} for rule oom-guard-01"
+            ),
+            incident_evidence=[
+                {"field": "ram_used_bytes", "value": 33000000000, "seq": 1122, "ts": now_iso(now_ms - 304_000)},
+            ],
+            incident_actions=[{"action_kind": "instance.restart", "target": instance}],
+        ),
+        _decision_row(
+            b, rule_id="latency-01", type_="latency", metric="net_latency_ms",
+            value=240.0, threshold="net_latency_ms >= 200 for 3 consecutive samples",
+            action_kind="instance.restart", instance=instance,
+            reason="playbook: restart the instance reporting 240ms of sustained network latency",
+            source="deterministic", decided_ms=now_ms - 420_000,
+            # deterministic mode writes NO incident columns (§8.1) — the state the
+            # dashboard must render as "no incident record (deterministic mode)".
+            incident_generated=None,
         ),
     ]
     decisions = [r["decision"] for r in rows][::-1]

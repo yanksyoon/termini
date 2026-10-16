@@ -21,6 +21,12 @@ import {
   formatMetricValue,
   breachValueText,
   actionTarget,
+  incidentSourceMeta,
+  incidentView,
+  incidentEvidence,
+  incidentActions,
+  evidenceValueText,
+  noIncidentReason,
 } from "../js/core/decisions.js";
 import { FIRST_CURSOR } from "../js/stream.js";
 
@@ -533,4 +539,190 @@ test("decisions: chart annotations are per node and scaled by their group", () =
   // a group without the annotated metric gets no marks
   const cpu = groups.find((g) => g.id === "cpu");
   assert.equal((cpu && cpu.markers.length) || 0, 0);
+});
+
+/* --------------------------------------------- incident card (§4.2 / §8.1) */
+
+// The record as the controller persists it (migration 0016): five columns on the
+// decision row, `incident_evidence`/`incident_actions` already parsed back into
+// arrays by GET /v1/operator/decisions (operator-decision.md §11).
+const INCIDENT = {
+  incident_generated: "model",
+  incident_title: "Memory exhaustion on node 01M4349RPTT29RNTC6VBCXQ0RC",
+  incident_explanation:
+    "ram_used_bytes reached 96.0% of ram_total_bytes for two consecutive samples and one instance holds 29% of the node's RAM by itself.",
+  incident_evidence: [
+    { field: "ram_used_bytes", value: 32641751449, seq: 1050, ts: "2026-10-04T07:49:05.000Z" },
+    { field: "ram_total_bytes", value: 34359738368, seq: 1050, ts: "2026-10-04T07:49:05.000Z" },
+    { field: "lxd_instances.ram_used_bytes", value: 10000000000, seq: 1050 },
+  ],
+  incident_actions: [
+    { action_kind: "instance.restart", target: "01M4349RPXWDC52ZDAVMPCMJSH",
+      note: "restart the heaviest instance to reclaim its resident memory" },
+  ],
+};
+
+test("decisions: the §4.2 incident record lands in the row view model", () => {
+  const d = { ...DECISION, ...INCIDENT };
+  const rows = buildDecisionRows({ decisions: [d], events: [EVENT], audits: [AUDIT] }, { auditWindow: 50 });
+  const r = rows[0];
+  assert.equal(r.incidentSource, "model");
+  assert.equal(r.incident.generated, "model");
+  assert.equal(r.incidentSource, r.incident.generated);
+  assert.equal(r.incident.title, INCIDENT.incident_title);
+  assert.equal(r.incident.explanation, INCIDENT.incident_explanation);
+  assert.equal(r.noIncidentReason, null);
+  // evidence: the contractual keys only, in order, with the value's own text
+  assert.equal(r.incident.evidence.length, 3);
+  assert.deepEqual(Object.keys(r.incident.evidence[0]).sort(), ["field", "seq", "ts", "value", "valueText"]);
+  assert.equal(r.incident.evidence[0].field, "ram_used_bytes");
+  assert.equal(r.incident.evidence[0].valueText, "30.40 GiB");
+  assert.equal(r.incident.evidence[0].seq, 1050);
+  assert.equal(r.incident.evidence[0].ts, "2026-10-04T07:49:05.000Z");
+  // a dotted field name is still a field name — the suffix rule gives it bytes
+  assert.equal(r.incident.evidence[2].valueText, "9.31 GiB");
+  assert.equal(r.incident.evidence[2].seq, 1050);
+  assert.equal("ts" in r.incident.evidence[2], false);
+  // actions: what the model DECIDED, never an outcome
+  assert.deepEqual(r.incident.actions, INCIDENT.incident_actions);
+  assert.equal("result" in r.incident.actions[0], false);
+  // ...and the executed half is the audit join, kept separate from the record
+  assert.equal(r.execution.result, "error");
+  assert.equal(r.execution.detail, "HTTP 404: Instance not found");
+  assert.equal(r.execution.idempotencyKey, AUDIT.idempotency_key);
+  assert.equal(r.auditId, "01M53B");
+});
+
+test("decisions: a controller-generated fallback record is labelled, never shown as model output", () => {
+  const model = incidentSourceMeta("model");
+  const fallback = incidentSourceMeta("fallback");
+  assert.equal(model.byModel, true);
+  assert.equal(fallback.byModel, false);
+  assert.notEqual(model.label, fallback.label);
+  assert.notEqual(model.badge, fallback.badge);
+  assert.notEqual(model.tone, fallback.tone);
+  assert.match(fallback.label, /controller-generated, model unavailable/);
+  assert.match(fallback.badge, /MODEL UNAVAILABLE/);
+  assert.match(fallback.note, /did NOT write this/);
+
+  // The same distinction must survive the row: a fallback row whose record was
+  // built by the controller (§8.1) is NOT a model record, whatever the row's
+  // decision_source says about who chose the action.
+  const fb = {
+    ...DECISION, id: "01M53F", decision_source: "fallback", confidence: null,
+    fallback_reason: "inference_unavailable",
+    incident_generated: "fallback",
+    incident_title: "oom on node N1",
+    incident_explanation: "model unavailable (inference_unavailable); the deterministic playbook chose instance.restart on agent-01 for rule oom-guard-01",
+    incident_evidence: [{ field: "ram_used_bytes", value: 33000000000, seq: 1122 }],
+    incident_actions: [{ action_kind: "instance.restart", target: "agent-01" }],
+  };
+  const row = buildDecisionRows({ decisions: [fb], events: [EVENT], audits: [] }, { auditWindow: 50 })[0];
+  assert.equal(row.incidentSource, "fallback");
+  assert.equal(row.incident.modelSourced, false);
+  assert.equal(row.incident.meta.tone, "fallback");
+  assert.equal(row.incident.evidence.length, 1);
+  assert.match(row.incident.explanation, /^model unavailable \(inference_unavailable\)/);
+});
+
+test("decisions: a deterministic-mode row has NO incident record — never an empty card", () => {
+  const det = { ...DECISION, id: "01M53D", decision_source: "deterministic", confidence: null };
+  // The controller writes no incident columns at all in that mode (§8.1), so the
+  // row arrives with the five keys present-but-NULL (or absent in a JSON reply).
+  const withNulls = buildDecisionRows(
+    { decisions: [{ ...det, incident_title: null, incident_explanation: null, incident_evidence: null, incident_actions: null, incident_generated: null }], events: [EVENT], audits: [] },
+  )[0];
+  assert.equal(withNulls.incident, null);
+  assert.equal(withNulls.incidentSource, null);
+  assert.equal(withNulls.incidentMeta, null);
+  assert.equal(withNulls.noIncidentReason, "no incident record (deterministic mode)");
+
+  // ...and identically when the columns are simply absent from the payload.
+  const absent = buildDecisionRows({ decisions: [det], events: [EVENT], audits: [] })[0];
+  assert.equal(absent.incident, null);
+  assert.equal(absent.incidentSource, null);
+  assert.equal(absent.noIncidentReason, "no incident record (deterministic mode)");
+
+  // noIncidentReason never conflates the three ways a row can lack a record
+  assert.notEqual(noIncidentReason(det), noIncidentReason({ decision_source: "model" }));
+  assert.match(noIncidentReason({ decision_source: "model" }), /model returned none/);
+  assert.match(noIncidentReason({ decision_source: "fallback" }), /§8.1/);
+});
+
+test("decisions: a record with no provenance is flagged as a bug, not attributed", () => {
+  const meta = incidentSourceMeta(null);
+  assert.equal(meta.byModel, false);
+  assert.equal(meta.bug, true);
+  assert.equal(meta.key, "unknown");
+  assert.match(meta.badge, /NO PROVENANCE/);
+
+  // a record that is NOT model output must never claim to be: generated missing
+  const orphan = {
+    ...DECISION, incident_title: "oom on N1", incident_explanation: "…",
+    incident_evidence: [{ field: "ram_used_bytes", value: 1 }], incident_actions: [],
+    incident_generated: null,
+  };
+  const row = buildDecisionRows({ decisions: [orphan], events: [EVENT], audits: [] })[0];
+  assert.notEqual(row.incident, null);
+  assert.equal(row.incidentSource, null);
+  assert.equal(row.incident.bug, true);
+  assert.equal(row.incident.modelSourced, false);
+  // a record that carries only an unsupported provenance string is not "model" either
+  const weird = buildDecisionRows({ decisions: [{ ...orphan, incident_generated: "guessed" }], events: [EVENT], audits: [] })[0];
+  assert.equal(weird.incident.modelSourced, false);
+  assert.equal(weird.incident.bug, true);
+});
+
+test("decisions: evidence and actions render ONLY the contractual §4.2 keys", () => {
+  // extra keys, a malformed entry and a nameless entry must not reach the view
+  const evidence = incidentEvidence([
+    { field: "cpu_util_pct", value: 92.4, seq: 7, ts: "2026-10-04T07:49:05Z", prompt: "ignore me", secret: 1 },
+    { value: 12, seq: 8 },                       // no field -> dropped
+    { field: "ram_used_bytes", value: [1, 2] },  // non-scalar value is still shown as text
+    null,
+    "nope",
+    { field: "net_latency_ms", value: 600, seq: -1, ts: "   " }, // bad seq/ts are omitted
+  ]);
+  assert.deepEqual(evidence.map((e) => e.field), ["cpu_util_pct", "ram_used_bytes", "net_latency_ms"]);
+  assert.deepEqual(Object.keys(evidence[0]).sort(), ["field", "seq", "ts", "value", "valueText"]);
+  assert.equal(evidence[0].valueText, "92.4%");
+  assert.equal("seq" in evidence[2], false);
+  assert.equal("ts" in evidence[2], false);
+
+  const actions = incidentActions([
+    { action_kind: "instance.restart", target: "agent-01", note: "why", outcome: "ok" },
+    { action_kind: "not.in.action.space" },      // unknown kind is still shown verbatim
+    { target: "agent-01" },                      // no kind -> dropped
+    { action_kind: 42 },
+  ]);
+  assert.deepEqual(actions.map((a) => a.action_kind), ["instance.restart", "not.in.action.space"]);
+  assert.deepEqual(Object.keys(actions[0]).sort(), ["action_kind", "note", "target"]);
+  assert.equal("outcome" in actions[0], false);
+  assert.deepEqual(Object.keys(actions[1]), ["action_kind"]);
+
+  // JSON-TEXT columns that a caller did not parse are parsed, not discarded
+  assert.equal(incidentEvidence(JSON.stringify([{ field: "ram_used_bytes", value: 1024 }])).length, 1);
+  assert.equal(incidentEvidence("{not json").length, 0);
+
+  // units come from the field's own name, and an unknown name is printed raw
+  assert.equal(evidenceValueText("ram_used_bytes", 1024), "1.0 KiB");
+  assert.equal(evidenceValueText("disk_write_latency_ms", 120), "120.0 ms");
+  assert.equal(evidenceValueText("free_pct", 3.5), "3.5%");
+  assert.equal(evidenceValueText("lxd_instances", 4), "4");
+  assert.equal(evidenceValueText("flag", 1.5), "1.50");
+  assert.equal(evidenceValueText("mount_ro", true), "true");
+  assert.equal(evidenceValueText("note", "string evidence"), "string evidence");
+  assert.equal(evidenceValueText("ram_used_bytes", null), "—");
+});
+
+test("decisions: incidentView returns null for a decision that carries no record", () => {
+  assert.equal(incidentView(null), null);
+  assert.equal(incidentView(DECISION), null);
+  assert.equal(incidentView({ incident_generated: null, incident_title: null }), null);
+  // a record with only an evidence list and no title/explanation is still a record
+  const partial = incidentView({ incident_generated: "model", incident_evidence: [{ field: "cpu_util_pct", value: 10 }] });
+  assert.notEqual(partial, null);
+  assert.equal(partial.title, "");
+  assert.equal(partial.explanation, "");
+  assert.equal(partial.evidence.length, 1);
 });

@@ -66,7 +66,7 @@ deployment injects it server-side. It is *never* read from the query string, and
 | Node detail + latest sample | `GET /projects/{pid}/nodes/{nid}` | dashboard §1.2 |
 | Resource series | `GET /projects/{pid}/nodes/{nid}/metrics?start&end&resolution&metrics` | dashboard §1.4 |
 | AI-operator log | `GET /projects/{pid}/logs` (SSE, `Last-Event-ID`/`since` resume) | dashboard §2.2/§2.3 |
-| Operator decisions + the telemetry that fired them + the audit rows | `GET /operator/{decisions,events,audits}` (poll 3 s, joined client-side) | operator-decision.md §11 |
+| Operator decisions + the telemetry that fired them + the incident record + the audit rows | `GET /operator/{decisions,events,audits}` (poll 3 s, joined client-side) | operator-decision.md §4.2/§11 |
 | Restart | `POST /projects/{pid}/nodes/{nid}/actions/reboot` | dashboard §4.1 |
 | Drain | `POST /projects/{pid}/nodes/{nid}/actions/drain` | dashboard §4.2 |
 | Scale intent | `POST /projects/{pid}/intents` → `POST /projects/{pid}/vms/apply` | dashboard §4.3 |
@@ -83,16 +83,21 @@ The terminal panel (xterm.js WebSocket + SSH string) is a separate card
 1. **Overview grid** — per-node card: role/status badges, CPU %, RAM %, disk
    state, health flags (`disk_ok`/`gpu_ok`/`inference_ok`), allowlisted services,
    `degraded_reasons`, heartbeat age + uptime, and quick Restart/Drain buttons.
-2. **Live AI-operator log** — scrolling, timestamped, severity-coloured feed with
-   auto-scroll (+ pause/resume), severity/node/actor filters, a client ring
-   buffer, `log_id` de-duplication, `truncated` marker handling, and inline
-   Approve/Deny for `pending_approval` remediations.
-3. **Resource utilization** — dependency-free Canvas time-series charts (CPU,
+2. **AI operator — incident view** — one incident card per decision (title,
+   explanation, the evidence fields quoted, the actions *decided* and the audit
+   result *executed*), with the record's provenance labelled on every card (see
+   below).
+3. **Live AI-operator log (secondary)** — scrolling, timestamped,
+   severity-coloured feed with auto-scroll (+ pause/resume), severity/node/actor
+   filters, a client ring buffer, `log_id` de-duplication, `truncated` marker
+   handling, and inline Approve/Deny for `pending_approval` remediations. It is
+   collapsed by default: the incident card is the primary surface.
+4. **Resource utilization** — dependency-free Canvas time-series charts (CPU,
    memory, disk latency, network, GPU/VRAM, load, temp, inference…), a selectable
    window (5 m / 15 m / 1 h / 6 h) mapped to contract resolutions, labelled axes
    with units, legends and hover crosshair; bytes are displayed in GiB/MiB while
    the wire stays in bytes.
-4. **Manual intervention** — Restart / Drain behind confirm dialogs with a reason
+5. **Manual intervention** — Restart / Drain behind confirm dialogs with a reason
    selector, a scale-intent form (prompt → reviewed plan with clamps as warnings
    and rejects as errors → apply), and approve/deny of pending AI remediation.
 
@@ -165,21 +170,56 @@ backend is owned by `t_3468e5f0`.
   no longer applies).
 * **Terminal.** Out of scope here; see `t_cd585251` (`/terminal/v1/{node_id}`).
 
-## Decisions panel (telemetry → decider → action → result)
+## AI panel: incident cards (what happened → why → evidence → decided vs executed)
 
-`GET /v1/operator/{decisions,events,audits}` are three separate lists; the panel
-joins them client-side (`js/core/decisions.js`, pure and unit-tested). Per row:
-timestamp, node, rule, the breaching metric + trigger value + threshold text,
-`decision_source`, the model's confidence + rationale (or the fallback reason),
-the chosen action + target instance, the execution result and LXD endpoint from
-the audit row, and the audit id — with links to the audit record and to the
+The primary AI surface is one **incident card per decision**. The controller
+persists the §4.2 incident record in the decision row itself
+(`incident_title`/`incident_explanation`/`incident_evidence`/`incident_actions`/
+`incident_generated`, migration 0016) and returns it verbatim from
+`GET /v1/operator/decisions`, so the card needs no second endpoint: `GET
+/v1/operator/{decisions,events,audits}` are three separate lists joined
+client-side (`js/core/decisions.js`, pure and unit-tested).
+
+Each card carries, in this order:
+
+* a **provenance badge** — `AI-GENERATED INCIDENT` when `incident_generated` is
+  `"model"`, or `CONTROLLER-GENERATED · MODEL UNAVAILABLE` when it is
+  `"fallback"` (§8.1) — plus the raw `incident_generated` value, so the label is
+  checkable against the row rather than taken on trust;
+* the **title** (what happened) and the **explanation** (why the evidence implies
+  it), both the model's own words when the record is model-generated;
+* the **evidence list** — the telemetry fields the record quotes, rendered from
+  `{field, value, seq?, ts?}` and nothing else; a value's unit comes from the
+  field's own frozen name (`ram_used_bytes`, `*_ms`, `*_pct`), never from a
+  guess, and an unknown field name is printed raw;
+* **decided** — the actions the record names, presented as what was *decided*,
+  not as an outcome;
+* **executed** — the audit row for that decision (`remediation_audits`, joined on
+  `decision_id`): result, endpoint, LXD call, `detail`, `idempotency_key` and
+  the audit id. When there is no audit row the card says so and claims nothing.
+  The two halves are never merged: the record must not imply an outcome the
+  executor did not produce.
+
+Three states are deliberately distinct, and none of them is a blank card:
+
+| state | how it renders |
+|-------|----------------|
+| record with `generated: "model"` | `AI-GENERATED INCIDENT`, accented card |
+| record with `generated: "fallback"` (§8.1) | `CONTROLLER-GENERATED · MODEL UNAVAILABLE`, amber card, distinct badge/label |
+| no record (deterministic mode, §8.1) | `no incident record (deterministic mode)` |
+| record with no `incident_generated` | `RECORD WITH NO PROVENANCE` in alarm styling — a contract violation is reported, not smoothed over |
+
+Below the card the row still carries the scannable summary (timestamp, node,
+rule, chosen action, execution result), the breaching metric + trigger value +
+threshold text, and the rationale — with links to the audit record and to the
 telemetry sample that fired the decision.
 
-Two things it deliberately does **not** do:
+Two things the panel deliberately does **not** do:
 
 * it never presents a `fallback` decision like a model decision — a fallback is
   the deterministic playbook stepping in because the model did not answer
-  (operator-decision.md §8), so the row is styled differently and says so;
+  (operator-decision.md §8), so the row is styled differently and says so (and
+  the §8.1 fallback *record* is labelled the same way);
 * it never claims the model ran locally. The decider label is built from the
   egress record the controller writes to the operator log stream
   (`externalModelCall … backend=… model=… destination=… answered_by=…`), and an
@@ -189,6 +229,16 @@ Two things it deliberately does **not** do:
 seeder rows, labelled `demo`) with a decision marker coloured by who decided and
 the threshold line resolved from the rule's own threshold text, so the fault
 rising and the action landing are readable off one axis.
+
+### The log stream is the secondary view
+
+The raw AI-operator log panel is a collapsed `<details>` section below the
+incident cards (a native disclosure, so no JS state has to be kept in sync with
+the stream). It keeps everything it had — severity/node/actor filters, auto-scroll
+with pause, ring buffer, `log_id` de-duplication, the `truncated` control line,
+and inline Approve/Deny for `pending_approval` remediations — but it is no longer
+the surface an operator reads first: the incident card answers the four questions
+the log stream cannot.
 
 ### Log stream: the empty panel
 

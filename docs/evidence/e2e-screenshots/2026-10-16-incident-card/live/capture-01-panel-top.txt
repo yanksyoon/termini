@@ -1,0 +1,29 @@
+DOM text read back out of the live page at capture time.
+Page: http://127.0.0.1:47711/?apiBase=http://127.0.0.1:42199/v1&projectId=01J0DEM0WARM000000000000AB
+window: 1500x1600 | decisions-count line: 3 shown / 3 decisions · model 1 · fallback 1 · incident records 2 (AI 1 · controller-generated 1) | decider band: decider: decider unknown no externalModelCall record on the operator log stream yet | log panel <details> open=False
+Nothing here was typed by hand: the page was loaded against the live controller and the DOM read back.
+
+Rows in the panel viewport at scrollTop=0 (newest first):
+[
+ {
+  "source": "deterministic",
+  "badge": null,
+  "badge_title": null,
+  "incident_source": "none"
+ },
+ {
+  "source": "fallback",
+  "badge": "CONTROLLER-GENERATED \u00b7 MODEL UNAVAILABLE",
+  "badge_title": "the model did NOT write this: the controller built the record from the fired event because the model was unavailable (\u00a78.1)",
+  "incident_source": "fallback"
+ },
+ {
+  "source": "model",
+  "badge": "AI-GENERATED INCIDENT",
+  "badge_title": "the model's own output \u2014 validated by guardrail G9 before it was persisted",
+  "incident_source": "model"
+ },
+ {
+  "deterministic_row_text": "19:55:51\nDETERMINISTIC\nevidence-node-a-machine\noom-guard-01\n\u2192\ninstance.restart agent-c1\nERROR \u00b7 127.0.0.1:39659\nINCIDENT RECORD\nno incident record (deterministic mode)\nBREACH\nram_used_bytes\nRAM used\n=\n97.00% of ram_total_bytes\nthreshold: >= 95% of ram_total_bytes for 2 consecutive samples\nfired 19:55:51\nPLAYBOOK RATIONALE\nhost memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.\naudit 01M534NNJC\u2026CB4X\ntelemetry sample\nshow on chart\ndecision 01M534HZYM\u2026R8S4"
+ }
+]

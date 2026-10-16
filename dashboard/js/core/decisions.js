@@ -58,6 +58,191 @@ export function sourceMeta(source) {
   }
 }
 
+/**
+ * The persisted provenance of the §4.2 incident record
+ * (`remediation_decisions.incident_generated`, operator-decision.md §4.2/§8.1).
+ */
+export const INCIDENT_SOURCES = ["model", "fallback"];
+
+/**
+ * What the record's PROVENANCE means, and how loudly the UI must say it.
+ *
+ * `generated` is `"model"` only when the string in the record is the model's own
+ * validated output (source == model AND the response passed guardrail G9). The
+ * §8.1 fallback also writes a record — built by the controller from the fired
+ * event — and it must NEVER be presented like model output. A record that
+ * arrives with no provenance is not "unknown quality", it is a contract
+ * violation: a reader could not tell "the model said this" from "the controller
+ * said this", so the view model refuses to attribute it at all (`bug: true`).
+ */
+export function incidentSourceMeta(generated) {
+  switch (generated) {
+    case "model":
+      return {
+        key: "model",
+        label: "AI model",
+        tone: "model",
+        byModel: true,
+        badge: "AI-GENERATED INCIDENT",
+        note: "the model's own output — validated by guardrail G9 before it was persisted",
+      };
+    case "fallback":
+      return {
+        key: "fallback",
+        label: "controller-generated, model unavailable",
+        tone: "fallback",
+        byModel: false,
+        badge: "CONTROLLER-GENERATED · MODEL UNAVAILABLE",
+        note: "the model did NOT write this: the controller built the record from the fired event because the model was unavailable (§8.1)",
+      };
+    default:
+      return {
+        key: "unknown",
+        label: "record with no provenance",
+        tone: "bug",
+        byModel: false,
+        bug: true,
+        badge: "RECORD WITH NO PROVENANCE",
+        note: "an incident record was persisted without `incident_generated`, so it can be attributed to neither the model nor the controller — a contract violation (§4.2/§8.1), shown as unlabelled rather than as model output",
+      };
+  }
+}
+
+/** Units a telemetry field name carries by the frozen naming convention. */
+const FIELD_SUFFIX_UNITS = [
+  ["_bytes", "bytes"],
+  ["_ms", "ms"],
+  ["_pct", "percent"],
+];
+
+/**
+ * One evidence value as text. The unit comes from the field's own name — the
+ * frozen telemetry registry first, then the naming convention every metric in
+ * `node-telemetry.md` §4 follows (`*_bytes`, `*_ms`, `*_pct`) — and nothing is
+ * invented for a name that carries neither: such a value is printed raw.
+ */
+export function evidenceValueText(field, value) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value !== "number") {
+    const text = String(value);
+    return text.length ? text : "—";
+  }
+  if (!Number.isFinite(value)) return "—";
+  const unit =
+    METRIC_UNITS[field] || (FIELD_SUFFIX_UNITS.find(([s]) => String(field).endsWith(s)) || [])[1];
+  if (unit === "bytes") return bytes(value);
+  if (unit === "percent") return pct(value);
+  if (unit === "ms") return `${num(value, 1)} ms`;
+  if (unit) return `${num(value, 2)} ${unit}`;
+  return Number.isInteger(value) ? num(value, 0) : num(value, 2);
+}
+
+/** A JSON-TEXT column that a caller may not have parsed (defensive, not a guess). */
+function asList(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * `evidence[]` as the view model keeps it: ONLY the §4.2 keys
+ * `{field, value, seq?, ts?}`. An entry that is not an object, or that has no
+ * `field` name, is dropped rather than rendered with blanks — the record is the
+ * model's claim, and a claim without its field is not checkable against the
+ * telemetry store.
+ */
+export function incidentEvidence(raw) {
+  const out = [];
+  for (const entry of asList(raw)) {
+    if (!entry || typeof entry !== "object") continue;
+    if (typeof entry.field !== "string" || !entry.field) continue;
+    const item = { field: entry.field, value: entry.value };
+    item.valueText = evidenceValueText(item.field, item.value);
+    if (Number.isInteger(entry.seq) && entry.seq >= 0) item.seq = entry.seq;
+    if (typeof entry.ts === "string" && entry.ts.trim()) item.ts = entry.ts;
+    out.push(item);
+  }
+  return out;
+}
+
+/**
+ * `actions[]` as the view model keeps it: what the model DECIDED
+ * (`{action_kind, target?, note?}`), never an outcome. The executed result and
+ * its audit id come from the `remediation_audits` join and are rendered apart,
+ * so the record can never imply an outcome the executor did not produce.
+ */
+export function incidentActions(raw) {
+  const out = [];
+  for (const entry of asList(raw)) {
+    if (!entry || typeof entry !== "object") continue;
+    if (typeof entry.action_kind !== "string" || !entry.action_kind) continue;
+    const item = { action_kind: entry.action_kind };
+    if (typeof entry.target === "string" && entry.target) item.target = entry.target;
+    if (typeof entry.note === "string" && entry.note) item.note = entry.note;
+    out.push(item);
+  }
+  return out;
+}
+
+/** The five persisted incident columns (migration 0016, §11). */
+const INCIDENT_COLUMNS = [
+  "incident_title",
+  "incident_explanation",
+  "incident_evidence",
+  "incident_actions",
+  "incident_generated",
+];
+
+/**
+ * The §4.2 incident record of one decision row, or `null` when the row carries
+ * none. `null` is the deterministic-mode row (§8.1 writes no incident columns)
+ * and it must stay `null` — an "empty card" would assert an incident that the
+ * controller never recorded.
+ */
+export function incidentView(decision) {
+  if (!decision || typeof decision !== "object") return null;
+  const present = INCIDENT_COLUMNS.some((k) => decision[k] !== undefined && decision[k] !== null && decision[k] !== "");
+  if (!present) return null;
+  const generated = typeof decision.incident_generated === "string" && decision.incident_generated
+    ? decision.incident_generated
+    : null;
+  const meta = incidentSourceMeta(generated);
+  const evidence = incidentEvidence(decision.incident_evidence);
+  const actions = incidentActions(decision.incident_actions);
+  const title = typeof decision.incident_title === "string" ? decision.incident_title : "";
+  const explanation = typeof decision.incident_explanation === "string" ? decision.incident_explanation : "";
+  return {
+    title,
+    explanation,
+    evidence,
+    actions,
+    generated,
+    meta,
+    modelSourced: meta.byModel,
+    bug: !!meta.bug,
+  };
+}
+
+/**
+ * Why a row has no incident card. The distinction is the point: deterministic
+ * mode writes no record (§8.1), the model may legitimately return none of the
+ * four fields (§4.2) — but a `fallback` row with no record contradicts §8.1 and
+ * is reported as such instead of being smoothed over.
+ */
+export function noIncidentReason(decision) {
+  const source = decision ? decision.decision_source : null;
+  if (source === "deterministic") return "no incident record (deterministic mode)";
+  if (source === "fallback") return "no incident record (fallback row with no record — §8.1 says the fallback always writes one)";
+  if (source === "model") return "no incident record (the model returned none of the §4.2 fields)";
+  return "no incident record";
+}
+
 /** Index a list of records by one of its fields (first occurrence wins). */
 export function indexBy(rows, key) {
   const map = new Map();
@@ -286,6 +471,7 @@ export function buildDecisionRows({ decisions = [], events = [], audits = [], se
         }
       : null;
     const threshold = event ? thresholdMarker(event, series) : null;
+    const incident = incidentView(d);
     return {
       id: d.id,
       decidedAt: d.decided_at || null,
@@ -299,6 +485,14 @@ export function buildDecisionRows({ decisions = [], events = [], audits = [], se
       sourceMeta: meta,
       confidence: d.decision_source === "model" ? d.confidence : null,
       fallbackReason: d.fallback_reason || null,
+      // §4.2 incident record: the structured answer to what happened / why / on
+      // what evidence / what it decided. `null` for a deterministic-mode row
+      // (the controller writes no incident columns there) and `incidentSource`
+      // carries the persisted provenance (`model` | `fallback`) verbatim.
+      incident,
+      incidentSource: incident ? incident.generated : null,
+      incidentMeta: incident ? incident.meta : null,
+      noIncidentReason: incident ? null : noIncidentReason(d),
       eventId: d.event_id || null,
       event,
       breach,

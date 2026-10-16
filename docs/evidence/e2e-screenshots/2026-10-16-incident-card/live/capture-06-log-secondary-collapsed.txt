@@ -1,0 +1,7 @@
+DOM text read back out of the live page at capture time.
+Page: http://127.0.0.1:47711/?apiBase=http://127.0.0.1:42199/v1&projectId=01J0DEM0WARM000000000000AB
+window: 1500x1600 | decisions-count line: 3 shown / 3 decisions · model 1 · fallback 1 · incident records 2 (AI 1 · controller-generated 1) | decider band: decider: decider unknown no externalModelCall record on the operator log stream yet | log panel <details> open=False
+Nothing here was typed by hand: the page was loaded against the live controller and the DOM read back.
+
+The AI-operator log panel's <summary>: "Live AI-operator log SECONDARY \u2014 RAW LOG LINES collapsed by default; expand for the unparsed operator stream"
+appearance: closed by default (a native <details>), so the incident cards are the primary surface.
