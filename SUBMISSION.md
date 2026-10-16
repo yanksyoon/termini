@@ -203,7 +203,8 @@ is a wake-up signal, never a decision:
 
 ```
 telemetry (C0/C1)  →  threshold rule fires  →  diagnosis (Gemini, provider-only)  →  guardrails  →  LXD executes  →  audit
-agents / intent  ─────────────────►  Gemma 3 4B on Node C (on-prem, backend=local)
+agents / intent  ─────────────────►  Node C front door — Gemma 3 4B on-prem (the product)
+                                     / gemini-proxy → Google AI (tonight's demo: no GPU)
 ```
 
 The **diagnosis** — the decision step that names the remediation — runs on the controller's

@@ -38,7 +38,9 @@ Change it for the whole footprint with the `inference_backend` Terraform variabl
 / `INFERENCE_BACKEND` env in `provision.sh` and `tools/raise-standing-fleet.sh`,
 or on one running node with `termini-inference-switch local` (one command,
 no rebuild, no reinstall; `legacy` restores the pre-proxy host-exposed server).
-`local` is the on-prem fallback, not the shipped value.
+`local` is the product's intended posture — Node C running its own weights is what makes
+"data never leaves" true — and it is the one-variable fallback in this demo footprint,
+which ships `gemini-proxy` only because no GPU node is available for Node C.
 
 ## Two inference surfaces (D9, `t_aa7a70f9` — agent half superseded by `t_3fcee90b`)
 

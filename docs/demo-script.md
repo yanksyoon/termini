@@ -66,7 +66,8 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
   real hardware. Three things, in order: a node that turns bare metal into an
   AI-ready fleet in under five seconds; a plain-English request that becomes
   a validated, clamped plan — with the guardrail deciding, not the model; and a self-healing
-  loop where the operator finds a fault, fixes it, and your data never leaves.
+  loop where the operator finds a fault, fixes it, and your data never leaves — with
+  one disclosed substitution tonight, which I'll point at when it happens.
   If anything goes quiet on me, I'll say what I'm doing and why."
 - `[FALLBACK]` (stage/timer scramble) "While we load, here's the one line that
   matters: your hardware, your data, our operations. The rest is just showing
@@ -106,9 +107,12 @@ presenter's on-stage budget, calibrated against the measured dry-run in §3.
 - `[TALK]` "Now the fun part. I type a plain-English request and we watch it
   become a validated plan."
 - `[CLICK]` type: `deploy 3 worker agents for coding, plus a fast LLM`.
-- `[TALK]` "Three worker agents, plus a fast LLM. An on-prem model — so this
-  sentence never leaves the premises — extracts a structured allocation: three
-  agent VMs, plus an inference reference to Node C's host service."
+- `[TALK]` "Three worker agents, plus a fast LLM. Our product runs this model
+  on-prem, on Node C, so data never leaves. Tonight the GPU that node would use
+  isn't available to us, so the demo proxies this one call to Google's managed
+  model — and the answer tells you which one answered, in-band. What comes back is
+  a structured allocation: three agent VMs, plus an inference reference to Node C's
+  host service."
 - `[CLICK]` submit; show the extracted JSON (agent_vm ×3 + inference_vm → host_service).
 - `[TALK]` "The model recommends. Then the guardrail decides. Watch what happens
   when I ask for the impossible."
