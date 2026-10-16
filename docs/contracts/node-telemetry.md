@@ -441,6 +441,120 @@ count field — and the contract's "Never collected" list in §6 is unchanged.
 
 ---
 
+### 4.12 PSI pressure + memory-pressure scalars — C0 (extension)
+
+`pressure{}` and the three memory scalars are the research card's highest-value
+additions (`docs/research/infra-metric-inventory.md`, rows 1–3 + 11): they tell
+the diagnosis *where* the stall is, not just that RAM is high. All are plain C0
+numbers — no identifier, no string, no path — and are registered in
+`governance.md` §4.1.1 under the same deny-by-default review as §4.6–§4.11.
+
+`pressure{}` is a **fixed four-key object** — the PSI "some/full × 10 s average"
+scalars from `/proc/pressure/{cpu,io,memory}`:
+
+| Field | Type | Unit | Range | Description |
+|-------|------|------|-------|-------------|
+| `cpu_some_avg10` | number | percent | 0–100 | % time some task stalled on CPU, 10 s avg |
+| `io_some_avg10` | number | percent | 0–100 | % time some task stalled on I/O, 10 s avg |
+| `memory_some_avg10` | number | percent | 0–100 | % time some task stalled on memory, 10 s avg |
+| `memory_full_avg10` | number | percent | 0–100 | % time *all* tasks stalled on memory, 10 s avg |
+
+The whole `pressure{}` object is **omitted** (never an empty `{}`, never four
+`0`s) when `/proc/pressure` is unreadable: "this node does not report PSI" and
+"this node reports zero stall" are different facts. A value of `0` is a real
+measurement (no stall) and is reported as such.
+
+The three flat scalars are cumulative counters (or a capacity) that are **omitted,
+never `0`,** when their source file is unreadable:
+
+| Field | Type | Unit | Range | Source | Description |
+|-------|------|------|-------|--------|-------------|
+| `oom_kill_count` | integer | count | ≥ 0 | `/proc/vmstat` `oom_kill` | Node-wide processes killed by the OOM killer (cumulative) |
+| `pgmajfault_count` | integer | count | ≥ 0 | `/proc/vmstat` `pgmajfault` | Major page faults needing disk I/O (cumulative) |
+| `mem_available_bytes` | integer | bytes | ≥ 0 | `/proc/meminfo` `MemAvailable` | Kernel's own "would not swap" estimate; the honest free that `MemFree` overcounts |
+
+**Bound / cost:** the whole group is 4 fixed floats + 3 fixed integers. Worst-case
+serialized bytes ≈ 111 (pressure) + 120 (three 20-digit counters) — a fixed scalar
+cost, not one that grows with anything the node reads.
+
+### 4.13 Disk I/O / inode + network error / conntrack — C0 (extension)
+
+These extend the existing bounded arrays (`disk[]` §4.3, `net[]` §4.4) and add
+three flat scalars; they do **not** introduce a new array, so no new top-N bound
+is needed — the existing per-device / per-interface / per-instance cardinality
+carries the volume (research card §3 SHIP, rows 4–8).
+
+`disk[]` gains the raw saturation signal behind `write_latency_ms` plus inode
+exhaustion (a full inode table fails writes while `free_bytes` looks healthy):
+
+| Field | Type | Unit | Range | Source | Description |
+|-------|------|------|-------|--------|-------------|
+| `io_ticks_ms` | integer | ms | ≥ 0 | `/sys/block/<dev>/stat` field 10 | ms spent doing I/O (cumulative) |
+| `io_in_flight` | integer | count | ≥ 0 | `/sys/block/<dev>/stat` field 9 | I/Os currently in flight (queue depth) |
+| `inode_used` | integer | count | ≥ 0 | `statvfs` `f_files − f_ffree` | Inodes used on the filesystem |
+| `inode_total` | integer | count | ≥ 1 | `statvfs` `f_files` | Total inodes on the filesystem |
+
+`net[]` gains the four NIC error/drop counters that explain `latency-01`:
+
+| Field | Type | Unit | Range | Source | Description |
+|-------|------|------|-------|--------|-------------|
+| `rx_errors` | integer | count | ≥ 0 | `/sys/class/net/<iface>/statistics/rx_errors` | Receive errors (cumulative) |
+| `tx_errors` | integer | count | ≥ 0 | `…/tx_errors` | Transmit errors (cumulative) |
+| `rx_dropped` | integer | count | ≥ 0 | `…/rx_dropped` | Receive drops (cumulative) |
+| `tx_dropped` | integer | count | ≥ 0 | `…/tx_dropped` | Transmit drops (cumulative) |
+
+The three flat scalars:
+
+| Field | Type | Unit | Range | Source | Description |
+|-------|------|------|-------|--------|-------------|
+| `tcp_retransmit_segs` | integer | count | ≥ 0 | `/proc/net/snmp` `RetransSegs` | TCP segments retransmitted (cumulative) — transport-layer loss |
+| `conntrack_count` | integer | count | ≥ 0 | `/proc/sys/net/netfilter/nf_conntrack_count` | Active connection-tracked flows |
+| `conntrack_max` | integer | count | ≥ 1 | `/proc/sys/net/netfilter/nf_conntrack_max` | Conntrack table capacity |
+
+**Count-only (C-class caveat, recorded).** The conntrack *count* is C0 — an
+integer aggregate, exactly the §4.11 reasoning — but the conntrack **table**
+(`/proc/net/nf_conntrack`) is a list of per-flow 5-tuples (IPs and ports) and is
+**C2, never read for telemetry**. The collector reads only the two
+`nf_conntrack_count`/`nf_conntrack_max` files; this constraint is written into
+`governance.md` §4.1.1 so a future collector cannot drift to the table.
+
+Every §4.13 field is **omitted, never `0`,** when its `/sys` or `/proc` file is
+unreadable, per the §4.11 rule.
+
+### 4.14 Per-instance OOM / fault attribution — C0 (extension)
+
+`lxd_instances[]` (§4.6) gains two per-instance cumulative counters so a
+node-level OOM becomes a *named instance* incident instead of "restart the
+heaviest by RSS":
+
+| Field | Type | Unit | Range | Source | Description |
+|-------|------|------|-------|--------|-------------|
+| `oom_kill_count` | integer | count | ≥ 0 | `/sys/fs/cgroup/lxc.payload.<name>/memory.events` `oom_kill` | OOM kills inside this instance (cumulative) |
+| `pgmajfault_count` | integer | count | ≥ 0 | `/sys/fs/cgroup/lxc.payload.<name>/memory.stat` `pgmajfault` | Major page faults for this instance (cumulative) |
+
+These are sourced from the instance **cgroup**, not the LXD API — the LXD
+`/1.0/instances/<name>` state object does not expose them. The cgroup path is the
+same mapping the collector already uses for `ram_limit_bytes`. Both are
+**omitted, never `0`,** when the cgroup file is unreadable, and never read from
+the LXD `config`/`expanded_config` object (which is C2 — research card §3,
+headline finding).
+
+---
+
+### 4.15 Cost/bounds honesty for §4.12–§4.14
+
+Each new field is a fixed scalar or rides an already-bounded array, so the
+per-sample cost is fixed, not load-proportional. The worst case — every new field
+present at its maximum representable magnitude (64-bit counters at 20 digits, PSI
+at `100.0`, one worst-case entry each for `disk[]`/`net[]`/`lxd_instances[]`) —
+serializes to **744 bytes**. That is the size budget (research card §2 token
+table) and it is pinned by test (`tests/test_telemetry_metric_expansion.py`), so
+a 1 s cadence cannot silently grow the ingest payload; it stays far under the
+16 KiB whole-batch cap of `governance.md` §5.2. The collector must
+omit-not-fabricate, so a quiet node ships less, never more.
+
+---
+
 ## 5. Trigger linkage (remediation traceability)
 
 The AI operator's remediation loop consumes this stream. When a threshold rule
@@ -529,6 +643,13 @@ journal *messages* behind a count remain C2 and are rejected exactly as before.
 The denylist is enforced by field *name* at every nesting depth, so a `cmdline`
 or `message` nested inside a `processes[]` entry is rejected the same way a
 top-level one is — and that is pinned by test, not by inspection.
+
+The §4.12–§4.14 groups (`pressure{}`, the memory/transport/conntrack scalars,
+and the `disk[]`/`net[]`/`lxd_instances[]` extensions) narrow it no further: every
+field is an integer or a bounded 0–100 percentage with no identifier, no string
+and no path. The one new C2 *boundary* they touch is the conntrack **table**
+(`/proc/net/nf_conntrack`), which stays C2 (§4.13 count-only rule) — the collector
+reads only the two count files, never the table.
 
 ---
 

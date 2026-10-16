@@ -114,12 +114,27 @@ content and are required by the AI operator and charts. Canonical definitions:
 | `agents[]` | `agent-runtime.md` §13.2 | Per-agent-VM C0 status counters (state, queue depth, task counters). |
 | `processes[]` | `node-telemetry.md` §4.10 | Top-10 per sample by RSS, anchored by `pid`. **Metrics only**: the kernel task name (`comm`, ≤15 printable ASCII chars), state, CPU%, RSS, thread count and age. No `argv`, no `cmdline`, no `exe`, no environment, no file paths — those remain C2 (§4.3). |
 | `services[].journal_errors` / `services[].journal_warnings` | `node-telemetry.md` §4.11 | **Counts** of journal entries at priority `err`+ / `warning` for a unit over a 300 s window. A count is an aggregate, not a log line; the messages stay C2. Omitted, never `0`, when the journal is unreadable. |
+| `pressure{}` | `node-telemetry.md` §4.12 | Four PSI scalars (`cpu_some_avg10`, `io_some_avg10`, `memory_some_avg10`, `memory_full_avg10`), floats 0–100. Omitted, never an empty `{}` or `0`s, when `/proc/pressure` is unreadable. |
+| `oom_kill_count` / `pgmajfault_count` / `mem_available_bytes` | `node-telemetry.md` §4.12 | Cumulative C0 ints from `/proc/vmstat` (`oom_kill`, `pgmajfault`) and `/proc/meminfo` (`MemAvailable`). Omitted, never `0`, when the source is unreadable. |
+| `disk[].io_ticks_ms` / `io_in_flight` / `inode_used` / `inode_total` | `node-telemetry.md` §4.13 | Raw disk saturation (ms in I/O, queue depth) + inode exhaustion. C0 ints riding the bounded `disk[]` array; omitted, never `0`, when unreadable. |
+| `net[].rx_errors` / `tx_errors` / `rx_dropped` / `tx_dropped` + `tcp_retransmit_segs` | `node-telemetry.md` §4.13 | NIC error/drop counters + node-level TCP retransmit. C0 ints riding the bounded `net[]` array (plus one flat scalar); omitted, never `0`, when unreadable. |
+| `conntrack_count` / `conntrack_max` | `node-telemetry.md` §4.13 | **Count-only.** The two `nf_conntrack_count`/`nf_conntrack_max` files are C0; the conntrack *table* (`/proc/net/nf_conntrack`, per-flow 5-tuples of IPs and ports) is C2 and must never be read for telemetry (§4.3). |
+| `lxd_instances[].oom_kill_count` / `pgmajfault_count` | `node-telemetry.md` §4.14 | Per-instance OOM/fault attribution from the instance cgroup (`memory.events`/`memory.stat`), **not** the LXD API. C0 ints riding the bounded `lxd_instances[]` array; omitted, never `0`, when unreadable. |
 
 `processes[]` and the journal counts were added under the same deny-by-default
 review as the groups above (t_957956e5). Neither narrows §4.3: the C2 field-name
 denylist is applied at every nesting depth, so a `cmdline`/`environ`/`message`
 nested inside a `processes[]` entry or a `services[]` entry fail-closes the batch
 exactly as a top-level one does.
+
+The §4.12–§4.14 groups (`pressure{}`, the memory/transport/conntrack scalars, and
+the `disk[]`/`net[]`/`lxd_instances[]` extensions) were registered by the
+contract+ingest card t_98a685c1 under the same deny-by-default review. Every
+field is a C0 integer or a bounded 0–100 percentage — no identifier, no string,
+no path — and none narrows §4.3. The one C2 boundary they touch is the conntrack
+**table**: only the two count files are C0, the table is C2 and must never be
+read for telemetry, and that constraint is written here so a future collector
+cannot drift to it.
 
 ### 4.2 C1 fields — allow only after transformation
 
@@ -144,6 +159,9 @@ Any of the following in an egress structure causes fail-closed (see §6):
   the process metrics `node-telemetry.md` §4.10 admits
 - SSH keys (public or private), certificates, tokens, credentials
 - MAC addresses in raw form, full IP addresses, serial numbers, asset tags
+- The conntrack **table** (`/proc/net/nf_conntrack`) — per-flow 5-tuples (IPs and
+  ports) are C2; only the aggregate `conntrack_count`/`conntrack_max` count files
+  are C0 (§4.1.1)
 - Any field not listed in 4.1 or 4.2 (deny-by-default)
 
 **Registration bootstrap exception (bounded C1).** The one-time registration body
