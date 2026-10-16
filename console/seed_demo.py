@@ -312,9 +312,80 @@ def advertised_vm_ids(node_id: str, instance_names: list[str],
     return [instance_vm_id(node_id)]
 
 
+# --- §4.12–§4.14 synthetic telemetry ----------------------------------------
+# The metric-expansion groups the node collector now emits from real /proc,/sys,
+# cgroup and LXD sources (PR #190). The seeder synthesises its own samples, so
+# it must carry the SAME groups with values that tell the SAME fault story the
+# existing RAM/disk windows already inject — otherwise the dashboard charts and
+# the AI diagnosis see no `pressure{}` and the demo's answer is worth nothing.
+# Values are fixed per fault window (deterministic, never random noise): the
+# seeder drives faults as on/off windows, so the synthetic evidence follows the
+# same on/off shape.
+
+# The fault windows a ticker drives. `None` is the healthy half of the period.
+FAULT_DISK = "disk"       # disk-degrade (compute node): I/O saturates, RAM flat
+FAULT_MEMORY = "memory"   # memory-pressure (inference node): reclaim + OOM
+
+# PSI pressure (node-telemetry.md §4.12): percent of time tasks stalled, 10 s
+# average. Disk-degrade stalls on I/O only; memory-pressure stalls on memory and
+# keeps I/O flat — that split is the whole point of the group.
+_PRESSURE_HEALTHY = {
+    "cpu_some_avg10": 0.0,
+    "io_some_avg10": 0.0,
+    "memory_some_avg10": 0.0,
+    "memory_full_avg10": 0.0,
+}
+_PRESSURE_DISK = {
+    "cpu_some_avg10": 12.4,
+    "io_some_avg10": 68.9,
+    "memory_some_avg10": 0.0,
+    "memory_full_avg10": 0.0,
+}
+_PRESSURE_MEMORY = {
+    "cpu_some_avg10": 18.6,
+    "io_some_avg10": 0.0,
+    "memory_some_avg10": 72.4,
+    "memory_full_avg10": 41.3,
+}
+
+# mem_available_bytes (node-telemetry.md §4.12): the kernel's own "would not
+# swap" estimate. Healthy when idle, modestly reduced by a disk fault (page-cache
+# pressure, not memory exhaustion), cratered under memory pressure.
+_MEM_AVAILABLE_HEALTHY = 40 * 1024 ** 3
+_MEM_AVAILABLE_DISK = 30 * 1024 ** 3
+_MEM_AVAILABLE_MEMORY = 512 * 1024 ** 2
+
+# Static §4.13 fields with plausible values. The demo drives no inode or
+# conntrack fault, so these hold steady — a real measurement, not a fabrication.
+_INODE_USED = 1129359
+_INODE_TOTAL = 12976128
+_CONNTRACK_COUNT = 457
+_CONNTRACK_MAX = 262144
+# disk[].io_in_flight is a queue-depth gauge: 0 when idle, saturated under a
+# disk-degrade window.
+_IO_IN_FLIGHT_DISK = 42
+
+
 def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
            disk_write_latency_ms: float, latency_ms: float, uptime_sec: int,
-           vm_ids: list[str], gpu: list | None = None) -> dict:
+           vm_ids: list[str], gpu: list | None = None,
+           fault: str | None = None,
+           oom_kill_count: int = 0, pgmajfault_count: int = 0,
+           tcp_retransmit_segs: int = 0, io_ticks_ms: int = 0,
+           instance_oom_kill_count: int = 0,
+           instance_pgmajfault_count: int = 0) -> dict:
+    if fault == FAULT_MEMORY:
+        pressure = dict(_PRESSURE_MEMORY)
+        mem_available = _MEM_AVAILABLE_MEMORY
+        io_in_flight = 0
+    elif fault == FAULT_DISK:
+        pressure = dict(_PRESSURE_DISK)
+        mem_available = _MEM_AVAILABLE_DISK
+        io_in_flight = _IO_IN_FLIGHT_DISK
+    else:
+        pressure = dict(_PRESSURE_HEALTHY)
+        mem_available = _MEM_AVAILABLE_HEALTHY
+        io_in_flight = 0
     s = {
         "seq": seq,
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
@@ -335,10 +406,30 @@ def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
         "ip_local": "10.14.100.0/24",
         "mac_address": hashlib.sha256(("mac:" + node_id).encode()).hexdigest()[:16],
         "project_id": project_id,
-        "disk": [{"path": "/dev/sda", "total_bytes": 274877906944, "free_bytes": 214748364800,
-                  "write_latency_ms": disk_write_latency_ms, "mount_ro": False}],
-        "net": [{"iface": "eth0", "rx_bytes": 123000 + seq, "tx_bytes": 11000 + seq,
-                 "latency_ms": latency_ms}],
+        # §4.12: PSI pressure (where the stall is) + the memory-pressure scalars.
+        "pressure": pressure,
+        "oom_kill_count": oom_kill_count,
+        "pgmajfault_count": pgmajfault_count,
+        "mem_available_bytes": mem_available,
+        # §4.13: transport / conntrack scalars. Only the count files are C0; the
+        # conntrack table is C2 and is never represented here at all.
+        "tcp_retransmit_segs": tcp_retransmit_segs,
+        "conntrack_count": _CONNTRACK_COUNT,
+        "conntrack_max": _CONNTRACK_MAX,
+        "disk": [{
+            "path": "/dev/sda", "total_bytes": 274877906944, "free_bytes": 214748364800,
+            "write_latency_ms": disk_write_latency_ms, "mount_ro": False,
+            # §4.13: raw I/O saturation (behind write_latency_ms) + inode table.
+            "io_ticks_ms": io_ticks_ms, "io_in_flight": io_in_flight,
+            "inode_used": _INODE_USED, "inode_total": _INODE_TOTAL,
+        }],
+        "net": [{
+            "iface": "eth0", "rx_bytes": 123000 + seq, "tx_bytes": 11000 + seq,
+            "latency_ms": latency_ms,
+            # §4.13: NIC error/drop counters. The demo drives no network fault,
+            # so these read 0 — a real "no errors" measurement, not an omission.
+            "rx_errors": 0, "tx_errors": 0, "rx_dropped": 0, "tx_dropped": 0,
+        }],
         "services": [
             {"name": "termini-bootstrap", "status": "running"},
             {"name": "lxd", "status": "running"},
@@ -357,8 +448,14 @@ def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
                 "ram_used_bytes": max(1, ram_used_bytes // 4),
                 "ram_limit_bytes": 4294967296,
                 "disk_used_bytes": 2362232012,
+                # §4.14: per-instance OOM / major-fault attribution. Only the
+                # FIRST advertised instance is the demo's "target" workload, so
+                # it is the one whose counters advance under memory pressure;
+                # the others are idle (0 is a real measurement here).
+                "oom_kill_count": instance_oom_kill_count if i == 0 else 0,
+                "pgmajfault_count": instance_pgmajfault_count if i == 0 else 0,
             }
-            for vm_id in vm_ids
+            for i, vm_id in enumerate(vm_ids)
         ],
     }
     if gpu:
@@ -437,6 +534,20 @@ class NodeTicker(threading.Thread):
         self.last_success_monotonic: float | None = None
         self.started_monotonic = time.monotonic()
         self._logged_error = False
+        # §4.12–§4.14 cumulative counters. Monotonic by construction: advanced
+        # per tick, never reset, and inherited by a watchdog respawn (like `seq`)
+        # so a healed ticker cannot make a counter run backwards mid-demo.
+        self.oom_kills = 0
+        self.pgmajfaults = 0
+        self.tcp_retrans = 0
+        self.io_ticks_ms = 0
+        self.instance_oom_kills = 0
+        self.instance_pgmajfaults = 0
+        # Cadence bookkeeping for the OOM killer: fires once every third
+        # memory-fault tick, so the demo shows a *pattern* of kills, not a kill
+        # on every sample. Counted independently of `seq` so `_advance_counters`
+        # is deterministic on its own.
+        self._mem_fault_ticks = 0
 
     # --- sending ----------------------------------------------------------
     def send(self, s: dict) -> bool:
@@ -509,19 +620,56 @@ class NodeTicker(threading.Thread):
         return min(self.retry_base_s * (2 ** min(self.consecutive_failures, 8)),
                    self.max_retry_s)
 
+    def _advance_counters(self, fault: str | None) -> None:
+        """Advance the cumulative counters one tick, in line with the fault.
+
+        A quiet node still faults pages and does background I/O, so the healthy
+        deltas are small but nonzero. The faulted deltas are an order of magnitude
+        larger and touch ONLY the counter that names the stalling resource — that
+        is what makes the synthetic sample honest evidence instead of noise.
+        """
+        self.pgmajfaults += 3
+        self.tcp_retrans += 1 if self.seq % 4 == 0 else 0
+        self.io_ticks_ms += 40
+        if fault == FAULT_DISK:
+            # Disk-degrade: the device is saturated, so its cumulative I/O time
+            # climbs steeply. RAM, pressure and the OOM counters stay flat.
+            self.io_ticks_ms += 3200
+        elif fault == FAULT_MEMORY:
+            # Memory-pressure: reclaim thrashes pages to disk (major faults) and
+            # the OOM killer fires periodically, hitting the target instance.
+            self._mem_fault_ticks += 1
+            self.pgmajfaults += 160
+            self.instance_pgmajfaults += 130
+            if self._mem_fault_ticks % 3 == 0:
+                self.oom_kills += 1
+                self.instance_oom_kills += 1
+
     def _tick(self, t0: float) -> None:
         phase = ((time.monotonic() - t0 + self.phase) % self.period) / self.period
         hot = phase < 0.5  # half the period "faulted"
         ram = 66000000000 if (self.high_ram and hot) else 18000000000
         disk_lat = 120.0 if (not self.high_ram and hot) else 3.0
         net_lat = 0.8
+        # The active fault window for THIS tick (None = the healthy half). It is
+        # the same on/off state the RAM/disk values above already express.
+        fault = None
+        if hot:
+            fault = FAULT_MEMORY if self.high_ram else FAULT_DISK
+        self._advance_counters(fault)
         self.seq += 1
         s = sample(self.node_id, self.project_id, self.seq,
                    ram_used_bytes=ram, disk_write_latency_ms=disk_lat,
                    latency_ms=net_lat, uptime_sec=3600 + int(time.monotonic() - t0),
                    vm_ids=advertised_vm_ids(self.node_id, self.instance_names,
                                             self.synthetic_ids),
-                   gpu=self.gpu)
+                   gpu=self.gpu, fault=fault,
+                   oom_kill_count=self.oom_kills,
+                   pgmajfault_count=self.pgmajfaults,
+                   tcp_retransmit_segs=self.tcp_retrans,
+                   io_ticks_ms=self.io_ticks_ms,
+                   instance_oom_kill_count=self.instance_oom_kills,
+                   instance_pgmajfault_count=self.instance_pgmajfaults)
         self.send(s)
 
     def run(self) -> None:
@@ -567,6 +715,15 @@ class NodeTicker(threading.Thread):
         fresh.seq = self.seq
         fresh.sent = self.sent
         fresh.failed = self.failed
+        # The cumulative counters must also carry over: a respawned ticker that
+        # restarted them at 0 would emit a counter that runs BACKWARDS, which is
+        # the same silent corruption a wrapping `seq` causes.
+        fresh.oom_kills = self.oom_kills
+        fresh.pgmajfaults = self.pgmajfaults
+        fresh.tcp_retrans = self.tcp_retrans
+        fresh.io_ticks_ms = self.io_ticks_ms
+        fresh.instance_oom_kills = self.instance_oom_kills
+        fresh.instance_pgmajfaults = self.instance_pgmajfaults
         # If the node has not been updated for minutes, the replacement must inherit
         # that fact — otherwise the freeze timer restarts and the stall goes quiet.
         fresh.last_success_monotonic = self.last_success_monotonic
