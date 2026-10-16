@@ -138,7 +138,21 @@ class SchemaTest(unittest.TestCase):
 
         cfg = {"controller_url": "http://127.0.0.1:9", "node_name": "test-node",
                "iface": "eth0", "role_hint": "compute"}
-        sample = tb.build_sample(cfg, 1)
+        # The builder reads `lxd_instances[]` off THIS node's LXD; never let a
+        # unit test reach the build host's real daemon (the merged tree's whole
+        # failure came from a reader falling through to it — see
+        # tests/test_node_instance_inventory.py).
+        saved = (tb.LXD_UNIX_SOCKETS, tb._lxd_instances_over_cli,
+                 tb._INVENTORY_CLI_DEAD_UNTIL)
+        tb.LXD_UNIX_SOCKETS = (
+            str(pathlib.Path(tempfile.mkdtemp(prefix="termini-no-lxd-")) / "absent.socket"),)
+        tb._lxd_instances_over_cli = lambda: (None, "lxc: not consulted in this test")
+        tb._INVENTORY_CLI_DEAD_UNTIL = 0.0
+        try:
+            sample = tb.build_sample(cfg, 1)
+        finally:
+            (tb.LXD_UNIX_SOCKETS, tb._lxd_instances_over_cli,
+             tb._INVENTORY_CLI_DEAD_UNTIL) = saved
         _clean, errors = validate_sample(sample)
         self.assertEqual(errors, [])
         self.assertIsInstance(sample["net"][0]["latency_ms"], float)

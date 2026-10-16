@@ -12,7 +12,9 @@ path can never run.
 
 The fix is to read LXD over its own unix socket (no privilege escalation needed),
 with the CLI kept as a fallback. These tests pin both transports, the C0 id the
-entries carry, and the "omit the field rather than claim an empty node" rule.
+entries carry, §4.6's "running instances only" rule (the answer below deliberately
+carries a stopped instance too), and the "omit the field rather than claim an
+empty node" rule.
 """
 from __future__ import annotations
 
@@ -125,19 +127,21 @@ class SocketTransportTest(_FakeLxd):
 
         self.assertTrue(self.requests, "no request reached the socket")
         self.assertIn("/1.0/instances?recursion=2", self.requests[0])
-        self.assertEqual(len(inv), 2)
+        # §4.6: one entry per RUNNING instance. The daemon's answer above carries
+        # a stopped instance as well, and a stopped instance is not a remediation
+        # target — it must not be advertised to the guardrail.
+        self.assertEqual(len(inv), 1)
         by_id = {e["vm_id"]: e for e in inv}
-        for name in ("demo-workload", "termini-01m4wjhwqr3b8pcav2tvqbgg-0-1"):
-            self.assertIn(vmids.vm_id_for_instance(name), by_id,
-                          "the controller could not resolve this entry back to its instance")
-            self.assertRegex(vmids.vm_id_for_instance(name), F.ULID_PATTERN)
+        self.assertIn(vmids.vm_id_for_instance("demo-workload"), by_id,
+                      "the controller could not resolve this entry back to its instance")
+        self.assertNotIn(vmids.vm_id_for_instance("termini-01m4wjhwqr3b8pcav2tvqbgg-0-1"),
+                         by_id, "a stopped instance must not be reported (§4.6)")
+        self.assertRegex(vmids.vm_id_for_instance("demo-workload"), F.ULID_PATTERN)
         running = by_id[vmids.vm_id_for_instance("demo-workload")]
         self.assertEqual(running["state"], "running")           # LXD "Running" -> contract
         self.assertEqual(running["ram_used_bytes"], 536870912)
         self.assertEqual(running["ram_limit_bytes"], 7516192768)
         self.assertEqual(running["disk_used_bytes"], 2362232012)
-        stopped = by_id[vmids.vm_id_for_instance("termini-01m4wjhwqr3b8pcav2tvqbgg-0-1")]
-        self.assertEqual(stopped["state"], "stopped")
         # The instance NAME is never on the wire: the entry is C0 either way.
         self.assertNotIn("demo-workload", json.dumps(inv))
         self.assertNotIn("name", running)
