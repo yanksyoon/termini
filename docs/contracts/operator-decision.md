@@ -338,6 +338,12 @@ file contents, prompt text), and `field` may not be an invented path — the G9 
 (§7) runs the same C2 signature scan over every incident string that G7 runs over
 `rationale`.
 
+**Numeric evidence is authored grouped in the prompt (t_220a468a).** The prompt
+renders the input's byte-magnitude integers thousands-grouped (`4119142400` →
+`"4,119,142,400"`), so a model quoting `ram_used_bytes` in `explanation` or
+`evidence[].value` quotes the grouped, C2-safe form; the telemetry still carries
+the real ungrouped integers and must not be dropped from the prompt (§6.1).
+
 **The new metric groups are quotable by name, with no pattern change
 (t_922b3268).** The `^[a-z0-9_]+(\.[a-z0-9_]+)*$` field-name pattern already
 admits every new name, so they are *added to the accepted set*, never enabled by
@@ -591,7 +597,13 @@ X-Termini-Request-Id: <request_id>
 - The system prompt is the versioned `operator-decision v2` template
   (`governance.md` §7.2: static template, typed C0 placeholders only).
 - The user message is the `DecisionInput` serialized as compact JSON, embedded in
-  the template's single `{{decision_input}}` placeholder.
+  the template's single `{{decision_input}}` placeholder. Integer metric values of
+  byte magnitude are rendered **thousands-grouped** (`4119142400` →
+  `"4,119,142,400"`, the shape `safe_int_display` produces) so a model that quotes
+  a metric while explaining itself emits the C2-safe grouped form, not a bare
+  10–15 digit run that G9 would read as a phone number (t_220a468a); the telemetry
+  values themselves are never changed — do not "fix" this by dropping the numbers
+  from the prompt.
 - `response_format: json_object` (or a GBNF grammar) is **required** so the output
   parses deterministically and is never free-form.
 

@@ -439,10 +439,17 @@ class TestPrompt(unittest.TestCase):
             self.assertIn(f'"{action_id}"', prompt_module.SYSTEM_PROMPT)
 
     def test_user_message_embeds_compact_json_input(self):
-        payload = sample_input().to_dict()
         messages = render(sample_input())
         user = messages[-1]["content"]
-        self.assertIn(json.dumps(payload, separators=(",", ":"), ensure_ascii=False), user)
+        # The DecisionInput is embedded as compact JSON with large integers
+        # thousands-grouped (t_220a468a): the model sees "32,641,751,449", not a
+        # bare 10-15 digit run it would then re-emit and trip G9's phone scan.
+        self.assertIn('"request_id":"01M4349RQ09HMAX6RC9YPYQH4W"', user)
+        self.assertIn('"ram_used_bytes":"32,641,751,449"', user)  # state, grouped
+        self.assertIn('"ram_used_bytes":"32,300,000,000"', user)  # evidence, grouped
+        # The raw digit runs must never reach the model verbatim.
+        self.assertNotIn("32641751449", user)
+        self.assertNotIn("32300000000", user)
 
     def test_few_shot_examples_are_valid_response_json(self):
         for example in prompt_module.FEW_SHOT:
