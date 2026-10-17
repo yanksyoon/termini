@@ -757,6 +757,32 @@ def _fallback_read_only_mounts(event: HealthEvent) -> list[str]:
     return mounts
 
 
+def _fallback_observed_value(event: HealthEvent) -> float | int | None:
+    """The sample's own observed value of ``event.metric``, or None.
+
+    A fallback record's evidence entry must pair the field it names with the
+    value the sample actually observed for it (operator-decision.md §4.2:
+    ``evidence[].value`` is "the value observed for that field"). The fired
+    event's ``value`` is the *compared* value, which for a ratio rule
+    (oom-guard-01 compares ``ram_used_bytes/ram_total_bytes``) is a derived
+    percentage while ``metric`` names a byte count — quoting it under a
+    bytes-named field makes the dashboard print "97 B". When the newest evidence
+    sample carries a finite numeric value for ``metric``, return it; otherwise
+    return None so the caller keeps the compared value (then the threshold).
+    """
+    evidence = event.evidence if isinstance(event.evidence, list) else []
+    if not evidence:
+        return None
+    last = evidence[-1]
+    if not isinstance(last, dict):
+        return None
+    v = last.get(event.metric)
+    if (isinstance(v, (int, float)) and not isinstance(v, bool)
+            and math.isfinite(float(v))):
+        return v
+    return None
+
+
 def build_fallback_incident(event: HealthEvent, action: RemediationAction | None,
                             reason: str) -> dict:
     """The §8.1 labelled fallback record — built ONLY from the fired event's C0
@@ -769,9 +795,10 @@ def build_fallback_incident(event: HealthEvent, action: RemediationAction | None
 
       * ``generated: "fallback"``;
       * the explanation names the fallback reason in the text itself;
-      * ``evidence[]`` holds only the event's own C0 fields (metric, value,
-        threshold, sample ``seq``) — never a fabricated sample, never a model
-        sentence.
+      * ``evidence[]`` holds only the event's own C0 fields — the metric name
+        with the sample's *observed* value for it (falling back to the compared
+        value, then the threshold text), plus the sample ``seq`` — never a
+        fabricated sample, never a model sentence.
     """
     reason = reason if reason in FALLBACK_REASONS else "inference_unavailable"
     title = f"{event.type} on node {event.node_id}".strip()
@@ -803,7 +830,16 @@ def build_fallback_incident(event: HealthEvent, action: RemediationAction | None
     explanation = explanation[:EXPLANATION_MAX_CHARS]
 
     evidence: list[dict] = []
-    value: Any = event.value
+    # §4.2: evidence[].value is "the value observed for that field" — the entry
+    # must pair a field name with a value in that field's own unit. The fired
+    # event's `value` is the *compared* value, which for a ratio rule is a
+    # derived percentage while `metric` names a byte count (ram_used_bytes
+    # arriving as 96.99% and printing as "97 B"). Quote the sample's observed
+    # value of `metric` when the evidence tail carries one; otherwise keep the
+    # compared value (then the threshold text), as before.
+    value: Any = _fallback_observed_value(event)
+    if value is None:
+        value = event.value
     if not (isinstance(value, (int, float)) and not isinstance(value, bool)
             and math.isfinite(float(value))):
         value = event.threshold  # a C0 human-readable description, still event-derived

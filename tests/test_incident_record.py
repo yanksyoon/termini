@@ -285,14 +285,72 @@ class FallbackIncidentTest(unittest.TestCase):
         self.assertIn("parse_error", rec["explanation"])
         self.assertIn("instance.restart", rec["explanation"])
         self.assertIn("agent-c1", rec["explanation"])
-        # evidence is only the event's own C0 fields — metric + value + seq.
+        # evidence is only the event's own C0 fields — metric + observed value + seq.
         self.assertEqual(len(rec["evidence"]), 1)
         self.assertEqual(rec["evidence"][0]["field"], "ram_used_bytes")
-        self.assertEqual(rec["evidence"][0]["value"], 95.0)
+        # §4.2: value is "the value observed for that field" — the sample's byte
+        # count, not the detector's derived percentage (event.value == 95.0).
+        self.assertEqual(rec["evidence"][0]["value"], 32641751449)
         self.assertEqual(rec["evidence"][0]["seq"], 1050)
         # one action entry, no fabricated outcome.
         self.assertEqual(rec["actions"], [{"action_kind": "instance.restart",
                                            "target": "agent-c1"}])
+
+    def test_oom_evidence_value_is_observed_bytes_not_derived_percent(self):
+        """The oom-guard-01 fallback evidence entry quotes the sample's observed
+        ram_used_bytes, not the compared percentage (§4.2: value is "the value
+        observed for that field"). A bytes-named field paired with a percent
+        value is what the dashboard rendered as "97 B"."""
+        event = HealthEvent(
+            event_id="01M4349RQ09HMAX6RC9YPYQH4W",
+            node_id=NODE_ID,
+            rule_id="oom-guard-01",
+            type="oom",
+            metric="ram_used_bytes",
+            value=96.9999999986923,   # the derived percentage (the defect source)
+            threshold=">= 95% of ram_total_bytes for 2 consecutive samples",
+            fired_at="2026-10-04T08:00:00.000Z",
+            evidence=[{"seq": 34, "ram_used_bytes": 33_141_165_248,
+                       "ram_total_bytes": 34_359_738_368}],
+        )
+        action = RemediationAction(
+            kind="instance.restart", params={"instance_name": "agent-c1"},
+            reason="oom", playbook="oom-guard-01", rule_id="oom-guard-01",
+        )
+        rec = decision.build_fallback_incident(event, action, "inference_unavailable")
+        entry = rec["evidence"][0]
+        self.assertEqual(entry["field"], "ram_used_bytes")
+        # field names bytes, value is the byte count — a unit-consistent pair
+        # (not 96.99…).
+        self.assertEqual(entry["value"], 33_141_165_248)
+        self.assertIsInstance(entry["value"], int)
+        self.assertEqual(entry["seq"], 34)
+
+    def test_non_scalar_metric_keeps_the_compared_value(self):
+        """When `metric` is not a scalar in the sample tail (latency's
+        `net_latency_ms` lives under `net[].latency_ms`), the entry keeps the
+        compared value — the observed-value lookup only replaces the value when
+        the field is actually present as a sample scalar."""
+        event = HealthEvent(
+            event_id="01M4349RQ09HMAX6RC9YPYQH4W",
+            node_id=NODE_ID,
+            rule_id="latency-01",
+            type="latency",
+            metric="net_latency_ms",
+            value=240.0,
+            threshold="net[].latency_ms >= 250 ms for 3 consecutive samples",
+            fired_at="2026-10-04T08:00:00.000Z",
+            evidence=[{"seq": 100, "net": [{"iface": "eth0",
+                                            "latency_ms": 240.0}]}],
+        )
+        action = RemediationAction(kind="instance.restart",
+                                   params={"instance_name": "agent-c1"})
+        rec = decision.build_fallback_incident(event, action, "parse_error")
+        entry = rec["evidence"][0]
+        self.assertEqual(entry["field"], "net_latency_ms")
+        # ms value kept — latency-01 has no bytes/percent unit mismatch.
+        self.assertEqual(entry["value"], 240.0)
+        self.assertEqual(entry["seq"], 100)
 
     def test_provider_fallback_carries_labelled_record(self):
         det = decision.DeterministicDecisionProvider(
