@@ -21,19 +21,9 @@
 #   TOKEN_A=... TOKEN_C=... TEAM_SSH_PUBKEY_FILE=~/.ssh/team.pub \
 #     ./raise-standing-fleet.sh --raise                     # recreate a and c
 #   ... --raise --only c --with-external-ip                 # from-scratch node-c
-#   ... --raise --no-trust-install                          # skip the trust step
 #   TOKEN_A=x TOKEN_C=y TEAM_SSH_PUBKEY_FILE=... \
 #     ./raise-standing-fleet.sh --render-only --render-out /tmp/ci
 #   ... --only a | --only c
-#
-# The controller's LXD identity is installed into every node this script raises
-# (tools/install-lxd-trust.sh, idempotent, bounded by --trust-timeout, 600 s
-# default). That step is NOT optional decoration: a recreated instance replaces
-# its boot disk, so its LXD trust store comes back EMPTY, and a node the
-# controller does not trust answers `GET /1.0/instances` with 403 — a plan that
-# resolves to it then applies to `state: failed` and creates nothing (the defect
-# task t_d31b8e02 found live on node-c). Pass --no-trust-install only when you
-# intend to run the step yourself.
 #
 # --with-external-ip: give the node an EPHEMERAL public IP for its lifetime.
 # Required for a FROM-SCRATCH node-c (t_359ed606): Node C's first boot installs
@@ -100,14 +90,6 @@ ONLY=""
 # 1 = an ephemeral public IP on the created node (see the header: a from-scratch
 # node-c cannot install its build tools without a public path).
 EXTERNAL_IP="${EXTERNAL_IP:-0}"
-# 1 = install the controller's LXD client identity into each raised node's trust
-# store after creating it (see the header). A recreated node starts with an empty
-# trust store, so the raise is not finished until the controller is trusted.
-INSTALL_TRUST="${INSTALL_TRUST:-1}"
-# Bound on waiting for a freshly created node's LXD to answer before the trust
-# step gives up (a from-scratch node needs its first boot; node-c also rebuilds
-# llama.cpp, but LXD answers long before that finishes).
-TRUST_TIMEOUT="${TRUST_TIMEOUT:-600}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GCP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -128,8 +110,6 @@ while [ "$#" -gt 0 ]; do
     --render-out) RENDER_OUT="$2"; shift ;;
     --only) ONLY="$2"; shift ;;
     --with-external-ip) EXTERNAL_IP=1 ;;
-    --no-trust-install) INSTALL_TRUST=0 ;;
-    --trust-timeout) TRUST_TIMEOUT="$2"; shift ;;
     -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -239,26 +219,9 @@ raise_node() { # $1=node
     --metadata-from-file "user-data=$ud" --quiet
 }
 
-RAISED=()
 for n in node-a node-c; do
   [ -n "$ONLY" ] && [ "$ONLY" != "${n#node-}" ] && continue
   raise_node "$n"
-  RAISED+=("$n")
 done
 
-# The controller's LXD identity goes into every RAISED node's trust store. A new
-# boot disk means an empty trust store, and an untrusted controller gets 403 on
-# `GET /1.0/instances`, so a plan resolving here fails at create (t_d31b8e02).
-# The helper probes first, so re-running a raise (or this step alone) is a no-op
-# on a node that is already trusted.
-if [ "$INSTALL_TRUST" = "1" ] && [ "${#RAISED[@]}" -gt 0 ]; then
-  [ -x "$SCRIPT_DIR/install-lxd-trust.sh" ] || die "missing/not executable: $SCRIPT_DIR/install-lxd-trust.sh"
-  for n in "${RAISED[@]}"; do
-    log "$n: installing the controller identity into its LXD trust store (idempotent; waits up to ${TRUST_TIMEOUT}s for LXD)"
-    "$SCRIPT_DIR/install-lxd-trust.sh" --node "${n#node-}" --timeout "$TRUST_TIMEOUT"
-  done
-elif [ "$INSTALL_TRUST" != "1" ]; then
-  log "--no-trust-install: the raised nodes are NOT trusted by the controller — run tools/install-lxd-trust.sh --all before applying a plan that resolves to them"
-fi
-
-log "done — nodes created and trusted; first boot continues (node-c rebuilds llama.cpp + fetches the GGUF)"
+log "done — nodes created; waiting for first boot (node-c rebuilds llama.cpp + fetches the GGUF)"
