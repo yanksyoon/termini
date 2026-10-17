@@ -103,6 +103,27 @@ def wait_until(pred, timeout_s: float, step_s: float = 1.0, label: str = ""):
     raise TimeoutError(f"timed out waiting for {label or 'condition'}")
 
 
+def wait_out_cooldown(base: str, token: str, node_id: str, cooldown_s: float = 65.0):
+    """Wait until no remediation audit for (node, oom-guard-01) is fresher than
+    `cooldown_s`, so the loop's time-based cooldown cannot suppress the next
+    episode's event. Returns once the oldest relevant audit is stale enough."""
+    def _stale():
+        st, a = http(base, "GET", f"/v1/operator/audits?node={node_id}&limit=10", token=token)
+        if st != 200 or not isinstance(a, dict):
+            return None
+        latest = None
+        for audit in a.get("audits", []):
+            if audit.get("rule_id") == "oom-guard-01":
+                latest = audit
+                break
+        if latest is None:
+            return True  # no prior audit: nothing to wait out
+        age = time.time() - (epoch(latest.get("executed_at")) or time.time())
+        return True if age >= cooldown_s else None
+    wait_until(_stale, cooldown_s + 30, label="operator cooldown clearing")
+
+
+
 def run_one(base: str, token: str, node: dict, *, index: int, params: dict | None = None) -> dict:
     node_id = node["node_id"]
     # Baseline: clear any open oom injection on this node so each run is a clean
@@ -110,8 +131,11 @@ def run_one(base: str, token: str, node: dict, *, index: int, params: dict | Non
     # refuses to inject while a remediation is in flight).
     http(base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults/clear",
          {"node_id": node_id}, token=token)
-    # Give the previous episode's recovery burst a moment to finish re-arming.
+    # Give the previous episode's recovery burst a moment to finish re-arming,
+    # then wait out the operator's time-based cooldown so the next episode's
+    # event is not suppressed (the loop skips a rule re-fired within cooldown_s).
     time.sleep(4)
+    wait_out_cooldown(base, token, node_id)
 
     # --- inject -----------------------------------------------------------
     body = {"node_id": node_id, "scenario": "oom", "duration_s": 120, "target": "real"}
