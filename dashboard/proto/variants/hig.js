@@ -195,7 +195,15 @@ function buildShell() {
     tabindex: "-1",
   });
   ui.decisionEmpty = el("p", { class: "hig-detail-empty", id: "hig-incident-empty", text: "No decision selected." });
-  ui.decisionDetail.appendChild(ui.decisionEmpty);
+  // A selected row whose record body is not in this tab still says so: the pane
+  // is never empty while a row is selected.
+  ui.decisionNoBody = el("p", {
+    class: "hig-detail-empty",
+    id: "hig-incident-no-body",
+    text: "This decision carries no record body in this tab — the list row is all the controller returned for it.",
+    hidden: "",
+  });
+  ui.decisionDetail.append(ui.decisionEmpty, ui.decisionNoBody);
   ui.decisionStore = box("hig-store", { hidden: "" });
 
   const incidentPane = el("div", { class: "hig-list-pane", "aria-label": "Decisions" });
@@ -363,7 +371,7 @@ function syncSubtitle() {
     if (updated && updated.textContent && updated.textContent !== "—") bits.push(updated.textContent);
     ui.subtitle.textContent = bits.join(" · ");
   } else if (state.dest === "incidents") {
-    const rows = [...document.querySelectorAll("#decision-list > .decision-row")];
+    const rows = listRows();
     const fallback = rows.filter((r) => r.classList.contains("src-fallback")).length;
     const bits = [`${rows.length} decision${rows.length === 1 ? "" : "s"}`];
     if (fallback) bits.push(`${fallback} by fallback`);
@@ -530,10 +538,19 @@ function placeNodeDetail() {
 /* ----------------------------------------------------------- incidents rows
  * Master–detail: the row keeps its one-line head; the record itself (incident
  * card, thinking log, breach, rationale, audit links) moves into the pane.
+ *
+ * Selection is owned HERE and reached two ways — a click on a row and the
+ * listbox keys — because the shipped panel exposes no selection of its own and
+ * both paths must move the same record, the same roving tabIndex and the same
+ * pane. Placement is keyed by decision id, never by row identity: the shipped
+ * panel may replace a row element with a fresh render of the SAME decision on
+ * any 3 s poll (js/ui/decisions.js `_reconcile`).
  */
 
 function listRows() {
-  return [...document.querySelectorAll("#decision-list > .decision-row")];
+  const list = document.getElementById("decision-list");
+  if (!list) return [];
+  return [...list.children].filter((row) => row.classList.contains("decision-row"));
 }
 
 function decorateDecisions() {
@@ -560,7 +577,113 @@ function decorateDecisions() {
   }
 }
 
+/** A row's record body: every child that is not the one-line head. */
+function recordParts(row) {
+  return [...row.children].filter((part) => !part.classList.contains("decision-head"));
+}
+
+/**
+ * Put every decision's record body where the selection says it belongs: the
+ * selected record in the pane, all the others parked in the store. Returns the
+ * id that is actually selected (null for an empty list, or when the selected
+ * decision has left the fetched window).
+ *
+ * A record's parts are collected from BOTH the rows and the parked store,
+ * because two independent things move a row under this function:
+ *   - selecting a decision — its parts are in the store, not in the row, so the
+ *     store has to be searched or the pane is left blank;
+ *   - the shipped 3 s poll — a rebuilt row arrives with fresh parts while the
+ *     previous render of the same decision may still be parked, so the fresh
+ *     row wins and the parked copy is dropped instead of being duplicated.
+ * A row is a list row — its head and nothing else — so an `option` never nests
+ * a button or a link, and the page is one screen whatever the history's length.
+ */
+export function placeDecisionParts({ rows, pane, store, selectedId, empty = null, noBody = null }) {
+  if (!pane || !store) return null;
+  const ids = new Set(rows.map((row) => row.dataset.decisionId));
+  const keep = ids.has(selectedId) ? selectedId : rows[0] ? rows[0].dataset.decisionId : null;
+
+  // What the rows render right now, per decision id — the freshest statement of
+  // a record, since a rebuilt row carries a new render of it.
+  const fresh = new Map();
+  for (const row of rows) {
+    const id = row.dataset.decisionId;
+    const parts = recordParts(row);
+    if (!parts.length) continue;
+    if (!fresh.has(id)) fresh.set(id, []);
+    fresh.get(id).push(...parts);
+  }
+
+  // What is already placed, per decision id: the pane holds at most one record
+  // (the one that was selected) and the store holds every other one.
+  const placed = new Map();
+  for (const host of [pane, store]) {
+    for (const node of [...host.children]) {
+      const id = node.dataset && node.dataset.higPart;
+      if (!id) continue;
+      if (!placed.has(id)) placed.set(id, []);
+      placed.get(id).push(node);
+    }
+  }
+
+  // Decisions the fetch window no longer holds lose their parked parts.
+  for (const [id, nodes] of placed) {
+    if (ids.has(id)) continue;
+    for (const node of nodes) node.remove();
+  }
+
+  // One body per decision. A second copy of the same decision is a leftover
+  // from an earlier render (the row was rebuilt), never a second block.
+  const chosen = new Map();
+  for (const id of ids) {
+    const freshParts = fresh.get(id);
+    const placedParts = placed.get(id) || [];
+    if (freshParts) {
+      for (const stale of placedParts) stale.remove();
+      chosen.set(id, freshParts);
+    } else {
+      chosen.set(id, placedParts);
+    }
+  }
+
+  for (const [id, nodes] of chosen) {
+    const target = id === keep ? pane : store;
+    for (const node of nodes) {
+      node.dataset.higPart = id;
+      if (node.parentNode !== target) adopt(node, target);
+    }
+  }
+
+  // Never a blank pane while a row is selected: a head-only row states that its
+  // record body is not here instead of rendering nothing.
+  if (empty) empty.hidden = !!keep;
+  if (noBody) noBody.hidden = !keep || (chosen.get(keep) || []).length > 0;
+  return keep;
+}
+
+function placeDecisionDetail() {
+  state.decisionId = placeDecisionParts({
+    rows: listRows(),
+    pane: ui.decisionDetail,
+    store: ui.decisionStore,
+    selectedId: state.decisionId,
+    empty: ui.decisionEmpty,
+    noBody: ui.decisionNoBody,
+  });
+}
+
+/**
+ * One reconcile of the incidents destination: decorate the rows from the
+ * selection, then place the record bodies. This is exactly what the sweep in
+ * mount() runs, so the unit test drives the same path the page does.
+ */
+export function syncDecisions() {
+  decorateDecisions();
+  placeDecisionDetail();
+}
+
 function selectDecision(id) {
+  if (!id) return;
   state.decisionId = id;
   const rows = listRows();
   const row = rows.find((r) => r.dataset.decisionId === id);
@@ -579,40 +702,51 @@ function selectDecision(id) {
   }
 }
 
-function placeDecisionDetail() {
-  const rows = listRows();
-  const ids = new Set(rows.map((r) => r.dataset.decisionId));
-  const selected = rows.find((r) => r.dataset.decisionId === state.decisionId) || null;
-  const keep = selected ? selected.dataset.decisionId : null;
+/** Controls inside a row keep their own click; the row never swallows them. */
+const ROW_CONTROLS = "a, button, summary, input, select, textarea, label, details";
 
-  // Every record body lives either in the pane (the selected record) or in the
-  // parked store (all the others). A row is a list row — its head and nothing
-  // else — so the option never nests a button or a link, and the page is one
-  // screen whatever the history's length. The old version only parked parts
-  // that had already reached the pane, so every unselected row kept its whole
-  // incident card inline: 75 KB of evidence in the list, and 45 interactive
-  // elements nested inside an `option`.
-  for (const row of rows) {
-    const mine = row === selected;
-    for (const part of [...row.children]) {
-      if (part.classList.contains("decision-head")) continue;
-      part.dataset.higPart = row.dataset.decisionId;
-      adopt(part, mine ? ui.decisionDetail : ui.decisionStore);
-    }
-  }
-  // Anything still in the pane that belongs to another record (a poll rebuilt
-  // the row, or the fetch window moved on) is parked too.
-  for (const node of [...ui.decisionDetail.children]) {
-    if (node.dataset && node.dataset.higPart && node.dataset.higPart !== keep) {
-      ui.decisionStore.appendChild(node);
-    }
-  }
-  ui.decisionEmpty.hidden = !!selected;
+/**
+ * A pointer on a decision row selects it.
+ *
+ * The row has looked clickable since the master-detail landed — pointer cursor,
+ * hover and pressed feedback, `role="option"` — but nothing listened for a
+ * click, so only the keyboard could ever move the selection. `selectDecision`
+ * focuses the row as well, so the next ArrowDown continues from wherever the
+ * pointer landed.
+ */
+export function onDecisionClick(ev) {
+  const target = ev && ev.target;
+  if (!target || typeof target.closest !== "function") return;
+  if (target.closest(ROW_CONTROLS)) return;
+  const row = target.closest(".decision-row");
+  if (!row || !row.dataset || !row.dataset.decisionId) return;
+  selectDecision(row.dataset.decisionId);
+}
 
-  // Parked parts of decisions the fetch window no longer holds are dropped.
-  for (const node of [...ui.decisionStore.children]) {
-    if (!ids.has(node.dataset.higPart)) node.remove();
+/**
+ * Point the master-detail at its containers and wire both ways a decision is
+ * selected (click/tap on a row, and the listbox keys). Called by mount() with
+ * the nodes buildShell() created; the unit test calls it with the same nodes
+ * built by hand, so the click path is exercised, not just the placement.
+ */
+export function bindDecisions({ list, pane, store, empty = null, noBody = null }) {
+  unbindDecisions();
+  if (!list || !pane) return;
+  ui.decisionList = list;
+  ui.decisionDetail = pane;
+  ui.decisionStore = store || null;
+  ui.decisionEmpty = empty;
+  ui.decisionNoBody = noBody;
+  list.addEventListener("click", onDecisionClick);
+  list.addEventListener("keydown", onListKeydown);
+}
+
+function unbindDecisions() {
+  if (ui.decisionList) {
+    ui.decisionList.removeEventListener("click", onDecisionClick);
+    ui.decisionList.removeEventListener("keydown", onListKeydown);
   }
+  delete ui.decisionList;
 }
 
 /* --------------------------------------------------------------- approvals
@@ -848,7 +982,13 @@ export function mount() {
   const dest = new URLSearchParams(location.search).get("dest");
   go(DESTINATIONS.includes(dest) ? dest : "fleet");
 
-  document.getElementById("decision-list")?.addEventListener("keydown", onListKeydown);
+  bindDecisions({
+    list: document.getElementById("decision-list"),
+    pane: ui.decisionDetail,
+    store: ui.decisionStore,
+    empty: ui.decisionEmpty,
+    noBody: ui.decisionNoBody,
+  });
   document.addEventListener("keydown", onGlobalKeydown);
   document.addEventListener("click", onDocumentClick);
 
@@ -879,7 +1019,7 @@ export function unmount() {
   clearInterval(clock);
   sweep = null;
   clock = null;
-  document.getElementById("decision-list")?.removeEventListener("keydown", onListKeydown);
+  unbindDecisions();
   document.removeEventListener("keydown", onGlobalKeydown);
   document.removeEventListener("click", onDocumentClick);
 
@@ -891,10 +1031,11 @@ export function unmount() {
   document.documentElement.removeAttribute("data-hig-detail");
   document.documentElement.removeAttribute("data-hig-appearance");
 
-  for (const node of document.querySelectorAll("[data-hig-row], [data-hig-option], [data-hig-layout]")) {
+  for (const node of document.querySelectorAll("[data-hig-row], [data-hig-option], [data-hig-layout], [data-hig-part]")) {
     node.removeAttribute("data-hig-row");
     node.removeAttribute("data-hig-option");
     node.removeAttribute("data-hig-layout");
+    node.removeAttribute("data-hig-part");
     node.classList.remove("hig-row");
     if (node.hasAttribute("role") && node.getAttribute("role") === "option") node.removeAttribute("role");
     node.removeAttribute("aria-selected");
@@ -930,8 +1071,7 @@ function reconcile() {
   labelFields();
   decorateCards();
   placeNodeDetail();
-  decorateDecisions();
-  placeDecisionDetail();
+  syncDecisions();
   syncApprovals();
   syncSubtitle();
 }

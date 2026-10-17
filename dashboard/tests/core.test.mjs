@@ -65,6 +65,20 @@ import {
   TRACE_REPLY_MAX_CHARS,
 } from "../js/core/decisions.js";
 import { FIRST_CURSOR, LogStream } from "../js/stream.js";
+import { installDom } from "./helpers/minidom.mjs";
+
+/* The HIG variant module is a browser module: at import time it asks the page
+ * which variant it is and registers one window listener, and its incidents
+ * master–detail is only reachable through it. So the mini-DOM and a minimal
+ * window exist before it loads — the same arrangement
+ * dashboard/tests/decisions-panel.test.mjs uses for the shipped panel. */
+const document = installDom();
+globalThis.window = {
+  document,
+  addEventListener() {},
+  matchMedia: () => ({ matches: false }),
+};
+const hig = await import("../proto/variants/hig.js");
 
 /* --------------------------------------------------------------- format */
 
@@ -1487,4 +1501,234 @@ test("decisions: traceStepView refuses anything outside the §4.3 step table", (
   assert.equal(traceStepView(step("made_up_step", "T")), null);
   const ok = traceStepView(step("gates", "T"));
   assert.deepEqual(Object.keys(ok).sort(), ["detail", "label", "state", "step", "ts"]);
+});
+
+/* ------------------------------------- HIG incidents master–detail (t_0da3f8b2)
+ * Two defects, one interaction:
+ *
+ *   1. every decision row looked clickable — pointer cursor, pressed feedback,
+ *      `role="option"` — and did nothing, because only a `keydown` listener was
+ *      ever registered;
+ *   2. selecting a row whose record was parked in `.hig-store` moved nothing
+ *      out of the store, so the pane went blank (the reporter saw it with the
+ *      keyboard, the only way to change the selection).
+ *
+ * These tests drive the module the way mount() does: `bindDecisions` registers
+ * the real click and keydown listeners on the list, `syncDecisions` is one
+ * reconcile of the 250 ms sweep, and the row rebuild below is what the shipped
+ * panel's 3 s `_reconcile` does to a row whose content changed.
+ */
+
+const HIG_HEAD = (id) => `head ${id}`;
+
+function part(cls, text) {
+  const node = document.createElement("div");
+  node.className = cls;
+  node.textContent = text;
+  return node;
+}
+
+/** A list row exactly as js/ui/decisions.js renders it: head + record body. */
+function decisionRow(id, title, { body = true } = {}) {
+  const row = document.createElement("li");
+  row.className = "decision-row src-model";
+  row.dataset.decisionId = id;
+  row.appendChild(part("decision-head", HIG_HEAD(id)));
+  if (!body) return row;
+
+  row.appendChild(part("incident-card", title));
+  row.appendChild(part("incident-trace", `trace ${id}`));
+  row.appendChild(part("decision-breach", `breach ${id}`));
+  const links = part("decision-links", "");
+  const audit = document.createElement("button");
+  audit.className = "linklike";
+  audit.textContent = "audit";
+  links.appendChild(audit);
+  row.appendChild(links);
+  return row;
+}
+
+/** The incidents destination's three containers, as buildShell() makes them. */
+function incidentsDom(ids) {
+  // One destination per test: `document.getElementById` must not resolve the
+  // previous test's list.
+  while (document.body.firstChild) document.body.removeChild(document.body.firstChild);
+
+  const list = document.createElement("ul");
+  list.id = "decision-list";
+  list.className = "decision-list";
+  for (const [id, title] of ids) list.appendChild(decisionRow(id, title));
+
+  const pane = document.createElement("div");
+  pane.id = "hig-incident-detail";
+  const empty = document.createElement("p");
+  empty.className = "hig-detail-empty";
+  empty.id = "hig-incident-empty";
+  empty.textContent = "No decision selected.";
+  const noBody = document.createElement("p");
+  noBody.className = "hig-detail-empty";
+  noBody.id = "hig-incident-no-body";
+  noBody.textContent = "no record body in this tab";
+  noBody.hidden = true;
+  pane.append(empty, noBody);
+
+  const store = document.createElement("div");
+  store.className = "hig-store";
+  store.hidden = true;
+
+  document.body.append(list, pane, store);
+  hig.bindDecisions({ list, pane, store, empty, noBody });
+  hig.syncDecisions();
+  return { list, pane, store, empty, noBody };
+}
+
+const cardsIn = (host) => [...host.children].filter((n) => n.classList.contains("incident-card"));
+
+test("HIG incidents: a click on a row selects it and the pane shows that record", () => {
+  const A = "01J0DE0CLICK0000000000000A";
+  const B = "01J0DE0CLICK0000000000000B";
+  const { list, pane, store, empty } = incidentsDom([
+    [A, "record A"],
+    [B, "record B"],
+  ]);
+
+  // First paint: the newest decision is selected and its record is in the pane.
+  // Every other row is a row — head only, no nested button or link.
+  const rowA = list.children[0];
+  const rowB = list.children[1];
+  assert.equal(rowA.getAttribute("aria-selected"), "true");
+  assert.equal(rowA.tabIndex, 0);
+  assert.equal(rowB.getAttribute("aria-selected"), "false");
+  assert.equal(rowB.tabIndex, -1);
+  assert.match(pane.textContent, /record A/);
+  assert.equal(empty.hidden, true);
+  assert.equal(cardsIn(rowA).length, 0, "the selected row keeps no record body of its own");
+  assert.equal(rowA.querySelectorAll("button").length, 0, "the option never nests a control");
+  assert.equal(cardsIn(store).length, 1, "the unselected record is parked");
+
+  // Defect 1: a click. It must move the selection, the record and the focus.
+  list.dispatchEvent({ type: "click", target: rowB });
+  assert.equal(rowB.getAttribute("aria-selected"), "true", "click selects the row");
+  assert.equal(rowA.getAttribute("aria-selected"), "false");
+  assert.equal(rowB.tabIndex, 0, "roving tabIndex follows the click");
+  assert.equal(rowA.tabIndex, -1);
+  assert.equal(document.activeElement, rowB, "the click moves focus, so ArrowDown continues here");
+
+  // Defect 2: B's record was parked in the store — it must be restored, and the
+  // pane must not be empty (that was the whole bug).
+  assert.match(pane.textContent, /record B/, "the pane renders the clicked decision's record");
+  assert.doesNotMatch(pane.textContent, /record A/, "the previous record is not left behind");
+  assert.equal(pane.textContent.trim() === "", false, "the pane is never blank while a row is selected");
+  assert.equal(empty.hidden, true);
+  assert.equal(cardsIn(pane).length, 1);
+  assert.deepEqual(
+    cardsIn(store).map((c) => c.dataset.higPart),
+    [A],
+    "the record the reader left is parked, exactly once",
+  );
+  assert.equal(pane.dataset.higPart, undefined, "the pane itself is not part of a record");
+  assert.match(pane.textContent, new RegExp(`breach ${B}`), "the whole body travels with the record, not just the card");
+
+  // The keyboard still works, and shares the one selection state.
+  list.dispatchEvent({ type: "keydown", key: "ArrowUp", preventDefault() {} });
+  assert.equal(rowA.getAttribute("aria-selected"), "true");
+  assert.match(pane.textContent, /record A/);
+  assert.doesNotMatch(pane.textContent, /record B/);
+
+  list.dispatchEvent({ type: "keydown", key: "End", preventDefault() {} });
+  assert.equal(rowB.getAttribute("aria-selected"), "true");
+  assert.match(pane.textContent, /record B/);
+  list.dispatchEvent({ type: "keydown", key: "Home", preventDefault() {} });
+  assert.match(pane.textContent, /record A/);
+});
+
+test("HIG incidents: a control inside a row keeps its own click", () => {
+  const A = "01J0DE0INNER0000000000000A";
+  const B = "01J0DE0INNER0000000000000B";
+  const { list, pane } = incidentsDom([
+    [A, "record A"],
+    [B, "record B"],
+  ]);
+  const rowA = list.children[0];
+  const rowB = list.children[1];
+
+  // For up to one reconcile tick a rebuilt row still carries its own parts; a
+  // click on a disclosure summary in that window must not steal the selection.
+  const details = document.createElement("details");
+  details.className = "trace-details";
+  const summary = document.createElement("summary");
+  summary.className = "trace-summary";
+  summary.textContent = "expand the thinking log";
+  details.appendChild(summary);
+  rowB.appendChild(details);
+  list.dispatchEvent({ type: "click", target: summary });
+  assert.equal(rowA.getAttribute("aria-selected"), "true", "the row click did not swallow the summary");
+  assert.match(pane.textContent, /record A/);
+
+  // Same for the audit link the record carries.
+  const links = document.createElement("div");
+  links.className = "decision-links";
+  const audit = document.createElement("button");
+  audit.className = "linklike";
+  audit.textContent = "audit";
+  links.appendChild(audit);
+  rowB.appendChild(links);
+  list.dispatchEvent({ type: "click", target: audit });
+  assert.equal(rowA.getAttribute("aria-selected"), "true");
+});
+
+test("HIG incidents: a rebuilt row neither duplicates nor loses the selected record", () => {
+  const A = "01J0DE0REBUILD00000000000A";
+  const B = "01J0DE0REBUILD00000000000B";
+  const { list, pane, store } = incidentsDom([
+    [A, "record A"],
+    [B, "record B"],
+  ]);
+  const rowB = list.children[1];
+  list.dispatchEvent({ type: "click", target: rowB }); // B selected, in the pane
+  assert.match(pane.textContent, /record B/);
+
+  // The shipped panel's 3 s poll rebuilds a row whose content changed: a NEW
+  // <li> with fresh parts replaces the old one (js/ui/decisions.js `_reconcile`).
+  const fresh = decisionRow(B, "record B, after the audit landed");
+  list.insertBefore(fresh, rowB);
+  rowB.remove();
+  hig.syncDecisions();
+
+  assert.equal(cardsIn(pane).length, 1, "no duplicated record block");
+  assert.match(pane.textContent, /after the audit landed/, "the fresh render wins");
+  assert.doesNotMatch(pane.textContent, /record B$/, "the stale render is gone");
+  assert.equal(fresh.getAttribute("aria-selected"), "true", "the rebuilt row is still the selected one");
+  assert.equal(cardsIn(store).filter((c) => c.dataset.higPart === B).length, 0, "and nothing is parked for it");
+
+  // A rebuilt row that is NOT selected must not leave two parked copies.
+  const rowA = list.children[0];
+  const freshA = decisionRow(A, "record A, after the audit landed");
+  list.insertBefore(freshA, rowA);
+  rowA.remove();
+  hig.syncDecisions();
+  assert.equal(cardsIn(store).filter((c) => c.dataset.higPart === A).length, 1, "one parked copy per decision");
+  assert.match(pane.textContent, /after the audit landed/, "the selected record survived the other row's rebuild");
+
+  // Polling twice more changes nothing: placement is idempotent.
+  const before = [...pane.children];
+  hig.syncDecisions();
+  hig.syncDecisions();
+  assert.deepEqual([...pane.children], before, "a quiet tick moves nothing");
+});
+
+test("HIG incidents: a selected row with no record body says so instead of going blank", () => {
+  const A = "01J0DE0NOBODY000000000000A";
+  const H = "01J0DE0NOBODY000000000000H";
+  const { list, pane, empty, noBody } = incidentsDom([[A, "record A"]]);
+  // The shipped row can render without a body; this one is head-only.
+  list.appendChild(decisionRow(H, "", { body: false }));
+  hig.syncDecisions();
+
+  const rowH = list.children[1];
+  list.dispatchEvent({ type: "click", target: rowH });
+  assert.equal(rowH.getAttribute("aria-selected"), "true");
+  assert.equal(empty.hidden, true, "a row IS selected, so the 'nothing selected' line stays hidden");
+  assert.equal(noBody.hidden, false, "the pane states the missing record instead of rendering nothing");
+  assert.match(pane.textContent, /no record body/);
 });
