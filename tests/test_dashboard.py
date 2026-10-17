@@ -324,15 +324,25 @@ class HealthDerivationTest(unittest.TestCase):
         h = health.health_flags(sample, "compute")
         self.assertEqual(h["ram_used_pct"], 0.0)
 
-    def test_disk_read_only_degraded(self):
+    def test_disk_read_only_fenced(self):
         node = {"role": "compute", "last_seen_at": "2026-10-04T07:49:00Z"}
         now = _epoch("2026-10-04T07:49:03Z")
         sample = valid_sample(disk=[{"path": "/dev/sda", "total_bytes": 1, "free_bytes": 0,
                                      "write_latency_ms": 1.0, "mount_ro": True}])
         status, h = health.node_status_health(node, sample, now)
-        self.assertEqual(status, "degraded")
+        # F05: a read-only disk is a fenced node, not merely degraded.
+        self.assertEqual(status, "fenced")
         self.assertFalse(h["disk_ok"])
         self.assertIn("disk_read_only", h["degraded_reasons"])
+
+    def test_disk_read_only_offline_wins_over_fenced(self):
+        # A node that is not reporting cannot be trusted to be "just" fenced.
+        node = {"role": "compute", "last_seen_at": "2026-10-04T07:49:00Z"}
+        now = _epoch("2026-10-04T07:50:00Z")  # 60s stale -> offline
+        sample = valid_sample(disk=[{"path": "/dev/sda", "total_bytes": 1, "free_bytes": 0,
+                                     "write_latency_ms": 1.0, "mount_ro": True}])
+        status, h = health.node_status_health(node, sample, now)
+        self.assertEqual(status, "offline")
 
     def test_service_failed_degraded(self):
         node = {"role": "compute", "last_seen_at": "2026-10-04T07:49:00Z"}

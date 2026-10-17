@@ -85,7 +85,7 @@ Field contract:
 | `registration_id` | string | stable bootstrap label (1..64 chars) |
 | `role` | enum | `compute \| inference` |
 | `synthetic` | boolean | `true` only for a row fabricated by the demo seeder (`console/seed_demo.py`); `false` for real hardware. Placement never uses a `true` row while any real node is registered (`controller-api.md` §5.2 step 5); the dashboard labels it (e.g. "demo") so a viewer can tell them apart. **Amendment (standing-fleet default view):** the listing applies the same rule — while any real node is registered, a `synthetic` row is EXCLUDED from the default response, so the fleet a viewer sees is the real hardware (a stopped seeder's stale rows cannot make the listing contradict the deck). A seeder-only demo (no real node registered) lists its fabricated rows, and `?include=synthetic` returns every row (labelled). |
-| `status` | enum | `online \| degraded \| offline` (derivation below) |
+| `status` | enum | `online \| degraded \| offline \| fenced` (derivation below) |
 | `last_seen_at` | RFC3339 | last heartbeat/telemetry contact |
 | `uptime_sec` | integer | from the latest telemetry sample (`uptime_sec`) |
 | `hardware` | object | registered hardware facts (from registration) |
@@ -95,8 +95,13 @@ Field contract:
 `status` derivation (evaluated on every view, frozen):
 
 - `offline` if `now − last_seen_at > 45 s`.
-- else `degraded` if `now − last_seen_at > 15 s` **or** any health flag is
-  `false` (non-null) **or** any allowlisted service is not `running`.
+- else `fenced` if any health flag is `false` (non-null) **and** the falseness is
+  a read-only disk (`disk_ok == false`). This is the F05 state: the node's disk
+  remounted read-only, the operator stopped the workload, and a
+  `restart`/`start` is refused until a human replaces the disk. The dashboard
+  renders it as "needs a human: disk failed, workload fenced".
+- else `degraded` if `now − last_seen_at > 15 s` **or** any remaining health flag
+  is `false` (non-null) **or** any allowlisted service is not `running`.
 - else `online`.
 
 `role` is assigned at registration (`controller-api.md` §4.1): a node reporting

@@ -192,7 +192,16 @@ def run_operator(
             if action is None:
                 log(f"[operator] {event.rule_id} fired but no playbook action")
                 continue
-            result = lxd.execute(action)
+            # F05 restart-refusal guard: refuse to (re)start a workload on a node
+            # whose latest telemetry still shows a read-only disk mount.
+            refusal = decision.fenced_action_refusal(ctx.state, action.kind)
+            if refusal:
+                result = executor.ExecResult(
+                    result="error", reason=refusal,
+                    detail=decision.fenced_refusal_detail(ctx.state, action.kind, node_id),
+                )
+            else:
+                result = lxd.execute(action)
             remed_lat = round(time.monotonic() - t_start, 3)
             entry = {
                 "ts": now,
@@ -220,6 +229,8 @@ def run_operator(
                 "lxd_body": result.body,
                 "status": result.status,
                 "detail": result.detail,
+                "operation": getattr(result, "operation", "") or "",
+                "reason": getattr(result, "reason", "") or "",
             }
             audits.append(entry)
             if audit_out:

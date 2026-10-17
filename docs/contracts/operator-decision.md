@@ -678,6 +678,24 @@ detection layer), owned by a follow-up card, not something to assume exists.
 The guardrail returns a `RemediationAction` (built from the *validated* response,
 never the raw output) plus the `guardrail` decision list for the audit record.
 
+### 7.1 F05 restart-refusal guard (execution-time, not decision-time)
+
+A distinct, **execution-time** guard next to G1–G9: while a node's **latest
+telemetry sample** still shows any `disk[].mount_ro == true`, an
+`instance.restart` or `instance.start` on that node is **refused** before it
+reaches `LxdExecutor`, with the machine-readable reason `disk_fenced` recorded on
+the audit row (`reason` column) and a `fenced` node status on the dashboard
+("needs a human: disk failed, workload fenced"). `instance.stop` /
+`instance.delete` / `image.prune` are always allowed — stopping writes is the
+correct half of the response.
+
+The guard lives in `operator/decision.py` (`fenced_action_refusal` /
+`fenced_refusal_detail` / `read_only_mounts`) and is applied by the loop and the
+standalone CLI against the C0 `DecisionContext.state`. It is **guardrail-level,
+not prompt-level**: it is enforced in code regardless of what the model or the
+playbook decided, and it needs no new action in the allowlist (a `restart`/`start`
+that would resume writes onto the failed disk never reaches the executor).
+
 ---
 
 ## 8. Deterministic fallback (mandatory)

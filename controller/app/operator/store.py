@@ -120,18 +120,24 @@ def insert_audit(conn, audit_id: str, decision_id: str, event, action,
     # `result` is an operator.executor.ExecResult; duck-typed here to avoid a
     # store->executor import cycle. `lxd_endpoint` is the executor's base URL, so
     # the row proves which endpoint (stub vs a real node) the call reached.
+    # `lxd_operation` is the LXD operation id the write returned (202 +
+    # `/1.0/operations/<id>`), so a remediation against real LXD is provable from
+    # the audit alone; `reason` is the machine-readable refusal code when the
+    # action was NOT issued (e.g. `disk_fenced`, `target_missing`).
     conn.execute(
         "INSERT INTO remediation_audits (id, decision_id, event_id, node_id,"
         " rule_id, action_kind, result, detail, lxd_method, lxd_path, lxd_body,"
         " idempotency_key, dry_run, executed_at, lxd_endpoint,"
-        " initiated_by, conversation_id, message_id)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " initiated_by, conversation_id, message_id, lxd_operation, reason)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             audit_id, decision_id, event.event_id, event.node_id, event.rule_id,
             action.kind, result.result, (result.detail or "")[:1000], result.method,
             result.path, (result.body or "")[:1000], idempotency_key,
             1 if dry_run else 0, now_iso, lxd_endpoint or "",
             initiated_by, conversation_id, message_id,
+            getattr(result, "operation", "") or "",
+            getattr(result, "reason", "") or "",
         ),
     )
 
