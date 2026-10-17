@@ -703,10 +703,10 @@ body.chat-open .topbar { padding-right: calc(var(--chat-w) + 20px); }
 .agent-row:first-of-type { border-top: 0; }
 .agent-row-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .agent-name { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9rem; letter-spacing: .02em; }
-.agent-state-running { color: #b6f0c8; border-color: #2f8a4d; }
-.agent-state-stopped { color: #ffdca8; border-color: #8a6a1f; }
-.agent-state-error { color: #ffc0bb; border-color: #8a2f28; }
-.agent-state-provisioning { color: #9fe0ff; border-color: #2b83c0; }
+.agent-state-running { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+.agent-state-stopped { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.agent-state-error { color: var(--err); border-color: color-mix(in srgb, var(--err) 55%, transparent); }
+.agent-state-provisioning { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 .agent-state-unknown { color: var(--fg-dim); }
 
 .agent-facts { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 6px 0 4px; }
@@ -717,24 +717,24 @@ body.chat-open .topbar { padding-right: calc(var(--chat-w) + 20px); }
 .agent-actions .agent-task-toggle { margin-left: auto; }
 
 .agent-task { margin-top: 8px; padding: 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg-2); }
-.agent-prompt { width: 100%; margin-top: 6px; resize: vertical; background: #0a0f18; color: var(--fg); border: 1px solid var(--line-2); border-radius: 7px; padding: 7px 8px; font: inherit; font-size: .84rem; }
+.agent-prompt { width: 100%; margin-top: 6px; resize: vertical; background: var(--bg); color: var(--fg); border: 1px solid var(--line-2); border-radius: 7px; padding: 7px 8px; font: inherit; font-size: .84rem; }
 .agent-task-result { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 7px; }
 .agent-task-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 5px; }
-.agent-task-queued, .agent-task-running { color: #ffdca8; border-color: #8a6a1f; }
-.agent-task-done { color: #b6f0c8; border-color: #2f8a4d; }
-.agent-task-error { color: #ffc0bb; border-color: #8a2f28; }
-.agent-answer { margin: 6px 0; padding: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: #090d15; border: 1px solid var(--line); border-radius: 8px; font-size: .82rem; }
-.agent-task-error { padding: 6px 8px; border: 1px solid #8a2f28; border-radius: 8px; background: #2a1210; }
+.agent-task-queued, .agent-task-running { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.agent-task-done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+.agent-task-error { color: var(--err); border-color: color-mix(in srgb, var(--err) 55%, transparent); }
+.agent-answer { margin: 6px 0; padding: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; font-size: .82rem; }
+.agent-task-error { padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--err) 55%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--err) 8%, transparent); }
 
 /* Honest inference label: who actually answered. Colour separates a forwarded
    managed model from local inference WITHOUT the text ever implying local GPU. */
 .agent-inference { display: inline-block; font-size: .74rem; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line-2); color: var(--fg-dim); }
-.agent-inference-forwarded { color: #ffdca8; border-color: #8a6a1f; background: #2a2010; }
-.agent-inference-local { color: #b6f0c8; border-color: #2f8a4d; background: #102915; }
+.agent-inference-forwarded { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 60%, transparent); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.agent-inference-local { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 60%, transparent); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .agent-inference-unknown { color: var(--fg-dim); }
 .agent-task-result .agent-inference { display: block; margin-top: 4px; white-space: normal; font-size: .78rem; }
 .agent-inference-text { font-size: .78rem; }
 
-.agent-edge { margin: 4px 0 8px; padding: 8px 10px; border-left: 3px solid var(--line-2); background: #0d1420; border-radius: 0 8px 8px 0; font-size: .82rem; }
-.agent-edge.warn { border-left-color: #8a6a1f; background: #1b1708; }
+.agent-edge { margin: 4px 0 8px; padding: 8px 10px; border-left: 3px solid var(--line-2); background: var(--bg-2); border-radius: 0 8px 8px 0; font-size: .82rem; }
+.agent-edge.warn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--bg-2)); }
 .agent-row-expected { opacity: .9; }

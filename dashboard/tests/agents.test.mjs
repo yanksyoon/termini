@@ -155,3 +155,18 @@ test("grouping keeps nodes in fleet order and counts a stopped node's rows as th
   assert.equal(view.total, 2);
   assert.equal(view.inventoryMissing, 1); // NODE_B omitted the field
 });
+
+test("the Agents sheet draws with theme tokens, so it is legible on the HIG light sheet", async () => {
+  // The panel shipped before the HIG promotion made the root sheet LIGHT; its
+  // hardcoded dark surfaces made a finished answer dark-on-dark (found live on
+  // 2026-10-17). A surface or ink literal in this block is the bug, so pin it.
+  const { readFile } = await import("node:fs/promises");
+  const css = await readFile(new URL("../assets/styles.css", import.meta.url), "utf8");
+  const start = css.indexOf("/* ------------------------------------------------------------------ agents */");
+  assert.ok(start > -1, "agents block present");
+  const block = css.slice(start);
+  const literal = block.match(/(background|color)\s*:\s*#[0-9a-fA-F]{3,6}/g) || [];
+  assert.deepEqual(literal, [], `hardcoded colours in the agents block: ${literal.join(", ")}`);
+  assert.match(block, /\.agent-answer \{[^}]*background: var\(--bg\)/, "answer surface uses the theme surface");
+  assert.match(block, /\.agent-inference-forwarded \{[^}]*color: var\(--warn\)/, "forwarded label uses the warn token");
+});
