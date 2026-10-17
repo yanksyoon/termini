@@ -90,7 +90,7 @@ def print_decision(decision_id: str, db_path: str, *, full_reply: bool = False) 
     dec = rows(db_path,
                "select id, node_id, rule_id, decided_at, decision_source, confidence,"
                " fallback_reason, action_kind, action_params, incident_title,"
-               " rationale from remediation_decisions where id=?", (decision_id,))
+               " reason from remediation_decisions where id=?", (decision_id,))
     if not dec:
         print("  (no decision row %s)" % decision_id)
         return {}
@@ -187,7 +187,7 @@ def do_report(args) -> int:
     print("=== decisions since %s on %s ===" % (args.since, args.node))
     decs = rows(args.db,
                 "select id, decided_at, rule_id, decision_source, confidence,"
-                " fallback_reason, action_kind, incident_title, rationale"
+                " fallback_reason, action_kind, incident_title, reason"
                 " from remediation_decisions where node_id=? and decided_at >= ?"
                 " order by decided_at", (args.node, args.since))
     for d in decs:
