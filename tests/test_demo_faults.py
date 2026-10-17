@@ -42,6 +42,7 @@ CONTROLLER = REPO / "controller"
 sys.path.insert(0, str(CONTROLLER))
 
 from app import demo_faults  # noqa: E402
+from app import db as appdb  # noqa: E402
 from app.operator import detect  # noqa: E402
 
 GiB = 1024 ** 3
@@ -59,13 +60,25 @@ def ulid(n: int = 0) -> str:
     return "".join(reversed(out))
 
 
+def _actor_header(actor: str | None) -> dict:
+    """`X-Termini-Actor` for a wire call; `None` means "send no header at all".
+
+    Tests that do not care about attribution want the operator console's behaviour
+    (`human`); the attribution tests pass an explicit card id or `None` to exercise
+    the un-attributed path (controller-api.md §4.7, kanban t_9c1362f6).
+    """
+    return {"X-Termini-Actor": actor} if actor else {}
+
+
 def http(base: str, method: str, path: str, body=None, token: str | None = None,
-         timeout: float = 15.0) -> tuple[int, Any]:
+         timeout: float = 15.0, headers: dict | None = None) -> tuple[int, Any]:
     data = json.dumps(body).encode() if body is not None else None
-    headers = {"Content-Type": "application/json"}
+    hdrs = {"Content-Type": "application/json"}
     if token:
-        headers["Authorization"] = "Bearer " + token
-    req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
+        hdrs["Authorization"] = "Bearer " + token
+    if headers:
+        hdrs.update(headers)
+    req = urllib.request.Request(base + path, data=data, headers=hdrs, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             raw = r.read()
@@ -255,16 +268,17 @@ class FaultEndpointsTest(unittest.TestCase):
         return http(cls.base, "POST", f"/v1/nodes/{node['node_id']}/telemetry", env,
                     token=node["node_token"])
 
-    def _inject(self, **body):
+    def _inject(self, actor: str | None = "human", **body):
         body.setdefault("node_id", self.node["node_id"])
         body.setdefault("target", "real")
         body.setdefault("duration_s", 30)
         return http(self.base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults", body,
-                    token=PROJECT_TOKEN)
+                    token=PROJECT_TOKEN, headers=_actor_header(actor))
 
-    def _clear(self, injection_id: str):
+    def _clear(self, injection_id: str, actor: str | None = "human"):
         return http(self.base, "DELETE",
-                    f"/v1/projects/{PROJECT_ID}/demo/faults/{injection_id}", token=PROJECT_TOKEN)
+                    f"/v1/projects/{PROJECT_ID}/demo/faults/{injection_id}",
+                    token=PROJECT_TOKEN, headers=_actor_header(actor))
 
     def _metrics(self, node_id: str, metric: str = "ram_used_bytes"):
         st, body = http(self.base, "GET",
@@ -615,7 +629,8 @@ class FaultEndpointsTest(unittest.TestCase):
         self.assertEqual(a["state"], "active")
         self.assertEqual(b["state"], "active")
         st, body = http(self.base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults/clear",
-                        {"reason": "test_clear_all"}, token=PROJECT_TOKEN)
+                        {"reason": "test_clear_all"}, token=PROJECT_TOKEN,
+                        headers=_actor_header("human"))
         self.assertEqual(st, 200, body)
         self.assertGreaterEqual(body["count"], 2)
         self.assertTrue(all(f["state"] == "recovering" for f in body["cleared"]))
@@ -645,6 +660,164 @@ class FaultEndpointsTest(unittest.TestCase):
         self.assertTrue(all("injection_id" in f for f in listing["faults"]))
 
 
+    # ------------------------------------------------------------------ #
+    # Acceptance (b): a clear names WHO did it — never a silent "the operator".
+    #
+    # Every worker and the console present the same project token, so on 2026-10-17 a
+    # peer's clear-all was recorded as `cleared_by=human` and a live acceptance was
+    # invalidated by what looked like an operator action (kanban t_9c1362f6). The
+    # caller now declares itself in `X-Termini-Actor`; a caller that does not is
+    # recorded as `unattributed_project_token` — the truth, not a convenient lie.
+    # ------------------------------------------------------------------ #
+    def test_clear_names_the_worker_that_did_it(self):
+        st, inj = self._inject(scenario="oom", duration_s=120)
+        self.assertEqual(st, 201, inj)
+        st, body = self._clear(inj["injection_id"], actor="t_c37aa0dc")
+        self.assertEqual(st, 200, body)
+        self.assertEqual(body["cleared_by"], "t_c37aa0dc")
+        logs = self._rows("SELECT message, actor FROM operator_logs "
+                          "WHERE message LIKE '%fault cleared by%'")
+        self.assertTrue(
+            [l for l in logs if l["actor"] == "t_c37aa0dc" and "t_c37aa0dc" in l["message"]],
+            f"the audit line must name the caller: {logs}")
+
+    def test_clear_without_an_actor_header_is_recorded_as_unattributed(self):
+        st, inj = self._inject(scenario="disk-fail", duration_s=120)
+        self.assertEqual(st, 201, inj)
+        st, body = self._clear(inj["injection_id"], actor=None)
+        self.assertEqual(st, 200, body)
+        self.assertEqual(body["cleared_by"], demo_faults.UNATTRIBUTED_ACTOR)
+        self.assertNotEqual(body["cleared_by"], "human",
+                            "an un-attributed caller must never read as the operator")
+        logs = self._rows("SELECT message FROM operator_logs "
+                          "WHERE message LIKE '%fault cleared by%'")
+        self.assertTrue([l for l in logs if "un-attributed project-token caller" in l["message"]],
+                        f"no audit line explains the missing actor: {logs}")
+
+    def test_clear_all_attributes_every_injection_it_closed(self):
+        a = self._inject(scenario="oom", duration_s=120)[1]
+        b = self._inject(scenario="disk-fail", duration_s=120)[1]
+        st, body = http(self.base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults/clear",
+                        {"reason": "peer_collision_test"}, token=PROJECT_TOKEN,
+                        headers=_actor_header("t_77f26781"))
+        self.assertEqual(st, 200, body)
+        by_id = {f["injection_id"]: f for f in body["cleared"]}
+        for injection in (a, b):
+            self.assertIn(injection["injection_id"], by_id)
+            self.assertEqual(by_id[injection["injection_id"]]["cleared_by"], "t_77f26781")
+        rows = self._rows("SELECT injection_id, cleared_by, clear_reason FROM demo_faults "
+                          "WHERE injection_id IN (?, ?)",
+                          (a["injection_id"], b["injection_id"]))
+        self.assertEqual({r["cleared_by"] for r in rows}, {"t_77f26781"})
+        self.assertEqual({r["clear_reason"] for r in rows}, {"peer_collision_test"})
+
+    def test_injection_is_attributed_to_its_caller(self):
+        st, inj = self._inject(actor="t_9c1362f6", scenario="oom", duration_s=120)
+        self.assertEqual(st, 201, inj)
+        logs = self._rows("SELECT message, actor FROM operator_logs "
+                          "WHERE message LIKE '%fault injected by%'")
+        self.assertTrue([l for l in logs
+                         if l["actor"] == "t_9c1362f6" and "fault injected by t_9c1362f6" in l["message"]],
+                        f"the injection line must name the caller: {logs}")
+
+    def test_a_malformed_actor_header_is_refused_not_defaulted(self):
+        st, inj = self._inject(scenario="oom", duration_s=120)
+        self.assertEqual(st, 201, inj)
+        st, body = http(self.base, "DELETE",
+                        f"/v1/projects/{PROJECT_ID}/demo/faults/{inj['injection_id']}",
+                        token=PROJECT_TOKEN,
+                        headers={"X-Termini-Actor": "not a valid actor!"})
+        self.assertEqual(st, 422, body)
+        self.assertEqual(body["error"]["code"], "INVALID_ARGUMENT")
+        row = self._rows("SELECT state, cleared_by FROM demo_faults WHERE injection_id = ?",
+                         (inj["injection_id"],))[0]
+        self.assertEqual(row["state"], "active", "a refused clear must not clear anything")
+        self.assertIsNone(row["cleared_by"])
+
+
+class OperatorLogActorMigrationTest(unittest.TestCase):
+    """Migration 0022: an operator-log line can name the card that acted.
+
+    The actor enum ('ai_operator'/'human'/'assistant') is what made a peer worker's
+    clear-all indistinguishable from the operator's; the CHECK is now a shape guard,
+    so the explicit id from `X-Termini-Actor` can be stored — while every existing
+    row keeps its original actor (kanban t_9c1362f6).
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="operator-log-actor-")
+        self.addCleanup(self.tmp.cleanup)
+        self.db_path = str(pathlib.Path(self.tmp.name) / "controller.db")
+
+    def connect(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        self.addCleanup(conn.close)
+        return conn
+
+    def test_existing_rows_survive_and_actor_ids_are_accepted(self):
+        migrations = sorted((CONTROLLER / "app" / "migrations").glob("*.sql"))
+        pre = [p for p in migrations if int(p.stem.split("_", 1)[0]) <= 21]
+        self.assertTrue(pre, "expected the pre-0022 migrations to exist")
+
+        conn = self.connect()
+        conn.execute("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY,"
+                     " name TEXT NOT NULL, applied_at TEXT NOT NULL)")
+        for path in pre:
+            conn.executescript(path.read_text())
+            conn.execute("INSERT INTO schema_migrations (version, name, applied_at)"
+                         " VALUES (?, ?, ?)",
+                         (int(path.stem.split("_", 1)[0]), path.stem, "2026-10-17T00:00:00Z"))
+        # A pre-fix line, written when the only actors were the enum values.
+        conn.execute(
+            "INSERT INTO operator_logs (log_id, project_id, ts, node_id, severity, actor,"
+            " message) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ulid(1), PROJECT_ID, "2026-10-17T19:49:32.607Z", None, "info", "human",
+             "fault cleared by operator: pre-migration line"),
+        )
+        conn.execute(
+            "INSERT INTO operator_logs (log_id, project_id, ts, node_id, severity, actor,"
+            " message) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ulid(2), PROJECT_ID, "2026-10-17T19:49:33.000Z", None, "warn", "ai_operator",
+             "oom-guard-01 fired"),
+        )
+        conn.commit()
+        # Before the migration the new id is refused by the old CHECK — this is the
+        # failure that made the audit line vanish (caught and logged, not stored).
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO operator_logs (log_id, project_id, ts, node_id, severity,"
+                " actor, message) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (ulid(3), PROJECT_ID, "2026-10-17T19:49:34.000Z", None, "info",
+                 "t_c37aa0dc", "fault cleared by t_c37aa0dc"))
+            conn.commit()
+        conn.close()
+
+        applied = appdb.migrate(self.db_path)
+        self.assertIn("0022_operator_log_actor_ids", applied)
+
+        conn = self.connect()
+        rows = conn.execute("SELECT actor, message FROM operator_logs ORDER BY log_id"
+                            ).fetchall()
+        self.assertEqual([r["actor"] for r in rows], ["human", "ai_operator"],
+                         "existing attribution must be preserved verbatim")
+        conn.execute(
+            "INSERT INTO operator_logs (log_id, project_id, ts, node_id, severity, actor,"
+            " message) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ulid(4), PROJECT_ID, "2026-10-17T19:49:34.000Z", None, "info",
+             "t_c37aa0dc", "fault cleared by t_c37aa0dc"))
+        conn.commit()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM operator_logs").fetchone()[0], 3)
+        # …and the enum values the AI-operator loop uses still work.
+        conn.execute(
+            "INSERT INTO operator_logs (log_id, project_id, ts, node_id, severity, actor,"
+            " message) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ulid(5), PROJECT_ID, "2026-10-17T19:49:35.000Z", None, "info",
+             "assistant", "assistant line"))
+        conn.commit()
+        self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+
+
 class RestartSweepTest(unittest.TestCase):
     """An injection no process can drive must not be reported as live (§4.7)."""
 
@@ -654,10 +827,18 @@ class RestartSweepTest(unittest.TestCase):
         port = free_port()
         base = f"http://127.0.0.1:{port}"
         db_path = str(state / "controller.db")
+        # Who the deploy tool would have recorded for this tree (kanban t_9c1362f6):
+        # the sweep must name them, not "the operator".
+        deploy_actor = state / "DEPLOY_ACTOR"
+        deploy_actor.write_text(json.dumps({
+            "schema_version": "1.0", "actor": "t_77f26781", "ref": "wt/peer-branch",
+            "commit": "56843b6deadbeef0123456789abcdef01234567",
+            "deployed_at": "2026-10-17T19:30:45Z", "window": "checked"}))
         env = dict(os.environ, TERMINI_HOST="127.0.0.1", TERMINI_PORT=str(port),
                    TERMINI_DB_PATH=db_path, TERMINI_PROJECT_ID=PROJECT_ID,
                    TERMINI_PROJECT_TOKEN=PROJECT_TOKEN,
                    TERMINI_BOOTSTRAP_TOKEN="t-boot-1",
+                   TERMINI_DEPLOY_ACTOR_PATH=str(deploy_actor),
                    TERMINI_OPERATOR_ENABLED="false")
         log = open(state / "controller.log", "w")
 
@@ -701,6 +882,22 @@ class RestartSweepTest(unittest.TestCase):
             self.assertEqual(row["state"], "expired", row)
             self.assertEqual(row["cleared_by"], "controller_restart")
             self.assertFalse(row["open"])
+            # …and the audit trail names the deploy that caused the restart, with its
+            # commit — not "the operator" (acceptance (b), kanban t_9c1362f6).
+            self.assertIn("t_77f26781", row["clear_reason"], row["clear_reason"])
+            self.assertIn("56843b6deadb", row["clear_reason"], row["clear_reason"])
+            conn = sqlite3.connect(db_path)
+            try:
+                logs = [r[0] for r in conn.execute(
+                    "SELECT message FROM operator_logs WHERE message LIKE '%expired%'")]
+                actors = [r[0] for r in conn.execute(
+                    "SELECT actor FROM operator_logs WHERE message LIKE '%expired%'")]
+            finally:
+                conn.close()
+            self.assertTrue([m for m in logs
+                             if "controller restarted by t_77f26781" in m
+                             and "2026-10-17T19:30:45Z" in m], logs)
+            self.assertEqual(actors, ["t_77f26781"])
         finally:
             proc2.terminate()
             proc2.wait(timeout=10)

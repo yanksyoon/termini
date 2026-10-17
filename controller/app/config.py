@@ -138,6 +138,11 @@ class Config:
     ssh_user: str                   # fallback when no inventory is loaded
     ssh_port: int
     log_ring_size: int
+    # Where the deploy tool records WHO deployed the running tree (`DEPLOY_ACTOR`).
+    # Read once at boot: a controller restart that expires an open fault injection
+    # names that actor in the audit line instead of blaming "the operator"
+    # (kanban t_9c1362f6). A missing/unreadable file is reported as un-attributed.
+    deploy_actor_path: str
     approval_timeout_s: int         # pending_approval auto-deny after this many seconds
     terminal_idle_timeout_s: int    # idle terminal session close (15 min default)
     terminal_backend: str           # "ssh" (default) | "local" (test shell)
@@ -304,6 +309,9 @@ class Config:
             ssh_user=os.environ.get("TERMINI_SSH_USER", "ubuntu").strip() or "ubuntu",
             ssh_port=_int_env("TERMINI_SSH_PORT", 22),
             log_ring_size=_int_env("TERMINI_LOG_RING_SIZE", 10000),
+            deploy_actor_path=os.environ.get(
+                "TERMINI_DEPLOY_ACTOR_PATH", "/opt/termini/DEPLOY_ACTOR").strip()
+                or "/opt/termini/DEPLOY_ACTOR",
             approval_timeout_s=_int_env("TERMINI_APPROVAL_TIMEOUT_S", 300),
             terminal_idle_timeout_s=_int_env("TERMINI_TERMINAL_IDLE_TIMEOUT_S", 900),
             terminal_backend=os.environ.get("TERMINI_TERMINAL_BACKEND", "ssh").strip()

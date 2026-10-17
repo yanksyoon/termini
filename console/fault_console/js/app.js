@@ -54,7 +54,15 @@
     const url = `${state.apiBase}/v1/projects/${state.projectId}${path}`;
     const opts = {
       method,
-      headers: { "Authorization": "Bearer " + state.token, "Content-Type": "application/json" },
+      // X-Termini-Actor: a person at this console is the actor, and saying so keeps
+      // the audit line "cleared by the operator" instead of the honest-but-useless
+      // "un-attributed project-token caller" a header-less caller gets
+      // (controller-api.md §4.7; kanban t_9c1362f6).
+      headers: {
+        "Authorization": "Bearer " + state.token,
+        "Content-Type": "application/json",
+        "X-Termini-Actor": "human",
+      },
     };
     if (body !== undefined) opts.body = JSON.stringify(body);
     const res = await fetch(url, opts);

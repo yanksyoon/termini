@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -39,6 +40,12 @@ DEFAULT_PID = "01J0DEM0WARM000000000000AB"
 DEFAULT_DB = "/data/controller.db"
 NODE_SOURCE = "node"
 FAULT_SOURCE = "demo_fault"
+# Who this tool says it is in `X-Termini-Actor` (kanban t_9c1362f6). Without it the
+# controller records `cleared_by=unattributed_project_token`, which is the honest
+# answer but names nobody; pass `--actor t_<card>` (or TERMINI_ACTOR) to name the card
+# this run is evidence for.
+DEFAULT_ACTOR = "tool:demo-fault-clear-telemetry"
+ACTOR = DEFAULT_ACTOR
 
 
 # --------------------------------------------------------------------- plumbing
@@ -47,7 +54,8 @@ def call(base: str, project: str, token: str, method: str, path: str,
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
         base.rstrip("/") + path, data=data, method=method,
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json",
+                 "X-Termini-Actor": ACTOR},
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -291,6 +299,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--project", default=DEFAULT_PID)
     p.add_argument("--token", default="demo-project-token")
     p.add_argument("--db", default=DEFAULT_DB)
+    p.add_argument("--actor", default=os.environ.get("TERMINI_ACTOR", DEFAULT_ACTOR),
+                   help="value for X-Termini-Actor (default: %(default)s); pass the "
+                        "card id this run is evidence for")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("run", help="inject 60 s, phase-align, clear, observe storage")
@@ -303,8 +314,12 @@ def main(argv: list[str] | None = None) -> int:
                    help="max seconds to wait for the node's next POST")
     r.add_argument("--observe-s", type=float, default=30.0,
                    help="max seconds to watch for the node's stored sample")
+    r.add_argument("--actor", dest="actor", default=argparse.SUPPRESS,
+                   help=argparse.SUPPRESS)
     r.set_defaults(func=do_run)
     args = p.parse_args(argv)
+    global ACTOR
+    ACTOR = args.actor
     return args.func(args)
 
 

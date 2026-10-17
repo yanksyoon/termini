@@ -52,7 +52,11 @@ FAILURES: list[str] = []
 def call(base: str, method: str, path: str, body=None, token: str | None = None,
          timeout: float = 15.0) -> tuple[int, Any]:
     data = json.dumps(body).encode() if body is not None else None
-    headers = {"Content-Type": "application/json"}
+    # This probe drives the console's routes the way a person at the console would,
+    # so it declares the operator as the actor (controller-api.md §4.7,
+    # kanban t_9c1362f6). Without the header the audit line reads
+    # "un-attributed project-token caller", which is a different scenario.
+    headers = {"Content-Type": "application/json", "X-Termini-Actor": "human"}
     if token:
         headers["Authorization"] = "Bearer " + token
     req = urllib.request.Request(base + path, data=data, headers=headers, method=method)

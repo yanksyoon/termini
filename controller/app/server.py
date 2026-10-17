@@ -196,7 +196,8 @@ class ControllerHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", self._cors_origin())
         self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers",
-                         "Authorization, Content-Type, Idempotency-Key, X-Termini-Version, Last-Event-ID, Cache-Control")
+                         "Authorization, Content-Type, Idempotency-Key, X-Termini-Version, "
+                         "Last-Event-ID, Cache-Control, X-Termini-Actor")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 
     def _send_json(self, status: int, obj, headers: dict | None = None) -> None:
@@ -243,6 +244,26 @@ class ControllerHandler(BaseHTTPRequestHandler):
     def _bootstrap_token(self) -> str | None:
         # Accept the canonical Bearer form and the legacy X-Bootstrap-Token header.
         return self._bearer() or self.headers.get("X-Bootstrap-Token")
+
+    def _actor(self) -> str:
+        """Who is acting, from `X-Termini-Actor` (kanban t_9c1362f6).
+
+        The project token is shared by every worker and by the console, so it cannot
+        distinguish them. Without this header a peer worker's clear-all was written
+        down as `cleared_by=human` — "the operator" — and that is exactly the lie the
+        acceptance run tripped over. Absent header → `unattributed_project_token`
+        (never `human`); a malformed one is a loud 422, not a silent default.
+        """
+        raw = (self.headers.get("X-Termini-Actor") or "").strip()
+        if not raw:
+            return demo_faults_mod.UNATTRIBUTED_ACTOR
+        if not demo_faults_mod.ACTOR_RE.match(raw):
+            raise errors.invalid_argument(
+                "X-Termini-Actor must be 1..64 chars of [A-Za-z0-9_.:@-] "
+                "(your card id, e.g. t_9c1362f6, or 'human')",
+                [{"field": "X-Termini-Actor", "reason": raw[:80]}],
+            )
+        return raw
 
     def _check_version(self) -> None:
         v = self.headers.get("X-Termini-Version")
@@ -1898,7 +1919,8 @@ class ControllerHandler(BaseHTTPRequestHandler):
         """
         self._require_project(conn, project_id)
         body = self._read_body()
-        return 201, self._fault_injector().start_injection(conn, project_id, body)
+        return 201, self._fault_injector().start_injection(
+            conn, project_id, body, actor=self._actor())
 
     def _demo_fault_list(self, conn, project_id: str) -> tuple[int, dict]:
         """GET /v1/projects/{pid}/demo/faults — active + recent injections."""
@@ -1933,7 +1955,8 @@ class ControllerHandler(BaseHTTPRequestHandler):
         """
         self._require_project(conn, project_id)
         reason = (self._query().get("reason") or "cleared_by_operator")[:200]
-        return 200, self._fault_injector().clear(conn, project_id, injection_id, reason=reason)
+        return 200, self._fault_injector().clear(
+            conn, project_id, injection_id, reason=reason, actor=self._actor())
 
     def _demo_fault_clear_all(self, conn, project_id: str) -> tuple[int, dict]:
         """POST /v1/projects/{pid}/demo/faults/clear — clear every open injection.
@@ -1949,7 +1972,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
             raise errors.invalid_argument("node_id must be a string when present")
         reason = str(body.get("reason") or "cleared_by_operator")[:200]
         return 200, self._fault_injector().clear_all(
-            conn, project_id, node_id=node_id, reason=reason
+            conn, project_id, node_id=node_id, reason=reason, actor=self._actor()
         )
 
     def _limit_param(self, default: int = 50) -> int:
