@@ -111,8 +111,10 @@ test("the prototype page carries every id the shipped page binds", async () => {
       `${v} is declared as a variant sheet`,
     );
   }
-  // The root page must not point at the prototype surface.
-  assert.doesNotMatch(shipped, /proto\//, "the shipped dashboard does not reference /proto/");
+  // The root page must not point at the PROTOTYPE SURFACE (the picker). Since the
+  // 2026-10-17 promotion it does load the HIG design layer from proto/variants/ —
+  // that is the shipped design now — but never the harness or the picker page.
+  assert.doesNotMatch(shipped, /proto-picker|harness\.js|proto\/index\.html/, "the shipped dashboard does not embed the picker");
 });
 
 test("no variant hides a panel, a control or a decision surface", async () => {

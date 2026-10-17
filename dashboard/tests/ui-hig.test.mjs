@@ -56,9 +56,15 @@ test("variant 4 is the fourth entry everywhere the harness looks", async () => {
   assert.match(harness, /name: "Overview"/);
   assert.match(harness, /proto:variant-change/, "the module is mounted and unmounted through one event");
 
-  // The three earlier variants are untouched by this card.
+  // PROMOTED 2026-10-17 (owner decision): the root IS the HIG surface now. The
+  // guard inverts — it must load exactly one design layer, once, and must not
+  // pull the picker in with it.
   const shipped = await read("index.html");
-  assert.doesNotMatch(shipped, /hig|proto\//i, "the root dashboard is untouched");
+  assert.match(shipped, /<html lang="en" data-variant="hig">/, "the root declares the HIG variant");
+  assert.equal((shipped.match(/variants\/hig\.css/g) || []).length, 1, "one HIG stylesheet, once");
+  assert.equal((shipped.match(/variants\/hig\.js/g) || []).length, 1, "one HIG module, once");
+  assert.doesNotMatch(shipped, /proto-picker|harness\.js|proto\/index\.html/, "the root does not embed the picker");
+  assert.doesNotMatch(shipped, /variants\/(console|briefing|instrument)\.css/, "no other variant rides along");
 });
 
 test("the HIG sheet is scoped, dependency-free and meets the platform contract", async () => {

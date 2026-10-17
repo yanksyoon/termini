@@ -491,11 +491,30 @@ function placeNodeDetail() {
   const selectedId = (select && select.value) || null;
   const selected = cards.find((c) => c.dataset.nodeId === selectedId) || cards[0] || null;
 
+  // The node panel rebuilds its cards on every poll, so a parked `.hig-node-rest`
+  // outlives the card it came from. Without this, each poll appends a fresh copy
+  // and the detail pane grows a second, stale block. Drop parked copies whose
+  // node is gone, and replace a rebuilt card's copy with the new one.
+  const live = new Set(cards.map((c) => c.dataset.nodeId));
+  for (const host of [ui.nodeRest, ui.nodeStore]) {
+    for (const rest of [...host.children].filter((n) => n.classList.contains("hig-node-rest"))) {
+      if (!live.has(rest.dataset.higCard)) rest.remove();
+    }
+  }
+
   for (const card of cards) {
     const rest = card.querySelector(".hig-node-rest");
     if (!rest) continue;
-    if (card === selected) adopt(rest, ui.nodeRest);
-    else adopt(rest, ui.nodeStore);
+    rest.dataset.higCard = card.dataset.nodeId;
+    if (card === selected) {
+      ui.nodeRest.querySelectorAll(".hig-node-rest").forEach((n) => n.remove());
+      adopt(rest, ui.nodeRest);
+    } else {
+      ui.nodeStore
+        .querySelectorAll(`.hig-node-rest[data-hig-card="${card.dataset.nodeId}"]`)
+        .forEach((n) => n.remove());
+      adopt(rest, ui.nodeStore);
+    }
   }
 
   if (selected) {
