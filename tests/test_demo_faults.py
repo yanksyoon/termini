@@ -711,6 +711,39 @@ class FaultEndpointsTest(unittest.TestCase):
         self.assertEqual({r["cleared_by"] for r in rows}, {"t_77f26781"})
         self.assertEqual({r["clear_reason"] for r in rows}, {"peer_collision_test"})
 
+    def test_the_drivers_own_lines_name_the_worker_not_the_operator(self):
+        """Supersede + recovery-complete belong to the worker, not to `human`.
+
+        These two lines are emitted by the driver, not by a caller, and they used
+        to default to `human`: a fault a worker injected and the controller merely
+        advanced left "the operator" in the audit trail — the same false attribution
+        the clear itself was fixed for (kanban t_9c1362f6).
+        """
+        st, inj = self._inject(actor="t_9c1362f6", scenario="oom", duration_s=120)
+        self.assertEqual(st, 201, inj)
+        # The supersede line is emitted on the node's own next report, not on a tick.
+        self._telemetry(self.node, 9000)
+        st, body = self._clear(inj["injection_id"], actor="t_9c1362f6")
+        self.assertEqual(st, 200, body)
+        time.sleep(body["clear_samples_needed"] + 2)
+        blamed = self._rows(
+            "SELECT message, actor FROM operator_logs WHERE actor = 'human' "
+            "AND message LIKE ? "
+            "AND (message LIKE '%superseded by active fault injection%' "
+            "     OR message LIKE '%back below threshold%')",
+            (f"%{inj['injection_id']}%",))
+        self.assertEqual(blamed, [], f"driver lines blamed the operator: {blamed}")
+        named = self._rows(
+            "SELECT message, actor FROM operator_logs WHERE actor = 't_9c1362f6' "
+            "AND message LIKE '%back below threshold%' AND message LIKE ?",
+            (f"%{inj['injection_id']}%",))
+        self.assertTrue(named, "the recovery-complete line must name the worker")
+        superseded = self._rows(
+            "SELECT message, actor FROM operator_logs WHERE actor = 't_9c1362f6' "
+            "AND message LIKE '%superseded by active fault injection%' AND message LIKE ?",
+            (f"%{inj['injection_id']}%",))
+        self.assertTrue(superseded, "the supersede line must name the worker")
+
     def test_injection_is_attributed_to_its_caller(self):
         st, inj = self._inject(actor="t_9c1362f6", scenario="oom", duration_s=120)
         self.assertEqual(st, 201, inj)

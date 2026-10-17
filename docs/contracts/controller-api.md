@@ -1013,6 +1013,16 @@ fault cleared: node termini-node-a rule oom-guard-01 back below threshold after 
 fault TTL expired after 30s — auto-clearing: … (injection …)
 ```
 
+**Lines the driver emits carry the same actor, not `human`.** The supersede line,
+the recovery-complete line and the "node is gone" line are emitted by the controller
+while advancing an injection that a caller started; their `actor` is that caller
+(recorded with the injection, and re-read from `cleared_by` when somebody cleared
+it). When no caller is known — an injection started before this was recorded, or an
+end the controller caused alone (`ttl`, `controller_restart`, `node_gone`) — the
+actor is `controller`. It is never `human` unless a human presented `human`: a
+worker's fault must not leave an operator action in the audit trail (kanban
+t_9c1362f6).
+
 ### Configuration
 
 | Env var | Default | Meaning |
