@@ -74,5 +74,8 @@ jobs:
       - name: Dashboard unit tests (pure core modules, no deps)
         run: node --test dashboard/tests/core.test.mjs
 
+      - name: Dashboard UI tests (dependency-free DOM — disclosure state across the poll)
+        run: node --test dashboard/tests/decisions-panel.test.mjs
+
       - name: Web terminal unit tests (framing, session FSM, ssh panel)
         run: node --test frontend/test/*.test.mjs
