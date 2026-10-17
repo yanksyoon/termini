@@ -173,6 +173,15 @@ exactly this defect), with NO `TERMINI_LXD_INSTANCE_NAMES` configured:
 
 ## 4. What is NOT yet proven live, and why
 
+> **Update 2026-10-17:** this section is now CLOSED. The live run is in
+> [`../solvable-faults-live-2026-10-17.md`](../solvable-faults-live-2026-10-17.md):
+> on `termini-node-c`, a 60 s OOM injection produced `decision_source=model`
+> (confidence 0.95) → `instance_name termini-verify-target` resolved from the
+> model's `vm_id` → audit `result=ok`, `PUT /1.0/instances/termini-verify-target/state`
+> at `https://10.10.0.13:8443`, and the container's PID/uptime resetting
+> (181279 → 182483 → 183606). The text below is kept as the state of the record at
+> the time it was written.
+
 The card's acceptance (a) also asks for the **node-side** observable on a live
 node: the instance's real uptime resetting after the model's restart, and the
 real node's telemetry recovering from the injected fault. The fleet was stopped
