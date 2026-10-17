@@ -242,11 +242,18 @@ PICK_JS = r"""
   rows[index].scrollIntoView({ block: 'center' });
   const b = rows[index].getBoundingClientRect();
   if (b.width < 20 || b.height < 8) return null;
+  const x = Math.round(b.left + Math.min(120, b.width / 2));
+  const y = Math.round(b.top + b.height / 2);
+  // Hit-test before the click: if the point is not over the intended row (the
+  // list scrolled or a decision landed between the two CDP calls), a mouse
+  // event there would measure the wrong thing — re-aim instead.
+  const at = document.elementFromPoint(x, y);
   return {
     index,
     id: rows[index].dataset.decisionId,
-    x: Math.round(b.left + Math.min(120, b.width / 2)),
-    y: Math.round(b.top + b.height / 2),
+    x,
+    y,
+    hit: !!(at && rows[index].contains(at)),
   };
 })()
 """
@@ -260,9 +267,12 @@ def row_box(ws, index):
     return cdp.evaluate(
         ws,
         "(() => { const rows = [...document.querySelectorAll('#decision-list > .decision-row')];"
-        f" const r = rows[{index}]; if (!r) return null; const b = r.getBoundingClientRect();"
-        " return { x: Math.round(b.left + Math.min(120, b.width / 2)), y: Math.round(b.top + b.height / 2),"
-        " id: r.dataset.decisionId }; })()",
+        f" const r = rows[{index}]; if (!r) return null; r.scrollIntoView({{block: 'center'}});"
+        " const b = r.getBoundingClientRect();"
+        " if (b.width < 20 || b.height < 8) return null;"
+        " const x = Math.round(b.left + Math.min(120, b.width / 2)), y = Math.round(b.top + b.height / 2);"
+        " const at = document.elementFromPoint(x, y);"
+        " return { index: %d, id: r.dataset.decisionId, x, y, hit: !!(at && r.contains(at)) }; })()" % index,
     )
 
 
@@ -346,6 +356,9 @@ def main():
             box = rich_row(ws) or row_box(ws, 3) or row_box(ws, 2)
             if not box:
                 break
+            if not box.get("hit", True):
+                print(f"  (attempt {attempt}: the row moved out from under the pointer before the click — re-aiming)")
+                continue
             click_xy(ws, box["x"], box["y"])
             time.sleep(0.6)
             after = state(ws)
@@ -353,8 +366,8 @@ def main():
                 break
             reordered = after.get("firstId") != before.get("firstId") or after.get("rows") != before.get("rows")
             if not reordered:
-                print(f"  (the list did not move: a click on {box['id']} left the selection on "
-                      f"{after['selectedId']})")
+                print(f"  (the pointer was over {box['id']} and the list did not move: a click left the selection "
+                      f"on {after['selectedId']})")
                 break
             print(f"  (attempt {attempt}: the offline stream re-ordered the list under the pointer — "
                   f"aimed at {box['id']}, selection went to {after['selectedId']})")

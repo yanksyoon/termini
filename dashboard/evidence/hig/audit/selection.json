@@ -1,6 +1,6 @@
 {
   "browser": "Chrome/145.0.7632.6",
-  "url": "http://127.0.0.1:43209/?offline=1&dest=incidents",
+  "url": "http://127.0.0.1:44773/?offline=1&dest=incidents",
   "viewport": [
     1440,
     1200
@@ -19,7 +19,7 @@
     {
       "check": "a row has a box to click",
       "ok": true,
-      "detail": "{\"index\": 1, \"id\": \"01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050\", \"x\": 370, \"y\": 345}"
+      "detail": "{\"index\": 1, \"id\": \"01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050\", \"x\": 370, \"y\": 501, \"hit\": true}"
     },
     {
       "check": "a click on that row selects that row",
