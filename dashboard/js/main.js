@@ -22,6 +22,9 @@ import { formatError } from "./ui/errors.js";
 import { OfflineBackend, OfflineStream } from "./offline.js";
 import { MyNodePanel } from "./ui/mynode.js";
 import { registrationView, healthSummary } from "./core/client-node.js";
+import { ChatPanel } from "./ui/chat.js";
+import { seedContext } from "./core/assistant.js";
+import { shortId } from "./core/format.js";
 
 // Non-secret connection settings live in localStorage; the CREDENTIALS do not.
 // The project credential and the client's node credential are held in
@@ -97,6 +100,20 @@ const dom = {
   mynodeToken: $("#mynode-node-token"),
   mynodeConnect: $("#btn-mynode-connect"),
   mynodeForget: $("#btn-mynode-forget"),
+  chatLauncher: $("#btn-chat"),
+  chatPanel: $("#chat-panel"),
+  chatClose: $("#btn-chat-close"),
+  chatMode: $("#chat-mode"),
+  chatContextHost: $("#chat-context"),
+  chatContextChip: $("#chat-context-chip"),
+  chatContextKind: $("#chat-context-kind"),
+  chatContextLabel: $("#chat-context-label"),
+  chatContextClear: $("#chat-context-clear"),
+  chatSuggestions: $("#chat-suggestions"),
+  chatMessages: $("#chat-messages"),
+  chatForm: $("#chat-form"),
+  chatInput: $("#chat-input"),
+  chatSend: $("#chat-send"),
 };
 
 const state = {
@@ -112,6 +129,7 @@ const state = {
   backend: { fails: 0, lastOk: null, lastError: null },
   pending: new Map(),
   decisionsReady: false,
+  lastAudits: [],
 };
 
 let cfg = resolveConfig(readInputs());
@@ -123,7 +141,13 @@ let pollTimer = null;
 let metricsTimer = null;
 let decisionTimer = null;
 
-const metricsPanel = new MetricsPanel(dom.charts);
+const metricsPanel = new MetricsPanel(dom.charts, {
+  onAskAi: (ctx) => askAi(ctx),
+  nodeLabel: (nodeId) => {
+    const n = state.nodes.find((x) => x.node_id === nodeId);
+    return n ? n.registration_id || n.node_id.slice(0, 10) : null;
+  },
+});
 
 const decisionsPanel = new DecisionsPanel(
   {
@@ -138,6 +162,7 @@ const decisionsPanel = new DecisionsPanel(
     onAudit: (row) => showAuditDetail(row),
     onSample: (row) => showSampleDetail(row),
     onChart: (row) => showOnChart(row),
+    onAskAi: (ctx) => askAi(ctx),
   },
 );
 const logPanel = new LogPanel(
@@ -181,6 +206,7 @@ const controls = new ControlsPanel(
     onApply: (planId) => applyPlan(planId),
     onApprove: (commandId) => decideRemediation(commandId, "approve"),
     onDeny: (commandId) => decideRemediation(commandId, "deny"),
+    onAskAi: (ctx) => askAi(ctx),
   },
 );
 
@@ -584,6 +610,9 @@ async function refreshDecisions() {
       audits: (aud && aud.audits) || [],
       seriesByNode: seriesByNodeIndex(),
     });
+    // Keep the audit rows for citation jumps (the chat's "open audit row" and
+    // an `audit` citation both land here rather than re-fetching).
+    state.lastAudits = (aud && aud.audits) || [];
     state.decisionsReady = true;
   } catch (e) {
     // A 404 means this controller build has no operator-decision surface at all.
@@ -638,6 +667,20 @@ function showAuditDetail(row) {
       ["detail", a.detail],
     ],
     json: a,
+    actions: [
+      {
+        label: "Ask AI about this audit row",
+        title: `attach audit ${a.id} to the chat`,
+        onClick: () =>
+          askAi({
+            kind: "audit",
+            id: a.id,
+            label: `${a.action_kind || row.actionKind || "action"} · ${a.result}`,
+            summary: `audit · ${a.action_kind || row.actionKind || "action"} on ${a.node_id || row.nodeId} · audit ${shortId(a.id, 10, 4)}`,
+            meta: { nodeId: a.node_id, decisionId: a.decision_id, ruleId: a.rule_id, result: a.result },
+          }),
+      },
+    ],
   });
 }
 
@@ -715,6 +758,129 @@ async function showOnChart(row) {
   );
 }
 
+/* ------------------------------------------------------------ AI assistant */
+
+let chat = null;
+
+/**
+ * The assistant panel (t_d1aa35c8). Docked on the right, reachable from the
+ * topbar in every view; `respond` is the ONLY network call it makes, and it is
+ * the parent card's frozen route (§4.10) through the same REST client every
+ * other panel uses — no second route, no second credential.
+ */
+function buildChatPanel() {
+  chat = new ChatPanel(
+    {
+      panel: dom.chatPanel,
+      launcher: dom.chatLauncher,
+      closeBtn: dom.chatClose,
+      modeEl: dom.chatMode,
+      contextHost: dom.chatContextHost,
+      contextChip: dom.chatContextChip,
+      contextKind: dom.chatContextKind,
+      contextLabel: dom.chatContextLabel,
+      contextClear: dom.chatContextClear,
+      suggestions: dom.chatSuggestions,
+      messages: dom.chatMessages,
+      form: dom.chatForm,
+      input: dom.chatInput,
+      sendBtn: dom.chatSend,
+    },
+    {
+      respond: (body) => backend.api.assistantAsk(body),
+      onCitation: (cite) => jumpToCitation(cite),
+      offline: backend.kind === "offline",
+    },
+  );
+  return chat;
+}
+
+/**
+ * Seed the chat with the element the reader clicked. The id travels as DATA
+ * (`context.kind` + `context.id`), never inside the prose, and the panel keeps
+ * it attached across follow-up questions until it is removed or replaced.
+ */
+function askAi(input) {
+  if (!chat) return;
+  try {
+    chat.attachContext(seedContext(input));
+  } catch (e) {
+    toastErr("Cannot attach that element", e.message);
+  }
+}
+
+function flashElement(node) {
+  if (!node) return false;
+  if (typeof node.scrollIntoView === "function") node.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (node.classList) {
+    node.classList.add("flash");
+    setTimeout(() => node.classList.remove("flash"), 2500);
+  }
+  return true;
+}
+
+/**
+ * A citation is a claim about a specific record, so its button must land on that
+ * record — or say it cannot. `incident` citations carry the health-event id and
+ * land on the decision row that event fired; `metric` citations carry the NODE
+ * id (§4.10) and land on that node's charts; `audit` opens the audit row itself.
+ */
+function jumpToCitation(cite) {
+  if (!cite || !cite.kind || !cite.id) return;
+  const kind = cite.kind;
+  const id = cite.id;
+  if (kind === "audit") {
+    const row = state.lastAudits.find((a) => a && a.id === id);
+    if (row) {
+      showAuditDetail({ audit: row, id: row.decision_id, nodeId: row.node_id, node_id: row.node_id, ruleId: row.rule_id, actionKind: row.action_kind });
+      return;
+    }
+    toastWarn(
+      "Audit row not in the fetched window",
+      `audit ${id} is not among the last ${cfg.decisionLimit} audit rows — widen the fetch to see it.`,
+    );
+    return;
+  }
+  if (kind === "incident") {
+    const row = dom.decisionList.querySelector(`[data-event-id="${cssEscape(id)}"]`);
+    if (flashElement(row)) return;
+    toastWarn("Incident not in the fetched window", `health event ${id} is not on the decision panel right now.`);
+    return;
+  }
+  if (kind === "decision") {
+    const row = dom.decisionList.querySelector(`[data-decision-id="${cssEscape(id)}"]`);
+    if (flashElement(row)) return;
+    toastWarn("Decision not in the fetched window", `decision ${id} is not on the decision panel right now.`);
+    return;
+  }
+  if (kind === "node" || kind === "metric") {
+    const node = state.nodes.find((n) => n.node_id === id);
+    if (!node) {
+      toastWarn("Node not in the fetched window", `node ${id} is not in the current node list.`);
+      return;
+    }
+    selectNode(id);
+    const card = dom.overview.querySelector(`[data-node-id="${cssEscape(id)}"]`);
+    flashElement(card);
+    if (kind === "metric") {
+      dom.charts.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    return;
+  }
+  if (kind === "remediation") {
+    const item = dom.pendingList.querySelector(`[data-command-id="${cssEscape(id)}"]`);
+    if (flashElement(item)) return;
+    toastWarn("Remediation not pending", `command ${id} is not in the pending list (it may already be decided).`);
+    return;
+  }
+  toastWarn("Cannot jump to that citation", `${kind} ${id} has no surface on this dashboard.`);
+}
+
+/** Escape a ULID for an attribute selector (ids are Crockford base32, but be safe). */
+function cssEscape(value) {
+  return String(value).replace(/["\\]/g, "\\$&");
+}
+
 /* ------------------------------------------------------------------ UI sync */
 
 function overviewHandlers() {
@@ -722,6 +888,7 @@ function overviewHandlers() {
     onSelect: (id) => selectNode(id),
     onReboot: (id) => rebootNode(id),
     onDrain: (id) => drainNode(id),
+    onAskAi: (ctx) => askAi(ctx),
   };
 }
 
@@ -1082,6 +1249,7 @@ function init() {
   }
 
   backend = makeBackend();
+  buildChatPanel();
 
   myNodePanel.setController(controllerOrigin());
   myNodePanel.setCredential(nodeCredential);

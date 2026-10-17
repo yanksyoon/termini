@@ -107,6 +107,20 @@ function card(node, sample, view, state, handlers) {
       onclick: () => handlers.onSelect(node.node_id),
     }),
     el("button", {
+      class: "btn btn-sm btn-ask",
+      type: "button",
+      text: "Ask AI",
+      title: `ask the assistant about ${node.registration_id || node.node_id}`,
+      dataset: { askAiKind: "node", nodeId: node.node_id },
+      onclick: () => handlers.onAskAi && handlers.onAskAi({
+        kind: "node",
+        id: node.node_id,
+        label: node.registration_id || shortId(node.node_id),
+        summary: `node · ${node.registration_id || shortId(node.node_id)} · ${status}`,
+        meta: { nodeId: node.node_id, status },
+      }),
+    }),
+    el("button", {
       class: "btn btn-sm btn-warn",
       type: "button",
       text: "Restart",

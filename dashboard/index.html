@@ -21,6 +21,7 @@
       <span class="pill" id="pill-stream" title="AI log stream"><span class="dot dot-muted"></span><span id="pill-stream-text">stream —</span></span>
       <span class="clock" id="clock" title="local time">--:--:--</span>
       <a class="btn btn-ghost" id="link-terminal" href="/terminal/" title="Open the one-click web terminal" hidden>Web terminal</a>
+      <button class="btn btn-ghost chat-launcher" id="btn-chat" type="button" aria-expanded="false" aria-controls="chat-panel" title="Ask the AI assistant about an incident, a node, or anything Termini did">✦ Ask AI</button>
       <button class="btn btn-ghost" id="btn-settings" type="button" title="Connection settings">Settings</button>
     </div>
   </header>
@@ -200,6 +201,43 @@
   </main>
 
   <div id="toasts" class="toasts" aria-live="assertive"></div>
+
+  <!-- AI assistant chat (t_d1aa35c8). Docked, not modal: opening it shifts the
+       page instead of covering the incident view (see .chat-panel in styles.css).
+       Reachable from every view by the topbar launcher. -->
+  <aside id="chat-panel" class="chat-panel" aria-labelledby="h-chat" hidden>
+    <header class="chat-head">
+      <h2 id="h-chat">Ask AI</h2>
+      <span class="badge chat-mode chat-mode-grounded" id="chat-mode">grounded in controller records</span>
+      <button class="btn btn-ghost btn-sm" id="btn-chat-close" type="button" aria-label="Close the AI chat">Close</button>
+    </header>
+    <p class="chat-intro muted small">
+      A management assistant over Termini's own records: incidents, decisions, nodes, metrics,
+      pending remediations and audit rows. It may execute an action the guardrail admits — every
+      execution is shown with its command_id and audit_id.
+    </p>
+    <div class="chat-context" id="chat-context" hidden>
+      <span class="chat-chip-label muted small">context</span>
+      <span class="chat-chip" id="chat-context-chip" data-context-kind="" data-context-id="" data-context-decision-id="">
+        <span class="chat-chip-kind" id="chat-context-kind"></span>
+        <span class="chat-chip-text" id="chat-context-label"></span>
+      </span>
+      <button class="linklike chat-chip-remove" id="chat-context-clear" type="button" title="Remove the attached element">remove</button>
+    </div>
+    <div class="chat-suggestions" id="chat-suggestions" role="group" aria-label="suggested follow-ups"></div>
+    <ol class="chat-messages" id="chat-messages" aria-live="polite"></ol>
+    <form class="chat-form" id="chat-form">
+      <label class="field block">
+        <span class="chat-form-label">your question</span>
+        <textarea id="chat-input" rows="2" maxlength="4000" autocomplete="off" placeholder="Ask about this incident, this node, or anything Termini did…"></textarea>
+      </label>
+      <button class="btn btn-primary" id="chat-send" type="submit">Send</button>
+    </form>
+    <p class="chat-foot muted small">
+      Answers are grounded in the controller's records for the attached context only; a citation
+      that does not resolve is reported, never footnoted away.
+    </p>
+  </aside>
 
   <dialog id="settings-dialog" class="dialog">
     <form method="dialog" id="settings-form">

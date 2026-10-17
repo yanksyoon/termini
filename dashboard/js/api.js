@@ -174,6 +174,21 @@ export class ApiClient {
       idempotent: true,
     });
   }
+
+  /**
+   * The AI assistant (controller-api.md §4.10): grounded Q&A over the
+   * controller's own records, with guardrail-admitted execute authority.
+   *
+   * `body` is built by `core/assistant.js buildAskBody()` — `{messages,
+   * context?, conversation_id, message_id}`. No Idempotency-Key header is sent
+   * here on purpose: execution idempotency is anchored on the body's
+   * `conversation_id`/`message_id` (§4.10), and a fresh header key per retry
+   * would only muddy that. Docs and README must never claim more than the
+   * controller returns — `executed[]` is what ran, nothing else.
+   */
+  assistantAsk(body) {
+    return this._request("POST", `/projects/${this._project()}/assistant/ask`, { body });
+  }
 }
 
 export function newKey() {
