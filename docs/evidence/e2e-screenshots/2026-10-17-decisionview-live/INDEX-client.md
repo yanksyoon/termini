@@ -84,6 +84,15 @@ does not include it. Full proof, with the exact `/metrics` query the page issued
 the `thresholdInCaption: false` readback, is in
 `client/06-chart-fault-recovery.txt` -> "Why there is no threshold line".
 
+**Update (t_497c24fa, after this pack landed):** the cause is fixed on `main` — the
+dashboard now asks `/metrics` for `ram_total_bytes` (plus `disk_total_bytes` and
+`gpu_vram_total_bytes`) as a *threshold denominator*, so `thresholdMarker()` resolves
+`>= 95% of ram_total_bytes`, `buildCharts()` puts the value in the memory group's
+`thresholds`, and `charts.js` draws the dashed line labelled
+`oom-guard-01: 95% of ram_total_bytes` with `threshold: …` back in the card caption.
+The frames in this pack predate that fix and are unchanged: re-shooting
+`06-chart-fault-recovery` against a live window is still outstanding.
+
 ## Judgement calls, stated
 
 - The fault is injected through the documented operator endpoint
