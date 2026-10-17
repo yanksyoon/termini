@@ -281,10 +281,31 @@ A model output never reaches execution directly. Every chosen action passes thro
 2. A **remediation command allowlist** — only pre-approved LXD/controller actions may execute. The model **selects among them**; it never emits free-form shell, and an action outside the allowlist has no valid encoding in the decision schema, so it is rejected before it can be applied.
 3. A **mandatory deterministic fallback** — if the model is unavailable, times out, exceeds its latency budget, or returns output that fails schema validation or the allowlist, the operator falls back to the deterministic provider and records the fallback *and its reason*. Fail-closed is never traded for availability.
 
+**Assistant authority (t_bfd2c2f7, owner decision D1).** The assistant endpoint
+(`POST /v1/projects/{pid}/assistant/ask`, `controller-api.md` §4.10) is **not
+answer-only**: an action *requested through the assistant* may execute whenever
+the same guardrail admits it — the frozen command allowlist above, the
+`Guardrail.validate` target resolution, and the C2 / field-class assertion of
+`externalModelCall` on the context records. An action outside the allowlist is
+refused with the reason shown in the answer, never executed. This authority is
+scoped to assistant-initiated actions only: the operator/playbook
+`pending_approval → approve/deny` (300 s auto-deny) state machine is **unchanged**
+for operator-initiated remediations — the assistant does not repeal that gate, it
+is a distinct, guardrail-gated path that records its own authority.
+
+**Assistant audit obligation.** Every action the assistant executes writes exactly
+one `remediation_audits` row and one `remediation_decisions` row carrying
+`initiated_by: assistant` plus the `conversation_id` and `message_id` that asked
+for it, in the same transaction, so the record of "what Termini did to my nodes"
+is complete and attributable — and an answer that claims it restarted/drained/
+scaled anything must carry the `command_id` and `audit_id` of that execution. An
+execution whose audit write fails is not reported as a success.
+
 **Provenance is recorded, never inferred.** Every audit row for an autonomous action
-carries the decider's identity — `decision_source` (`deterministic` | `model` | `fallback`), plus the
-provider and prompt-template version when a model was used — together with the
-`rationale` for the action (§8.2). An autonomous action whose provenance is missing or
+carries the decider's identity — `decision_source` (`deterministic` | `model` | `fallback`
+| `assistant`) plus `initiated_by` (`operator` | `assistant`), the provider and
+prompt-template version when a model was used — together with the `rationale` for
+the action (§8.2). An autonomous action whose provenance is missing or
 inconsistent is a validation failure, not a default.
 
 Unchanged by this amendment: the model never emits free-form shell; no C2 content and

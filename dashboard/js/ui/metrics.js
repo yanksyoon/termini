@@ -7,12 +7,13 @@
 import { el, clear } from "./dom.js";
 import { TimeSeriesChart } from "../charts.js";
 import { buildCharts, buildSampleView } from "../core/series.js";
-import { scaleForUnit, pct, bytes } from "../core/format.js";
+import { scaleForUnit, pct, bytes, clock, num } from "../core/format.js";
 import { PROCESSES_MAX } from "../core/health.js";
 
 export class MetricsPanel {
-  constructor(container) {
+  constructor(container, handlers = {}) {
     this.container = container;
+    this.handlers = handlers;
     this.charts = new Map(); // id -> {card, canvas, chart, legend}
     this.lastPayload = null;
     this.includeAll = false;
@@ -21,6 +22,8 @@ export class MetricsPanel {
     this._procCard = null;
     this.sample = null; // latest raw telemetry Sample (all groups, nested)
     this._sampleCards = new Map(); // group id -> card
+    this.nodeId = null; // the node the plotted window belongs to
+    this.window = null;
     this._ro = new ResizeObserver(() => this.redraw());
     this._ro.observe(container);
   }
@@ -90,6 +93,8 @@ export class MetricsPanel {
 
   update(payload) {
     this.lastPayload = payload;
+    if (payload && payload.node_id) this.nodeId = payload.node_id;
+    if (payload && payload.resolution) this.window = payload.resolution;
     const groups = buildCharts(payload, { includeAll: this.includeAll, annotations: this.annotations });
     const seen = new Set();
 
@@ -143,18 +148,103 @@ export class MetricsPanel {
     const canvas = el("canvas", { class: "chart-canvas" });
     const legend = el("div", { class: "chart-legend" });
     const chip = el("span", { class: `chart-chip ${group.basis === "derived" ? "derived" : "raw"}` });
+    // "Ask AI" on the chart: attaches this metric window, and the SELECTED
+    // point once the reader has clicked one (charts.js keeps that selection).
+    const askBtn = el("button", {
+      type: "button",
+      class: "linklike chart-ask",
+      text: "Ask AI",
+      title: "ask the assistant about this metric (click the chart first to attach a point)",
+      dataset: { askAiKind: "metric", metricGroup: group.id },
+    });
+    askBtn.addEventListener("click", () => this._askAbout(group.id));
     const title = el("div", { class: "chart-title" }, [
       el("h3", { text: group.title }),
       chip,
       el("span", { class: "chart-unit", text: scaleForUnit(group.unit).label }),
+      askBtn,
     ]);
     const caption = el("div", { class: "chart-caption" });
     const card = el("div", { class: "chart-card", dataset: { chart: group.id } }, [title, canvas, legend, caption]);
     const chart = new TimeSeriesChart(canvas);
-    return { card, canvas, chart, legend, titleEl: title, captionEl: caption, chipEl: chip };
+    const entry = { card, canvas, chart, legend, titleEl: title, captionEl: caption, chipEl: chip, group, selected: null };
+    chart.onSelect = (sel) => {
+      entry.selected = sel;
+      card.classList.add("chart-selected");
+      this._renderSelection(entry);
+    };
+    return entry;
+  }
+
+  /**
+   * The selected-point line in the caption. Rendered from the LIVE chart (which
+   * keeps the selection across polls) so a 3 s refresh does not silently drop
+   * the point the reader is asking about.
+   */
+  _renderSelection(entry) {
+    const caption = entry.captionEl;
+    if (!caption) return;
+    for (const n of Array.from(caption.querySelectorAll(".chart-selection"))) n.remove();
+    if (!entry.chart.selected) {
+      entry.card.classList.remove("chart-selected");
+      return;
+    }
+    const vals = entry.chart.selectedValues();
+    if (!vals.length) return;
+    const unit = scaleForUnit(entry.group.unit);
+    const text = vals.map((p) => `${p.label} ${num(p.v, unit.digits)} ${unit.label}`).join(" · ");
+    caption.appendChild(
+      el("span", { class: "chart-selection", text: `selected ${clock(entry.chart.selected)} · ${text}` }),
+    );
+  }
+
+  /** The human name of the selected node, when main can resolve one. */
+  _nodeName(nodeId) {
+    if (this.handlers.nodeLabel) {
+      const label = this.handlers.nodeLabel(nodeId);
+      if (label) return label;
+    }
+    return nodeId || "unknown node";
+  }
+
+  /**
+   * Seed the chat with THIS chart — and with the selected point when the reader
+   * clicked one. `context.kind = metric` resolves to the NODE's metric window on
+   * the controller (§4.10), so the node id is the id that travels; the metric
+   * name, the selected timestamp and its values travel as data on the chip so
+   * the panel (and the question) can name the exact point.
+   */
+  _askAbout(groupId) {
+    const ask = this.handlers.onAskAi;
+    if (!ask) return;
+    const entry = this.charts.get(groupId);
+    if (!entry || !this.nodeId) return;
+    const group = entry.group || {};
+    const metric = (group.metrics && group.metrics[0]) || groupId;
+    const nodeName = this._nodeName(this.nodeId);
+    const point = entry.chart && entry.chart.selected ? entry.chart.selectedValues() : [];
+    const unit = scaleForUnit(group.unit);
+    const pointText = point.length
+      ? `${point.map((p) => `${num(p.v, unit.digits)} ${unit.label}`).join(" / ")} at ${clock(entry.chart.selected)}`
+      : "latest window";
+    ask({
+      kind: "metric",
+      id: this.nodeId,
+      label: `${group.title || metric} on ${nodeName}`,
+      summary: `metric · ${metric} on ${nodeName} · ${pointText}`,
+      meta: {
+        nodeId: this.nodeId,
+        metric,
+        metrics: group.metrics || [metric],
+        t: entry.chart && entry.chart.selected ? entry.chart.selected : undefined,
+        values: point.map((p) => ({ name: p.name, v: p.v })),
+        window: this.window || undefined,
+      },
+    });
   }
 
   _apply(entry, group) {
+    entry.group = group;
     entry.chart.setData(group);
     // Derived vs raw, stated in the title/legend: a bucket mean or a `disk[0]`
     // first-element mapping is an AGGREGATE, and a chart that stays silent about
@@ -187,6 +277,9 @@ export class MetricsPanel {
       if (thresholds.length) bits.push(`threshold: ${thresholds.map((t) => t.label).join(" · ")}`);
       entry.captionEl.appendChild(el("span", { class: "chart-fault", text: bits.join("  |  ") }));
     }
+    // Re-state the selected point (the caption was just cleared): a poll must not
+    // drop the point the reader is about to ask about.
+    this._renderSelection(entry);
     // make sure the canvas has a size before first draw
     const c = entry.canvas;
     if (c.clientHeight === 0) c.style.height = "150px";

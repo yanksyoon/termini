@@ -124,14 +124,57 @@ def default_client(config: DecisionModelConfig) -> ModelClient:
 # ---------------------------------------------------------------------------
 
 def _strip_fences(text: str) -> str:
-    """Step 1: strip stray markdown fences (mirrors the intent extractor)."""
+    """Step 1: strip stray markdown fences (mirrors the intent extractor).
+
+    Removes a leading opening fence line (``` or ```json …) and a trailing
+    closing fence (```), whether or not prose wraps the JSON between them. The
+    previous version only stripped a fence whose backticks were the very first
+    and last characters of the reply, so a Gemini-style reply that opened with
+    "Here is the decision:" or closed with "I hope that helps" was never
+    un-fenced and fell through to a parse_error.
+    """
     t = text.strip()
     if t.startswith("```"):
-        t = t.strip("`")
-        if t.startswith("json"):
-            t = t[4:]
+        newline = t.find("\n")
+        t = t[newline + 1:] if newline != -1 else ""
         t = t.strip()
+    if t.endswith("```"):
+        t = t[:-3].strip()
     return t
+
+
+def _extract_json_value(text: str) -> Any:
+    """Return the first JSON value in ``text``, or raise ``ValueError``.
+
+    The model may return a clean JSON object, or it may wrap it in a markdown
+    fence and/or surrounding prose ("Here is the decision: ```json {…} ``` I
+    hope that helps"). Extracting the JSON *value* here does not loosen the
+    guardrail: the shape checks in :func:`parse` and the controller's G1/G2
+    still reject a value that is not a well-formed decision. It only stops a
+    fence or a polite sentence from turning a valid decision into a parse_error
+    fallback.
+    """
+    s = _strip_fences(text)
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+    # The whole string is not JSON. Scan for the first JSON object (then array)
+    # and decode exactly the value that starts there: `raw_decode` skips the
+    # leading garbage and returns the value plus its end index, ignoring any
+    # trailing prose or fence. Objects are preferred over arrays because the
+    # contract requires a top-level object.
+    decoder = json.JSONDecoder()
+    for opener in ("{", "["):
+        for index, char in enumerate(s):
+            if char != opener:
+                continue
+            try:
+                value, _ = decoder.raw_decode(s, index)
+            except json.JSONDecodeError:
+                continue
+            return value
+    raise ValueError("no JSON object or array found")
 
 
 def _coerce_float(value: Any) -> Optional[float]:
@@ -274,12 +317,14 @@ def parse(
             f"model content is {type(content).__name__}, expected a string",
         )
 
-    text = _strip_fences(content)
-
-    # Step 2: JSON.parse.
+    # Step 2: JSON.parse — but tolerate the shapes a model actually emits: a
+    # fenced ```json block, leading/trailing prose, or a JSON object spanning
+    # newlines. Extract the first JSON value; the shape checks below (and the
+    # controller's guardrail G1/G2) still reject anything that is not a
+    # well-formed decision.
     try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
+        data = _extract_json_value(content)
+    except ValueError as exc:
         return DecisionError(
             REASON_PARSE_ERROR, f"model output is not valid JSON: {exc}", raw=_clip(content)
         )

@@ -46,6 +46,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fixtures as fx  # noqa: E402
+import assistant as assistant_fixture  # noqa: E402
 
 DASHBOARD_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_RING = 10000
@@ -70,6 +71,11 @@ class World:
         self.subscribers: set[queue.Queue] = set()
         self.commands: dict[str, dict] = {}
         self.pending: dict[str, dict] = {}
+        # One operator bundle for the process lifetime: decision/event/audit ids
+        # must be STABLE across polls, otherwise every 3 s refresh looks like a
+        # brand-new decision set and the assistant's citations (and the panel's
+        # citation jumps) point at rows the UI no longer holds.
+        self.operator = fx.operator_decisions(self.nodes)
         self._stop = threading.Event()
         self._seed()
 
@@ -427,9 +433,8 @@ class Handler(BaseHTTPRequestHandler):
         # project-scoped — mirrors the controller's /v1/operator/* routes.
         m = re.fullmatch(r"/v1/operator/(decisions|events|audits)/?", path)
         if m:
-            bundle = fx.operator_decisions(w.nodes)
             kind = m.group(1)
-            payload = bundle[kind]
+            payload = w.operator[kind]
             try:
                 limit = max(1, min(500, int(query.get("limit", "50"))))
             except (TypeError, ValueError):
@@ -502,6 +507,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(401, {"error": {"code": "UNAUTHENTICATED", "message": "invalid project token", "details": [], "request_id": fx.ulid()}})
             return
         body = self._body()
+
+        m = re.fullmatch(r"/v1/projects/([^/]+)/assistant/ask/?", path)
+        if m:
+            status, payload = assistant_fixture.assistant_answer(body, w.operator, w.nodes)
+            self._json(status, payload)
+            return
 
         m = re.fullmatch(r"/v1/projects/([^/]+)/nodes/([^/]+)/actions/(reboot|drain)/?", path)
         if m:
@@ -625,6 +636,15 @@ class Handler(BaseHTTPRequestHandler):
         if not os.path.abspath(full).startswith(os.path.abspath(DASHBOARD_ROOT)):
             self._json(403, {"error": {"code": "PERMISSION_DENIED", "message": "path traversal"}})
             return
+        # Directory index, the way Firebase Hosting serves /proto/ from
+        # /proto/index.html. Without this the local dev server 404s a path that
+        # works in production, which is exactly the kind of difference that eats
+        # an hour during evidence capture (task t_4458a089).
+        if os.path.isdir(full):
+            index = os.path.join(full, "index.html")
+            if os.path.isfile(index):
+                full = index
+                safe = posixpath.join(safe, "index.html") if safe else "index.html"
         if not os.path.isfile(full):
             self._json(404, {"error": {"code": "NOT_FOUND", "message": f"not found: {path}"}})
             return

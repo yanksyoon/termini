@@ -1,0 +1,18 @@
+# Negative test 1 — the provider mint route from OFF the controller
+# host: hack   utc: 2026-10-17T04:36:28Z
+#
+# The bearer IS the controller's real project token (read from the running
+# unit on the controller, never printed here). The peer is NOT the controller
+# loopback: this request goes controller <- caddy <- the public internet.
+
+$ curl -i -X POST https://34-93-190-64.sslip.io/v1/bootstrap-tokens \
+       -H 'Authorization: Bearer <the controller project token>' \
+       -H 'Content-Type: application/json' -d '{"count":1}'
+
+HTTP_STATUS=403
+
+{"error": {"code": "PERMISSION_DENIED", "message": "bootstrap-token minting is restricted to the controller loopback", "details": [], "request_id": "01M542B8W9KVPZT71KT06177QN"}}
+
+=> the mint is refused for a non-loopback peer even WITH the project token,
+   so no customer and no stolen client credential can mint enrollment tokens.
+

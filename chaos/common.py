@@ -149,20 +149,6 @@ def _disk_first(sample: dict) -> dict:
     return d[0] if isinstance(d, list) and d and isinstance(d[0], dict) else {}
 
 
-def _net_first(sample: dict) -> dict:
-    n = sample.get("net")
-    return n[0] if isinstance(n, list) and n and isinstance(n[0], dict) else {}
-
-
-def _free_pct(sample: dict) -> float | None:
-    d = _disk_first(sample)
-    total = d.get("total_bytes")
-    free = d.get("free_bytes")
-    if isinstance(total, (int, float)) and total and isinstance(free, (int, float)):
-        return free / total * 100.0
-    return None
-
-
 def _longest_run(series: list[dict], predicate) -> int:
     best = run = 0
     for s in series:
@@ -175,7 +161,12 @@ def _longest_run(series: list[dict], predicate) -> int:
 
 
 def evaluate_series(samples: list[dict], thresholds: dict) -> dict:
-    """Evaluate the frozen demo threshold rules over an ascending sample series.
+    """Evaluate the demo threshold rules over an ascending sample series.
+
+    Only the two demo faults are evaluated here (`oom`, `disk-fail`). The
+    `disk-degrade-01` and `latency-01` detector rules remain implemented in
+    `controller/app/operator/detect.py` (a real customer node can still produce
+    those signals), but the demo harness can no longer inject them.
 
     Returns {rule_id: {"fired": bool, "run": int, "needed": int}}.
     """
@@ -184,18 +175,7 @@ def evaluate_series(samples: list[dict], thresholds: dict) -> dict:
         return float(v)
 
     oom_run = _longest_run(samples, lambda s: (_ram_pct(s) or 0.0) >= num("oom_ram_pct", 95.0))
-    disk_lat_run = _longest_run(
-        samples, lambda s: (_disk_first(s).get("write_latency_ms") or -1.0) >= num("disk_write_latency_ms", 50.0)
-    )
     mount_ro_run = _longest_run(samples, lambda s: _disk_first(s).get("mount_ro") is True)
-    def free_below(s: dict) -> bool:
-        fp = _free_pct(s)
-        return fp is not None and fp <= num("disk_free_pct", 5.0)
-
-    disk_free_run = _longest_run(samples, free_below)
-    lat_run = _longest_run(
-        samples, lambda s: (_net_first(s).get("latency_ms") or -1.0) >= num("latency_ms", 250.0)
-    )
 
     return {
         "oom-guard-01": {
@@ -207,16 +187,5 @@ def evaluate_series(samples: list[dict], thresholds: dict) -> dict:
             "fired": mount_ro_run >= int(num("disk_fail_consecutive", 1)),
             "run": mount_ro_run,
             "needed": int(num("disk_fail_consecutive", 1)),
-        },
-        "disk-degrade-01": {
-            "fired": disk_lat_run >= int(num("disk_latency_consecutive", 5))
-            or disk_free_run >= int(num("disk_free_consecutive", 3)),
-            "run": max(disk_lat_run, disk_free_run),
-            "needed": min(int(num("disk_latency_consecutive", 5)), int(num("disk_free_consecutive", 3))),
-        },
-        "latency-01": {
-            "fired": lat_run >= int(num("latency_consecutive", 3)),
-            "run": lat_run,
-            "needed": int(num("latency_consecutive", 3)),
         },
     }

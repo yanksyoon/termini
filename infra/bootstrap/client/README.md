@@ -18,6 +18,26 @@ token. That credential stays with the provider; the whole install works on your
 own credential. If anything tells you otherwise, it is a bug in the install, not
 something you should work around.
 
+## What you do — the whole flow, in five steps
+
+1. **Prerequisites.** You have the controller URL, one enrollment credential per
+   machine, and a machine that can reach the controller (see the three things
+   above).
+2. **Run the one-liner** on the machine that will become the node (§1). It does
+   the rest, including waiting for the controller to acknowledge the node.
+3. **Read the confirmation it prints** — `YOUR NODE IS REGISTERED`, the node id,
+   and the node's first health sample (§2).
+4. **Open the dashboard** your provider gave you and use its **Your node**
+   panel: paste the `node_id` and the `node_token` from
+   `/var/lib/termini/identity/node.json` on your node. The panel shows the node
+   as registered, online, and its health refreshing in place (§3).
+5. **Re-run safely at any time.** Re-running the same command on the same machine
+   reuses the node's identity and consumes no credential — do **not** ask your
+   provider for a new one unless you are enrolling a *different* machine (§4).
+
+If a step fails, the message names the cause and comes with a matching exit code;
+§5 is the table.
+
 ---
 
 ## 1. The command
@@ -67,6 +87,10 @@ HEALTH (your node, read with your node's own credential)
 
 ## 3. Your own view of the node
 
+Two ways, both using **your** credential and nothing else.
+
+**On the node, in the terminal:**
+
 ```sh
 termini-node-status            # registration details + the latest health samples
 termini-node-status --watch    # stream its health, one line per sample
@@ -78,11 +102,28 @@ using **the node's own credential** (`/var/lib/termini/identity/node.json`, mode
 `0600`, written by the controller at registration). It cannot see any other node,
 and it needs nothing from your provider.
 
-There is **no dashboard page for you to open**. The web dashboard is your
-provider's operator view, and every URL it takes carries *their* project token —
-the one credential you must never be given. Your confirmation surface is the
-command above, on the node itself. If you want a fleet-wide view, ask your
-provider to open theirs.
+**In the dashboard your provider gave you — the "Your node" panel:**
+
+Open that dashboard URL (it carries only non-secret identifiers: the API base and
+the project id — never a credential), then paste into **Your node**:
+
+| field | value | where it comes from |
+|---|---|---|
+| `node_id` | e.g. `01M4TGD31WXH97JAA5S6A4R10D` | printed by the installer, and in `/var/lib/termini/identity/node.json` |
+| `node_token` | your node's own credential | `/var/lib/termini/identity/node.json` (root-only) |
+
+The panel then shows your node as **registered · online** with its last-seen time
+and live telemetry — heartbeat sequence, CPU, memory, uptime, load, runtime and
+services — refreshing in place every few seconds. The panel's read is
+`GET /v1/nodes/<node_id>/telemetry/recent` with your node's credential in the
+`Authorization` header; nothing you paste is put in the URL, and the values stay
+in that browser tab only.
+
+What you will **not** get from the dashboard is a fleet list: under the
+provider-issued single-use model you hold one credential per node, so there is
+nothing that can list other nodes — yours or anyone else's. If you want a
+fleet-wide view, ask your provider to open theirs. And whatever you are shown,
+the dashboard never asks you for the provider's project token.
 
 ## 4. Installing a second node, and re-running the command
 
@@ -102,6 +143,7 @@ re-run the same command".
 
 | Exit | Message | What it means and what to do |
 |---|---|---|
+| `1` | *cannot download `<artifact>` from `<url>`* | The installer could not fetch the node runtime or your status helper from the controller. Check the controller URL is exact (scheme, host, port, no trailing path), that this machine has outbound access (443/80) and that no proxy strips the request; `curl -fsS <your-controller>/healthz` should answer. Nothing on this machine was changed. |
 | `3` | *your enrollment credential was rejected by the controller* | The controller does not know that credential. Check the whole code was copied, and that it is the one issued **for this machine**. Ask your provider for a fresh credential. |
 | `4` | *this enrollment credential has already been used* | Credentials are single-use and this one is spent. If this machine is already registered, re-run **without** `--token`. Otherwise ask your provider for a new credential. |
 | `5` | *the controller could not be reached* | Check the controller URL is exact, that this machine has outbound access to it (port 443/80) and that no proxy strips the request. The node daemon keeps retrying while the service runs; re-run the installer once the controller answers. |
@@ -110,6 +152,12 @@ re-run the same command".
 
 A rejection never burns your machine: a node that failed to register has no
 identity, so a re-run with a good credential registers it normally.
+
+The installer starts the node service in the background and then waits for the
+controller's own acknowledgement, so a failing registration can never park the
+install: you get the message and the exit code above. If a run ever *appears* to
+sit at "starting the service", press `Ctrl-C` and run `sudo termini-node-status`
+— that prints the same diagnosis and the same exit code.
 
 ## 6. Removing a node
 

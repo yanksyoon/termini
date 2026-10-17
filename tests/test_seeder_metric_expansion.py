@@ -14,12 +14,11 @@ rather than a silent gap:
   validates under `controller/app/validate.py`, scans clean under
   `app.governance.scan_c2`, and survives `clean == raw` (no invented field, so
   nothing is silently stripped by the deny-by-default stripper);
-* **the fault narrative** — a disk-degrade window pushes `io_some_avg10` up and
-  keeps `memory_full_avg10` flat; a memory-pressure window pushes
-  `memory_some_avg10`/`memory_full_avg10` up and keeps `io_some_avg10` flat. The
-  cumulative counters advance only under the fault that names them (disk I/O time
-  climbs under disk-degrade; OOM/major-fault counters advance under
-  memory-pressure), and never run backwards across a watchdog respawn;
+* **the fault narrative** — a memory-pressure window pushes
+  `memory_some_avg10`/`memory_full_avg10` up and keeps `io_some_avg10` flat; the
+  OOM/major-fault counters advance only under that fault and never run backwards
+  across a watchdog respawn. The seeder drives only the OOM window (`disk-degrade`
+  and `latency` are no longer injectable demo faults);
 * **the ticker emits it live** — driving `NodeTicker._tick` produces a sample that
   validates and carries the new groups, not just `sample()` in isolation.
 """
@@ -85,7 +84,7 @@ class SeederEmitsNewGroupsTest(unittest.TestCase):
     """Every §4.12–§4.14 field is present, valid, and C2-clean."""
 
     def test_sample_validates_and_is_c2_clean_for_every_fault_window(self):
-        for fault in (None, SEEDER.FAULT_DISK, SEEDER.FAULT_MEMORY):
+        for fault in (None, SEEDER.FAULT_MEMORY):
             raw = _sample(fault)
             clean, errors = validate_sample(raw)
             self.assertEqual(errors, [], f"fault={fault!r}: {errors}")
@@ -118,18 +117,6 @@ class SeederEmitsNewGroupsTest(unittest.TestCase):
 class SeederFaultNarrativeTest(unittest.TestCase):
     """The values name the stalling resource; they never lie about it."""
 
-    def test_disk_degrade_pushes_io_pressure_and_keeps_memory_flat(self):
-        s = _sample(SEEDER.FAULT_DISK)
-        p = s["pressure"]
-        self.assertGreater(p["io_some_avg10"], 0.0)
-        self.assertEqual(p["memory_some_avg10"], 0.0)
-        self.assertEqual(p["memory_full_avg10"], 0.0)
-        # A saturated device reads as a saturated device.
-        self.assertGreater(s["disk"][0]["io_in_flight"], 0)
-        # mem_available stays comfortably high: a disk fault is not memory
-        # exhaustion and must not read as one.
-        self.assertGreater(s["mem_available_bytes"], 16 * 1024 ** 3)
-
     def test_memory_pressure_pushes_memory_pressure_and_keeps_io_flat(self):
         s = _sample(SEEDER.FAULT_MEMORY)
         p = s["pressure"]
@@ -153,12 +140,12 @@ class SeederCounterMonotonicityTest(unittest.TestCase):
             "http://127.0.0.1:1", {"node_id": "demo-node-c", "node_token": "tok"},
             PROJECT_ID, period_s=6.0, phase=0.0, high_ram=high_ram)
 
-    def test_disk_fault_advances_io_ticks_but_never_ooms(self):
+    def test_no_fault_ticker_advances_background_io_but_never_ooms(self):
         disk = self._ticker(high_ram=False)
         for _ in range(24):
-            disk._advance_counters(SEEDER.FAULT_DISK)
+            disk._advance_counters(None)
         self.assertGreater(disk.io_ticks_ms, 0)
-        # Disk-degrade must not fabricate OOM kills — that would lie about which
+        # A quiet node must not fabricate OOM kills — that would lie about which
         # resource is stalling.
         self.assertEqual(disk.oom_kills, 0)
         self.assertEqual(disk.instance_oom_kills, 0)
@@ -209,13 +196,27 @@ class SeederTickerEmitsLiveTest(unittest.TestCase):
         for key in FLAT_SCALARS:
             self.assertIn(key, s)
 
-    def test_compute_node_hot_tick_emits_disk_pressure_and_validates(self):
+    def test_compute_node_tick_emits_healthy_pressure_and_validates(self):
         s = self._tick_sample(high_ram=False, phase_frac=0.25)
-        self.assertGreater(s["pressure"]["io_some_avg10"], 0.0)
-        self.assertEqual(s["pressure"]["memory_full_avg10"], 0.0)
+        self.assertEqual(s["pressure"], {k: 0.0 for k in PRESSURE_KEYS})
         clean, errors = validate_sample(s)
         self.assertEqual(errors, [], errors)
         self.assertEqual(governance.scan_c2(clean), [])
+
+    def test_quiet_mode_ticker_never_drives_a_fault_window(self):
+        """--no-faults: even a hot tick on the memory node stays healthy."""
+        t = SEEDER.NodeTicker(
+            "http://127.0.0.1:1", {"node_id": "demo-node-c", "node_token": "tok"},
+            PROJECT_ID, period_s=6.0, phase=0.0, high_ram=True,
+            gpu=SEEDER.GPU_TELEMETRY, faults_enabled=False)
+        captured: list[dict] = []
+        t.send = lambda s: (captured.append(s), True)[1]
+        t._tick(time.monotonic() - 0.25 * 6.0)  # hot phase
+        s = captured[0]
+        self.assertEqual(s["pressure"], {k: 0.0 for k in PRESSURE_KEYS})
+        self.assertLess(s["ram_used_bytes"], 40 * 1024 ** 3)
+        self.assertEqual(t.oom_kills, 0)
+        self.assertEqual(t.instance_oom_kills, 0)
 
     def test_healthy_tick_emits_flat_pressure(self):
         s = self._tick_sample(high_ram=True, phase_frac=0.75)

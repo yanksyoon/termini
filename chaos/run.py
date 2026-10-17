@@ -343,7 +343,7 @@ def _print_report(result: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Run one chaos scenario end to end")
-    ap.add_argument("--scenario", "-s", required=True, help="oom | disk-degrade | latency | healthy")
+    ap.add_argument("--scenario", "-s", required=True, help="oom | disk-fail | healthy")
     ap.add_argument("--config", default=None)
     ap.add_argument("--operator-cmd", default=None,
                     help="production operator command; placeholders {controller_url} {lxd_url} {node_id} "

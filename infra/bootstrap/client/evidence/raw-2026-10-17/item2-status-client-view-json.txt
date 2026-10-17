@@ -1,0 +1,749 @@
+===== termini-node-status =====
+YOUR NODE IS REGISTERED
+  node_id        01M54063FK6ZK8SPS5ZCNDW9A4
+  role           compute
+  project        01J0DEM0WARM000000000000AB
+  registered_at  2026-10-17T03:58:42Z
+  register_ms    82 (controller acknowledgement)
+HEALTH (your node, read with your node's own credential)
+  seq=1 ts=2026-10-17T03:58:42Z cpu=48.28% ram=1.3% load1=1.56396484375 disk_free=54.7% ctrl_rtt=0.739ms
+===== termini-node-status --json (t0) =====
+{
+  "identity": {
+    "node_id": "01M54063FK6ZK8SPS5ZCNDW9A4",
+    "node_token": "*** redacted: this node's own node_token ",
+    "role": "compute",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "registration_id": "verif-e2e",
+    "machine_id": "e63515b770dcab7946cea910a6cf9f6a",
+    "register_ms": 82,
+    "boot_to_registered_ms": 373340,
+    "registered_at": "2026-10-17T03:58:42Z"
+  },
+  "samples": [
+    {
+      "seq": 1,
+      "ts": "2026-10-17T03:58:42Z",
+      "uptime_sec": 373,
+      "cpu_util_pct": 48.28,
+      "cpu_core_count": 2,
+      "ram_total_bytes": 8319729664,
+      "ram_used_bytes": 108896256,
+      "swap_used_bytes": 0,
+      "load_avg_1m": 1.56396484375,
+      "os_name": "Ubuntu",
+      "os_version": "24.04",
+      "kernel_version": "7.0.0-1011-gcp",
+      "lxd_cluster_role": "member",
+      "hostname": "8d6d8ec008713acc",
+      "ip_local": "10.174.247.0/24",
+      "mac_address": "33530c3c4d64cb72",
+      "project_id": "01M54063N04N8KC2MZ7E6TKV46",
+      "disk": [
+        {
+          "path": "/dev/root",
+          "total_bytes": 61285326848,
+          "free_bytes": 33530404864,
+          "write_latency_ms": 4.344,
+          "mount_ro": false,
+          "inode_total": 7733248,
+          "inode_used": 1004005,
+          "io_in_flight": 1,
+          "io_ticks_ms": 913843
+        },
+        {
+          "path": "/dev/termini",
+          "total_bytes": 61285326848,
+          "free_bytes": 33530396672,
+          "write_latency_ms": 2.98,
+          "mount_ro": false,
+          "inode_total": 7733248,
+          "inode_used": 1004006,
+          "io_in_flight": 0,
+          "io_ticks_ms": 913846
+        }
+      ],
+      "net": [
+        {
+          "iface": "eth0",
+          "rx_bytes": 215746,
+          "tx_bytes": 77306,
+          "latency_ms": 0.739,
+          "rx_errors": 0,
+          "tx_errors": 0,
+          "rx_dropped": 0,
+          "tx_dropped": 0
+        }
+      ],
+      "services": [
+        {
+          "name": "termini-bootstrap",
+          "status": "running",
+          "state_age_sec": 0,
+          "restart_count": 0,
+          "last_exit_code": 0,
+          "journal_errors": 0,
+          "journal_warnings": 1
+        },
+        {
+          "name": "lxd",
+          "status": "stopped"
+        },
+        {
+          "name": "sshd",
+          "status": "stopped",
+          "restart_count": 0,
+          "last_exit_code": 0,
+          "journal_errors": 0,
+          "journal_warnings": 0
+        }
+      ],
+      "processes": [
+        {
+          "pid": 576,
+          "name": "termini-agent",
+          "state": "sleeping",
+          "ram_used_bytes": 56209408,
+          "threads": 5,
+          "age_sec": 0
+        },
+        {
+          "pid": 808,
+          "name": "snapd",
+          "state": "sleeping",
+          "ram_used_bytes": 36560896,
+          "threads": 7,
+          "age_sec": 0
+        },
+        {
+          "pid": 794,
+          "name": "python3",
+          "state": "running",
+          "ram_used_bytes": 26972160,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 803,
+          "name": "snap",
+          "state": "sleeping",
+          "ram_used_bytes": 24588288,
+          "threads": 5,
+          "age_sec": 0
+        },
+        {
+          "pid": 796,
+          "name": "python3",
+          "state": "sleeping",
+          "ram_used_bytes": 23531520,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 306,
+          "name": "networkd-dispat",
+          "state": "sleeping",
+          "ram_used_bytes": 21118976,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 1,
+          "name": "systemd",
+          "state": "sleeping",
+          "ram_used_bytes": 14073856,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 316,
+          "name": "udisksd",
+          "state": "sleeping",
+          "ram_used_bytes": 13598720,
+          "threads": 6,
+          "age_sec": 0
+        },
+        {
+          "pid": 53,
+          "name": "systemd-journal",
+          "state": "sleeping",
+          "ram_used_bytes": 13336576,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 140,
+          "name": "systemd-resolve",
+          "state": "sleeping",
+          "ram_used_bytes": 13062144,
+          "threads": 1,
+          "age_sec": 0
+        }
+      ],
+      "pressure": {
+        "cpu_some_avg10": 12.08,
+        "io_some_avg10": 2.77,
+        "memory_some_avg10": 0.0,
+        "memory_full_avg10": 0.0
+      },
+      "oom_kill_count": 0,
+      "pgmajfault_count": 170172,
+      "mem_available_bytes": 8180610048,
+      "tcp_retransmit_segs": 420,
+      "conntrack_count": 0,
+      "conntrack_max": 262144
+    }
+  ]
+}
+===== termini-node-status --json (t0+5s) =====
+{
+  "identity": {
+    "node_id": "01M54063FK6ZK8SPS5ZCNDW9A4",
+    "node_token": "*** redacted: this node's own node_token ",
+    "role": "compute",
+    "project_id": "01J0DEM0WARM000000000000AB",
+    "registration_id": "verif-e2e",
+    "machine_id": "e63515b770dcab7946cea910a6cf9f6a",
+    "register_ms": 82,
+    "boot_to_registered_ms": 373340,
+    "registered_at": "2026-10-17T03:58:42Z"
+  },
+  "samples": [
+    {
+      "seq": 3,
+      "ts": "2026-10-17T03:58:53Z",
+      "uptime_sec": 385,
+      "cpu_util_pct": 0.0,
+      "cpu_core_count": 2,
+      "ram_total_bytes": 8319729664,
+      "ram_used_bytes": 125189120,
+      "swap_used_bytes": 0,
+      "load_avg_1m": 1.63720703125,
+      "os_name": "Ubuntu",
+      "os_version": "24.04",
+      "kernel_version": "7.0.0-1011-gcp",
+      "lxd_cluster_role": "member",
+      "hostname": "8d6d8ec008713acc",
+      "ip_local": "10.174.247.0/24",
+      "mac_address": "33530c3c4d64cb72",
+      "project_id": "01M5406F4N1QA7HTKWHWS4AW32",
+      "disk": [
+        {
+          "path": "/dev/root",
+          "total_bytes": 61285326848,
+          "free_bytes": 33530347520,
+          "write_latency_ms": 2.878,
+          "mount_ro": false,
+          "inode_total": 7733248,
+          "inode_used": 1004011,
+          "io_in_flight": 1,
+          "io_ticks_ms": 914643
+        },
+        {
+          "path": "/dev/termini",
+          "total_bytes": 61285326848,
+          "free_bytes": 33530347520,
+          "write_latency_ms": 2.2,
+          "mount_ro": false,
+          "inode_total": 7733248,
+          "inode_used": 1004011,
+          "io_in_flight": 1,
+          "io_ticks_ms": 914646
+        }
+      ],
+      "net": [
+        {
+          "iface": "eth0",
+          "rx_bytes": 286618,
+          "tx_bytes": 105574,
+          "latency_ms": 0.786,
+          "rx_errors": 0,
+          "tx_errors": 0,
+          "rx_dropped": 0,
+          "tx_dropped": 0
+        }
+      ],
+      "services": [
+        {
+          "name": "termini-bootstrap",
+          "status": "running",
+          "state_age_sec": 0,
+          "restart_count": 0,
+          "last_exit_code": 0,
+          "journal_errors": 0,
+          "journal_warnings": 1
+        },
+        {
+          "name": "lxd",
+          "status": "stopped"
+        },
+        {
+          "name": "sshd",
+          "status": "stopped",
+          "restart_count": 0,
+          "last_exit_code": 0,
+          "journal_errors": 0,
+          "journal_warnings": 0
+        }
+      ],
+      "processes": [
+        {
+          "pid": 576,
+          "name": "termini-agent",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 56209408,
+          "threads": 5,
+          "age_sec": 0
+        },
+        {
+          "pid": 808,
+          "name": "snapd",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 36560896,
+          "threads": 7,
+          "age_sec": 0
+        },
+        {
+          "pid": 794,
+          "name": "python3",
+          "state": "running",
+          "cpu_util_pct": 0.6,
+          "ram_used_bytes": 26996736,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 803,
+          "name": "snap",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 24588288,
+          "threads": 5,
+          "age_sec": 0
+        },
+        {
+          "pid": 306,
+          "name": "networkd-dispat",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 21118976,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 877,
+          "name": "python3",
+          "state": "running",
+          "cpu_util_pct": 1.49,
+          "ram_used_bytes": 18419712,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 1,
+          "name": "systemd",
+          "state": "sleeping",
+          "cpu_util_pct": 0.45,
+          "ram_used_bytes": 14073856,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 316,
+          "name": "udisksd",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 13598720,
+          "threads": 6,
+          "age_sec": 0
+        },
+        {
+          "pid": 53,
+          "name": "systemd-journal",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 13336576,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 140,
+          "name": "systemd-resolve",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 13062144,
+          "threads": 1,
+          "age_sec": 0
+        }
+      ],
+      "pressure": {
+        "cpu_some_avg10": 8.15,
+        "io_some_avg10": 1.64,
+        "memory_some_avg10": 0.0,
+        "memory_full_avg10": 0.0
+      },
+      "oom_kill_count": 0,
+      "pgmajfault_count": 170176,
+      "mem_available_bytes": 8186368000,
+      "tcp_retransmit_segs": 442,
+      "conntrack_count": 0,
+      "conntrack_max": 262144
+    },
+    {
+      "seq": 2,
+      "ts": "2026-10-17T03:58:50Z",
+      "uptime_sec": 381,
+      "cpu_util_pct": 53.33,
+      "cpu_core_count": 2,
+      "ram_total_bytes": 8319729664,
+      "ram_used_bytes": 124324864,
+      "swap_used_bytes": 0,
+      "load_avg_1m": 1.5185546875,
+      "os_name": "Ubuntu",
+      "os_version": "24.04",
+      "kernel_version": "7.0.0-1011-gcp",
+      "lxd_cluster_role": "member",
+      "hostname": "8d6d8ec008713acc",
+      "ip_local": "10.174.247.0/24",
+      "mac_address": "33530c3c4d64cb72",
+      "project_id": "01M5406BW8K9CP3BZ3EYGDC3B1",
+      "disk": [
+        {
+          "path": "/dev/root",
+          "total_bytes": 61285326848,
+          "free_bytes": 33530363904,
+          "write_latency_ms": 3.372,
+          "mount_ro": false,
+          "inode_total": 7733248,
+          "inode_used": 1004011,
+          "io_in_flight": 0,
+          "io_ticks_ms": 914616
+        },
+        {
+          "path": "/dev/termini",
+          "total_bytes": 61285326848,
+          "free_bytes": 33530363904,
+          "write_latency_ms": 2.206,
+          "mount_ro": false,
+          "inode_total": 7733248,
+          "inode_used": 1004011,
+          "io_in_flight": 1,
+          "io_ticks_ms": 914618
+        }
+      ],
+      "net": [
+        {
+          "iface": "eth0",
+          "rx_bytes": 265455,
+          "tx_bytes": 96452,
+          "latency_ms": 0.843,
+          "rx_errors": 0,
+          "tx_errors": 0,
+          "rx_dropped": 0,
+          "tx_dropped": 0
+        }
+      ],
+      "services": [
+        {
+          "name": "termini-bootstrap",
+          "status": "running",
+          "state_age_sec": 0,
+          "restart_count": 0,
+          "last_exit_code": 0,
+          "journal_errors": 0,
+          "journal_warnings": 1
+        },
+        {
+          "name": "lxd",
+          "status": "stopped"
+        },
+        {
+          "name": "sshd",
+          "status": "stopped",
+          "restart_count": 0,
+          "last_exit_code": 0,
+          "journal_errors": 0,
+          "journal_warnings": 0
+        }
+      ],
+      "processes": [
+        {
+          "pid": 576,
+          "name": "termini-agent",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 56209408,
+          "threads": 5,
+          "age_sec": 0
+        },
+        {
+          "pid": 808,
+          "name": "snapd",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 36560896,
+          "threads": 7,
+          "age_sec": 0
+        },
+        {
+          "pid": 794,
+          "name": "python3",
+          "state": "running",
+          "cpu_util_pct": 0.3,
+          "ram_used_bytes": 26988544,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 803,
+          "name": "snap",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 24588288,
+          "threads": 5,
+          "age_sec": 0
+        },
+        {
+          "pid": 306,
+          "name": "networkd-dispat",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 21118976,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 1,
+          "name": "systemd",
+          "state": "sleeping",
+          "cpu_util_pct": 0.59,
+          "ram_used_bytes": 14073856,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 316,
+          "name": "udisksd",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 13598720,
+          "threads": 6,
+          "age_sec": 0
+        },
+        {
+          "pid": 53,
+          "name": "systemd-journal",
+          "state": "sleeping",
+          "cpu_util_pct": 0.15,
+          "ram_used_bytes": 13336576,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 140,
+          "name": "systemd-resolve",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 13062144,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 800,
+          "name": "python3",
+          "state": "sleeping",
+          "cpu_util_pct": 0.0,
+          "ram_used_bytes": 11509760,
+          "threads": 1,
+          "age_sec": 0
+        }
+      ],
+      "pressure": {
+        "cpu_some_avg10": 10.61,
+        "io_some_avg10": 2.45,
+        "memory_some_avg10": 0.0,
+        "memory_full_avg10": 0.0
+      },
+      "oom_kill_count": 0,
+      "pgmajfault_count": 170176,
+      "mem_available_bytes": 8193328128,
+      "tcp_retransmit_segs": 436,
+      "conntrack_count": 0,
+      "conntrack_max": 262144
+    },
+    {
+      "seq": 1,
+      "ts": "2026-10-17T03:58:42Z",
+      "uptime_sec": 373,
+      "cpu_util_pct": 48.28,
+      "cpu_core_count": 2,
+      "ram_total_bytes": 8319729664,
+      "ram_used_bytes": 108896256,
+      "swap_used_bytes": 0,
+      "load_avg_1m": 1.56396484375,
+      "os_name": "Ubuntu",
+      "os_version": "24.04",
+      "kernel_version": "7.0.0-1011-gcp",
+      "lxd_cluster_role": "member",
+      "hostname": "8d6d8ec008713acc",
+      "ip_local": "10.174.247.0/24",
+      "mac_address": "33530c3c4d64cb72",
+      "project_id": "01M54063N04N8KC2MZ7E6TKV46",
+      "disk": [
+        {
+          "path": "/dev/root",
+          "total_bytes": 61285326848,
+          "free_bytes": 33530404864,
+          "write_latency_ms": 4.344,
+          "mount_ro": false,
+          "inode_total": 7733248,
+          "inode_used": 1004005,
+          "io_in_flight": 1,
+          "io_ticks_ms": 913843
+        },
+        {
+          "path": "/dev/termini",
+          "total_bytes": 61285326848,
+          "free_bytes": 33530396672,
+          "write_latency_ms": 2.98,
+          "mount_ro": false,
+          "inode_total": 7733248,
+          "inode_used": 1004006,
+          "io_in_flight": 0,
+          "io_ticks_ms": 913846
+        }
+      ],
+      "net": [
+        {
+          "iface": "eth0",
+          "rx_bytes": 215746,
+          "tx_bytes": 77306,
+          "latency_ms": 0.739,
+          "rx_errors": 0,
+          "tx_errors": 0,
+          "rx_dropped": 0,
+          "tx_dropped": 0
+        }
+      ],
+      "services": [
+        {
+          "name": "termini-bootstrap",
+          "status": "running",
+          "state_age_sec": 0,
+          "restart_count": 0,
+          "last_exit_code": 0,
+          "journal_errors": 0,
+          "journal_warnings": 1
+        },
+        {
+          "name": "lxd",
+          "status": "stopped"
+        },
+        {
+          "name": "sshd",
+          "status": "stopped",
+          "restart_count": 0,
+          "last_exit_code": 0,
+          "journal_errors": 0,
+          "journal_warnings": 0
+        }
+      ],
+      "processes": [
+        {
+          "pid": 576,
+          "name": "termini-agent",
+          "state": "sleeping",
+          "ram_used_bytes": 56209408,
+          "threads": 5,
+          "age_sec": 0
+        },
+        {
+          "pid": 808,
+          "name": "snapd",
+          "state": "sleeping",
+          "ram_used_bytes": 36560896,
+          "threads": 7,
+          "age_sec": 0
+        },
+        {
+          "pid": 794,
+          "name": "python3",
+          "state": "running",
+          "ram_used_bytes": 26972160,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 803,
+          "name": "snap",
+          "state": "sleeping",
+          "ram_used_bytes": 24588288,
+          "threads": 5,
+          "age_sec": 0
+        },
+        {
+          "pid": 796,
+          "name": "python3",
+          "state": "sleeping",
+          "ram_used_bytes": 23531520,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 306,
+          "name": "networkd-dispat",
+          "state": "sleeping",
+          "ram_used_bytes": 21118976,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 1,
+          "name": "systemd",
+          "state": "sleeping",
+          "ram_used_bytes": 14073856,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 316,
+          "name": "udisksd",
+          "state": "sleeping",
+          "ram_used_bytes": 13598720,
+          "threads": 6,
+          "age_sec": 0
+        },
+        {
+          "pid": 53,
+          "name": "systemd-journal",
+          "state": "sleeping",
+          "ram_used_bytes": 13336576,
+          "threads": 1,
+          "age_sec": 0
+        },
+        {
+          "pid": 140,
+          "name": "systemd-resolve",
+          "state": "sleeping",
+          "ram_used_bytes": 13062144,
+          "threads": 1,
+          "age_sec": 0
+        }
+      ],
+      "pressure": {
+        "cpu_some_avg10": 12.08,
+        "io_some_avg10": 2.77,
+        "memory_some_avg10": 0.0,
+        "memory_full_avg10": 0.0
+      },
+      "oom_kill_count": 0,
+      "pgmajfault_count": 170172,
+      "mem_available_bytes": 8180610048,
+      "tcp_retransmit_segs": 420,
+      "conntrack_count": 0,
+      "conntrack_max": 262144
+    }
+  ]
+}

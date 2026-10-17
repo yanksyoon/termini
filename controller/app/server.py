@@ -18,6 +18,7 @@ and dashboard.md §1–§4):
     POST /v1/projects/{pid}/vms/reconcile         (project_token)    -> 200
     POST /v1/projects/{pid}/nodes/{nid}/decommission (project_token) -> 200/404
     POST /v1/projects/{pid}/remediations/{cid}/{approve,deny}        -> 200
+    POST /v1/projects/{pid}/assistant/ask        (project_token)    -> 200
     POST /v1/nodes/{nid}/telemetry                (node_token)       -> 202
     GET  /v1/nodes/{nid}/telemetry/recent         (node_token)       -> 200
     GET  /v1/telemetry/recent?node=&limit=        (project_token)    -> 200
@@ -26,7 +27,7 @@ and dashboard.md §1–§4):
     GET  /v1/projects/{pid}/demo/faults           (project_token)    -> 200   operator-only
     POST /v1/projects/{pid}/demo/faults/clear     (project_token)    -> 200   operator-only
     DELETE /v1/projects/{pid}/demo/faults/{iid}   (project_token)    -> 200   operator-only
-    GET  /v1/projects/{pid}/logs                  (SSE, token in ?token)
+    GET  /v1/projects/{pid}/logs                  (SSE, Bearer auth; ?token= fallback)
     GET  /stream/v1?token=...                     (WebSocket event stream)
     GET  /terminal/v1/nodes/{node_id}?token=...    (WebSocket terminal)
 
@@ -51,6 +52,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from . import db, errors, governance, health, inventory, registration, role, store, validate, ws as wsmod
 from . import agent_tasks as agent_tasks_mod
+from . import assistant as assistant_mod
 from . import commands as cmd_mod
 from . import demo_faults as demo_faults_mod
 from . import ulid
@@ -127,7 +129,7 @@ class ControllerServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, addr, cfg, project, broker, operator_logs, inventory, terminal_manager,
-                 ca: sshca_mod.SSHCA, fault_injector=None):
+                 ca: sshca_mod.SSHCA, fault_injector=None, assistant=None):
         super().__init__(addr, ControllerHandler)
         self.cfg = cfg
         self.project = project
@@ -144,6 +146,9 @@ class ControllerServer(ThreadingHTTPServer):
         # controller runs with injection disabled — the endpoints then refuse 503
         # rather than pretending to inject.
         self.fault_injector = fault_injector
+        # The assistant service (controller-api.md §4.10). None until the first
+        # /assistant/ask, then built lazily from cfg (so tests can inject a fake).
+        self.assistant = assistant
 
     def publish_node_events(self, conn, node: dict, sample: dict | None) -> None:
         """Push node.telemetry (≤1/s) and node.health_changed (on transition).
@@ -190,7 +195,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", self._cors_origin())
         self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers",
-                         "Authorization, Content-Type, Idempotency-Key, X-Termini-Version, Last-Event-ID")
+                         "Authorization, Content-Type, Idempotency-Key, X-Termini-Version, Last-Event-ID, Cache-Control")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 
     def _send_json(self, status: int, obj) -> None:
@@ -332,6 +337,11 @@ class ControllerHandler(BaseHTTPRequestHandler):
             return self._release_plan(conn, segs[2])
         if method == "POST" and len(segs) == 5 and segs[:2] == ["v1", "projects"] and segs[3] == "vms" and segs[4] == "reconcile":
             return self._reconcile(conn, segs[2])
+        # Assistant API (controller-api.md §4.10, t_bfd2c2f7): grounded Q&A over
+        # the controller's records with guardrail-admitted execute authority.
+        if (method == "POST" and len(segs) == 5 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "assistant" and segs[4] == "ask"):
+            return self._assistant_ask(conn, segs[2])
         if (method == "POST" and len(segs) == 6 and segs[:2] == ["v1", "projects"]
                 and segs[3] == "nodes" and segs[5] == "decommission"):
             return self._decommission_node(conn, segs[2], segs[4])
@@ -878,6 +888,73 @@ class ControllerHandler(BaseHTTPRequestHandler):
             raise errors.invalid_argument("reason must be a string")
         return 200, cmd_mod.deny_command(
             conn, self.server.operator_logs, project_id, command_id, reason or "")
+
+    # ---------------------------------------------------------------- assistant
+    def _assistant_service(self) -> assistant_mod.AssistantService:
+        svc = getattr(self.server, "assistant", None)
+        if svc is None:
+            svc = assistant_mod.AssistantService(
+                self.server.cfg, self.server.project,
+                logs=self.server.operator_logs)
+            self.server.assistant = svc
+        return svc
+
+    def _assistant_ask(self, conn, project_id: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/assistant/ask (controller-api.md §4.10)."""
+        self._require_project(conn, project_id)
+        body = self._read_body()
+
+        messages = body.get("messages")
+        if not isinstance(messages, list) or not messages:
+            raise errors.invalid_argument(
+                "messages must be a non-empty array of {role, content}",
+                [{"field": "messages", "reason": "required"}])
+        for i, m in enumerate(messages):
+            if not isinstance(m, dict):
+                raise errors.invalid_argument(
+                    "each message must be an object",
+                    [{"field": f"messages[{i}]", "reason": "not_an_object"}])
+            role = m.get("role")
+            if role not in assistant_mod.MESSAGE_ROLES:
+                raise errors.invalid_argument(
+                    f"messages[{i}].role must be one of "
+                    + "|".join(assistant_mod.MESSAGE_ROLES),
+                    [{"field": f"messages[{i}].role", "reason": "unknown_role"}])
+            content = m.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise errors.invalid_argument(
+                    f"messages[{i}].content must be a non-empty string",
+                    [{"field": f"messages[{i}].content", "reason": "required"}])
+            if len(content) > assistant_mod.MESSAGE_CONTENT_MAX_CHARS:
+                raise errors.invalid_argument(
+                    f"messages[{i}].content exceeds "
+                    f"{assistant_mod.MESSAGE_CONTENT_MAX_CHARS} chars",
+                    [{"field": f"messages[{i}].content", "reason": "too_long"}])
+
+        context = body.get("context")
+        if context is not None and not isinstance(context, dict):
+            raise errors.invalid_argument(
+                "context must be an object when present",
+                [{"field": "context", "reason": "not_an_object"}])
+        kind = (context or {}).get("kind") or "none"
+        ctx_id = (context or {}).get("id")
+
+        # conversation_id / message_id anchor the idempotency key (D1). Optional
+        # in the body; the Idempotency-Key header (§1.5) is the conversation
+        # fallback, and a fresh ULID the message fallback.
+        conversation_id = body.get("conversation_id") or self.headers.get("Idempotency-Key") or ulid.new_ulid()
+        message_id = body.get("message_id") or ulid.new_ulid()
+        for name, value in (("conversation_id", conversation_id), ("message_id", message_id)):
+            if not isinstance(value, str) or not value.strip():
+                raise errors.invalid_argument(
+                    f"{name} must be a non-empty string",
+                    [{"field": name, "reason": "invalid"}])
+
+        service = self._assistant_service()
+        return 200, service.ask(
+            conn, messages, context if context else None,
+            conversation_id.strip(), message_id.strip(),
+        )
 
     # Headers a reverse proxy adds when it forwards a request. The public path to
     # the controller goes through the host's Caddy (:443 -> 127.0.0.1:8080), so a
@@ -1908,8 +1985,17 @@ class ControllerHandler(BaseHTTPRequestHandler):
         except errors.ApiError as e:
             self._ws_reject(e)
             return
+        # Subscribe BEFORE completing the handshake. The broker is not a replay
+        # buffer: an event published by another request thread in the gap between
+        # the 101 response and broker.subscribe() is dropped, so a client that
+        # fires an action the instant it sees the 101 (as the dashboard log-stream
+        # test does) can miss the resulting frames and time out. Subscribing first
+        # makes the 101 a synchronisation point: by the time the client can act,
+        # the subscription is already active.
+        sub = self.server.broker.subscribe()
         ws = self._ws_handshake()
         if ws is None:
+            self.server.broker.unsubscribe(sub)
             return
         project_id = self.server.project["id"]
         # Backfill: replay buffered log lines after `since`, then stream live.
@@ -1932,7 +2018,6 @@ class ControllerHandler(BaseHTTPRequestHandler):
         finally:
             conn.close()
 
-        sub = self.server.broker.subscribe()
         try:
             self._ws_pump(ws, sub)
         finally:
@@ -2072,12 +2157,22 @@ class ControllerHandler(BaseHTTPRequestHandler):
     def _handle_sse_logs(self, project_id: str) -> None:
         q = self._query()
         try:
-            self._require_project_token(q.get("token"))
+            # The browser SSE client authenticates with `Authorization: Bearer`
+            # (a credential in the URL is forbidden by t_5649d117); `?token=` is
+            # kept only as a fallback for the documented curl/CLI clients.
+            self._require_project_token(self._bearer() or q.get("token"))
             if project_id != self.server.project["id"]:
                 raise errors.permission_denied("project_id does not match token scope")
         except errors.ApiError as e:
             self._send_error(e)
             return
+
+        # Subscribe before flushing the SSE headers so the header flush (the point
+        # at which the client can fire an action) implies the subscription is live.
+        # Same dropped-event race as the WS stream: the broker has no replay, and
+        # test_log_stream_delivers_fresh_event_over_sse fires a reboot the moment
+        # its reader sees the headers.
+        sub = self.server.broker.subscribe()
 
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -2088,6 +2183,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
         try:
             self.wfile.flush()
         except OSError:
+            self.server.broker.unsubscribe(sub)
             return
 
         since = q.get("since") or self.headers.get("Last-Event-ID")
@@ -2107,7 +2203,6 @@ class ControllerHandler(BaseHTTPRequestHandler):
         finally:
             conn.close()
 
-        sub = self.server.broker.subscribe()
         try:
             self._sse_pump(sub)
         finally:

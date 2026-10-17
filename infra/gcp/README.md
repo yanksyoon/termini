@@ -309,44 +309,6 @@ TEAM_SSH_PUBKEY_FILE=~/.ssh/team.pub ENROLLMENT_TOKEN=... \
   ./provision.sh --render-only --render-out /tmp/cloud-init
 ```
 
-## Controller LXD trust on every node (part of the raise path)
-
-LXD authenticates the controller per node, against that node's own trust store
-(`lxc config trust list`). An unsupervised node answers `GET /1.0` with 200 and
-`GET /1.0/instances` with **403**, so a plan that resolves to it applies to
-`state: failed` and creates nothing — proven live on node-c
-(`infra/gcp/evidence/node-c-lxd-trust-2026-10-17.md`, task `t_d31b8e02`).
-
-A recreated instance replaces its boot disk, so its trust store comes back
-**empty**. The install therefore belongs to the raise path, not to a one-off:
-
-```bash
-# done for you by tools/raise-standing-fleet.sh --raise (default; --no-trust-install skips)
-infra/gcp/tools/install-lxd-trust.sh --node a --node c
-
-# node-b is TERMINATED today (12/12 CPUS_ALL_REGIONS); when it is raised again
-# it needs the same step, with no code change:
-infra/gcp/tools/install-lxd-trust.sh --node b
-
-# no mutation, prints what it would do; --all also skips an instance that does
-# not exist (node-b), --timeout bounds the wait for a freshly booted node
-infra/gcp/tools/install-lxd-trust.sh --all --dry-run
-```
-
-The helper probes first (an **authenticated** `GET /1.0/instances`), so a node
-that is already trusted is a no-op; otherwise it mints a one-time
-certificate-add trust token on the node with the node's own
-`termini-bootstrap mint-trust-token` and consumes it on the controller with
-`python3 -m app.lxdtrust trust --node … --token …`. It exits non-zero if the
-node is not proven trusted afterwards. The token is single-use, is never
-printed, and needs no secret from the operator. Verify at any time with:
-
-```bash
-# on the controller
-cd /opt/termini/controller && PYTHONPATH=.:/opt/termini TERMINI_DB_PATH=/data/controller.db \
-  python3 -m app.lxdtrust verify --node https://$NODE_IP:8443   # TRUSTED — … -> 200
-```
-
 ## Verification (acceptance)
 
 ```bash
@@ -379,7 +341,7 @@ Offline (no cloud) checks that need no credentials:
 ```bash
 terraform fmt -check -recursive
 terraform init -backend=false && terraform validate
-bash -n provision.sh verify.sh teardown.sh verify-cloud-init.sh cloud-init/llama-serve.sh cloud-init/node-c-serve-block.sh tools/cleanup-verify.sh tools/install-lxd-trust.sh tools/raise-standing-fleet.sh && shellcheck -S warning *.sh cloud-init/*.sh tools/*.sh
+bash -n provision.sh verify.sh teardown.sh verify-cloud-init.sh cloud-init/llama-serve.sh cloud-init/node-c-serve-block.sh tools/cleanup-verify.sh && shellcheck -S warning *.sh cloud-init/*.sh tools/*.sh
 jq -e . inventory.schema.json examples/inventory.example.json
 ./verify-cloud-init.sh                          # renders + asserts the unified cloud-init
 ```

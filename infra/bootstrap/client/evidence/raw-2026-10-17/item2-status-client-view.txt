@@ -1,0 +1,8 @@
+YOUR NODE IS REGISTERED
+  node_id        01M541YZQTQKD599W5QP74SY5H
+  role           compute
+  project        01J0DEM0WARM000000000000AB
+  registered_at  2026-10-17T04:29:46Z
+  register_ms    179 (controller acknowledgement)
+HEALTH (your node, read with your node's own credential)
+  seq=1 ts=2026-10-17T04:29:46Z cpu=100.0% ram=1.2% load1=5.10595703125 disk_free=63.9% ctrl_rtt=0.987ms

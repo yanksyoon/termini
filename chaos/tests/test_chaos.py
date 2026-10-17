@@ -100,24 +100,15 @@ class TestSeriesRules(unittest.TestCase):
             _series(self.cfg, "oom", self.cfg["scenarios"]["oom"]["params"], 8), self.cfg["thresholds"]
         )
         self.assertTrue(ev["oom-guard-01"]["fired"])
-        self.assertFalse(ev["disk-degrade-01"]["fired"])
-        self.assertFalse(ev["latency-01"]["fired"])
+        self.assertFalse(ev["disk-fail-01"]["fired"])
 
-    def test_disk_degrade_series_fires_only_disk(self):
+    def test_disk_fail_series_fires_only_disk_fail(self):
         ev = common.evaluate_series(
-            _series(self.cfg, "disk-degrade", self.cfg["scenarios"]["disk-degrade"]["params"], 10),
+            _series(self.cfg, "disk-fail", self.cfg["scenarios"]["disk-fail"]["params"], 8),
             self.cfg["thresholds"],
         )
-        self.assertTrue(ev["disk-degrade-01"]["fired"])
+        self.assertTrue(ev["disk-fail-01"]["fired"])
         self.assertFalse(ev["oom-guard-01"]["fired"])
-
-    def test_latency_series_fires_only_latency(self):
-        ev = common.evaluate_series(
-            _series(self.cfg, "latency", self.cfg["scenarios"]["latency"]["params"], 8), self.cfg["thresholds"]
-        )
-        self.assertTrue(ev["latency-01"]["fired"])
-        self.assertFalse(ev["oom-guard-01"]["fired"])
-        self.assertFalse(ev["disk-degrade-01"]["fired"])
 
     def test_healthy_series_fires_nothing(self):
         ev = common.evaluate_series(_series(self.cfg, "healthy", {}, 30), self.cfg["thresholds"])
@@ -150,9 +141,9 @@ class TestReferenceOperator(unittest.TestCase):
         self.assertIsNotNone(oom)
         self.assertEqual(oom["rule"], "oom-guard-01")
         disk = reference_operator.select_action(
-            _series(self.cfg, "disk-degrade", self.cfg["scenarios"]["disk-degrade"]["params"], 10), thr
+            _series(self.cfg, "disk-fail", self.cfg["scenarios"]["disk-fail"]["params"], 8), thr
         )
-        self.assertEqual(disk["rule"], "disk-degrade-01")
+        self.assertEqual(disk["rule"], "disk-fail-01")
 
 
 class TestLxdStub(unittest.TestCase):

@@ -115,7 +115,7 @@ pre-approved action, and the remediation lands with a full audit trail — while
 non-conforming batch is rejected fail-closed at the governance gate
 ([`docs/architecture.md`](docs/architecture.md) §4.3–§4.4). The decision step is a
 seam, and **the shipped demo runs it model-driven**: `oom-guard-01` and
-`disk-degrade-01` route through **`llama.cpp` on Node C** (CPU-only, alias
+`disk-fail-01` route through **`llama.cpp` on Node C** (CPU-only, alias
 `gemma` = Gemma 3 4B IT), which picks
 the action under a hard constraint stack — a GBNF grammar that makes an
 out-of-allowlist command unencodable, a param/guardrail validator, and a
@@ -199,7 +199,7 @@ console/run-demo.sh
 export TERMINI_BOOTSTRAP_TOKEN="$(openssl rand -base64 32)"
 cd controller && make run          # or: python3 -m app.main
 
-# 3. One fault scenario end to end (oom | disk-degrade | latency | healthy)
+# 3. One fault scenario end to end (oom | disk-fail | healthy)
 make chaos SCENARIO=oom
 ```
 
@@ -354,8 +354,12 @@ What Termini does **not** claim (the honest guardrails from
   guaranteed is the **safety envelope**, not the specific choice.
 - No VM launch from natural language — the allocation path ends at a validated,
   clamped plan.
-- No hotplug resize or node drain/migration — the operator restarts the runaway
-  workload on OOM and stops the heaviest workload on disk failure.
+- No hotplug resize or node drain/migration in the **operator loop** — the
+  operator restarts the runaway workload on OOM and stops the heaviest workload
+  on disk failure. Node drain remains a *human- or assistant-initiated* action
+  (the dashboard's drain control, or the assistant endpoint
+  `controller-api.md` §4.10 on guardrail admission) — it is not an operator-loop
+  action.
 - No long-lived or shared SSH credentials — a controller-held SSH CA signs
   short-lived (≤8 h), principal-bound certificates.
 - No on-node redactor that drops C2 fields — the gate is controller-side, and a

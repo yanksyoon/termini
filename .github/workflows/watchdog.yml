@@ -7,6 +7,17 @@ name: ci-watchdog
 #
 # Safety: it refuses to revert its own reverts (message prefix "[watchdog]" /
 # "Revert ") so a genuinely broken main cannot ping-pong forever.
+#
+# Flaky-test guard (added after the 51cafed incident, where a 2 s WS-timeout
+# flake dropped a docs-only evidence note):
+#   1. A commit that touches no code (docs-only diff) cannot have caused a test
+#      or CI failure — reverting it can never fix main and only deletes unrelated
+#      merged work. Such commits are left on main and flagged for a human.
+#   2. On a first failure (run_attempt == 1) the failed jobs are re-run once
+#      (`gh run rerun --failed`) instead of reverting immediately. The retry's
+#      completion re-fires this workflow with run_attempt >= 2, which is the path
+#      that actually reverts. So a one-off flake goes red -> retry -> green and
+#      main is never touched; only a failure that reproduces on the retry reverts.
 
 on:
   workflow_run:
@@ -16,6 +27,7 @@ on:
 permissions:
   contents: write
   issues: write
+  actions: write
 
 concurrency:
   group: ci-watchdog-main
@@ -34,29 +46,59 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Inspect the failing commit
-        id: inspect
-        env:
-          SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -euo pipefail
-          msg="$(git log -1 --format=%s "$SHA")"
-          echo "subject=${msg:0:72}" >> "$GITHUB_OUTPUT"
-          if printf '%s' "$msg" | grep -qiE '^\[watchdog\]|^Revert '; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Revert the red commit on main
-        if: steps.inspect.outputs.skip == 'false'
+      - name: Decide and act
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           set -euo pipefail
+          msg="$(git log -1 --format=%s "$SHA")"
+          subject="${msg:0:72}"
+
+          # Never revert our own reverts.
+          if printf '%s' "$msg" | grep -qiE '^\[watchdog\]|^Revert '; then
+            echo "self-revert; skipping"
+            exit 0
+          fi
+
+          # A commit that touches no code (docs, images, ...) cannot have caused
+          # a test or CI failure: reverting it can never fix main, and it silently
+          # deletes unrelated merged work (observed: the PR #206 evidence note).
+          changed="$(git diff-tree --no-commit-id --name-only -r "$SHA")"
+          docs_only=false
+          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qE '\.(py|js|mjs|cjs|ts|tsx|jsx|sh|sql|toml|ya?ml|json)$'; then
+            docs_only=true
+          fi
+          if [ "$docs_only" = true ]; then
+            gh issue create \
+              --title "[watchdog] main went red at ${SHA:0:7} (docs-only commit — not reverting)" \
+              --body "$(printf 'CI failed on a commit that reached `main`, but the commit is docs-only so it cannot have caused a test/CI failure.\n\n- commit: `%s`\n- subject: %s\n- failing run: %s\n\nLeft on `main` for a human to triage (a docs-only revert can never fix a red main).' "$SHA" "$subject" "$RUN_URL")" \
+              || true
+            exit 0
+          fi
+
           git config user.name  "ci-watchdog[bot]"
           git config user.email "ci-watchdog@users.noreply.github.com"
+
+          # First failure: retry the failed jobs once rather than reverting a
+          # possibly-flaky test. The retry's completion re-fires this workflow at
+          # run_attempt >= 2, which falls through to the revert below. If the
+          # retry cannot be triggered, revert now instead of leaving main red.
+          if [ "${ATTEMPT:-1}" = "1" ]; then
+            if gh run rerun "$RUN_ID" --failed; then
+              gh issue create \
+                --title "[watchdog] main went red at ${SHA:0:7} — auto-retrying once" \
+                --body "$(printf 'CI failed on `main` at `%s` (%s). Retrying the failed jobs once before reverting; if the retry also fails this watchdog will revert the commit.\n\n- failing run: %s' "$SHA" "$subject" "$RUN_URL")" \
+                || true
+              exit 0
+            fi
+            echo "::warning::could not auto-rerun run $RUN_ID; reverting now"
+          fi
+
+          # Confirmed failure (run_attempt >= 2, or rerun unavailable): revert.
           if ! git revert --no-commit "$SHA"; then
             echo "::error::revert of $SHA did not apply cleanly"
             git revert --abort || true
@@ -65,13 +107,7 @@ jobs:
           git commit -m "[watchdog] revert red commit ${SHA:0:7} on main"
           git push origin HEAD:main
 
-      - name: Open an issue about the red main
-        if: always() && steps.inspect.outputs.skip == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
-          RUN: ${{ github.event.workflow_run.html_url }}
-          SUBJECT: ${{ steps.inspect.outputs.subject }}
-        run: |
-          body="$(printf 'CI failed on a commit that reached `main`.\n\n- commit: `%s`\n- subject: %s\n- failing run: %s\n\nThe ci-watchdog reverted (or attempted to revert) this commit. Re-land it properly through a PR + `scripts/land.sh`.\n' "$SHA" "$SUBJECT" "$RUN")"
-          gh issue create --title "[watchdog] main went red at ${SHA:0:7}" --body "$body" || true
+          gh issue create \
+            --title "[watchdog] main went red at ${SHA:0:7}" \
+            --body "$(printf 'CI failed on a commit that reached `main`.\n\n- commit: `%s`\n- subject: %s\n- failing run: %s\n\nThe ci-watchdog reverted (or attempted to revert) this commit. Re-land it properly through a PR + `scripts/land.sh`.\n' "$SHA" "$subject" "$RUN_URL")" \
+            || true

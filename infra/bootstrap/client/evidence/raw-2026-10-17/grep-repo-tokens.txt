@@ -1,0 +1,25 @@
+# Negative test 2 — no project token and no demo bootstrap token on the client path
+# tree: <workdir>/repo @ wt/t_9d875581-evidence-doc   utc: 2026-10-17T04:36:28Z
+# searched 17 credential values (1 project token + 16 demo bootstrap tokens, read from the
+# running controller's unit env — values never printed)
+
+## grep -rn -F -f <credential-value file> <customer-path artifacts>   # all credential values (project + demo bootstrap tokens)
+#   infra/bootstrap/client/termini-node-install.sh
+#   infra/bootstrap/client/termini-node-status.py
+#   infra/bootstrap/client/issue-enrollment.py
+#   infra/bootstrap/client/README.md
+#   infra/bootstrap/client/verify-client-install.sh
+#   infra/bootstrap/node/termini-bootstrap.py
+#   infra/bootstrap/node/termini-bootstrap.service
+#   infra/bootstrap/render-cloud-init.sh
+#   docs/contracts/controller-api.md
+#   docs/contracts/node-bootstrap.md
+#   controller/app/server.py
+exit=1  matching_lines=0
+
+## the same grep for the literal project-token value, token-context lines only
+exit=1  matching_lines=0
+
+=> 0 hits on every client-facing artifact: no customer surface carries the
+   project token or a demo bootstrap token.
+

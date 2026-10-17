@@ -270,9 +270,12 @@ application/customer logs are C2 and are **never** surfaced
 
 ### 2.2 Transport — SSE (primary) and WS (mirror)
 
-**Primary: Server-Sent Events.** `GET /v1/projects/{project_id}/logs?token=<project_token>`
-(`text/event-stream`; the token is a query param because `EventSource` cannot set
-an `Authorization` header). Each event:
+**Primary: Server-Sent Events.** `GET /v1/projects/{project_id}/logs`
+(`text/event-stream`). The credential travels in the `Authorization: Bearer
+<project_token>` header — the dashboard consumes the stream with `fetch`, not
+`EventSource`, precisely so it can set that header (a credential in the URL is
+forbidden, `t_5649d117`). `?token=<project_token>` remains accepted as a
+fallback for curl/CLI clients. Each event:
 
 ```
 event: log
@@ -482,6 +485,14 @@ The AI operator issues remediation actions that pass `guardrailClamp()` and
 `commandAllowlist()`. Each command carries an `approval` policy: `auto` (execute
 immediately) or `required` (hold in `pending_approval` until a human decides).
 
+**Scope (t_bfd2c2f7).** This approval state machine governs **operator/playbook-
+initiated** remediations. The assistant endpoint (`POST
+/v1/projects/{pid}/assistant/ask`, `controller-api.md` §4.10) may execute an
+action *requested through the assistant* on guardrail admission, without entering
+`pending_approval`; those actions are recorded with `initiated_by: assistant` and
+appear on the decision surface like any other action. The assistant does not
+repeal this gate for operator-initiated remediations.
+
 **Frozen approval policy** (the `commandAllowlist()` set in
 `controller/app/commands.py`; the `vm.*`/`agent.*` verbs are declared but not wired
 to any execution path in the demo — future/day-2):
@@ -552,6 +563,11 @@ optional).
 - The remediation state machine (shared with the log stream, §2.1) is:
   `pending_approval → approved|denied → queued → acked → running → succeeded|failed`;
   `timed_out` is a terminal state distinct from `denied`.
+
+These constraints govern operator/playbook-initiated remediations. An
+assistant-initiated command (`issued_by: assistant`, §4.10) never enters
+`pending_approval` — it is queued on guardrail admission — so `approve`/`deny`
+and the 300 s auto-deny do not apply to it.
 
 ---
 

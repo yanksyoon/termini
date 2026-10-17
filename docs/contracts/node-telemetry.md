@@ -601,8 +601,11 @@ The action space the decision step selects from is the LXD REST remediation kind
 executor issues (`controller/app/operator/executor.py`: `instance.restart`,
 `instance.stop`, `instance.delete`, `image.prune`), plus surfacing the fault with no
 autonomous action. There is no `vm.resize`/`node.drain` remediation in the loop;
-`node.drain`/`node.reboot` exist only as human-initiated node actions
-(`controller-api.md` §4.2 / `dashboard.md` §4).
+`node.drain`/`node.reboot` exist as human-initiated node actions
+(`controller-api.md` §4.2 / `dashboard.md` §4) and, since t_bfd2c2f7, as
+guardrail-admitted assistant-initiated actions through the assistant endpoint
+(`controller-api.md` §4.10, `initiated_by: assistant`) — still never an
+operator-loop action.
 
 `gpu-oos-01` is the canonical case where the right answer is *no action*: inference down
 has no safe autonomous remediation, so the decision step must surface it. Note precisely

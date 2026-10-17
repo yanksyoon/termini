@@ -221,6 +221,26 @@ class InstallerCliTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("unknown argument", proc.stderr)
 
+    def test_the_start_never_blocks_on_the_systemd_start_job(self):
+        """`systemctl restart` must be `--no-block` (live finding, card t_70bd0f2b).
+
+        The unit is `Type=notify` with `TimeoutStartSec=infinity`, so systemd's
+        start job finishes only when the daemon sends READY=1 — which a daemon in
+        a *terminal* enrollment failure (rejected / already-used credential,
+        unreachable controller) never does. A blocking restart therefore hung the
+        installer on exactly the three failure paths it is supposed to report;
+        observed live in task `t_7a98a110` (7+ minutes parked in the restart).
+        Proven fixed on a real systemd host in
+        `infra/bootstrap/client/evidence/raw-2026-10-17/hangfix-live.txt`.
+        """
+        text = INSTALLER.read_text()
+        self.assertIn("systemctl restart --no-block termini-bootstrap.service", text)
+        blocking = [
+            line.strip() for line in text.splitlines()
+            if line.strip().startswith("systemctl restart") and "--no-block" not in line
+        ]
+        self.assertEqual(blocking, [], "a blocking `systemctl restart` would hang on failure")
+
 
 class InstallerScriptTest(_ControllerCase):
     """The installer's file/credential handling, driven against a live controller.

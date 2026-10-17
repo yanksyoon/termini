@@ -5,8 +5,7 @@ Runs every scenario through an isolated stack (controller + node_sim + LXD stub
 + operator) and asserts the card's acceptance criteria:
 
     oom            sustained OOM series drives a real LXD remediation command
-    disk-degrade   sustained disk-degradation series drives the disk playbook
-    latency        latency series drives the latency rule
+    disk-fail      read-only remount fires disk-fail-01 and stops the workload
     healthy        no rule fires and no command is issued (false-positive guard)
 
 Exits non-zero if any scenario fails. Safe to run in CI (no third-party deps;
@@ -28,7 +27,7 @@ from chaos import config, run  # noqa: E402
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Run the full chaos acceptance suite")
     ap.add_argument("--config", default=None)
-    ap.add_argument("--scenarios", default="oom,disk-degrade,latency,healthy")
+    ap.add_argument("--scenarios", default="oom,disk-fail,healthy")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 

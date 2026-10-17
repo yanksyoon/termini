@@ -1,0 +1,173 @@
+/*
+ * Prototype harness chrome (task t_4458a089).
+ *
+ * The picker below is the `prototype` skill's PICKER.md, copied verbatim
+ * (markup, styles, wiring, keys). Its look is not a design decision and never
+ * adapts to the project: it must read as harness chrome, not as part of the
+ * dashboard being judged. Loaded AFTER the variant stylesheet on purpose, so no
+ * variant can restyle it.
+ *
+ * Only additive chrome in this file: the small caption above the pill (it names
+ * the axis each variant explores, which the owner needs in order to choose) and
+ * the page-level padding that keeps the pill off the content.
+ */
+
+/* ------------------------------------------------------- picker (verbatim) */
+.proto-picker {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(10, 10, 10, 0.82);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    0 8px 24px rgba(0, 0, 0, 0.24),
+    0 2px 6px rgba(0, 0, 0, 0.12);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.proto-picker-highlight {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  will-change: transform;
+}
+
+/* The slide is enabled only after first paint (data-ready), so load doesn't animate. */
+.proto-picker[data-ready] .proto-picker-highlight {
+  transition:
+    transform 250ms cubic-bezier(0.23, 1, 0.32, 1),
+    width 250ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .proto-picker[data-ready] .proto-picker-highlight { transition: none; }
+}
+
+.proto-picker-item {
+  position: relative; /* sits above the highlight */
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  font: inherit;
+  cursor: pointer;
+  transition: color 150ms ease-out;
+}
+
+.proto-picker-item:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.proto-picker-item:active {
+  transform: scale(0.97);
+}
+
+.proto-picker-item:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 2px;
+}
+
+.proto-picker-item[data-active] {
+  color: #fff;
+}
+
+.proto-picker-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.proto-picker-replay {
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+.proto-picker[data-position="top"] {
+  bottom: auto;
+  top: 24px;
+}
+
+/* ------------------------------------------------- additive: axis caption */
+/* Not part of PICKER.md. It names the direction being looked at, because the
+   owner is choosing between three different answers to one brief and the pill
+   alone ("Console / Briefing / Instrument") does not say what each one explores.
+   Same dark-glass material as the pill so it reads as one piece of chrome. */
+.proto-caption {
+  position: fixed;
+  bottom: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483646;
+  max-width: min(92vw, 720px);
+  padding: 6px 12px;
+  border-radius: 11px;
+  /* Opaque enough to be read over the densest variant: harness chrome must never
+     depend on the page behind it for contrast. */
+  background: rgba(10, 10, 10, 0.94);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    0 8px 24px rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.78);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
+  -webkit-font-smoothing: antialiased;
+}
+.proto-caption b { color: #fff; font-weight: 600; }
+.proto-caption-fixture {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* -------------------------------------------------- additive: harness base */
+/* Room for the pill + caption so neither covers the work being judged. */
+html { scroll-behavior: auto; }
+body { padding-bottom: 116px; } /* also covers the pill at 24px + caption */
+
+@media (max-width: 620px) {
+  .proto-caption {
+    bottom: 64px;
+    font-size: 11px;
+    max-width: 94vw;
+    padding: 5px 10px;
+    border-radius: 9px;
+  }
+  /* One line on a phone: the caption is orientation, not reading material, and
+     four wrapped lines would cover the panel the owner is judging. */
+  .proto-caption-axis {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .proto-caption-fixture { margin-top: 1px; }
+  body { padding-bottom: 128px; }
+}

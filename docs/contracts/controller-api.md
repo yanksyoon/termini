@@ -833,15 +833,18 @@ as if the node had reported it. Two consequences are normative:
 
 ### Scenarios
 
-The scenario set is the one the harness already implements (`chaos/chaos.json`), so
-an injected fault has the same signature the chaos runs prove.
+The demo fault library offers exactly two scenarios — `oom` (F01) and `disk-fail`
+(F05). The `disk-degrade` and `latency` scenarios are NOT injectable: their
+detector rules (`disk-degrade-01`, `latency-01`) remain frozen in
+`node-telemetry.md` §5 and implemented in `operator/detect.py` — a real customer
+node can still produce those signals and the operator must still handle them —
+but the demo can no longer inject them (owner decision 2026-10-17). Do not
+"restore" them as a missing feature.
 
-| `scenario`     | rule it drives     | injected signal |
-|----------------|--------------------|-----------------|
-| `oom`          | `oom-guard-01`     | host RAM → 97 % of `ram_total_bytes`, CPU raised, nested `lxd_instances[].ram_used_bytes` kept consistent |
-| `disk-degrade` | `disk-degrade-01`  | every `disk[].free_bytes` → 3 % of total, `write_latency_ms` → 80 |
-| `disk-fail`    | `disk-fail-01`     | every `disk[].mount_ro` → `true` (EXT4 remount-ro, Scenario B) |
-| `latency`      | `latency-01`       | every `net[].latency_ms` → 600 |
+| `scenario`  | rule it drives  | injected signal |
+|-------------|-----------------|-----------------|
+| `oom`       | `oom-guard-01`  | host RAM → 97 % of `ram_total_bytes`, CPU raised, nested `lxd_instances[].ram_used_bytes` kept consistent |
+| `disk-fail` | `disk-fail-01`  | every `disk[].mount_ro` → `true` (EXT4 remount-ro, Scenario B) |
 
 `clear` is not a scenario: it is the `DELETE` below.
 
@@ -894,7 +897,7 @@ Returns every injection this project has run, newest first:
 
 ```json
 { "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
-  "scenarios": ["oom", "disk-degrade", "disk-fail", "latency"],
+  "scenarios": ["oom", "disk-fail"],
   "faults": [ { "…": "injection view as above" } ],
   "open_count": 1 }
 ```
@@ -1079,6 +1082,102 @@ States: `queued | running | done | error` (agent-runtime §5.6). The controller'
 **Errors** (§3 envelope): `404 AGENT_NOT_FOUND`, `503 NODE_OFFLINE`, `503 NODE_UNREACHABLE`, `503 AGENT_UNREACHABLE`, `429 TASK_BOUND_EXCEEDED`, `400 MODEL_NOT_ALLOWED`, `413 PROMPT_TOO_LARGE`. Codes the controller adds outside the §3 list are task-specific and always carry `details[0].reason` with the action to take.
 
 **Audit and events.** Each submission writes an `agent.dispatch_task` command (`§6` allowlist, `issued_by: human`, node-scoped) plus a content-free operator-log line, and emits `task.queued` → `task.state_changed` → `task.completed` on the WS stream (§7.1) with `{task_id, vm_id, state, duration_ms, model}` — never content.
+
+### 4.10 Assistant (client → controller) — card `t_bfd2c2f7`
+
+Grounded Q&A over the controller's own records, with **guardrail-admitted execute
+authority** (owner decision D1). The assistant answers questions about decisions,
+health events, audits, nodes, metric windows and remediation commands, and **may
+execute any action the guardrail admits** — not answer-only. The chat surface is
+a separate frontend card; this section is the controller contract it consumes.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `POST` | `/v1/projects/{project_id}/assistant/ask` | `project_token`. Body below. `200` + the answer. |
+
+Request:
+
+```json
+{
+  "messages": [{"role": "user", "content": "is node a healthy?"}],
+  "context": {"kind": "node", "id": "01M4349RPTT29RNTC6VBCXQ0RC"},
+  "conversation_id": "01M506S2JJ5JFCR3K30BJY26NK",
+  "message_id": "01M506S2JJP0CJQ5C1C4V3N7T9"
+}
+```
+
+- `messages` — a non-empty array of `{role, content}`; `role` ∈
+  `system | user | assistant`, each `content` ≤ 4000 chars. The user's own free
+  text is the sanctioned input of a Q&A surface and may egress to the managed
+  model (D2).
+- `context` — optional `{kind, id}`. `kind` ∈ `incident | decision | node |
+  metric | remediation | audit | none` (frozen enum). `id` is required when
+  `kind != none`. The controller resolves `kind + id` to the exact C0 records and
+  puts only those in the prompt.
+- `conversation_id` / `message_id` — optional. They anchor the execution
+  idempotency key (`assistant:{conversation_id}:{message_id}:{action}:{target}`).
+  When absent, `conversation_id` falls back to the `Idempotency-Key` header
+  (§1.5) or a fresh ULID, and `message_id` to a fresh ULID.
+
+Response `200 OK`:
+
+```json
+{
+  "answer": "node a is degraded: ram_used_bytes at 96% of total.",
+  "citations": [{"kind": "node", "id": "01M4349RPTT29RNTC6VBCXQ0RC", "label": "termini-node-a"}],
+  "executed": [{"action": "instance.restart", "target": "01M4349RPXWDC52ZDAVMPCMJSH",
+                "command_id": "01M506S2JJ5JFCR3K30BJY26NK", "audit_id": "01M506S2JJ5JFCR3K30BJY26NM",
+                "state": "ok"}],
+  "proposed_actions": [{"action": "instance.restart", "target": "01M4349RPXWDC52ZDAVMPCMJSH"}],
+  "model": "gemini-2.5-flash",
+  "decided_by": "assistant",
+  "elapsed_ms": 1120,
+  "truncated": false,
+  "errors": []
+}
+```
+
+- `answer` — the grounded answer. It must never claim an execution it cannot
+  attribute: an answer claiming it restarted/drained/scaled anything must carry
+  the `command_id` and `audit_id` of that execution in `executed[]`; an answer
+  without those ids is a failure (D1).
+- `citations` — the records the answer rests on, each `{kind, id, label}`. An
+  answer may cite **only ids that exist in the fetched context**; a citation that
+  does not resolve is dropped from `citations` and surfaced in `errors[]` with
+  `reason: citation_unresolvable` (a validation failure, never a silent
+  footnote).
+- `executed` — the actions actually executed, each
+  `{action, target, command_id, audit_id, state}`. `state` ∈ `ok | queued |
+  already_applied | rejected | error`. For executor actions `command_id` is the
+  decision record id; for command-channel verbs (`node.drain`, `node.reboot`) it
+  is the command id and `state` is `queued`.
+- `proposed_actions` — the actions the model proposed, `{action, target}`.
+  `action` ∈ the assistant's frozen execute space:
+  `instance.restart | instance.stop | instance.delete | image.prune` (the guarded
+  executor, `operator-decision.md` §5) plus `node.drain | node.reboot` (the wired
+  command-channel verbs, §6). An action outside this space is refused with the
+  reason in `executed[].reason`, never run.
+- `decided_by` is `"assistant"`; `model` is the model that answered; `elapsed_ms`
+  is the round-trip; `truncated` is true when the context was trimmed to fit the
+  prompt budget (the trim is described in `errors[]`, never silent).
+
+**Execution authority (D1).** The assistant MAY execute — it is not answer-only.
+The authority is scoped to actions requested *through the assistant*; the
+operator/playbook `pending_approval → approve/deny` (300 s auto-deny) state
+machine is **unchanged** for operator-initiated remediations. "Guardrail admits"
+is the same code path as today: the frozen command allowlist
+(`governance.md` §281), the `Guardrail.validate` target resolution, and the C2 /
+field-class assertion of `externalModelCall` on the context records. Every
+executed action writes **exactly one** audit row and **one** decision record
+carrying `initiated_by: assistant` + the `conversation_id` + `message_id`, so it
+appears on the decision surface (`GET /v1/operator/{decisions,audits}`) like any
+other action. Replay of the same `(conversation_id, message_id, action, target)`
+executes once (idempotent).
+
+**Errors** (§3 envelope): `401` (no/invalid token), `404` (unknown `context.id`),
+`422` (unknown `context.kind`, malformed `messages`, or a context that is not
+C0-safe — `GOVERNANCE_REJECT`), and a typed `503 MODEL_UNAVAILABLE` (the model
+did not answer, or returned an unusable reply — **never** a fabricated answer).
 
 ---
 

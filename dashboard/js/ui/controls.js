@@ -9,6 +9,7 @@
 
 import { el, clear } from "./dom.js";
 import { formatError, summarizeAllocations } from "./errors.js";
+import { shortId } from "../core/format.js";
 
 export class ControlsPanel {
   constructor(dom, handlers) {
@@ -114,7 +115,7 @@ export class ControlsPanel {
       return;
     }
     for (const it of items) {
-      const item = el("div", { class: "pending-item" }, [
+      const item = el("div", { class: "pending-item", dataset: { commandId: it.command_id || "" } }, [
         el("div", { class: "row1" }, [
           el("strong", { text: it.type || "command" }),
           el("span", { class: `rem-status ${it.status || ""}`, text: it.status || "" }),
@@ -135,6 +136,28 @@ export class ControlsPanel {
         this.handlers.onDeny(it.command_id);
       });
       row.append(approve, deny);
+      // "Ask AI" on a pending AI remediation: attaches `remediation` + the
+      // command_id (§4.10 resolves that id to the command), so the follow-up
+      // question keeps pointing at the exact command the owner is deciding on.
+      if (this.handlers.onAskAi) {
+        const ask = el("button", {
+          class: "btn btn-sm btn-ask",
+          type: "button",
+          text: "Ask AI",
+          title: `ask the assistant about command ${it.command_id}`,
+          dataset: { askAiKind: "remediation", commandId: it.command_id || "" },
+        });
+        ask.addEventListener("click", () =>
+          this.handlers.onAskAi({
+            kind: "remediation",
+            id: it.command_id,
+            label: `${it.type || "command"} · ${shortId(it.command_id, 10, 4)}`,
+            summary: `remediation · ${it.type || "command"} on ${it.node_id || "node"} · ${it.status}`,
+            meta: { nodeId: it.node_id, type: it.type, status: it.status },
+          }),
+        );
+        row.appendChild(ask);
+      }
       item.appendChild(row);
       host.appendChild(item);
     }
