@@ -612,11 +612,18 @@ class DemoFaultInjector(threading.Thread):
             )
             if done and applied:
                 self._supersede_logged.discard(injection_id)
+                # Who ended this injection, for the driver's own log lines (kanban
+                # t_9c1362f6). `cleared_by` carries the caller's X-Termini-Actor; the
+                # synthetic enders ('ttl', 'controller_restart', 'node_gone') are the
+                # controller acting alone, so they fall back to the actor that injected
+                # it and only then to 'controller' — a worker's fault must never produce
+                # a line that reads as "the operator" (the default used to be 'human').
                 self._emit_log(
                     conn, node_id,
                     f"fault cleared: node {node.get('registration_id') or node_id} "
                     f"rule {rule_id} back below threshold after {n} healthy sample(s) "
                     f"(injection {injection_id})",
+                    actor=self._ended_by(row),
                 )
             return
 
@@ -795,7 +802,10 @@ class DemoFaultInjector(threading.Thread):
             "expires_at": _iso_in(duration),
             "next_seq": seq,
             "baseline": baseline,
-            "params": SCENARIOS[scenario]["params"],
+            # The caller's X-Termini-Actor travels with the row so the driver's
+            # later lines (supersede, recovery-complete) can name the worker that
+            # started the fault instead of defaulting to "the operator".
+            "params": {**dict(SCENARIOS[scenario]["params"] or {}), "actor": actor},
         }
         insert_fault(conn, row)
         self._supersede_logged.discard(injection_id)
@@ -896,8 +906,31 @@ class DemoFaultInjector(threading.Thread):
         }
 
     # -------------------------------------------------------------- internals
+    def _fault_actor(self, row: dict | None) -> str:
+        """The actor a driver-emitted line about `row` belongs to.
+
+        The row's `params_json` carries the caller's X-Termini-Actor at injection
+        time; `cleared_by` carries it again when somebody cleared the injection.
+        Neither exists for an injection started before this field was recorded, in
+        which case the honest answer is `controller` — never `human`, which is what
+        made a worker's fault read as an operator action (kanban t_9c1362f6).
+        """
+        try:
+            params = json.loads((row or {}).get("params_json") or "{}")
+        except (TypeError, ValueError):
+            params = {}
+        actor = str(params.get("actor") or "").strip()
+        return actor if ACTOR_RE.match(actor) else "controller"
+
+    def _ended_by(self, row: dict) -> str:
+        """Who ended the injection: the clearer, else the injector, else 'controller'."""
+        by = str(row.get("cleared_by") or "").strip()
+        if by and by not in ("ttl", "node_gone", "controller_restart"):
+            return by
+        return self._fault_actor(row)
+
     def _emit_log(self, conn, node_id: str, message: str, *, severity: str = "info",
-                  actor: str = "human") -> None:
+                  actor: str = "controller") -> None:
         if self.operator_logs is None:
             return
         try:
@@ -919,4 +952,5 @@ class DemoFaultInjector(threading.Thread):
             f"{fault['injection_id']} ({fault['scenario']}); the injected series is "
             f"authoritative until it is cleared",
             severity="warn",
+            actor=self._fault_actor(fault),
         )
