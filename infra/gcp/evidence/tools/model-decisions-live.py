@@ -30,6 +30,7 @@ container's PID/uptime resetting). Pair it with, on the node the executor dials:
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import sqlite3
 import time
@@ -134,18 +135,74 @@ def wait_for_armed(node: str, rule_id: str, db_path: str, wait_s: float) -> bool
     return False
 
 
+def _parse_ts(value: str) -> datetime.datetime | None:
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ"):
+        try:
+            return datetime.datetime.strptime(value, fmt).replace(
+                tzinfo=datetime.timezone.utc)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def wait_for_settle(node: str, rule_id: str, db_path: str, settle_s: float,
+                    wait_s: float) -> bool:
+    """Wait until the fault console will accept a NEW injection for (node, rule).
+
+    The console refuses an injection while an audit for this (node, rule) is
+    younger than its own settle window (`TERMINI_DEMO_FAULT_GUARD_S`, 60 s by
+    default: ``remediation_in_flight`` / ``recent_remediation``), and a rule can
+    be `armed` long before that window closes. Without this wait a back-to-back
+    run stops at cycle 2 with HTTP 409 — which is what happened on the first
+    attempt at this acceptance, not a decision failure.
+    """
+    deadline = time.time() + wait_s
+    while time.time() < deadline:
+        a = rows(db_path,
+                 "select executed_at from remediation_audits"
+                 " where node_id=? and rule_id=? order by executed_at desc limit 1",
+                 (node, rule_id))
+        if not a:
+            return True
+        executed = _parse_ts(a[0]["executed_at"])
+        if executed is None:
+            return True
+        age = (datetime.datetime.now(datetime.timezone.utc) - executed).total_seconds()
+        if age >= settle_s:
+            return True
+        time.sleep(2)
+    return False
+
+
 def do_run(args) -> int:
     rule_id = SCENARIO_RULES.get(args.scenario, "oom-guard-01")
     print("=== run: node=%s scenario=%s cycles=%d at %s ==="
           % (args.node, args.scenario, args.cycles, utcnow()))
     results = []
     for cycle in range(1, args.cycles + 1):
+        if cycle > 1:
+            settled = wait_for_settle(args.node, rule_id, args.db, args.settle,
+                                      args.settle_wait)
+            print("  console settle window: %s (>=%.0f s since the last audit)"
+                  % ("clear" if settled else "DID NOT clear in time", args.settle))
         started = utcnow()
         print("\n--- cycle %d/%d: inject at %s ---" % (cycle, args.cycles, started))
         status, resp = call(args.base, args.project, args.token, "POST",
                             "/v1/projects/%s/demo/faults" % args.project,
                             {"scenario": args.scenario, "node_id": args.node,
                              "target": args.target, "duration_s": args.duration})
+        if status == 409:
+            # The console's in-flight guard can outlive its settle window (a
+            # fired event with no audit yet). Wait it out once and retry: an
+            # injection refusal is not a decision outcome and must not be
+            # reported as one.
+            print("  HTTP 409 (remediation in flight) — waiting for settle, retrying once")
+            wait_for_settle(args.node, rule_id, args.db, args.settle, args.settle_wait)
+            started = utcnow()
+            status, resp = call(args.base, args.project, args.token, "POST",
+                                "/v1/projects/%s/demo/faults" % args.project,
+                                {"scenario": args.scenario, "node_id": args.node,
+                                 "target": args.target, "duration_s": args.duration})
         print("  HTTP", status, json.dumps(resp, default=str)[:400])
         if status != 201:
             print("  INJECTION REFUSED — stopping")
@@ -234,6 +291,11 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--wait", type=float, default=150.0, help="wait per decision")
     r.add_argument("--rearm-wait", type=float, default=150.0,
                    help="wait for the rule to re-arm between fires")
+    r.add_argument("--settle", type=float, default=65.0,
+                   help="the fault console's settle window between injections"
+                        " (TERMINI_DEMO_FAULT_GUARD_S, 60 s by default)")
+    r.add_argument("--settle-wait", type=float, default=200.0,
+                   help="how long to wait for that window to clear")
     r.add_argument("--keep", action="store_true", help="do not clear the injection")
     r.add_argument("--full-reply", action="store_true")
     r.set_defaults(func=do_run)
