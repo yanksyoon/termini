@@ -51,6 +51,20 @@ once telemetry reported it (~50 s). The placeholder path reads
 row appeared), so the placeholder is a display refinement that did not fire, not a
 data-path failure. Flagged as follow-up, not claimed as verified.
 
+> Follow-up `t_6d63e8a2`: the client's apply→row path had a silent-failure defect.
+> It read `allocations[].vm_ids` only and returned without a word when the response
+> carried none, so ANY unexpected response shape produced no row and no message —
+> and the mock could not even exercise the path, because its apply answered
+> `{job_id, state, vm_ids}` with no `allocations[]` at all. What the live
+> controller's 202 carried that minute is not re-checkable from here (it needs the
+> project token and a window), so this does not claim the live response was
+> malformed. The fix removes the ambiguity: one tested path reads both
+> `allocations[].vm_ids` and the flat `vm_ids`, says so when an apply names no
+> instances, and draws each row inside its node's group.
+> `dashboard/tests/apply-placeholder.test.mjs` fails on the old code (11/11) and
+> passes now; the two-stage placeholder → RUNNING transition is verified on the
+> mock controller with zero console errors. **NOT re-verified on the live fleet.**
+
 ## (c) Give one agent a task, answer with the agent identified
 
 `03-agent-task-answer-provenance.png` — row `R3P229VX…` (the only instance whose

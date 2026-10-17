@@ -24,6 +24,22 @@
 
 export const INVENTORY = { REPORTED: "reported", ABSENT: "absent", NO_SAMPLE: "no-sample" };
 
+/*
+ * After `Apply plan` the panel holds the plan's instances as placeholder rows
+ * until a node's telemetry lists them. Two bounded states, because "provisioning"
+ * is a claim with a shelf life:
+ *
+ *  - STALE: after 2 min no node has listed it. The row stops claiming it is
+ *    provisioning and says so (the apply may have been rolled back, or the node
+ *    cannot read its LXD — both are visible facts).
+ *  - DROP: after 10 min the row is removed. Telemetry is the only inventory;
+ *    a row nothing ever reports must not sit in the panel forever.
+ */
+export const EXPECTED_STATE = "provisioning";
+export const EXPECTED_UNCONFIRMED = "unconfirmed";
+export const EXPECTED_STALE_MS = 120_000;
+export const EXPECTED_DROP_MS = 600_000;
+
 export function shortId(vmId) {
   const s = String(vmId || "");
   if (s.length <= 10) return s || "—";
@@ -230,17 +246,141 @@ export async function vmIdForName(instanceName) {
   return out;
 }
 
-/** Rows shown for a just-applied plan, until telemetry reports the instances. */
-export function expectedRows(names, existing, now = Date.now()) {
-  const have = new Set((existing || []).map((a) => a.vmId));
-  return (names || []).map((name) => ({
-    name,
-    // null hash until vmIdForName resolves; the row renders "waiting for the node"
-    vmId: null,
-    label: null,
-    state: "provisioning",
-    expected: true,
-    seen: have.has(name),
-    at: now,
-  }));
+/**
+ * Rows shown for a just-applied plan, until telemetry reports the instances.
+ *
+ * This is the panel's FIRST stage after `Apply plan`: the controller answers with
+ * the LXD instance NAMES it materialised, the §4.6 rule turns a name into the id
+ * the node will report, and the row is drawn as `provisioning` so the plan's
+ * outcome lands in the Agents panel immediately instead of only in a toast. The
+ * node's own telemetry remains the only thing that can turn it RUNNING.
+ *
+ * History (t_6d63e8a2): this function used to take a bare name list and return
+ * `vmId: null` for every row while `main.js` kept a second, inline copy of the
+ * real loop. The copy is gone: there is ONE path from an apply response to a
+ * row, it hashes the names, and it reads both shapes the controller has answered
+ * with — per-allocation `allocations[].vm_ids` and the flat top-level `vm_ids`.
+ * A response with `allocations` but no names in them is the shape that made the
+ * placeholder silently never render on the live fleet (2026-10-17).
+ *
+ * @param {object} job  the `POST /vms/apply` 202 body
+ * @param {Iterable} existing  agents already reported (rows with `.vmId`, or ids)
+ * @param {number} now
+ * @param {(name: string) => Promise<string>} hash  the §4.6 derivation
+ * @returns {Promise<object[]>} rows; empty when nothing was materialised
+ */
+export async function expectedRows(job, existing = [], now = Date.now(), hash = vmIdForName) {
+  const have = new Set();
+  for (const item of existing || []) {
+    const id = typeof item === "string" ? item : item && item.vmId;
+    if (id) have.add(id);
+  }
+
+  const rows = [];
+  const pushed = new Set();
+  const seenNames = [];
+  const add = async (name, nodeId) => {
+    if (typeof name !== "string" || !name || pushed.has(name)) return;
+    pushed.add(name);
+    seenNames.push(name);
+    let vmId = null;
+    try {
+      vmId = await hash(name);
+    } catch {
+      // Crypto unavailable (a non-secure context): the row still names the
+      // instance and the node, and says it has no id to match on yet.
+      vmId = null;
+    }
+    if (vmId && have.has(vmId)) return; // the node already reports it
+    rows.push({
+      nodeId: nodeId || null,
+      name,
+      vmId: vmId || null,
+      hashed: !!vmId,
+      label: null,
+      state: EXPECTED_STATE,
+      expected: true,
+      at: now,
+      staleAt: now + EXPECTED_STALE_MS,
+      dropAt: now + EXPECTED_DROP_MS,
+    });
+  };
+
+  const allocations = Array.isArray(job && job.allocations) ? job.allocations : [];
+  for (const alloc of allocations) {
+    // `skipped` / `failed` materialised nothing and were rolled back; a
+    // `host_service` reference is the node's always-on inference service, not an
+    // agent. Neither may become a placeholder row.
+    if (!alloc || alloc.status === "skipped" || alloc.status === "failed") continue;
+    for (const name of Array.isArray(alloc.vm_ids) ? alloc.vm_ids : []) {
+      await add(name, alloc.node_id);
+    }
+  }
+  // A response that carries instance names but no usable per-allocation detail
+  // (a controller/mock version skew): the flat roll-up is still instance names,
+  // so the rows can still be drawn — with the node unknown, never invented.
+  if (!seenNames.length && Array.isArray(job && job.vm_ids)) {
+    for (const name of job.vm_ids) await add(name, null);
+  }
+  return rows;
+}
+
+/** The instance names an apply response carries, deduped, in response order. */
+export function materialisedNames(job) {
+  const out = [];
+  const seen = new Set();
+  const push = (name) => {
+    if (typeof name === "string" && name && !seen.has(name)) {
+      seen.add(name);
+      out.push(name);
+    }
+  };
+  for (const alloc of (job && Array.isArray(job.allocations) ? job.allocations : [])) {
+    if (!alloc || alloc.status === "skipped" || alloc.status === "failed") continue;
+    for (const name of Array.isArray(alloc.vm_ids) ? alloc.vm_ids : []) push(name);
+  }
+  if (!out.length && job && Array.isArray(job.vm_ids)) for (const name of job.vm_ids) push(name);
+  return out;
+}
+
+/**
+ * The prune every refresh runs: drop a placeholder the node now reports (its
+ * `vm_id` is in the telemetry), stop claiming "provisioning" for a row that no
+ * node has listed for a long time, and finally drop it. Without this the panel
+ * could show "provisioning" forever for an instance that was rolled back, and a
+ * row that has been reported but kept would double-count the agent.
+ *
+ * @param {object[]} rows   current placeholders
+ * @param {Iterable} reported  the `vm_id`s telemetry lists now
+ * @param {number} now
+ */
+export function pruneExpected(rows, reported = [], now = Date.now()) {
+  const seen = new Set();
+  for (const item of reported || []) {
+    const id = typeof item === "string" ? item : item && item.vmId;
+    if (id) seen.add(id);
+  }
+  const out = [];
+  for (const row of rows || []) {
+    if (!row) continue;
+    if (row.vmId && seen.has(row.vmId)) continue;          // reported: the real row supersedes it
+    if (row.dropAt && now >= row.dropAt) continue;          // never reported: stop showing it
+    if (row.staleAt && now >= row.staleAt && row.state !== EXPECTED_UNCONFIRMED) {
+      out.push({ ...row, state: EXPECTED_UNCONFIRMED });     // still honest, no longer "provisioning"
+      continue;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/**
+ * A cheap identity for a placeholder set, so a poll only re-renders the panel
+ * when the set actually changed (a re-render must not eat a half-typed prompt —
+ * drafts live on the panel, but rebuilding the list still costs focus).
+ */
+export function expectedSignature(rows) {
+  return (rows || [])
+    .map((r) => `${r.nodeId || ""}:${r.name || ""}:${r.vmId || ""}:${r.state || ""}`)
+    .join("|");
 }

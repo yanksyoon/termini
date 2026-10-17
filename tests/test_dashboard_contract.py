@@ -13,6 +13,7 @@ quietly diverge. The file loads ``dashboard/mock/fixtures.py`` by path (the
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
 import os
 import re
@@ -28,6 +29,17 @@ RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$")
 
 def load_fixtures():
     spec = importlib.util.spec_from_file_location("termini_dashboard_fixtures", FIXTURES_PATH)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+VMIDS_PATH = os.path.join(REPO_ROOT, "controller", "app", "operator", "vmids.py")
+
+
+def load_vmids():
+    spec = importlib.util.spec_from_file_location("termini_controller_vmids", VMIDS_PATH)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -230,6 +242,84 @@ class SeriesTests(unittest.TestCase):
         raw = fx.series(fx.NODES[0], 1000.0, 1300.0, "5s", ["cpu_util_pct"])
         coarse = fx.series(fx.NODES[0], 1000.0, 1300.0, "1m", ["cpu_util_pct"])
         self.assertLess(len(coarse["series"][0]["points"]), len(raw["series"][0]["points"]))
+
+
+class ApplyJobTests(unittest.TestCase):
+    """controller-api.md §4.2 — the apply answer the Agents panel reads.
+
+    t_6d63e8a2: the mock used to answer `{job_id, state, vm_ids}` with no
+    `allocations[]`, so the dashboard's `provisioning` placeholder path could
+    never be exercised locally — and the live run that needed it rendered
+    nothing. The apply fixture now answers the controller's own shape, and these
+    tests pin it to the controller's own instance-name and vm_id rules.
+    """
+
+    def setUp(self):
+        self.plan = fx.intent_plan("deploy 3 workers and one fast model")
+        self.job = fx.apply_job(self.plan)
+        self.vmids = load_vmids()
+
+    def test_shape(self):
+        self.assertRegex(self.job["job_id"], ULID_RE)
+        self.assertEqual(self.job["plan_id"], self.plan["plan_id"])
+        self.assertIn(self.job["state"], ("ready", "failed", "provisioning"))
+        self.assertIn("vm_ids", self.job)
+        self.assertIsInstance(self.job["allocations"], list)
+        self.assertEqual(len(self.job["allocations"]), len(self.plan["allocations"]))
+        for alloc in self.job["allocations"]:
+            for key in ("index", "status", "node_id", "vm_ids"):
+                self.assertIn(key, alloc)
+            self.assertIsInstance(alloc["vm_ids"], list)
+
+    def test_instance_names_follow_the_controller_rule(self):
+        """`termini-<lowercased slugged plan id[:24]>-<index>-<slot>`."""
+        slug = re.sub(r"[^a-z0-9-]+", "-", self.plan["plan_id"].lower()).strip("-")[:24]
+        for alloc in self.job["allocations"]:
+            for slot, name in enumerate(alloc["vm_ids"]):
+                self.assertEqual(name, fx.instance_name(self.plan["plan_id"], alloc["index"], slot))
+                self.assertEqual(name, "termini-%s-%d-%d" % (slug, alloc["index"], slot))
+
+    def test_vm_ids_agree_with_the_controller_derivation(self):
+        """The mock's names hash to the ids the controller would issue for them."""
+        names = [n for a in self.job["allocations"] for n in a["vm_ids"]]
+        self.assertTrue(names)
+        for name in names:
+            self.assertEqual(fx.agent_id(name), self.vmids.vm_id_for_instance(name))
+        ids = [fx.agent_id(n) for n in names]
+        self.assertEqual(len(ids), len(set(ids)), "two instances must never share a vm_id")
+
+    def test_flat_roll_up_is_the_materialised_names(self):
+        names = [n for a in self.job["allocations"] for n in a["vm_ids"]]
+        self.assertEqual(self.job["vm_ids"], names)
+
+    def test_allocations_that_materialise_nothing_carry_no_names(self):
+        """A host_service reference is not an agent; a skipped one never existed."""
+        plan = copy.deepcopy(self.plan)
+        plan["allocations"].append({
+            "index": len(plan["allocations"]),
+            "status": "accepted",
+            "resolved": {"type": "inference_vm", "count": 1},
+            "guardrail": {"clamped_fields": [], "reject_reasons": []},
+            "node_id": fx.NODES[2]["node_id"],
+            "realized_as": "host_service",
+            "vm_ids": [],
+        })
+        plan["allocations"].append({
+            "index": len(plan["allocations"]),
+            "status": "rejected",
+            "resolved": None,
+            "guardrail": {"clamped_fields": [], "reject_reasons": ["exceeds_node_ram_ceiling"]},
+            "node_id": None,
+            "vm_ids": [],
+        })
+        job = fx.apply_job(plan)
+        by_index = {a["index"]: a for a in job["allocations"]}
+        host = plan["allocations"][-2]["index"]
+        skipped = plan["allocations"][-1]["index"]
+        self.assertEqual(by_index[host]["vm_ids"], [])
+        self.assertEqual(by_index[host]["realized_as"], "host_service")
+        self.assertEqual(by_index[skipped]["status"], "skipped")
+        self.assertEqual(by_index[skipped]["vm_ids"], [])
 
 
 class UlidTests(unittest.TestCase):

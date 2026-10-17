@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import math
 import random
+import re
 import time
 
 # ---------------------------------------------------------------- identifiers
@@ -218,6 +219,86 @@ def agent_id(name: str) -> str:
     return "".join(reversed(out))
 
 
+_SLUG = re.compile(r"[^a-z0-9-]+")
+
+
+def instance_name(plan_id: str, index: int, slot: int = 0) -> str:
+    """The LXD instance name the controller materialises for one plan VM.
+
+    Byte-for-byte the same rule as `controller/app/operator/target.py
+    instance_name()`: the plan id lowercased and slugged, then the allocation
+    index and the per-VM slot. This is what the apply response's `vm_ids[]`
+    carries, and the node hashes THAT name into the `vm_id` it reports — so the
+    mock's apply response and its telemetry cannot disagree about an agent's id.
+    """
+    slug = _SLUG.sub("-", str(plan_id).lower()).strip("-")[:24] or "plan"
+    return f"termini-{slug}-{int(index)}-{int(slot)}"
+
+
+def instance_entry(name: str, i: int = 0, restart_count: int = 0) -> dict:
+    """The §4.6 `lxd_instances[]` entry a node reports for `name`."""
+    return {
+        "vm_id": agent_id(name),
+        "state": "running",
+        "cpu_util_pct": round(4.2 + i * 3.1, 1),
+        "ram_used_bytes": int((0.42 + i * 0.11) * 1024 ** 3),
+        "ram_limit_bytes": 1073741824,
+        "disk_used_bytes": 0,
+        "restart_count": restart_count,
+    }
+
+
+def apply_job(plan: dict, job_id: str | None = None) -> dict:
+    """The 202 body `POST /v1/projects/{pid}/vms/apply` answers (controller-api §4.2).
+
+    Mirrors `controller/app/server.py _apply_plan`: a per-allocation
+    `allocations[]` array whose `vm_ids[]` are the instance NAMES actually
+    materialised, plus the flat `vm_ids` roll-up. The dashboard's Agents panel
+    turns those names into the §4.6 ids it expects to see reported and shows them
+    as `provisioning` rows — so a mock that answered with only the flat list (as
+    this one did before t_6d63e8a2) could never exercise that path.
+
+    Allocations that materialise nothing (`host_service`, `skipped`, `failed`)
+    keep `vm_ids: []`, exactly as the controller answers — a host-service
+    inference reference is not an agent and must not become a placeholder row.
+    """
+    plan_id = str((plan or {}).get("plan_id") or "")
+    allocations = []
+    flat = []
+    for alloc in (plan or {}).get("allocations") or []:
+        index = alloc.get("index")
+        node_id = alloc.get("node_id")
+        status = alloc.get("status")
+        if status not in ("accepted", "clamped"):
+            allocations.append({
+                "index": index, "status": "skipped", "node_id": node_id,
+                "vm_ids": [], "detail": f"allocation status {status!r}",
+            })
+            continue
+        if alloc.get("realized_as") == "host_service":
+            allocations.append({
+                "index": index, "status": "ready", "node_id": node_id,
+                "realized_as": "host_service", "vm_ids": [],
+                "detail": "host_service reference; no VM materialised",
+            })
+            continue
+        count = max(0, int((alloc.get("resolved") or {}).get("count") or 0))
+        names = [instance_name(plan_id, index, slot) for slot in range(count)]
+        flat.extend(names)
+        allocations.append({
+            "index": index, "status": "ready", "node_id": node_id,
+            "realized_as": alloc.get("realized_as", "vm"),
+            "vm_ids": names, "created": len(names), "already_applied": 0,
+        })
+    return {
+        "job_id": job_id or ulid(),
+        "plan_id": plan_id,
+        "state": "ready",
+        "vm_ids": flat,
+        "allocations": allocations,
+    }
+
+
 def _instances(node: dict):
     """The §4.6 inventory a node reports for this demo mode."""
     if AGENTS == "absent":
@@ -230,18 +311,7 @@ def _instances(node: dict):
         return []                        # inference host runs no agents
     names = ["termini-01m4wjhwqr3b8pcav2tvqbgg-0-0",
              "termini-01m4wjhwqr3b8pcav2tvqbgg-0-1"]
-    return [
-        {
-            "vm_id": agent_id(name),
-            "state": "running",
-            "cpu_util_pct": round(4.2 + i * 3.1, 1),
-            "ram_used_bytes": int((0.42 + i * 0.11) * 1024 ** 3),
-            "ram_limit_bytes": 1073741824,
-            "disk_used_bytes": 0,
-            "restart_count": i,
-        }
-        for i, name in enumerate(names)
-    ]
+    return [instance_entry(name, i, restart_count=i) for i, name in enumerate(names)]
 
 
 
@@ -250,8 +320,16 @@ def _wave(seed: float, t: float, lo: float, hi: float) -> float:
     return lo + ((v + 1.0) / 2.0) * (hi - lo)
 
 
-def sample(node: dict, t_sec: float, seq: int, uptime_sec: int | None = None) -> dict:
-    """One telemetry Sample (§3) at time t_sec (seconds, float)."""
+def sample(node: dict, t_sec: float, seq: int, uptime_sec: int | None = None,
+           extra_instances: list[dict] | None = None) -> dict:
+    """One telemetry Sample (§3) at time t_sec (seconds, float).
+
+    `extra_instances` are instances an apply really materialised on this node
+    (the mock records them when `POST /vms/apply` runs). They join the node's
+    inventory only once the node would plausibly have noticed them — the caller
+    decides that — so a just-applied plan is visible as a provisioning row BEFORE
+    telemetry lists it, exactly like the live fleet.
+    """
     s = node["seed"]
     gpu_node = node["role"] == "inference"
     hot = 35 if node["registration_id"] == "termini-node-a" else 0
@@ -322,7 +400,7 @@ def sample(node: dict, t_sec: float, seq: int, uptime_sec: int | None = None) ->
         # own LXD — "did not report" and "reports nothing" are different facts.
         out.pop("lxd_instances", None)
     else:
-        out["lxd_instances"] = instances
+        out["lxd_instances"] = list(instances) + list(extra_instances or [])
     if gpu_node:
         out["inference"] = {
             "server_up": True,

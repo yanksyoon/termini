@@ -22,7 +22,17 @@ import { formatError } from "./ui/errors.js";
 import { OfflineBackend, OfflineStream } from "./offline.js";
 import { MyNodePanel } from "./ui/mynode.js";
 import { AgentsPanel } from "./ui/agents.js";
-import { agentGroups, agentsSummary, inferenceLabel, taskView, vmIdForName } from "./core/agents.js";
+import {
+  agentGroups,
+  agentsSummary,
+  expectedRows,
+  expectedSignature,
+  inferenceLabel,
+  materialisedNames,
+  pruneExpected,
+  taskView,
+  vmIdForName,
+} from "./core/agents.js";
 import { registrationView, healthSummary } from "./core/client-node.js";
 import { ChatPanel } from "./ui/chat.js";
 import { seedContext } from "./core/assistant.js";
@@ -541,11 +551,14 @@ function renderAgents() {
     if (!agent.retained) state.retainedAgents.delete(agent.vmId);
   }
 
-  // A just-applied plan's instances: drop the placeholder once reported.
+  // A just-applied plan's instances: drop the placeholder once reported, stop
+  // calling it "provisioning" once a long time has passed, and finally drop it.
+  // The prune is a pure function so this cannot silently regress to "the row is
+  // dropped before it ever renders" (t_6d63e8a2).
   if (state.expectedAgents.length) {
-    const seen = new Set(view.agents.map((a) => a.vmId));
-    const remaining = state.expectedAgents.filter((r) => !(r.vmId && seen.has(r.vmId)));
-    if (remaining.length !== state.expectedAgents.length) {
+    const remaining = pruneExpected(state.expectedAgents, view.agents, Date.now());
+    const signature = expectedSignature(remaining);
+    if (signature !== expectedSignature(state.expectedAgents)) {
       state.expectedAgents = remaining;
       agentsPanel.setExpected(remaining);
     }
@@ -690,26 +703,43 @@ function sleep(ms) {
 /**
  * After `Apply plan`: turn the controller's returned instance NAMES into the
  * telemetry ids they will be reported as (the §4.6 hash rule), show them as
- * "provisioning" rows, and poll until the node's own telemetry lists them.
+ * `provisioning` rows, and poll until the node's own telemetry lists them.
  * This is what makes the plan's outcome land in the panel instead of a toast.
+ *
+ * The rows themselves come from `expectedRows()` (one tested path, which reads
+ * both `allocations[].vm_ids` and the flat `vm_ids`); this function only owns the
+ * panel state. `t_6d63e8a2`: the previous inline copy read `allocations[]` only
+ * and returned silently when the response had none, so a response shape it did
+ * not expect produced NO rows and NO message — the failure looked like "the
+ * placeholder never renders".
  */
 async function expectAgentsFromJob(job) {
-  const rows = [];
-  for (const alloc of (job && job.allocations) || []) {
-    for (const name of alloc.vm_ids || []) {
-      let id = null;
-      try {
-        id = await vmIdForName(name);
-      } catch {
-        /* insecure context: the row still names the instance and the node */
-      }
-      rows.push({ nodeId: alloc.node_id, name, vmId: id, state: "provisioning" });
+  const known = Array.from(state.samples.values()).flatMap((s) =>
+    Array.isArray(s && s.lxd_instances) ? s.lxd_instances.map((i) => i && i.vm_id) : [],
+  );
+  const rows = await expectedRows(job, known, Date.now(), vmIdForName);
+  const names = materialisedNames(job);
+
+  if (!rows.length) {
+    if (!names.length) {
+      // Say it, do not go quiet: an apply answered no instance names, so there
+      // is nothing to point at until telemetry reports something.
+      toastWarn(
+        "Plan applied — no instance names",
+        "The controller's apply response listed no instances, so there is no row to point at yet; the panel will show them when a node reports them.",
+      );
     }
+    // Otherwise every instance is already on screen: nothing to add.
+    return;
   }
-  if (!rows.length) return;
-  state.expectedAgents = rows;
-  agentsPanel.setExpected(rows);
-  agentsPanel.render();
+
+  // Merge, do not replace: a second plan applied while the first is still
+  // waiting must not hide the first one's rows.
+  const merged = new Map(state.expectedAgents.map((r) => [r.name, r]));
+  for (const row of rows) merged.set(row.name, row);
+  state.expectedAgents = Array.from(merged.values());
+  agentsPanel.setExpected(state.expectedAgents);
+
   for (const delay of [1500, 4000, 9000, 16000]) {
     setTimeout(() => refreshAgents({ force: true }), delay);
   }

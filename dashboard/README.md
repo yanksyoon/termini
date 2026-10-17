@@ -229,6 +229,14 @@ contract endpoints for the four W5 surfaces, with:
 * a streaming SSE operator log incl. periodic `pending_approval` remediations,
 * the intervention endpoints, with `409 CONFLICT` for a disallowed approve/deny
   and `503 NODE_OFFLINE` for rebooting an offline node,
+* a **real apply**: `POST /intents` stores the plan it issued, `POST /vms/apply`
+  resolves that `plan_id` against it and answers the controller's own shape
+  (`202 {job_id, plan_id, state, vm_ids, allocations[]}`) with the deterministic
+  instance names (`termini-<plan_id>-<index>-<slot>`), then that node's telemetry
+  lists those instances after `--materialise-delay` seconds (default 4). That
+  window is what the Agents panel's `provisioning` placeholder is for: the row
+  appears immediately after Apply plan and turns RUNNING only when the node
+  reports it (`--materialise-delay 0` collapses the two stages for a fast run),
 * `GET /nodes/{id}/ssh` and `GET /telemetry/recent` (as-built fallback shape).
 
 It is a dev/test double, not a second implementation of the controller — the real
