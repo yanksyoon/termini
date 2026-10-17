@@ -28,6 +28,12 @@ export class DecisionsPanel {
     this.filter = "all";
     this.rows = [];
     this.decider = null; // last egress record seen on the operator log stream
+    // Per-panel view state that has to outlive a render (the list re-renders on
+    // every decision poll — 3 s — so anything held in the DOM alone is lost):
+    //   _open   : "<decision id>::<kind>" -> { id, open }   disclosure state
+    //   _rows   : decision id -> { sig, node }              reused row elements
+    this._open = new Map();
+    this._rows = new Map();
     this._buildFilters();
     this._renderDecider();
     this._renderEmpty("Waiting for operator decisions…");
@@ -126,22 +132,217 @@ export class DecisionsPanel {
     const host = this.dom.list;
     if (!host) return;
     const rows = this.visibleRows();
-    clear(host);
+    // State for decisions no longer in the fetched window is dropped, so a long
+    // session does not accumulate disclosure/row entries for ever.
+    this._pruneState();
     if (this.rows.length === 0) {
+      this._clearList(host);
       this._renderEmpty("No decisions recorded yet — the operator decides only when telemetry crosses a frozen threshold.");
       this._updateCount(0);
       return;
     }
     if (rows.length === 0) {
+      this._clearList(host);
       this._renderEmpty(`No ${FILTER_LABELS[this.filter] || this.filter} decisions in the fetched window.`);
       this._updateCount(0);
       return;
     }
     this.dom.emptyEl.hidden = true;
-    const frag = document.createDocumentFragment();
-    for (const r of rows) frag.appendChild(this._row(r));
-    host.appendChild(frag);
+    this._reconcile(host, rows);
     this._updateCount(rows.length);
+  }
+
+  _clearList(host) {
+    clear(host);
+    this._rows.clear();
+  }
+
+  /**
+   * Keyed reconciliation.
+   *
+   * The list re-renders on every decision poll, so it must not be torn down and
+   * rebuilt: doing that dropped every open disclosure, the scroll position and
+   * any focus inside the list, once every 3 s. A row whose decision id is
+   * unchanged AND whose rendered content is unchanged is left exactly as it is
+   * — same `<li>` object, untouched, so everything the browser holds about it
+   * (open state, selection, focus, scroll position) survives the poll. Only a
+   * row whose content actually changed (an audit lands, a node label resolves)
+   * is rebuilt, in place, and its disclosures are re-opened from the keyed
+   * state in `_details()`.
+   */
+  _reconcile(host, rows) {
+    const scroller = this._scroller(host);
+    const anchor = this._captureAnchor(scroller, host);
+    const focus = this._captureFocus(host);
+
+    const live = new Set();
+    const nodes = [];
+    for (const r of rows) {
+      const key = String(r.id);
+      live.add(key);
+      const sig = this._rowSignature(r);
+      const prev = this._rows.get(key);
+      if (prev && sig !== null && prev.sig === sig) {
+        nodes.push(prev.node);
+        continue;
+      }
+      const node = this._row(r);
+      this._rows.set(key, { sig, node });
+      nodes.push(node);
+    }
+    for (const key of [...this._rows.keys()]) if (!live.has(key)) this._rows.delete(key);
+
+    // Place the rows in order, touching only the ones that actually moved: a
+    // reused node keeps its DOM identity (and therefore its focus/scroll).
+    let cursor = host.firstChild;
+    for (const node of nodes) {
+      if (node === cursor) {
+        cursor = cursor.nextSibling;
+        continue;
+      }
+      host.insertBefore(node, cursor);
+    }
+    while (cursor) {
+      const next = cursor.nextSibling;
+      host.removeChild(cursor);
+      cursor = next;
+    }
+
+    this._restoreAnchor(scroller, host, anchor);
+    this._restoreFocus(host, focus);
+  }
+
+  /**
+   * Everything a row's rendering depends on, as a comparable string. Includes
+   * the resolved node label because it comes from `this.nodes` (a demo/synthetic
+   * flag can change without the decision row changing). An unserialisable
+   * payload returns null, which forces a rebuild rather than risking a stale row.
+   */
+  _rowSignature(r) {
+    const node = this.nodeLabel(r.nodeId);
+    try {
+      return JSON.stringify([r, node]);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The scroll container the list sits in (`#decision-viewport`), if any. */
+  _scroller(host) {
+    let node = host && host.parentElement;
+    for (let i = 0; node && i < 8; i += 1) {
+      if (
+        typeof node.scrollTop === "number" &&
+        typeof node.scrollHeight === "number" &&
+        node.scrollHeight > node.clientHeight
+      ) {
+        return node;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  /**
+   * Remember which row is at the top of the viewport and how far it sits below
+   * that edge, so a rebuild above the reading position can be compensated.
+   * No-op where layout is unavailable (the DOM shim used in tests).
+   */
+  _captureAnchor(scroller, host) {
+    if (!scroller || typeof scroller.scrollTop !== "number") return null;
+    for (const li of Array.from(host.children)) {
+      if (typeof li.offsetTop !== "number") return null;
+      if (li.offsetTop + (li.offsetHeight || 0) > scroller.scrollTop) {
+        return {
+          id: li.dataset && li.dataset.decisionId,
+          offset: li.offsetTop - scroller.scrollTop,
+        };
+      }
+    }
+    return null;
+  }
+
+  _restoreAnchor(scroller, host, anchor) {
+    if (!scroller || !anchor || !anchor.id) return;
+    const li = Array.from(host.children).find((n) => n.dataset && n.dataset.decisionId === anchor.id);
+    if (!li || typeof li.offsetTop !== "number") return;
+    const delta = li.offsetTop - scroller.scrollTop - anchor.offset;
+    if (delta) scroller.scrollTop += delta;
+  }
+
+  /** The path to the focused element inside the list, if focus is in the list. */
+  _captureFocus(host) {
+    if (typeof document === "undefined") return null;
+    const active = document.activeElement;
+    if (!active || active === document.body || active === host) return null;
+    let up = active;
+    while (up && up !== host) up = up.parentNode;
+    if (up !== host) return null;
+    const path = [];
+    let cur = active;
+    while (cur && cur !== host) {
+      const parent = cur.parentNode;
+      if (!parent || !parent.children) return null;
+      path.unshift(Array.from(parent.children).indexOf(cur));
+      cur = parent;
+    }
+    return { path, tag: active.tagName };
+  }
+
+  /**
+   * Put focus back on the equivalent element when replacing a row dropped it.
+   * Only runs when focus was inside the list and is no longer — a reused row is
+   * never touched, so this is the exceptional path, not the normal one.
+   */
+  _restoreFocus(host, focus) {
+    if (!focus || typeof document === "undefined") return;
+    const active = document.activeElement;
+    if (active && active !== document.body) {
+      let up = active;
+      while (up && up !== host) up = up.parentNode;
+      if (up === host) return;
+    }
+    let node = host;
+    for (const i of focus.path) {
+      if (!node || !node.children) return;
+      node = Array.from(node.children)[i];
+    }
+    if (!node || node.tagName !== focus.tag || typeof node.focus !== "function") return;
+    node.focus();
+  }
+
+  /** Drop view state for decisions that are no longer in the fetched window. */
+  _pruneState() {
+    const ids = new Set(this.rows.map((r) => String(r.id)));
+    for (const [key, state] of [...this._open.entries()]) {
+      if (!ids.has(state.id)) this._open.delete(key);
+    }
+  }
+
+  /**
+   * A `<details>` in the decision list, with its open state preserved across
+   * renders. `kind` is the disclosure's stable identity within a decision
+   * (currently only `trace`); the state is keyed by decision id + kind, so it
+   * survives a rebuild that replaces the element.
+   *
+   * BOTH directions are recorded: a log the user opened stays open until they
+   * collapse it, and a log the user collapsed stays collapsed instead of
+   * reopening on the next poll. Any future disclosure in this list must be
+   * built here, or it inherits the same 3 s bug.
+   */
+  _details(r, kind, attrs, children) {
+    const key = `${r.id}::${kind}`;
+    const node = el(
+      "details",
+      { ...attrs, dataset: { ...(attrs.dataset || {}), disclosure: key } },
+      children,
+    );
+    const state = this._open.get(key);
+    if (state) node.open = state.open;
+    node.addEventListener("toggle", () => {
+      this._open.set(key, { id: String(r.id), open: !!node.open });
+    });
+    return node;
   }
 
   _renderEmpty(text) {
@@ -450,10 +651,14 @@ export class DecisionsPanel {
     const children = [];
     if (alerts.length) children.push(el("div", { class: "trace-alerts" }, alerts));
     children.push(
-      el("details", {
-        class: "trace-details",
-        dataset: { tracePresent: "true", traceDecider: meta.key },
-      }, [summary, body]),
+      // Built through `_details()` so the open state is keyed to the decision
+      // and survives the poll (see `_details`). The alerts stay OUTSIDE it.
+      this._details(
+        r,
+        "trace",
+        { class: "trace-details", dataset: { tracePresent: "true", traceDecider: meta.key } },
+        [summary, body],
+      ),
     );
     return el("div", { class: `incident-trace trace-tone-${meta.tone}` }, children);
   }

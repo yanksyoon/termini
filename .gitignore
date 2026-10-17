@@ -81,3 +81,6 @@ snap/
 .bashrc.*.bak
 
 
+
+# --- firebase deploy cache ---
+.firebase/
