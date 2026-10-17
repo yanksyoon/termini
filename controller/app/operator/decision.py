@@ -207,6 +207,58 @@ def _now_iso_ms() -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
 
 
+def _reply_truncated(raw: Any) -> bool:
+    """True when ``raw`` is a completion cut off mid-JSON (adapter's own test).
+
+    Imported lazily: the check lives in the adapter (``termini.decision.adapter
+    .json_truncated``) so the controller and the inference side can never
+    disagree about what "truncated" means.
+    """
+    if not isinstance(raw, str) or not raw:
+        return False
+    try:
+        from termini.decision.adapter import json_truncated
+    except Exception:  # noqa: BLE001 — diagnostics must not break a decision
+        return False
+    try:
+        return bool(json_truncated(raw))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _reply_shape(raw: Any) -> str:
+    """A bounded, C0-safe description of a model reply — never its text.
+
+    Recorded next to a rejected reply so the record still says *what shape*
+    arrived when the text itself had to be dropped as C2-bearing
+    (``[dropped: C2]``). Names and counts only: ``chars``, whether a top-level
+    JSON object parsed, the top-level keys, and whether it was cut off.
+    """
+    if not isinstance(raw, str) or not raw:
+        return "no reply text retained"
+    keys: list[str] = []
+    parses = False
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        data = None
+    if isinstance(data, dict):
+        parses = True
+        keys = sorted(str(k) for k in data)[:16]
+    parts = [
+        f"chars={safe_int_display(len(raw))}",
+        f"json_object={'yes' if parses else 'no'}",
+        f"truncated={'yes' if _reply_truncated(raw) else 'no'}",
+    ]
+    if keys:
+        candidate = ",".join(keys)
+        if not governance.scan_c2(candidate):
+            parts.append("keys=" + candidate)
+        else:
+            parts.append(f"keys={safe_int_display(len(keys))} (dropped: C2 signature in key names)")
+    return " ".join(parts)
+
+
 def _c0_field_names(sample: Any) -> list[str]:
     """The C0 field names a sample carries, for the ``evidence_window`` step.
 
@@ -513,6 +565,30 @@ class GuardrailResult:
     # none. Carries `generated: "model"` — set by the guardrail, never by the
     # adapter, so a record can never be dressed up as model output.
     incident: dict | None = None
+
+
+def _action_entry_from_actions(d: dict) -> tuple[str, str]:
+    """``(action_id, target)`` named inside a raw reply's §4.2 ``actions[]``.
+
+    Returns ``("", "")`` when the reply names no action that exists in
+    :data:`ACTION_SPACE` — an invented action is still a schema violation, and
+    the guardrail still authorizes whatever is returned here.
+    """
+    actions = d.get("actions") if isinstance(d, dict) else None
+    if not isinstance(actions, list):
+        return "", ""
+    for entry in actions:
+        if not isinstance(entry, dict):
+            continue
+        kind = entry.get("action_kind")
+        if isinstance(kind, str) and kind.strip() in ACTION_SPACE:
+            target = entry.get("target")
+            return kind.strip(), (target.strip() if isinstance(target, str) else "")
+    return "", ""
+
+
+def _action_id_from_actions(d: dict) -> str:
+    return _action_entry_from_actions(d)[0]
 
 
 def _heaviest_vm_id(evidence: list) -> str | None:
@@ -1073,7 +1149,14 @@ class Guardrail:
                 raise ValueError("schema_version must be an int")
             action_id = d.get("action_id")
             if not isinstance(action_id, str) or not action_id.strip():
-                raise ValueError("action_id must be a non-empty string")
+                # Same shape repair the adapter applies: a reply may name its
+                # action only inside the §4.2 `actions[]` record. The guardrail
+                # below still authorizes it (G3/G5/G6) — this only widens where
+                # the id may be read from, never what is allowed.
+                recovered = _action_id_from_actions(d)
+                if not recovered:
+                    raise ValueError("action_id must be a non-empty string")
+                action_id = recovered
             confidence = d.get("confidence")
             if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
                 raise ValueError("confidence must be a number")
@@ -1085,6 +1168,11 @@ class Guardrail:
                 params = {}
             if not isinstance(params, dict):
                 raise ValueError("params must be an object")
+            params = dict(params)
+            if "instance_name" in params_schema(action_id) and "instance_name" not in params:
+                _, target = _action_entry_from_actions(d)
+                if target:
+                    params["instance_name"] = target
             request_id = d.get("request_id")
             if not isinstance(request_id, str) or not request_id:
                 request_id = None
@@ -1120,6 +1208,27 @@ class Guardrail:
 # an absent G7/G9 entry then means "not evaluated", not "accepted").
 _RULE_ORDER = {"G1": 1, "G2": 2, "G3": 3, "G4": 4, "G5": 5, "G6": 6,
                "G7": 7, "G8": 8, "G9": 9}
+
+
+def _raw_note(raw: Any, limit: int = 400) -> str:
+    """The bounded raw-reply excerpt appended to a fallback journal line.
+
+    The card this fixes (t_77f26781) could not be diagnosed from the record: the
+    journal said only "action_id must be a non-empty string, got None" while the
+    reply in fact carried ``"action_id":"instance.restart"`` in its first 90
+    characters. The first ``limit`` characters are logged so the next violation
+    is diagnosable from the journal alone. A reply that trips the C2 scanner is
+    never logged verbatim — its shape is logged instead.
+    """
+    if not isinstance(raw, str) or not raw:
+        return "raw: none retained"
+    shape = _reply_shape(raw)
+    head = raw[:limit]
+    c2 = governance.scan_c2(head)
+    if c2:
+        return f"raw: dropped ({c2[0]}) shape=[{shape}]"
+    suffix = "…" if len(raw) > limit else ""
+    return f"raw[{safe_int_display(len(raw))}]=[{head!r}{suffix}] shape=[{shape}]"
 
 
 class ModelDecisionProvider:
@@ -1185,7 +1294,8 @@ class ModelDecisionProvider:
         if isinstance(response, DecisionError):
             self._record_reply(trace, getattr(response, "raw", None),
                                state=TRACE_STATE_REJECTED, parse_outcome=response.reason)
-            return self._fallback(context, response.reason, response.detail, trace=trace)
+            return self._fallback(context, response.reason, response.detail, trace=trace,
+                                  raw=getattr(response, "raw", None))
         if response is None:
             return self._fallback(context, "schema_violation",
                                   "adapter returned no decision response", trace=trace)
@@ -1193,12 +1303,22 @@ class ModelDecisionProvider:
         result = self.guardrail.validate(response, context)
         self._record_reply(trace, getattr(response, "raw", None),
                            state=TRACE_STATE_OK)
+        # Shape repairs the adapter applied (an action_id recovered from
+        # actions[], an answer from the one-shot retry) are recorded, not
+        # hidden: they are the difference between "the model answered as asked"
+        # and "the model answered, and we had to re-shape it".
+        repairs = getattr(response, "repairs", None) or []
+        if repairs:
+            trace.add("reply_repaired", "model reply repaired",
+                      "; ".join(str(r) for r in repairs)[:TRACE_STEP_DETAIL_MAX_CHARS],
+                      state=TRACE_STATE_CLAMPED)
         self._record_gates(trace, result.decisions)
 
         if not result.ok:
             return self._fallback(context, result.reject_reason or "schema_violation",
                                   "guardrail rejected model output",
-                                  guardrail=result.decisions, trace=trace)
+                                  guardrail=result.decisions, trace=trace,
+                                  raw=getattr(response, "raw", None))
 
         self._record_trace_drops(trace)
         kind = result.action.kind if result.action is not None else "none"
@@ -1255,6 +1375,13 @@ class ModelDecisionProvider:
         else:
             trace.add("reply_received", label, "no raw reply text retained",
                       state=TRACE_STATE_SKIPPED)
+        # When the reply was rejected, record its *shape* too. The text can be
+        # dropped for carrying a C2 signature (`[dropped: C2]`), which used to
+        # leave a violation with no record of what actually arrived; the shape
+        # is names-and-counts only, so it is always safe to keep (t_77f26781).
+        if state != TRACE_STATE_OK:
+            trace.add("reply_shape", "model reply shape", _reply_shape(raw),
+                      state=TRACE_STATE_OK)
 
     @staticmethod
     def _record_gates(trace: DecisionTrace, decisions: list) -> None:
@@ -1378,6 +1505,9 @@ class ModelDecisionProvider:
             ct = safe_int_display(usage.get("completion_tokens"))
             tt = safe_int_display(usage.get("total_tokens"))
             parts.append(f"tokens(prompt={pt},completion={ct},total={tt})")
+        finish = getattr(result, "finish_reason", None) if result is not None else None
+        if finish:
+            parts.append(f"finish={finish}")
         rid = before.get("request_id", "") or ""
         if rid:
             parts.append(f"request_id={rid}")
@@ -1484,7 +1614,8 @@ class ModelDecisionProvider:
 
     # --------------------------------------------------------------- fallback
     def _fallback(self, context: DecisionContext, reason: str, detail: str,
-                  guardrail: list | None = None, trace: DecisionTrace | None = None) -> DecisionResult:
+                  guardrail: list | None = None, trace: DecisionTrace | None = None,
+                  raw: Any = None) -> DecisionResult:
         if reason not in FALLBACK_REASONS:
             reason = "inference_unavailable"
         det = self.deterministic or DeterministicDecisionProvider(
@@ -1492,7 +1623,11 @@ class ModelDecisionProvider:
             default_instance_name=context.default_instance_name,
         )
         base = det.decide(context.event, context)
-        log.warning("model decision fell back (reason=%s): %s", reason, detail)
+        # The journal line carries a bounded excerpt of what the model actually
+        # said (t_77f26781): the previous line named only the symptom, so a
+        # reply that DID carry an action_id was recorded as if it had none.
+        log.warning("model decision fell back (reason=%s): %s | %s", reason, detail,
+                    _raw_note(raw))
         incident = build_fallback_incident(context.event, base.action, reason)
         if trace is None:
             trace = DecisionTrace(decided_by=TRACE_DECIDED_BY_FALLBACK)

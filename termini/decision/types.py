@@ -374,9 +374,19 @@ class DecisionResponse:
     # G9 C2 scan over it before persisting. Never serialized in `to_dict()`.
     raw: Optional[str] = None
     # Token counts, when the backend reports them (OpenAI-style `usage`). The
-    # default transport does not forward the envelope's `usage` block; a future
-    # or injected transport may set it, and the trace records it when present.
+    # default transport forwards the envelope's `usage` block, and the decision
+    # trace records the counts on its `model_call` step.
     usage: Optional[Dict[str, Any]] = None
+    # The backend's stop reason ("stop", "length", ...). "length" means the
+    # reply hit `max_tokens`; it is recorded so a budget regression is visible
+    # on the trace instead of looking like a model that cannot follow a schema.
+    finish_reason: Optional[str] = None
+    # Shape repairs the adapter applied to reach this response (e.g. an
+    # `action_id` recovered from `actions[0].action_kind`, or an answer that
+    # arrived on the one-shot repair retry). Empty means the reply was shaped
+    # exactly as the prompt asked. Authority is NOT affected: the controller's
+    # guardrail still authorizes whatever action this names.
+    repairs: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         out: Dict[str, Any] = {

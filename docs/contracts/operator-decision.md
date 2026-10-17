@@ -301,6 +301,21 @@ record is the *explanation* of it. `kind`/`params`/`reason` (the
 `RemediationAction` the executor consumes, §1.2) are unchanged and remain
 mandatory for the action to be executable at all.
 
+**Wire-level shape repairs (not a schema change).** Two of the required values may
+arrive inside the reply's own `actions[]` record rather than at the top level,
+because that is what models actually emit:
+
+* `actions[0].action_kind`, when it is one of the ids in `ACTION_SPACE`, supplies a
+  missing top-level `action_id`;
+* `actions[0].target` supplies a missing `params.instance_name`.
+
+Both are recorded on the response (`DecisionResponse.repairs`) and both are
+**shape repairs only**: the controller's guardrail still authorizes the action
+(G3 whitelist, G5 target resolution against the live inventory, G6 confidence), so
+nothing is allowed that the whitelist would otherwise refuse. A reply that names
+no action anywhere is still a `schema_violation` fallback — the playbook never
+decides under the model's name.
+
 ### 4.2 The incident record (why the answer stops being a log line)
 
 `rationale` is one line: enough to justify a command to an auditor, not enough to
@@ -588,11 +603,18 @@ X-Termini-Request-Id: <request_id>
                  ...few-shot...,
                  {"role": "user", "content": "<JSON-serialized DecisionInput>"} ],
   "temperature": 0,
-  "max_tokens": 512,
+  "max_tokens": 2048,
   "response_format": {"type": "json_object"},
   "stream": false
 }
 ```
+
+- `max_tokens: 2048`. The v2 reply is the decision **plus** the §4.2 incident
+  record, which costs ~700–1000 completion tokens; 512 (the value copied from the
+  intent extractor) cut the JSON off mid-string on roughly half the live fires
+  (measured 2026-10-17: `finish_reason=length`, 502 completion tokens, a 1458-char
+  reply ending inside `"value":"`) and each one fell back as `schema_violation`
+  (t_77f26781). `TERMINI_INFERENCE_MAX_TOKENS` overrides the default.
 
 - The system prompt is the versioned `operator-decision v2` template
   (`governance.md` §7.2: static template, typed C0 placeholders only).
@@ -614,17 +636,39 @@ typed `DecisionError`. It performs **parse + light repair only**; the hard guard
 remains controller-side (§7).
 
 1. Strip stray markdown fences (as `termini/intent/extractor.py` does).
-2. `json.loads`. On failure → `DecisionError("parse_error")`.
+2. `json.loads`; if the whole string is not JSON, decode **the first** JSON
+   object/array in it (a fenced or prose-wrapped reply). A later opener is not
+   tried: in a *truncated* reply it is the `params`/`evidence` fragment of the
+   cut-off decision, and decoding that fragment reports a plausible, wrong cause
+   ("action_id must be a non-empty string, got None") for a reply that carried the
+   id. A reply with no complete JSON → `DecisionError("parse_error")`; when the
+   reply is *truncated* (`finish_reason == "length"`, or structurally unterminated
+   JSON) the detail says so and names the length, so the next investigation starts
+   from the real cause.
 3. Coerce `confidence` to `float`; reject if non-numeric → `DecisionError("schema_violation")`.
-4. Ensure `action_id` is a non-empty string; ensure `params` is an object (default `{}`).
+4. Ensure `action_id` is a non-empty string — falling back to `actions[0].action_kind`
+   when that names a real action (§4.1) — and ensure `params` is an object (default `{}`);
+   fill a missing `params.instance_name` from `actions[0].target` (§4.1).
 5. Drop `params` keys not in the action's `params_schema` (never pass unknown keys through).
 6. Default missing optional params from `ACTION_SPACE`.
 7. Cap `rationale` to 1024 chars.
 
+**One bounded repair retry (`adapter.decide`).** When the first reply fails for a
+*mechanical* reason — cut off at `max_tokens`, an incident record with no action
+anywhere, or a missing rationale — the adapter asks the same model once more,
+appending the first answer and a corrective instruction (return one complete,
+shorter object). A usable second answer is returned as the decision and the
+response records `repairs`; a second failure returns its own `DecisionError` naming
+both attempts. The retry is exactly one call: it cannot loop, and it never invents
+an action.
+
 `DecisionError` carries exactly one of the `FALLBACK_REASONS` codes (§10.1) so the
 controller can fall back deterministically. The adapter never fabricates an action:
 if the output cannot be repaired into a well-shaped `DecisionResponse`, it returns
-a `DecisionError`, never a guess.
+a `DecisionError`, never a guess. The error also carries `raw` (bounded), and the
+controller records both that text and a C0-safe shape summary (`chars`, top-level
+keys, `truncated`) on the decision trace and in the operator journal, so a
+violation is diagnosable from the record (§4.3, §11.1).
 
 ---
 

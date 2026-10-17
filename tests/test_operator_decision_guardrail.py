@@ -243,5 +243,57 @@ class GuardrailHappyPathTest(unittest.TestCase):
         self.assertEqual(result.action.params, {})
 
 
+class RawDictShapeRepairTest(unittest.TestCase):
+    """A raw reply that names its action only inside ``actions[]``.
+
+    The guardrail's G1 accepts a raw dict/string as well as a
+    ``DecisionResponse``; the same shape repair the adapter applies has to hold
+    there, or the two entry points disagree about the same reply.
+    """
+
+    def setUp(self):
+        self.ctx = make_context()
+        self.guardrail = Guardrail()
+
+    def test_action_id_and_target_are_read_from_actions(self):
+        raw = {
+            "schema_version": 1,
+            "confidence": 0.88,
+            "rationale": "host RAM at 96%; restart the instance holding it",
+            "incident_title": "Host memory exhaustion",
+            "explanation": "ram_used_bytes is 96% of total",
+            "actions": [{"action_kind": "instance.restart", "target": "agent-c1"}],
+        }
+        result = self.guardrail.validate(raw, self.ctx)
+        self.assertTrue(result.ok, result.decisions)
+        self.assertEqual(result.action.kind, "instance.restart")
+        self.assertEqual(result.action.params["instance_name"], "agent-c1")
+
+    def test_no_action_anywhere_is_still_rejected(self):
+        raw = {
+            "schema_version": 1,
+            "confidence": 0.88,
+            "rationale": "memory is tight",
+            "incident_title": "Host memory exhaustion",
+            "actions": [],
+        }
+        result = self.guardrail.validate(raw, self.ctx)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reject_reason, "schema_violation")
+
+    def test_a_recovered_action_still_faces_the_whitelist(self):
+        # Recovery only widens WHERE the id is read from: an id that is not in
+        # the allowed space is still refused by G3.
+        raw = {
+            "schema_version": 1,
+            "confidence": 0.99,
+            "rationale": "reboot the host",
+            "actions": [{"action_kind": "host.reboot"}],
+        }
+        result = self.guardrail.validate(raw, self.ctx)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reject_reason, "schema_violation")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
