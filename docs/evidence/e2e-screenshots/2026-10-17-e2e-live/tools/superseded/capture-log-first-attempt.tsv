@@ -1,0 +1,2 @@
+step	slug	captured_at_utc	status	command	transcript	sha256_txt	sha256_png	png
+01	raise	2026-10-17T19:42:09Z	exit=5	gcloud compute instances list; gcloud compute disks list --format=table(name,sizeGb,status,sourceImage); gcloud compute instances describe termini-node-a|termini-node-c	backend/01-raise.txt	fe18caffc2efddeb895af92d1a07272c9cffc8601e16d2bbec2dc1bf04985e27	5163c1b269603be192b2ef30fa2d2eee7a1dccf6d92c8b9e800367c05bbbb9fa	backend/01-raise.png

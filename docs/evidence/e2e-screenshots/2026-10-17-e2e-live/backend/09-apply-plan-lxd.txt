@@ -1,0 +1,18 @@
+Script started on 2026-10-17 20:52:20+00:00 [COMMAND="timeout 540 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/09-apply-plan-lxd.sh'" <not executed on terminal>]
+step 09 — apply a plan: LXD materialises a real instance   (2026-10-17T20:52:20Z)
+
+== accept a plan from plain English (the intent extractor runs on node-c's managed model)
+$ curl -sS -X POST https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/intents -H "Authorization: Bearer demo-project-token" -H "Content-Type: application/json" -d {"prompt":"deploy 1 worker agent for coding"}
+--- raw response body:
+{"error": {"code": "GUARDRAIL_REJECTED", "message": "allocation plan rejected by guardrail", "details": [{"index": 0, "reason": "exceeds_node_cpu_ceiling", "detail": "aggregate vCPU exceeds the node's overcommit ceiling: node 01M4TGD31WXH97JAA5S6A4R10D had cpu_free=0 vCPU free and the request needed 1\u00d71 vCPU / 1\u00d71 GiB RAM (already allocated 4 vCPU / 4 GiB RAM)"}], "request_id": "01M55T6DPRW005S5VYBRD61S8K"}}
+--- projection:
+{
+  "plan_id": null,
+  "state": null,
+  "allocations": [],
+  "guardrails": []
+}
+plan_id=
+NO PLAN ACCEPTED — the response above is the controller's own refusal; step 09 has nothing to apply
+
+Script done on 2026-10-17 20:52:30+00:00 [COMMAND_EXIT_CODE="1"]

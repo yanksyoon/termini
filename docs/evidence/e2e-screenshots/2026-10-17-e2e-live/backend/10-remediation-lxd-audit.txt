@@ -1,0 +1,90 @@
+Script started on 2026-10-17 20:49:14+00:00 [COMMAND="timeout 540 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/10-remediation-lxd-audit.sh'" <not executed on terminal>]
+step 10 — remediation against real LXD + the audit row   (2026-10-17T20:49:15Z)
+decision under test: 01M55SKRKW61MXXKDVPQGJASQK  rule=oom-guard-01  action=instance.restart  target=demo-workload
+
+== the audit row the controller wrote for that decision
+$ curl -sS -X GET https://34-93-190-64.sslip.io/v1/operator/audits?node=01M4TGD31WXH97JAA5S6A4R10D&limit=10 -H "Authorization: Bearer demo-project-token"
+{
+  "id": "01M55SKTP47T9YD3YVN0615W78",
+  "decision_id": "01M55SKRKW61MXXKDVPQGJASQK",
+  "rule_id": "oom-guard-01",
+  "action_kind": "instance.restart",
+  "result": "ok",
+  "detail": "operation Success: /1.0/operations/772d4261-9bc7-46bb-a3e2-967c14c6d503; action=restart; state Running -> Running",
+  "lxd_method": "PUT",
+  "lxd_path": "/1.0/instances/demo-workload/state",
+  "lxd_body": "{\"action\": \"restart\", \"force\": true, \"timeout\": 30}",
+  "lxd_operation": "/1.0/operations/772d4261-9bc7-46bb-a3e2-967c14c6d503",
+  "lxd_endpoint": "https://10.10.0.11:8443",
+  "executed_at": "2026-10-17T20:42:15.782Z",
+  "idempotency_key": "01M4TGD31WXH97JAA5S6A4R10D:oom-guard-01:instance.restart:demo-workload:20"
+}
+
+== the same PUT, seen from the LXD side: the instance's own state on node-a
+$ gcloud compute ssh termini-node-a --zone=asia-south1-a --tunnel-through-iap --command="sudo lxc list 'demo-workload' --format csv -c ns4; echo '--- lxc info:'; sudo lxc info 'demo-workload' | head -22"
+demo-workload,RUNNING,
+--- lxc info:
+Name: demo-workload
+Status: RUNNING
+Type: container
+Architecture: x86_64
+PID: 329859
+Created: 2026/10/13 11:52 UTC
+Last Used: 2026/10/17 20:49 UTC
+
+Resources:
+  Processes: 12
+  Disk usage:
+    root: 0B
+  Disk total:
+    root: 0B
+  CPU usage:
+    CPU usage (in seconds): 1
+  Memory usage:
+    Memory (current): 28.55MiB
+  Network usage:
+    eth0:
+      Type: broadcast
+      State: UP
+
+== the controller's log lines for the execution window
+$ gcloud compute ssh termini-controller --zone=asia-south1-a --tunnel-through-iap --command="sudo journalctl -u termini-controller --since '2026-10-17T20:41:53Z' --no-pager | grep -iE 'remediat|instance\.(restart|stop|start)|lxd' | tail -8"
+Oct 17 20:48:20 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:48:20,630 INFO termini.operator.loop node 01M4NZK474BVARFBXYQBMVA8GV rule oom-guard-01 -> instance.restart demo-workload: ok (remediation_latency=1.129s)
+Oct 17 20:48:27 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:48:27,646 INFO termini.operator.loop node 01M4NZK474BVARFBXYQBMVA8GV rule oom-guard-01 -> instance.restart demo-workload: ok (remediation_latency=2.153s)
+Oct 17 20:49:30 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:49:30,788 INFO termini.operator.loop node 01M4NZK474BVARFBXYQBMVA8GV rule oom-guard-01 -> instance.restart demo-workload: ok (remediation_latency=5.057s)
+Oct 17 20:49:38 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:49:38,468 INFO termini.operator.loop node 01M4NZK46WXG5ZEFAGAAV5JRXM rule disk-degrade-01 -> instance.stop demo-workload: ok (remediation_latency=3.603s)
+Oct 17 20:49:46 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:49:46,381 INFO termini.operator.loop node 01M4NZK474BVARFBXYQBMVA8GV rule oom-guard-01 -> instance.restart demo-workload: ok (remediation_latency=3.856s)
+Oct 17 20:49:53 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:49:53,557 INFO termini.operator.loop node 01M4NZK474BVARFBXYQBMVA8GV rule oom-guard-01 -> instance.restart demo-workload: ok (remediation_latency=5.064s)
+Oct 17 20:50:09 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:50:09,564 INFO termini.operator.loop node 01M4NZK46WXG5ZEFAGAAV5JRXM rule disk-degrade-01 -> instance.stop demo-workload: ok (remediation_latency=3.908s)
+Oct 17 20:50:14 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:50:14,780 INFO termini.operator.loop node 01M4NZK474BVARFBXYQBMVA8GV rule oom-guard-01 -> instance.restart demo-workload: ok (remediation_latency=1.134s)
+
+== restore the node's own telemetry series (clear the injected fault)
+$ curl -sS -X DELETE https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/demo/faults/01M55SKM5WSD3J4J696DD9SWZS -H "Authorization: Bearer demo-project-token"
+{
+  "schema_version": "1.0",
+  "injection_id": "01M55SKM5WSD3J4J696DD9SWZS",
+  "project_id": "01J0DEM0WARM000000000000AB",
+  "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+  "node_registration_id": "ba1f1faeacb4501aed12cf8ea1e5713b",
+  "node_role": "compute",
+  "scenario": "oom",
+  "rule_id": "oom-guard-01",
+  "target": "real",
+  "state": "cleared",
+  "duration_s": 180.0,
+  "started_at": "2026-10-17T20:42:14.076Z",
+  "expires_at": "2026-10-17T20:45:14.076Z",
+  "cleared_at": "2026-10-17T20:45:17.579Z",
+  "cleared_by": "ttl",
+  "clear_reason": "ttl_expired",
+  "samples_written": 180,
+  "recovery_samples": 3,
+  "clear_samples_needed": 3,
+  "open": false,
+  "status": "already_cleared"
+}
+
+note: clearing writes the healthy baseline back through the same ingest path until
+the rule re-arms, which is what makes the next reader see node-a recovered.
+
+Script done on 2026-10-17 20:50:41+00:00 [COMMAND_EXIT_CODE="0"]

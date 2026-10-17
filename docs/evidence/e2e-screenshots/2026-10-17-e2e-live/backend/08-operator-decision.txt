@@ -1,0 +1,81 @@
+Script started on 2026-10-17 20:42:11+00:00 [COMMAND="timeout 540 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/08-operator-decision.sh'" <not executed on terminal>]
+step 08 — the operator deciding (real node-a, injected OOM)   (2026-10-17T20:42:12Z)
+
+== inject: scenario=oom on the REAL node 01M4TGD31WXH97JAA5S6A4R10D (node-a), 180 s
+$ curl -sS -X POST https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/demo/faults -H "Authorization: Bearer demo-project-token" -H "Content-Type: application/json" -d {"scenario":"oom","node_id":"01M4TGD31WXH97JAA5S6A4R10D","target":"real","duration_s":180}
+{
+  "schema_version": "1.0",
+  "injection_id": "01M55SKM5WSD3J4J696DD9SWZS",
+  "project_id": "01J0DEM0WARM000000000000AB",
+  "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+  "node_registration_id": "ba1f1faeacb4501aed12cf8ea1e5713b",
+  "node_role": "compute",
+  "scenario": "oom",
+  "rule_id": "oom-guard-01",
+  "target": "real",
+  "state": "active",
+  "duration_s": 180.0,
+  "started_at": "2026-10-17T20:42:14.076Z",
+  "expires_at": "2026-10-17T20:45:14.076Z",
+  "cleared_at": null,
+  "cleared_by": null,
+  "clear_reason": null,
+  "samples_written": 0,
+  "recovery_samples": 0,
+  "clear_samples_needed": 3,
+  "open": true
+}
+injection_id=01M55SKM5WSD3J4J696DD9SWZS
+
+== wait for the operator's decision on node-a (polling GET /operator/decisions)
+counting only decisions with decided_at >= 2026-10-17T20:42:14.076Z
+poll 1  20:42:22Z: decision on node-a -> 01M55SKRKW61MXXKDVPQGJASQK (oom-guard-01)
+
+== the decision, as the controller records it
+{
+  "id": "01M55SKRKW61MXXKDVPQGJASQK",
+  "rule_id": "oom-guard-01",
+  "action_kind": "instance.restart",
+  "action_params": {
+    "instance_name": "demo-workload",
+    "force": true,
+    "timeout_s": 30,
+    "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW"
+  },
+  "decision_source": "model",
+  "confidence": 0.95,
+  "fallback_reason": null,
+  "decided_at": "2026-10-17T20:42:15.782Z",
+  "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+  "reason": "Host RAM is at 96.99% of total, and instance NNB9287WRHGFDPEZ995TKCXDNW is consuming 85% of the node's RAM. Restarting it will reclaim memory.",
+  "model_call": {
+    "ts": "2026-10-17T20:42:18.609Z",
+    "detail": "endpoint=external model=gemini-2.5-flash answered_by=forwarded-managed-model latency_ms=2803 request_id=01M55SKNVVBJ6BA6EJAFM23MR5",
+    "state": "ok"
+  },
+  "executed": {
+    "ts": null,
+    "detail": null,
+    "state": null
+  },
+  "audit_recorded": {
+    "ts": null,
+    "detail": null,
+    "state": null
+  }
+}
+
+== the controller's own log lines for that call — including the destination
+$ gcloud compute ssh termini-controller --zone=asia-south1-a --tunnel-through-iap --command="sudo journalctl -u termini-controller --since '2026-10-17T20:37:12Z' --no-pager | grep -iE 'externalModelCall|destination|answered_by' | tail -6"
+Oct 17 20:42:38 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:42:38,705 INFO termini.operator.external_call externalModelCall before: {'request_id': '01M55SMC72TSR5T3MSC7H12DTT', 'template_version': 'operator-decision v2', 'destination': 'http://127.0.0.1:8085', 'destination_class': 'external', 'external_destination': 'aiplatform.googleapis.com', 'egress': {'backend': 'gemini-proxy', 'model': 'gemini-2.5-flash', 'alias': 'gemma', 'destination': 'aiplatform.googleapis.com', 'destination_class': 'external', 'answered_by': 'forwarded-managed-model', 'source': 'health-probe', 'endpoint': 'http://127.0.0.1:8085', 'detail': '', 'forwarded': True}, 'phase': 'before', 'outcome': 'ok', 'payload_sha256': '34f78a1ba73cfd61a37a4342414de2964822dbc380f08f14ef91320d2348d841', 'substituted_fields': 2853, 'detail': '', 'violations': []}
+Oct 17 20:42:41 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:42:41,536 INFO termini.operator.external_call externalModelCall after: {'request_id': '01M55SMC72TSR5T3MSC7H12DTT', 'template_version': 'operator-decision v2', 'destination': 'http://127.0.0.1:8085', 'destination_class': 'external', 'external_destination': 'aiplatform.googleapis.com', 'egress': {'backend': 'gemini-proxy', 'model': 'gemini-2.5-flash', 'alias': 'gemma', 'destination': 'aiplatform.googleapis.com', 'destination_class': 'external', 'answered_by': 'forwarded-managed-model', 'source': 'health-probe', 'endpoint': 'http://127.0.0.1:8085', 'detail': '', 'forwarded': True}, 'phase': 'after', 'outcome': 'returned', 'payload_sha256': '34f78a1ba73cfd61a37a4342414de2964822dbc380f08f14ef91320d2348d841', 'substituted_fields': 2853, 'detail': 'DecisionError', 'violations': []}
+Oct 17 20:42:48 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:42:48,799 INFO termini.operator.external_call externalModelCall before: {'request_id': '01M55SMP2JDACN71EJ6B5R85TG', 'template_version': 'operator-decision v2', 'destination': 'http://127.0.0.1:8085', 'destination_class': 'external', 'external_destination': 'aiplatform.googleapis.com', 'egress': {'backend': 'gemini-proxy', 'model': 'gemini-2.5-flash', 'alias': 'gemma', 'destination': 'aiplatform.googleapis.com', 'destination_class': 'external', 'answered_by': 'forwarded-managed-model', 'source': 'health-probe', 'endpoint': 'http://127.0.0.1:8085', 'detail': '', 'forwarded': True}, 'phase': 'before', 'outcome': 'ok', 'payload_sha256': '0604dcc83c96a3200b3c079b68f60c02c6ad0609ff18d05c2ef4fecdd32b05de', 'substituted_fields': 2853, 'detail': '', 'violations': []}
+Oct 17 20:42:51 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:42:51,653 INFO termini.operator.external_call externalModelCall after: {'request_id': '01M55SMP2JDACN71EJ6B5R85TG', 'template_version': 'operator-decision v2', 'destination': 'http://127.0.0.1:8085', 'destination_class': 'external', 'external_destination': 'aiplatform.googleapis.com', 'egress': {'backend': 'gemini-proxy', 'model': 'gemini-2.5-flash', 'alias': 'gemma', 'destination': 'aiplatform.googleapis.com', 'destination_class': 'external', 'answered_by': 'forwarded-managed-model', 'source': 'health-probe', 'endpoint': 'http://127.0.0.1:8085', 'detail': '', 'forwarded': True}, 'phase': 'after', 'outcome': 'returned', 'payload_sha256': '0604dcc83c96a3200b3c079b68f60c02c6ad0609ff18d05c2ef4fecdd32b05de', 'substituted_fields': 2853, 'detail': 'DecisionError', 'violations': []}
+Oct 17 20:43:15 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:43:15,958 INFO termini.operator.external_call externalModelCall before: {'request_id': '01M55SNGK92XHD6QK0FAWWFHN1', 'template_version': 'operator-decision v2', 'destination': 'http://127.0.0.1:8085', 'destination_class': 'external', 'external_destination': 'aiplatform.googleapis.com', 'egress': {'backend': 'gemini-proxy', 'model': 'gemini-2.5-flash', 'alias': 'gemma', 'destination': 'aiplatform.googleapis.com', 'destination_class': 'external', 'answered_by': 'forwarded-managed-model', 'source': 'health-probe', 'endpoint': 'http://127.0.0.1:8085', 'detail': '', 'forwarded': True}, 'phase': 'before', 'outcome': 'ok', 'payload_sha256': 'b6ade90db41dc7ee9016c1f04827527749592f5893578c7a4fd1b0016cf60d4d', 'substituted_fields': 2622, 'detail': '', 'violations': []}
+Oct 17 20:43:18 termini-controller.asia-south1-a.c.termini-510609.internal python3[294690]: 2026-10-17 20:43:18,737 INFO termini.operator.external_call externalModelCall after: {'request_id': '01M55SNGK92XHD6QK0FAWWFHN1', 'template_version': 'operator-decision v2', 'destination': 'http://127.0.0.1:8085', 'destination_class': 'external', 'external_destination': 'aiplatform.googleapis.com', 'egress': {'backend': 'gemini-proxy', 'model': 'gemini-2.5-flash', 'alias': 'gemma', 'destination': 'aiplatform.googleapis.com', 'destination_class': 'external', 'answered_by': 'forwarded-managed-model', 'source': 'health-probe', 'endpoint': 'http://127.0.0.1:8085', 'detail': '', 'forwarded': True}, 'phase': 'after', 'outcome': 'returned', 'payload_sha256': 'b6ade90db41dc7ee9016c1f04827527749592f5893578c7a4fd1b0016cf60d4d', 'substituted_fields': 2622, 'detail': 'DecisionResponse', 'violations': []}
+
+== state recorded for steps 10 (audit + LXD) 
+DECISION_ID=01M55SKRKW61MXXKDVPQGJASQK
+DECISION_TARGET=demo-workload
+
+Script done on 2026-10-17 20:43:45+00:00 [COMMAND_EXIT_CODE="0"]

@@ -1,0 +1,55 @@
+Script started on 2026-10-17 19:50:20+00:00 [COMMAND="bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/02-boot-registration.sh'" <not executed on terminal>]
+step 02 — boot to registration   (2026-10-17T19:50:20Z)
+
+== node-a: every REGISTERED line the journal holds (all boots)
+$ gcloud compute ssh termini-node-a --zone=asia-south1-a --tunnel-through-iap --command=sudo\ journalctl\ -u\ termini-bootstrap\ --no-pager\ \|\ grep\ REGISTERED\ \|\ tail\ -4
+Oct 13 11:29:44 termini-node-a.asia-south1-a.c.termini-510609.internal termini-bootstrap[1829]: 2026-10-13T11:29:44Z [termini-bootstrap] REGISTERED node_id=01M4TGD31WXH97JAA5S6A4R10D role=compute register_ms=37 boot_to_registered_ms=176120
+
+== node-a: this boot's journal (if empty, this boot reused the persisted identity)
+$ gcloud compute ssh termini-node-a --zone=asia-south1-a --tunnel-through-iap --command=sudo\ journalctl\ -u\ termini-bootstrap\ -b\ --no-pager\ \|\ grep\ -c\ REGISTERED
+0
+
+== node-a: the daemon that produced it, and when this machine booted
+$ gcloud compute ssh termini-node-a --zone=asia-south1-a --tunnel-through-iap --command=systemctl\ show\ -p\ ActiveState\ -p\ SubState\ -p\ ExecMainStartTimestamp\ termini-bootstrap\;\ echo\ booted:\ \$\(uptime\ -s\)\;\ uptime
+ExecMainStartTimestamp=Sat 2026-10-17 16:32:11 UTC
+ActiveState=active
+SubState=running
+booted: 2026-10-17 16:31:59
+ 19:52:03 up  3:20,  2 users,  load average: 0.14, 1.09, 1.59
+
+== node-c: every REGISTERED line the journal holds (all boots)
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command=sudo\ journalctl\ -u\ termini-bootstrap\ --no-pager\ \|\ grep\ REGISTERED\ \|\ tail\ -4
+Oct 15 12:05:20 node-c termini-bootstrap[775]: 2026-10-15T12:05:20Z [termini-bootstrap] REGISTERED node_id=01M4ZQ7Q2J80ATY3K32PY3PPJH role=compute register_ms=102 boot_to_registered_ms=16160
+
+== node-c: this boot's journal (if empty, this boot reused the persisted identity)
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command=sudo\ journalctl\ -u\ termini-bootstrap\ -b\ --no-pager\ \|\ grep\ -c\ REGISTERED
+0
+
+== node-c: the daemon that produced it, and when this machine booted
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command=systemctl\ show\ -p\ ActiveState\ -p\ SubState\ -p\ ExecMainStartTimestamp\ termini-bootstrap\;\ echo\ booted:\ \$\(uptime\ -s\)\;\ uptime
+ExecMainStartTimestamp=Fri 2026-10-16 21:04:52 UTC
+ActiveState=active
+SubState=running
+booted: 2026-10-16 21:04:39
+ 19:55:02 up 22:50,  1 user,  load average: 0.19, 0.08, 0.07
+
+== the controller's view of liveness (last_seen_at heartbeat, not a cached row)
+$ curl -sS -X GET https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/nodes -H "Authorization: Bearer demo-project-token"
+{
+  "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+  "role": "compute",
+  "synthetic": false,
+  "status": "online",
+  "last_seen_at": "2026-10-17T19:55:08Z",
+  "uptime_sec": 12185
+}
+{
+  "node_id": "01M4ZQ7Q2J80ATY3K32PY3PPJH",
+  "role": "compute",
+  "synthetic": false,
+  "status": "online",
+  "last_seen_at": "2026-10-17T19:55:08Z",
+  "uptime_sec": 82226
+}
+
+Script done on 2026-10-17 19:55:09+00:00 [COMMAND_EXIT_CODE="0"]

@@ -1,0 +1,52 @@
+Script started on 2026-10-17 19:56:07+00:00 [COMMAND="timeout 300 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/01-raise.sh'" <not executed on terminal>]
+step 01 — raise / fleet listing   (2026-10-17T19:56:07Z)
+NOTE: this run did NOT create or start any GCP compute. The instances below were
+      raised by the approved window and must stay up for the sibling client capture.
+
+== fleet listing
+$ /home/ubuntu/google-cloud-sdk/bin/gcloud compute instances list
+NAME                ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP   STATUS
+termini-controller  asia-south1-a  e2-standard-2               10.10.0.2    34.93.190.64  RUNNING
+termini-node-a      asia-south1-a  e2-standard-2               10.10.0.11                 RUNNING
+termini-node-b      asia-south1-a  n2-standard-2               10.10.0.12                 TERMINATED
+termini-node-c      asia-south1-a  e2-standard-8               10.10.0.13                 RUNNING
+
+== boot-disk provenance — each node's disk comes from the termini-node-os family
+$ /home/ubuntu/google-cloud-sdk/bin/gcloud compute disks list --format=table(name,sizeGb,status,sourceImage)
+NAME                SIZE_GB  STATUS  SOURCE_IMAGE
+termini-controller  30       READY   https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-amd64-v20260918
+termini-node-a      60       READY   https://www.googleapis.com/compute/v1/projects/termini-510609/global/images/termini-node-os-5
+termini-node-b      60       READY   https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-amd64-v20260918
+termini-node-c      60       READY   https://www.googleapis.com/compute/v1/projects/termini-510609/global/images/termini-node-os-5
+
+== node-a: status, creationTimestamp, machine type, internal IP
+$ gcloud compute instances describe termini-node-a --format=json | jq '{name,status,creationTimestamp,machineType,internal_ip}'
+{
+  "name": "termini-node-a",
+  "status": "RUNNING",
+  "creationTimestamp": "2026-10-13T04:26:23.442-07:00",
+  "machineType": "e2-standard-2",
+  "internal_ip": "10.10.0.11"
+}
+
+== node-c: status, creationTimestamp, machine type, internal IP
+$ gcloud compute instances describe termini-node-c --format=json | jq '{name,status,creationTimestamp,machineType,internal_ip}'
+{
+  "name": "termini-node-c",
+  "status": "RUNNING",
+  "creationTimestamp": "2026-10-15T05:04:42.169-07:00",
+  "machineType": "e2-standard-8",
+  "internal_ip": "10.10.0.13"
+}
+
+== the image family both disks were created from
+$ gcloud compute images describe termini-node-os-5 --format=json | jq '{name,family,status,creationTimestamp,diskSizeGb}'
+{
+  "name": "termini-node-os-5",
+  "family": "termini-node-os",
+  "status": "READY",
+  "creationTimestamp": "2026-10-12T12:31:10.175-07:00",
+  "diskSizeGb": "20"
+}
+
+Script done on 2026-10-17 19:57:49+00:00 [COMMAND_EXIT_CODE="0"]
