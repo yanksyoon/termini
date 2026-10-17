@@ -1968,8 +1968,17 @@ class ControllerHandler(BaseHTTPRequestHandler):
         except errors.ApiError as e:
             self._ws_reject(e)
             return
+        # Subscribe BEFORE completing the handshake. The broker is not a replay
+        # buffer: an event published by another request thread in the gap between
+        # the 101 response and broker.subscribe() is dropped, so a client that
+        # fires an action the instant it sees the 101 (as the dashboard log-stream
+        # test does) can miss the resulting frames and time out. Subscribing first
+        # makes the 101 a synchronisation point: by the time the client can act,
+        # the subscription is already active.
+        sub = self.server.broker.subscribe()
         ws = self._ws_handshake()
         if ws is None:
+            self.server.broker.unsubscribe(sub)
             return
         project_id = self.server.project["id"]
         # Backfill: replay buffered log lines after `since`, then stream live.
@@ -1992,7 +2001,6 @@ class ControllerHandler(BaseHTTPRequestHandler):
         finally:
             conn.close()
 
-        sub = self.server.broker.subscribe()
         try:
             self._ws_pump(ws, sub)
         finally:
@@ -2139,6 +2147,13 @@ class ControllerHandler(BaseHTTPRequestHandler):
             self._send_error(e)
             return
 
+        # Subscribe before flushing the SSE headers so the header flush (the point
+        # at which the client can fire an action) implies the subscription is live.
+        # Same dropped-event race as the WS stream: the broker has no replay, and
+        # test_log_stream_delivers_fresh_event_over_sse fires a reboot the moment
+        # its reader sees the headers.
+        sub = self.server.broker.subscribe()
+
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -2148,6 +2163,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
         try:
             self.wfile.flush()
         except OSError:
+            self.server.broker.unsubscribe(sub)
             return
 
         since = q.get("since") or self.headers.get("Last-Event-ID")
@@ -2167,7 +2183,6 @@ class ControllerHandler(BaseHTTPRequestHandler):
         finally:
             conn.close()
 
-        sub = self.server.broker.subscribe()
         try:
             self._sse_pump(sub)
         finally:
