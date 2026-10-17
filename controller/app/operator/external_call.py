@@ -359,6 +359,21 @@ def _normalise_egress(egress: Optional[Dict[str, Any]], destination: str) -> Dic
     return egress_module.classify_and_describe(destination)
 
 
+def _describe_result(result: Any) -> str:
+    """One-line description of what the transport returned, for the audit row.
+
+    The row used to say only ``DecisionError`` — which told an operator that the
+    model answered and was not used, but not *why*, so a parse failure and a
+    timeout looked identical in the external-call log (t_77f26781). A typed
+    error's §10.1 reason is appended when it carries one.
+    """
+    name = type(result).__name__
+    reason = getattr(result, "reason", None)
+    if isinstance(reason, str) and reason:
+        return f"{name}: {reason}"
+    return name
+
+
 def external_model_call(
     payload: Any,
     send: Callable[[], Any],
@@ -448,7 +463,7 @@ def external_model_call(
     except Exception as exc:  # noqa: BLE001
         _audit("after", "error", detail=f"{type(exc).__name__}: {exc}")
         raise
-    _audit("after", "returned", detail=type(result).__name__)
+    _audit("after", "returned", detail=_describe_result(result))
     return result
 
 

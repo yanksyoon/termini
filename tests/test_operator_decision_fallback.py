@@ -40,6 +40,19 @@ from termini.decision.types import DecisionError, DecisionResponse  # noqa: E402
 VM_ID = "01M4349RPXWDC52ZDAVMPCMJSH"
 NODE_ID = "01M4349RPTT29RNTC6VBCXQ0RC"
 
+# The live 2026-10-17 reply, cut off by max_tokens=512 while still inside the
+# evidence array (t_77f26781). It DOES carry `action_id` — which is why the old
+# "action_id must be a non-empty string, got None" line misdiagnosed it.
+TRUNCATED_REPLY = (
+    '{"schema_version":1,"request_id":"01M55KSQHCF67SDA0WFQXAJ5TK",'
+    '"action_id":"instance.restart","params":{"instance_name":"NNB9287WRHGFDPEZ995TKCXDNW",'
+    '"force":true,"timeout_s":30},"confidence":0.95,'
+    '"rationale":"The node is experiencing high memory pressure and OOM kills.",'
+    '"incident_title":"Node experiencing OOM","explanation":"ram_used_bytes is at 96.04%.",'
+    '"evidence":[{"field":"ram_used_bytes","value":"66,000,000,000",'
+    '"seq":"1,792,262,428"},{"field":"lxd_instances.ram_limit_bytes","value":"'
+)
+
 PLAYBOOKS = {
     "oom": {
         "type": "oom", "rule_id": "oom-guard-01",
@@ -167,6 +180,63 @@ class ModelProviderFallbackTest(unittest.TestCase):
             params={"instance_name": "nonexistent-vm"}))
         self.assertEqual(result.source, "fallback")
         self.assertEqual(result.fallback_reason, "invalid_target")
+
+    # -- raw-reply capture on a violation (t_77f26781) --------------------
+    #
+    # The card could not be diagnosed from the record: the journal named only
+    # the symptom ("action_id must be a non-empty string, got None") for a reply
+    # that carried that id. These pin the two records that now carry the text.
+
+    def test_fallback_logs_the_raw_reply_and_its_shape(self):
+        err = DecisionError("parse_error",
+                            "reply truncated mid-JSON after 1458 chars", raw=TRUNCATED_REPLY)
+        with self.assertLogs("termini.operator.decision", level="WARNING") as logs:
+            result = self._decide(lambda inp: err)
+        self.assertEqual(result.source, "fallback")
+        joined = "\n".join(logs.output)
+        self.assertIn('"action_id":"instance.restart"', joined)
+        self.assertIn("truncated=yes", joined)
+        self.assertIn("raw[", joined)
+
+    def test_rejected_reply_is_recorded_in_the_trace_with_its_shape(self):
+        err = DecisionError("parse_error", "reply truncated", raw=TRUNCATED_REPLY)
+        result = self._decide(lambda inp: err)
+        steps = {s["step"]: s for s in result.trace.steps}
+        self.assertIn("instance.restart", steps["reply_received"]["detail"])
+        self.assertEqual(steps["reply_received"]["state"], "rejected")
+        shape = steps["reply_shape"]["detail"]
+        self.assertIn("truncated=yes", shape)
+        self.assertIn("json_object=no", shape)
+        # decided_by stays fallback: a fallback may never look like a model call
+        self.assertEqual(result.trace.decided_by, "fallback")
+
+    def test_a_c2_bearing_reply_is_not_copied_into_the_journal(self):
+        err = DecisionError(
+            "schema_violation", "bad shape",
+            raw='{"action_id":"instance.restart","rationale":"call 4155551234"}')
+        with self.assertLogs("termini.operator.decision", level="WARNING") as logs:
+            result = self._decide(lambda inp: err)
+        joined = "\n".join(logs.output)
+        self.assertNotIn("4155551234", joined)
+        self.assertIn("raw: dropped", joined)
+        # The trace keeps the shape, and the text itself is replaced, not stored.
+        steps = {s["step"]: s for s in result.trace.steps}
+        self.assertEqual(steps["reply_received"]["detail"], "[dropped: C2]")
+        self.assertIn("truncated=no", steps["reply_shape"]["detail"])
+        self.assertEqual(result.source, "fallback")
+
+    def test_an_adapter_repair_is_recorded_and_the_decision_stays_model(self):
+        response = DecisionResponse(
+            action_id="instance.restart", confidence=0.9, rationale="reclaim memory",
+            params={"instance_name": "heaviest"},
+            raw='{"action_id":"instance.restart"}',
+            repairs=["action_id taken from actions[0].action_kind"])
+        result = self._decide(lambda inp: response)
+        self.assertEqual(result.source, "model")
+        repaired = [s for s in result.trace.steps if s["step"] == "reply_repaired"]
+        self.assertEqual(len(repaired), 1)
+        self.assertIn("actions[0]", repaired[0]["detail"])
+        self.assertEqual(repaired[0]["state"], "clamped")
 
 
 class FallbackStreakTest(unittest.TestCase):

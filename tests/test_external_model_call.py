@@ -232,6 +232,25 @@ class WrapperTest(unittest.TestCase):
         self.assertEqual(seen[0]["outcome"], "rejected")
         self.assertTrue(seen[0]["violations"])
 
+    def test_after_row_names_the_typed_error_reason(self):
+        """A typed error's reason is in the row, not just the class name.
+
+        The row used to read only "DecisionError", so a parse failure, a
+        truncation and a timeout were indistinguishable in the external-call
+        log (t_77f26781).
+        """
+        from termini.decision.types import DecisionError
+
+        ctx = make_context()
+        seen = []
+        external_model_call(
+            build_decision_input(ctx),
+            lambda: DecisionError("parse_error", "reply truncated mid-JSON after 1458 chars"),
+            destination="http://127.0.0.1:8085", audit_sink=seen.append,
+        )
+        self.assertEqual(seen[1]["outcome"], "returned")
+        self.assertEqual(seen[1]["detail"], "DecisionError: parse_error")
+
     def test_sink_failure_does_not_break_the_call(self):
         ctx = make_context()
 

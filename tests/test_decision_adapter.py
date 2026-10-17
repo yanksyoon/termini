@@ -610,7 +610,10 @@ class TestDefaultTransport(unittest.TestCase):
         self.assertEqual(captured["timeout"], 12.5)
         self.assertEqual(captured["body"]["model"], "deepseek-flash")
         self.assertEqual(captured["body"]["temperature"], 0.0)
-        self.assertEqual(captured["body"]["max_tokens"], 512)
+        # 2048, not the old 512: the v2 reply (decision + §4.2 incident record)
+        # needs ~700-1000 completion tokens, and 512 cut it off mid-JSON on
+        # ~half the live fires (t_77f26781).
+        self.assertEqual(captured["body"]["max_tokens"], 2048)
         self.assertEqual(captured["body"]["response_format"], {"type": "json_object"})
         self.assertFalse(captured["body"]["stream"])
         self.assertEqual(captured["body"]["messages"][0]["role"], "system")
@@ -688,6 +691,198 @@ class TestDefaultTransport(unittest.TestCase):
         self.assertEqual(cfg.chat_url, "http://10.10.0.13:8080/v1/chat/completions")
         self.assertEqual(cfg.token, "abc")
         self.assertEqual(cfg.timeout_s, 45.0)
+
+    def test_from_env_reads_the_max_tokens_override(self):
+        from termini.decision.config import DecisionModelConfig
+
+        cfg = DecisionModelConfig.from_env({"TERMINI_INFERENCE_MAX_TOKENS": "4096"})
+        self.assertEqual(cfg.max_tokens, 4096)
+        # A junk/empty override falls back to the budget that fits the v2 reply.
+        self.assertEqual(
+            DecisionModelConfig.from_env({"TERMINI_INFERENCE_MAX_TOKENS": "lots"}).max_tokens,
+            2048,
+        )
+        self.assertEqual(DecisionModelConfig.from_env({}).max_tokens, 2048)
+
+
+# ---------------------------------------------------------------------------
+# Truncated replies — the live 2026-10-17 failure (t_77f26781)
+# ---------------------------------------------------------------------------
+#
+# At max_tokens=512 the backend cut the reply mid-string (finish_reason=length,
+# completion_tokens=502). `parse` used to fall through to "first JSON object
+# anywhere in the text", decode the *params* fragment of the cut-off decision,
+# and report `action_id must be a non-empty string, got None` — for a reply that
+# carried `"action_id":"instance.restart"` at character 90. These fixtures are
+# the exact captured text from the live controller.
+
+# The first 1458 characters of the live reply (the backend stopped here).
+LIVE_TRUNCATED_REPLY = (
+    '{"schema_version":1,"request_id":"01PROBEREPRO0000000000000",'
+    '"action_id":"instance.restart","params":{"instance_name":"NNB9287WRHGFDPEZ995TKCXDNW",'
+    '"force":true,"timeout_s":30},"confidence":0.95,'
+    '"rationale":"The node is experiencing high memory pressure and OOM kills, with a single '
+    'instance consuming a significant portion of RAM and exceeding its limit. Restarting this '
+    'instance should alleviate the memory pressure.",'
+    '"incident_title":"Node experiencing high memory pressure and OOM kills due to runaway instance",'
+    '"explanation":"The node\'s ram_used_bytes is at 66,000,000,000 bytes out of 68,719,476,736 '
+    'total, resulting in a ram_used_pct of 96.04%, which exceeds the 95% threshold. The '
+    'pressure.memory_some_avg10 is 72.4 and pressure.memory_full_avg10 is 41.3, indicating '
+    'significant memory stall. The oom_kill_count_delta is 3, showing recent OOM events. The '
+    'instance NNB9287WRHGFDPEZ995TKCXDNW is consuming 16,500,000,000 bytes of RAM, which is '
+    'significantly higher than its ram_limit_bytes of 4,294,967,296 bytes. This instance is the '
+    'heaviest consumer and is likely the cause of the memory exhaustion. Restarting it is the '
+    'most direct way to reclaim memory and stabilize the node.",'
+    '"evidence":[{"field":"ram_used_bytes","value":"66,000,000,000",'
+    '"seq":"1,792,262,751"},{"field":"ram_total_bytes","value":"68,719,476,736",'
+    '"seq":"1,792,262,751"},{"field":"pressure.memory_some_avg10","value":72.4,'
+    '"seq":"1,792,262,751"},{"field":"pressure.memory_full_avg1'
+)
+
+
+class TestTruncatedReply(unittest.TestCase):
+    def test_truncation_is_reported_as_truncation_not_a_missing_field(self):
+        result = parse(LIVE_TRUNCATED_REPLY)
+        self.assertIsInstance(result, DecisionError)
+        self.assertEqual(result.reason, REASON_PARSE_ERROR)
+        self.assertIn("truncated mid-JSON", result.detail)
+        # The exact 2026-10-17 misdiagnosis must not come back: the reply DID
+        # carry an action_id, so blaming a missing one sends the next
+        # investigation to the wrong place.
+        self.assertNotIn("action_id must be a non-empty string", result.detail)
+        # The raw text is retained for diagnosis (bounded).
+        self.assertIsNotNone(result.raw)
+        self.assertIn('"action_id":"instance.restart"', result.raw)
+
+    def test_finish_reason_length_is_honoured_and_recorded(self):
+        from termini.decision.adapter import Completion
+
+        cut = Completion(LIVE_TRUNCATED_REPLY, finish_reason="length",
+                         usage={"completion_tokens": 502})
+        result = parse(cut)
+        self.assertIsInstance(result, DecisionError)
+        self.assertIn("finish_reason='length'", result.detail)
+
+    def test_a_complete_reply_that_ends_in_a_string_is_not_truncated(self):
+        from termini.decision.adapter import completion_cut_off
+
+        self.assertTrue(completion_cut_off(LIVE_TRUNCATED_REPLY))
+        self.assertFalse(completion_cut_off(GOOD_COMPLETION))
+
+    def test_repair_retry_recovers_the_decision(self):
+        """The one-shot repair retry turns a cut-off reply into a model decision."""
+        replies = [LIVE_TRUNCATED_REPLY, GOOD_COMPLETION]
+        calls = []
+
+        def client(messages, request_id=None):
+            calls.append(messages)
+            return replies[len(calls) - 1]
+
+        result = decide(sample_input(), client=client)
+        self.assertIsInstance(result, DecisionResponse)
+        self.assertEqual(result.action_id, "instance.restart")
+        self.assertEqual(len(calls), 2)
+        # The retry is a continuation of the same conversation, with the cut-off
+        # answer and a corrective instruction appended.
+        self.assertEqual(calls[1][0]["role"], "system")
+        self.assertEqual(calls[1][-2]["role"], "assistant")
+        self.assertEqual(calls[1][-2]["content"], LIVE_TRUNCATED_REPLY)
+        self.assertEqual(calls[1][-1]["role"], "user")
+        self.assertIn("cut off", calls[1][-1]["content"])
+        self.assertTrue(any("repair retry" in r for r in result.repairs))
+
+    def test_repair_retry_is_bounded_to_one_attempt(self):
+        calls = []
+
+        def client(messages, request_id=None):
+            calls.append(messages)
+            return LIVE_TRUNCATED_REPLY
+
+        result = decide(sample_input(), client=client)
+        self.assertEqual(len(calls), 2)  # exactly one retry, never a loop
+        self.assertIsInstance(result, DecisionError)
+        self.assertEqual(result.reason, REASON_PARSE_ERROR)
+        self.assertIn("repair retry", result.detail)
+        self.assertIn("first attempt", result.detail)
+
+    def test_retry_transport_failure_is_reported_as_such(self):
+        calls = []
+
+        def client(messages, request_id=None):
+            calls.append(messages)
+            if len(calls) == 1:
+                return LIVE_TRUNCATED_REPLY
+            raise TimeoutError("read timed out")
+
+        result = decide(sample_input(), client=client)
+        self.assertIsInstance(result, DecisionError)
+        self.assertEqual(result.reason, REASON_INFERENCE_TIMEOUT)
+
+
+# ---------------------------------------------------------------------------
+# Incident-only replies — the action named only in `actions[]`
+# ---------------------------------------------------------------------------
+
+INCIDENT_ONLY_REPLY = json.dumps({
+    "schema_version": 1,
+    "request_id": "01M55KSQHCF67SDA0WFQXAJ5TK",
+    "confidence": 0.92,
+    "rationale": "host RAM at 96% with one instance holding four times its limit; restart it.",
+    "incident_title": "Host memory exhaustion from one runaway instance",
+    "explanation": "ram_used_bytes is 96% of total and the heaviest instance holds far more "
+                   "than its ram_limit_bytes, so the stall is memory-bound and comes from "
+                   "that instance.",
+    "evidence": [{"field": "ram_used_bytes", "value": "66,000,000,000", "seq": 1}],
+    "actions": [{"action_kind": "instance.restart",
+                 "target": "agent-01H4KZ9Q",
+                 "note": "reclaim the instance's resident memory"}],
+})
+
+
+class TestIncidentOnlyReply(unittest.TestCase):
+    """A reply that carries the whole incident record but no top-level action_id.
+
+    The model's action is still the model's action: it is read out of the
+    reply's own `actions[0]` (the value must be a real action id, and the
+    controller's guardrail still authorizes it), so the decision stays
+    `decision_source=model` instead of silently becoming the playbook's.
+    """
+
+    def test_action_id_and_target_are_read_from_actions(self):
+        result = parse(INCIDENT_ONLY_REPLY)
+        self.assertIsInstance(result, DecisionResponse)
+        self.assertEqual(result.action_id, "instance.restart")
+        self.assertEqual(result.params["instance_name"], "agent-01H4KZ9Q")
+        self.assertEqual(result.confidence, 0.92)
+        self.assertIn("action_id taken from actions[0].action_kind", result.repairs)
+        self.assertIn("params.instance_name taken from actions[0].target", result.repairs)
+
+    def test_an_invented_action_is_still_a_schema_violation(self):
+        raw = json.dumps({
+            "schema_version": 1,
+            "confidence": 0.9,
+            "rationale": "reboot the host",
+            "actions": [{"action_kind": "host.reboot"}],
+        })
+        result = parse(raw)
+        self.assertIsInstance(result, DecisionError)
+        self.assertEqual(result.reason, REASON_SCHEMA_VIOLATION)
+        self.assertIn("action_id", result.detail)
+
+    def test_an_incident_with_no_action_at_all_still_falls_back(self):
+        # No action anywhere: this must NOT be dressed up as a model decision.
+        raw = json.dumps({
+            "schema_version": 1,
+            "confidence": 0.9,
+            "rationale": "memory is tight",
+            "incident_title": "Memory pressure",
+            "explanation": "ram is high",
+            "evidence": [{"field": "ram_used_bytes", "value": 1}],
+            "actions": [],
+        })
+        result = parse(raw)
+        self.assertIsInstance(result, DecisionError)
+        self.assertEqual(result.reason, REASON_SCHEMA_VIOLATION)
 
 
 if __name__ == "__main__":
