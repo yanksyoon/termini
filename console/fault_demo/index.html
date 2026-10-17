@@ -114,8 +114,8 @@
       title: "Memory exhaustion (OOM)",
       rule: "oom-guard-01",
       dur: 60,
-      sees: "Host RAM climbs to ~96% of total and holds. The rule needs <b>2 consecutive samples at or above 95%</b>, so it fires about two seconds in.",
-      how: "Once a second the controller's fault driver writes a faulted sample into the same table real telemetry uses: ram_used ≈ 96% of ram_total, swap in use, OOM kill counters rising. Nothing on the machine is stressed — the sample stream is.",
+      sees: "Host RAM <b>ramps</b> to ~97% of total over ~16 seconds — a visible climb, not a step. The rule needs <b>2 consecutive samples at or above 95%</b>, so it fires as the ramp crosses the threshold.",
+      how: "Once a second the controller's fault driver writes a faulted sample into the same table real telemetry uses: ram_used ramps to ~97% of ram_total, the leaking instance's ram_used climbs toward its ram_limit, and the leak signature advances — OOM-kill and major-fault counters rising, swap in use, free memory cratering. Nothing on the machine is stressed — the sample stream is.",
       expect: "The operator restarts the one leaking instance (a reversible action). RAM falls back under threshold and the rule re-arms after 3 healthy samples. It must not stop or delete anything."
     },
     "disk-fail": {

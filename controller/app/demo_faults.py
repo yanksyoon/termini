@@ -88,8 +88,38 @@ log = logging.getLogger("termini.demo_faults")
 SCENARIOS: dict[str, dict] = {
     "oom": {
         "rule_id": "oom-guard-01",
-        "description": "Ramp host RAM utilisation past the OOM threshold and hold it.",
-        "params": {"ram_peak_pct": 97.0, "cpu_util_pct": 92.0, "instance_ram_pct": 85.0},
+        "description": (
+            "A memory LEAK: host RAM ramps past the OOM threshold while the "
+            "leaking instance's RAM approaches its limit and the OOM killer, "
+            "major-fault and swap counters advance — the leak signature, not "
+            "just 'RAM high'."
+        ),
+        "params": {
+            # The visible ramp: host RAM climbs from the healthy baseline toward
+            # `ram_peak_pct` over `ramp_s` seconds (a leak grows; it does not
+            # step). Tuned so the rule fires on 2 consecutive breaching samples
+            # at 1 Hz (detection ~3-5 s) while the chart shows a ~15-20 s climb.
+            "ram_start_pct": 62.0,
+            "ram_peak_pct": 97.0,
+            "ramp_s": 16.0,
+            "cpu_util_pct": 92.0,
+            # The leaking instance (the one with the most RAM headroom) climbs
+            # this close to its limit; the others see the same host pressure.
+            "instance_ram_start_pct": 55.0,
+            "instance_ram_peak_pct": 99.0,
+            "instance_ram_pct": 85.0,
+            # The leak signature (node-telemetry.md §4.12-§4.14): how many kills
+            # and major faults the leak accumulates over the ramp, how much swap
+            # it pushes, the kernel's free-memory floor it reaches, and the PSI
+            # memory-stall percentages. These are what the incident cites.
+            "oom_kills": 3,
+            "pgmajfault_rate_s": 60.0,
+            "instance_pgmajfault_rate_s": 40.0,
+            "swap_peak_pct": 3.0,
+            "mem_available_floor_pct": 2.0,
+            "pressure_mem_some": 72.4,
+            "pressure_mem_full": 41.3,
+        },
     },
     "disk-fail": {
         "rule_id": "disk-fail-01",
@@ -108,6 +138,18 @@ HEALTHY_RAM_PCT = 62.0
 HEALTHY_DISK_FREE_PCT = 78.0
 HEALTHY_DISK_WRITE_LATENCY_MS = 3.0
 HEALTHY_NET_LATENCY_MS = 0.8
+# Healthy values for the leak-signature fields (§4.12-§4.14): a recovered node
+# has no swap, plenty of "would not swap" memory, no PSI memory stall, and its
+# instances sit far below their RAM limits. These are what `clear` restores, so
+# the recovery burst is visibly healthy rather than merely below threshold.
+HEALTHY_MEM_AVAILABLE_PCT = 40.0
+HEALTHY_INSTANCE_RAM_PCT = 55.0
+HEALTHY_PRESSURE = {
+    "cpu_some_avg10": 0.0,
+    "io_some_avg10": 0.0,
+    "memory_some_avg10": 0.0,
+    "memory_full_avg10": 0.0,
+}
 
 MIN_DURATION_S = 5.0
 MAX_DURATION_S = 600.0
@@ -159,7 +201,20 @@ def healthy_sample(base: dict, *, seq: int, ts: str) -> dict:
     total = s.get("ram_total_bytes") or 0
     if isinstance(total, (int, float)) and total > 0:
         s["ram_used_bytes"] = int(total * HEALTHY_RAM_PCT / 100.0)
+        s["mem_available_bytes"] = int(total * HEALTHY_MEM_AVAILABLE_PCT / 100.0)
     s["cpu_util_pct"] = 31.2
+    s["swap_used_bytes"] = 0
+    # The leak signature is gone after recovery: no PSI memory stall, and every
+    # instance returns far below its RAM limit. The cumulative OOM/major-fault
+    # counters are left as the baseline reported them (a real counter never runs
+    # backwards; the faulted delta simply stops growing).
+    s["pressure"] = dict(HEALTHY_PRESSURE)
+    for inst in s.get("lxd_instances") or []:
+        if not isinstance(inst, dict):
+            continue
+        lim = inst.get("ram_limit_bytes")
+        if isinstance(lim, (int, float)) and lim > 0:
+            inst["ram_used_bytes"] = int(lim * HEALTHY_INSTANCE_RAM_PCT / 100.0)
     for d in s.get("disk") or []:
         if not isinstance(d, dict):
             continue
@@ -174,12 +229,22 @@ def healthy_sample(base: dict, *, seq: int, ts: str) -> dict:
     return s
 
 
-def fault_sample(base: dict, scenario: str, params: dict | None = None, *, seq: int, ts: str) -> dict:
+def _num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def fault_sample(base: dict, scenario: str, params: dict | None = None, *,
+                 seq: int, ts: str, elapsed_s: float | None = None) -> dict:
     """One faulted sample for `scenario`, derived from the healthy baseline.
 
     Deriving from the baseline (rather than from a hand-built sample) is what
     keeps the injected series inside the frozen telemetry schema: every field the
     node reported is carried over, only the faulted metric moves.
+
+    ``elapsed_s`` is the seconds since the injection started, used by the oom
+    scenario to RAMP the fault (a leak grows; it does not step). ``None`` — the
+    historical call shape, still used by the pure-function tests — yields the
+    fully-ramped peak.
     """
     if scenario not in SCENARIOS:
         raise ValueError(f"unknown scenario {scenario!r}")
@@ -191,18 +256,68 @@ def fault_sample(base: dict, scenario: str, params: dict | None = None, *, seq: 
 
     if scenario == "oom":
         total = s.get("ram_total_bytes") or 0
+        ramp = max(0.1, float(p.get("ramp_s", 16.0)))
+        frac = 1.0 if elapsed_s is None else min(1.0, max(0.0, float(elapsed_s) / ramp))
+        elapsed_eff = ramp if elapsed_s is None else max(0.0, float(elapsed_s))
+        start = float(p.get("ram_start_pct", 62.0))
         peak = float(p.get("ram_peak_pct", 97.0))
+        ram_pct = start + (peak - start) * frac
         if isinstance(total, (int, float)) and total > 0:
-            s["ram_used_bytes"] = int(total * peak / 100.0)
-        s["cpu_util_pct"] = float(p.get("cpu_util_pct", 92.0))
-        # Keep the nested inventory consistent: the operator's `heaviest` target
-        # resolves against `lxd_instances[]` (see console/seed_demo.py).
-        for inst in s.get("lxd_instances") or []:
-            if not isinstance(inst, dict):
-                continue
+            s["ram_used_bytes"] = int(total * ram_pct / 100.0)
+        s["cpu_util_pct"] = round(40.0 + (float(p.get("cpu_util_pct", 92.0)) - 40.0) * frac, 2)
+
+        # --- the leak signature (node-telemetry.md §4.12-§4.14) -------------
+        # Cumulative counters advance ON TOP of the baseline's own values (the
+        # node's pre-fault counters), so the injected series is monotonic and the
+        # controller's derived window deltas (`oom_kill_count_delta`,
+        # `pgmajfault_count_delta`) are positive — the leak, not just "RAM high".
+        base_oom = s.get("oom_kill_count")
+        base_oom = base_oom if _num(base_oom) else 0
+        s["oom_kill_count"] = int(base_oom) + int(frac * float(p.get("oom_kills", 3)))
+        base_pgf = s.get("pgmajfault_count")
+        base_pgf = base_pgf if _num(base_pgf) else 0
+        s["pgmajfault_count"] = int(base_pgf) + int(
+            elapsed_eff * float(p.get("pgmajfault_rate_s", 60.0)))
+        swap_peak = float(p.get("swap_peak_pct", 3.0))
+        if isinstance(total, (int, float)) and total > 0:
+            s["swap_used_bytes"] = int(total * swap_peak / 100.0 * frac)
+            floor = float(p.get("mem_available_floor_pct", 2.0))
+            mem_pct = HEALTHY_MEM_AVAILABLE_PCT + (floor - HEALTHY_MEM_AVAILABLE_PCT) * frac
+            s["mem_available_bytes"] = int(total * mem_pct / 100.0)
+        mem_some = float(p.get("pressure_mem_some", 72.4))
+        mem_full = float(p.get("pressure_mem_full", 41.3))
+        s["pressure"] = {
+            "cpu_some_avg10": round(18.6 * frac, 2),
+            "io_some_avg10": 0.0,
+            "memory_some_avg10": round(mem_some * frac, 2),
+            "memory_full_avg10": round(mem_full * frac, 2),
+        }
+
+        # Keep the nested inventory consistent (the operator's `heaviest` target
+        # resolves against `lxd_instances[]`). The LEAKING instance — the one with
+        # the most RAM headroom, i.e. the largest `ram_limit_bytes` — climbs to
+        # within a hair of its limit and is the one the kernel OOM-kills / that
+        # faults pages, so the per-instance leak signature names exactly the
+        # instance the model will resolve as `heaviest`.
+        insts = [i for i in (s.get("lxd_instances") or []) if isinstance(i, dict)]
+        leaker = None
+        if insts:
+            leaker = max(insts, key=lambda i: (
+                i.get("ram_limit_bytes") if _num(i.get("ram_limit_bytes")) else 0))
+        inst_start = float(p.get("instance_ram_start_pct", 55.0))
+        inst_peak = float(p.get("instance_ram_peak_pct", 99.0))
+        inst_moderate = float(p.get("instance_ram_pct", 85.0))
+        for inst in insts:
             lim = inst.get("ram_limit_bytes")
-            if isinstance(lim, (int, float)) and lim > 0:
-                inst["ram_used_bytes"] = int(lim * float(p.get("instance_ram_pct", 85.0)) / 100.0)
+            if not (isinstance(lim, (int, float)) and lim > 0):
+                continue
+            tgt = inst_peak if inst is leaker else inst_moderate
+            inst_pct = inst_start + (tgt - inst_start) * frac
+            inst["ram_used_bytes"] = int(lim * inst_pct / 100.0)
+            if inst is leaker:
+                inst["oom_kill_count"] = int(frac * float(p.get("oom_kills", 3)))
+                inst["pgmajfault_count"] = int(
+                    elapsed_eff * float(p.get("instance_pgmajfault_rate_s", 40.0)))
     elif scenario == "disk-fail":
         for d in s.get("disk") or []:
             if isinstance(d, dict):
@@ -525,7 +640,11 @@ class DemoFaultInjector(threading.Thread):
                 )
                 return
             params = json.loads(row["params_json"] or "{}")
-            sample = fault_sample(baseline, row["scenario"], params, seq=0, ts=ts)
+            # `elapsed` ramps the leak (the oom scenario's `ramp_s`): the chart
+            # shows the fault growing rather than stepping to peak on the first
+            # sample, which is the demo's "visible ramp".
+            sample = fault_sample(baseline, row["scenario"], params, seq=0, ts=ts,
+                                  elapsed_s=elapsed)
             self._write_sample(conn, node, row, sample, state_after="active")
             return
 
@@ -671,6 +790,18 @@ class DemoFaultInjector(threading.Thread):
                 [{"field": "duration_s", "reason": f"got {duration}"}],
             )
 
+        # Optional per-scenario param overrides (additive). The F01 negative
+        # control uses this: `{"oom_kills": 0, ...}` makes the injected memory
+        # read as reclaimable page cache (high RAM, no OOM kill), so the demo can
+        # show the operator NOT escalating to a destructive action. Unknown keys
+        # are passed through to `fault_sample`, which ignores what it does not
+        # understand (same rule as the harness params).
+        params = dict(SCENARIOS[scenario]["params"])
+        if "params" in body:
+            if not isinstance(body.get("params"), dict):
+                raise errors.invalid_argument("params must be a JSON object")
+            params.update({str(k): v for k, v in body["params"].items()})
+
         # Guard 1a: one open injection per (node, rule).
         existing = open_fault_for_rule(conn, project_id, node_id, rule_id)
         if existing is not None:
@@ -724,7 +855,7 @@ class DemoFaultInjector(threading.Thread):
             "expires_at": _iso_in(duration),
             "next_seq": seq,
             "baseline": baseline,
-            "params": SCENARIOS[scenario]["params"],
+            "params": params,
         }
         insert_fault(conn, row)
         self._supersede_logged.discard(injection_id)

@@ -843,7 +843,7 @@ but the demo can no longer inject them (owner decision 2026-10-17). Do not
 
 | `scenario`  | rule it drives  | injected signal |
 |-------------|-----------------|-----------------|
-| `oom`       | `oom-guard-01`  | host RAM → 97 % of `ram_total_bytes`, CPU raised, nested `lxd_instances[].ram_used_bytes` kept consistent |
+| `oom`       | `oom-guard-01`  | a memory **leak**: host RAM ramps to 97 % of `ram_total_bytes` over ~16 s while the leaking instance's `ram_used_bytes` climbs to ~99 % of its `ram_limit_bytes` and the leak signature advances — node `oom_kill_count` / `pgmajfault_count` / `swap_used_bytes` / `mem_available_bytes` / `pressure.memory_*` and per-instance `oom_kill_count` / `pgmajfault_count` (node-telemetry.md §4.12-§4.14) |
 | `disk-fail` | `disk-fail-01`  | every `disk[].mount_ro` → `true` (EXT4 remount-ro, Scenario B) |
 
 `clear` is not a scenario: it is the `DELETE` below.

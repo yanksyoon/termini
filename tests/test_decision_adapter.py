@@ -610,7 +610,7 @@ class TestDefaultTransport(unittest.TestCase):
         self.assertEqual(captured["timeout"], 12.5)
         self.assertEqual(captured["body"]["model"], "deepseek-flash")
         self.assertEqual(captured["body"]["temperature"], 0.0)
-        self.assertEqual(captured["body"]["max_tokens"], 512)
+        self.assertEqual(captured["body"]["max_tokens"], 1024)
         self.assertEqual(captured["body"]["response_format"], {"type": "json_object"})
         self.assertFalse(captured["body"]["stream"])
         self.assertEqual(captured["body"]["messages"][0]["role"], "system")

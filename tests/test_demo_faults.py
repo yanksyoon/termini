@@ -148,6 +148,114 @@ class SampleTests(unittest.TestCase):
                             f"{scenario}: {n} recovery sample(s) did not re-arm {rule}")
 
 
+class LeakSignatureTests(unittest.TestCase):
+    """F01: the oom scenario is a LEAK, not just "RAM high" (card §3).
+
+    The injected series must carry the leak signature the incident record cites:
+    node-level `oom_kill_count` / `pgmajfault_count` / `swap_used_bytes` /
+    `mem_available_bytes` / `pressure`, and per-instance
+    `oom_kill_count` + `ram_used_bytes` vs `ram_limit_bytes` on the leaking
+    instance. It must also RAMP (a leak grows), and the healthy baseline must
+    clear all of it.
+    """
+
+    def _base(self) -> dict:
+        return {
+            "ram_total_bytes": 8 * GiB, "ram_used_bytes": int(8 * GiB * 0.62),
+            "cpu_util_pct": 31.2,
+            "oom_kill_count": 2, "pgmajfault_count": 100, "swap_used_bytes": 0,
+            "mem_available_bytes": int(8 * GiB * 0.40),
+            "disk": [{"path": "/dev/sda", "total_bytes": 100 * GiB, "free_bytes": 78 * GiB,
+                      "write_latency_ms": 3.0, "mount_ro": False}],
+            "net": [{"iface": "eth0", "latency_ms": 0.8}],
+            "lxd_instances": [
+                # the leaker: biggest RAM headroom (8 GiB limit)
+                {"vm_id": "01M4AAAAAAAAAAAAAAAAAAAAAA", "ram_limit_bytes": 8 * GiB,
+                 "ram_used_bytes": int(8 * GiB * 0.55)},
+                {"vm_id": "01M4AAAAAAAAAAAAAAAAAAAAAB", "ram_limit_bytes": 1 * GiB,
+                 "ram_used_bytes": int(1 * GiB * 0.55)},
+            ],
+        }
+
+    def test_oom_ramps_from_healthy_to_peak(self):
+        base = self._base()
+        th = detect.Thresholds()
+        ramp = demo_faults.SCENARIOS["oom"]["params"]["ramp_s"]
+        start = demo_faults.fault_sample(base, "oom", None, seq=1,
+                                         ts="t", elapsed_s=0.0)
+        peak = demo_faults.fault_sample(base, "oom", None, seq=2,
+                                        ts="t", elapsed_s=ramp)
+        self.assertLess(detect.ram_pct(start), th.oom_ram_pct,
+                        "the ramp must START below the OOM threshold")
+        self.assertGreaterEqual(detect.ram_pct(peak), th.oom_ram_pct,
+                                "the ramp must END past the OOM threshold")
+        # Monotonic: later elapsed -> more RAM used.
+        mid = demo_faults.fault_sample(base, "oom", None, seq=3, ts="t",
+                                       elapsed_s=ramp / 2)
+        self.assertLess(start["ram_used_bytes"], mid["ram_used_bytes"])
+        self.assertLess(mid["ram_used_bytes"], peak["ram_used_bytes"])
+
+    def test_oom_emits_the_leak_signature(self):
+        base = self._base()
+        ramp = demo_faults.SCENARIOS["oom"]["params"]["ramp_s"]
+        s = demo_faults.fault_sample(base, "oom", None, seq=1, ts="t", elapsed_s=ramp)
+        # Node-level leak signature (§4.12-§4.13), advanced on top of the baseline.
+        self.assertGreater(s["oom_kill_count"], base["oom_kill_count"])
+        self.assertGreater(s["pgmajfault_count"], base["pgmajfault_count"])
+        self.assertGreater(s["swap_used_bytes"], 0)
+        self.assertLess(s["mem_available_bytes"], base["mem_available_bytes"])
+        self.assertGreater(s["pressure"]["memory_some_avg10"], 0.0)
+        # The window delta the controller derives is positive (the leak grew).
+        self.assertGreater(s["oom_kill_count"] - base["oom_kill_count"], 0)
+
+    def test_oom_attributes_the_leak_to_the_heaviest_instance(self):
+        base = self._base()
+        ramp = demo_faults.SCENARIOS["oom"]["params"]["ramp_s"]
+        s = demo_faults.fault_sample(base, "oom", None, seq=1, ts="t", elapsed_s=ramp)
+        insts = {i["vm_id"]: i for i in s["lxd_instances"]}
+        leaker = insts["01M4AAAAAAAAAAAAAAAAAAAAAA"]       # 8 GiB limit
+        other = insts["01M4AAAAAAAAAAAAAAAAAAAAAB"]        # 1 GiB limit
+        # The leaker's RAM approaches its limit (ram_used vs ram_limit); the
+        # other instance is held below it.
+        self.assertGreater(leaker["ram_used_bytes"], other["ram_used_bytes"])
+        self.assertGreater(leaker["ram_used_bytes"], leaker["ram_limit_bytes"] * 0.9)
+        # Only the leaker is OOM-killed / faults pages.
+        self.assertGreater(leaker["oom_kill_count"], 0)
+        self.assertEqual(other.get("oom_kill_count", 0), 0)
+
+    def test_healthy_baseline_clears_the_leak_signature(self):
+        base = self._base()
+        ramp = demo_faults.SCENARIOS["oom"]["params"]["ramp_s"]
+        faulted = demo_faults.fault_sample(base, "oom", None, seq=1, ts="t",
+                                           elapsed_s=ramp)
+        h = demo_faults.healthy_sample(base, seq=2, ts="t")
+        self.assertEqual(h["swap_used_bytes"], 0)
+        self.assertEqual(h["pressure"]["memory_some_avg10"], 0.0)
+        self.assertEqual(h["pressure"]["memory_full_avg10"], 0.0)
+        self.assertGreater(h["mem_available_bytes"], faulted["mem_available_bytes"])
+        # Every instance returns far below its limit after recovery.
+        for i in h["lxd_instances"]:
+            self.assertLessEqual(i["ram_used_bytes"], i["ram_limit_bytes"] * 0.6)
+
+    def test_reclaimable_cache_negative_control_shape(self):
+        """The negative control: same ramp, but NO leak signature (no OOM kill,
+        no swap, free memory held high) — reclaimable page cache, not a leak."""
+        base = self._base()
+        ramp = demo_faults.SCENARIOS["oom"]["params"]["ramp_s"]
+        params = {"oom_kills": 0, "pgmajfault_rate_s": 0, "instance_pgmajfault_rate_s": 0,
+                  "swap_peak_pct": 0, "mem_available_floor_pct": 40,
+                  "pressure_mem_some": 0, "pressure_mem_full": 0}
+        s = demo_faults.fault_sample(base, "oom", params, seq=1, ts="t", elapsed_s=ramp)
+        # RAM still breaches (the rule fires), but the leak signature is absent.
+        self.assertGreaterEqual(detect.ram_pct(s), detect.Thresholds().oom_ram_pct)
+        self.assertEqual(s["oom_kill_count"], base["oom_kill_count"])
+        self.assertEqual(s["pgmajfault_count"], base["pgmajfault_count"])
+        self.assertEqual(s["swap_used_bytes"], 0)
+        self.assertEqual(s["pressure"]["memory_some_avg10"], 0.0)
+        for i in s["lxd_instances"]:
+            self.assertEqual(i.get("oom_kill_count", 0), 0)
+
+
 # --------------------------------------------------------------------------- #
 # wire tests against a real controller process
 # --------------------------------------------------------------------------- #
@@ -349,9 +457,13 @@ class FaultEndpointsTest(unittest.TestCase):
         injection_id = inj["injection_id"]
 
         # The injected series is the node's series while it runs, and it breaches.
+        # The oom scenario now RAMPS (the leak signature, `ramp_s` ~16 s), so the
+        # threshold crossing arrives partway through the ramp — poll for the fact,
+        # bounded, rather than a fixed 12 s that assumed an instant peak.
         peak = 0.0
         fired = None
-        for _ in range(12):
+        deadline = time.time() + 45
+        while time.time() < deadline:
             time.sleep(1.0)
             points = self._metrics(self.node["node_id"])
             peak = max([p["v"] / (8 * GiB) * 100 for p in points] or [peak, 0.0])
