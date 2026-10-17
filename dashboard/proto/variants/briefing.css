@@ -1,0 +1,503 @@
+/*
+ * VARIANT 2 — "Briefing"
+ * AXIS: layout + personality. One calm reading column, 1040px wide, centred.
+ * Large type, real leading, generous air; materials are soft (a translucent
+ * shadow under a lifted surface, a hairline where a border would shout); one
+ * accent used sparingly, chroma otherwise reserved for status.
+ *
+ * WHAT IT KEEPS: every panel, control, filter, honesty surface and disclosure.
+ * It re-orders them for reading order — the fleet, then what the operator did,
+ * then the instruments, then the levers, then the raw log, then enrolment — and
+ * it never removes one. The log stays collapsed; the thinking log stays a
+ * disclosure; provenance, "absent not zero" and the demo labels keep their own
+ * colour, because they are the product's honesty rather than decoration.
+ *
+ * WHAT IT CHANGES: one column instead of a wall of panels; 16.5px/1.55 body
+ * type; 18px radii; cards separated by shadow and air instead of borders; node
+ * cards two-up with large figures; the nested incident card flattened so a
+ * decision reads as one paragraph-group rather than a card in a card.
+ *
+ * MOTION: considered, not expressive. Panels enter with an 8px rise + fade at
+ * 240ms strong ease-out, staggered 40ms — the "preventing a jarring change" tier,
+ * once per mount, never on a poll. Press feedback is 120ms. Nothing continuous.
+ *
+ * FOR: the owner checking in for thirty seconds, or reading on a laptop in a
+ * bright room. COST: fewer things visible at once — you scroll to act.
+ */
+
+html[data-variant="briefing"] {
+  --bg: #0e1014;
+  --bg-1: #15181e;
+  --bg-2: #1b1f27;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-2: rgba(255, 255, 255, 0.13);
+  --fg: #eef1f5;
+  --fg-dim: #b6bdc9;
+  --muted: #8b94a3;
+  --accent: #67d0ff;
+  --ok: #45d17a;
+  --warn: #f5ad48;
+  --err: #ff6b5c;
+  --radius: 18px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --fs-base: 16.5px;
+}
+
+/* ------------------------------------------------------------------ shell */
+html[data-variant="briefing"] body {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #171b22 0%, transparent 60%),
+    var(--bg);
+  color: var(--fg);
+  font-size: var(--fs-base);
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+}
+html[data-variant="briefing"] h2 {
+  font-size: 1.32rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+html[data-variant="briefing"] h3 { font-size: 1.02rem; font-weight: 600; letter-spacing: -0.01em; }
+html[data-variant="briefing"] .muted { color: var(--muted); }
+html[data-variant="briefing"] .small { font-size: 0.82rem; line-height: 1.5; }
+
+/* ------------------------------------------------------------------ topbar */
+/* Translucent chrome over a scrolling page; content passes under it rather than
+   being pushed by an opaque bar (apple-design: materials convey hierarchy). */
+html[data-variant="briefing"] .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 14px 28px;
+  background: rgba(14, 16, 20, 0.72);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(18px) saturate(1.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+html[data-variant="briefing"] .brand-name { font-size: 1.22rem; letter-spacing: -0.01em; }
+html[data-variant="briefing"] .brand-sub { font-size: 0.84rem; }
+html[data-variant="briefing"] .pill {
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.82rem;
+  color: var(--fg-dim);
+}
+html[data-variant="briefing"] .clock { font-size: 0.95rem; }
+html[data-variant="briefing"] .banner-host { position: sticky; top: 65px; z-index: 30; }
+html[data-variant="briefing"] .banner {
+  max-width: 1040px;
+  margin: 12px auto 0;
+  border-radius: 14px;
+  border: 0;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  padding: 12px 18px;
+  font-size: 0.92rem;
+}
+
+/* ------------------------------------------------------------------ layout
+ * One reading column. Order is the reading order: state → what happened →
+ * instruments → levers → raw log → enrolment. DOM order is the shipped one and
+ * is left alone; only the visual order changes, so nothing is unreachable by
+ * keyboard (tab order still follows the DOM, which is the product's order).
+ */
+html[data-variant="briefing"] .layout {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 34px 28px 48px;
+}
+html[data-variant="briefing"] .panel-overview { order: 1; }
+html[data-variant="briefing"] .panel-decisions { order: 2; }
+html[data-variant="briefing"] .panel-metrics { order: 3; }
+html[data-variant="briefing"] .panel-controls { order: 4; }
+html[data-variant="briefing"] .panel-logs { order: 5; }
+html[data-variant="briefing"] .panel-mynode { order: 6; }
+
+/* A lifted surface, not an outlined box: a semi-transparent shadow separates it
+   from the page and a 1px inset hairline catches the light on its top edge. */
+html[data-variant="briefing"] .panel {
+  background: var(--bg-1);
+  border: 0;
+  border-radius: var(--radius);
+  padding: 26px 28px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 24px 48px -32px rgba(0, 0, 0, 0.95),
+    0 2px 6px rgba(0, 0, 0, 0.25);
+}
+html[data-variant="briefing"] .panel-head {
+  margin-bottom: 22px;
+  gap: 16px;
+  align-items: baseline;
+}
+html[data-variant="briefing"] .panel-tools { gap: 12px; }
+
+/* ------------------------------------------------------------------ node cards */
+html[data-variant="briefing"] .overview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 18px;
+}
+html[data-variant="briefing"] .node-card {
+  background: var(--bg-2);
+  border: 0;
+  border-radius: 14px;
+  padding: 20px;
+  gap: 16px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 24px -20px rgba(0, 0, 0, 0.9);
+  /* status reads from the dot + badge; the 4px coloured edge is a border doing
+     the job a shadow does better here. Keep a barely-there tint instead. */
+}
+html[data-variant="briefing"] .node-card.status-online { box-shadow: 0 1px 0 rgba(69, 209, 122, 0.35) inset, 0 10px 24px -20px rgba(0, 0, 0, 0.9); }
+html[data-variant="briefing"] .node-card.status-degraded { box-shadow: 0 1px 0 rgba(245, 173, 72, 0.45) inset, 0 10px 24px -20px rgba(0, 0, 0, 0.9); }
+html[data-variant="briefing"] .node-card.status-offline { box-shadow: 0 1px 0 rgba(255, 107, 92, 0.45) inset, 0 10px 24px -20px rgba(0, 0, 0, 0.9); }
+html[data-variant="briefing"] .node-name { font-size: 1.06rem; letter-spacing: -0.01em; }
+html[data-variant="briefing"] .node-sub { font-size: 0.78rem; }
+html[data-variant="briefing"] .badge {
+  padding: 3px 9px;
+  border-radius: 7px;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+html[data-variant="briefing"] .metrics-row { grid-template-columns: 0.85fr 0.85fr 1.5fr; gap: 14px; }
+html[data-variant="briefing"] .metric {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  min-width: 0;
+}
+html[data-variant="briefing"] .metric .k {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+html[data-variant="briefing"] .metric .v {
+  font-size: 1.32rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  margin-top: 3px;
+}
+/* The disk figure is a sentence ("ok · 129.3 GiB free"), not a number: at display
+   size it wraps and sets the card's height on its own. One step down keeps it on
+   one baseline beside the two percentages. */
+html[data-variant="briefing"] .metric:nth-child(3) .v { font-size: 1.02rem; letter-spacing: -0.01em; }
+html[data-variant="briefing"] .flag,
+html[data-variant="briefing"] .reason,
+html[data-variant="briefing"] .services .flag,
+html[data-variant="briefing"] .process {
+  border: 0;
+  border-radius: 7px;
+  padding: 3px 9px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.76rem;
+}
+html[data-variant="briefing"] .flag.ok { color: #9fe9bc; background: rgba(69, 209, 122, 0.13); }
+html[data-variant="briefing"] .flag.bad { color: #ffb4ab; background: rgba(255, 107, 92, 0.14); }
+html[data-variant="briefing"] .flag.warn { color: #ffd39b; background: rgba(245, 173, 72, 0.14); }
+html[data-variant="briefing"] .flag.null { color: var(--muted); background: rgba(255, 255, 255, 0.04); }
+html[data-variant="briefing"] .reason { color: #ffd39b; background: rgba(245, 173, 72, 0.14); }
+html[data-variant="briefing"] .services,
+html[data-variant="briefing"] .processes { gap: 8px; font-size: 0.76rem; }
+html[data-variant="briefing"] .node-foot { font-size: 0.82rem; }
+html[data-variant="briefing"] .skeleton { border-radius: 14px; height: 180px; }
+
+/* ------------------------------------------------------------------ buttons */
+html[data-variant="briefing"] .btn {
+  padding: 9px 16px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.92rem;
+  transition: transform 120ms var(--ease-out), background 150ms ease, border-color 150ms ease;
+}
+html[data-variant="briefing"] .btn-primary {
+  background: #1d5c82;
+  border-color: #2c7fac;
+}
+html[data-variant="briefing"] .btn-warn { background: rgba(245, 173, 72, 0.12); border-color: rgba(245, 173, 72, 0.3); color: #ffd39b; }
+html[data-variant="briefing"] .btn-ghost { background: transparent; }
+html[data-variant="briefing"] .btn-sm { padding: 5px 11px; font-size: 0.82rem; border-radius: 9px; }
+html[data-variant="briefing"] .btn-row { gap: 10px; margin: 16px 0 4px; }
+
+/* ------------------------------------------------------------------ decisions */
+html[data-variant="briefing"] .decision-viewport {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  max-height: none;
+  overflow: visible;
+}
+html[data-variant="briefing"] .decision-list { gap: 16px; }
+html[data-variant="briefing"] .decision-row {
+  background: var(--bg-2);
+  border: 0;
+  border-radius: 14px;
+  padding: 18px 20px;
+  gap: 12px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 28px -24px rgba(0, 0, 0, 0.9);
+}
+/* provenance rail: a 3px tint on the leading edge, not a border on all sides */
+html[data-variant="briefing"] .decision-row.src-model { box-shadow: inset 3px 0 0 var(--accent), 0 12px 28px -24px rgba(0, 0, 0, 0.9); }
+html[data-variant="briefing"] .decision-row.src-fallback { box-shadow: inset 3px 0 0 var(--warn), 0 12px 28px -24px rgba(0, 0, 0, 0.9); background: #221d15; }
+html[data-variant="briefing"] .decision-row.src-det { box-shadow: inset 3px 0 0 #bf8bf5, 0 12px 28px -24px rgba(0, 0, 0, 0.9); }
+html[data-variant="briefing"] .decision-head { gap: 10px; }
+html[data-variant="briefing"] .decision-time { font-size: 0.78rem; }
+html[data-variant="briefing"] .decision-rule,
+html[data-variant="briefing"] .decision-action { font-size: 0.95rem; }
+html[data-variant="briefing"] .decision-node,
+html[data-variant="briefing"] .decision-target { font-size: 0.78rem; }
+html[data-variant="briefing"] .decision-breach { font-size: 0.86rem; gap: 9px; }
+html[data-variant="briefing"] .breach-metric { font-size: 0.92rem; }
+html[data-variant="briefing"] .decision-rationale { font-size: 0.9rem; }
+html[data-variant="briefing"] .decision-links { font-size: 0.82rem; gap: 16px; }
+
+html[data-variant="briefing"] .decider {
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  gap: 3px;
+}
+html[data-variant="briefing"] .decider-label { font-size: 0.95rem; }
+html[data-variant="briefing"] .decision-note {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--muted);
+  margin-bottom: 18px;
+  max-width: 78ch;
+}
+
+html[data-variant="briefing"] .incident-card {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  gap: 10px;
+}
+html[data-variant="briefing"] .incident-title { font-size: 1.08rem; line-height: 1.35; letter-spacing: -0.01em; }
+html[data-variant="briefing"] .incident-explanation { font-size: 0.95rem; line-height: 1.6; color: var(--fg-dim); max-width: 72ch; }
+html[data-variant="briefing"] .inc-label { font-size: 0.68rem; letter-spacing: 0.07em; }
+html[data-variant="briefing"] .inc-evidence-list,
+html[data-variant="briefing"] .inc-decided-list,
+html[data-variant="briefing"] .inc-executed-list { font-size: 0.84rem; gap: 4px; }
+html[data-variant="briefing"] .inc-field,
+html[data-variant="briefing"] .inc-kind,
+html[data-variant="briefing"] .inc-call { font-size: 0.8rem; }
+html[data-variant="briefing"] .incident-none,
+html[data-variant="briefing"] .trace-none { border-radius: 12px; padding: 10px 14px; }
+html[data-variant="briefing"] details.trace-details { border-radius: 12px; padding: 8px 14px; }
+html[data-variant="briefing"] .trace-summary-text { font-size: 0.84rem; }
+html[data-variant="briefing"] .trace-alert { font-size: 0.82rem; }
+html[data-variant="briefing"] .trace-step { font-size: 0.84rem; }
+html[data-variant="briefing"] .trace-reply-text { font-size: 0.8rem; }
+
+/* ------------------------------------------------------------------ charts */
+html[data-variant="briefing"] .charts-grid {
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 18px;
+}
+html[data-variant="briefing"] .chart-card {
+  background: var(--bg-2);
+  border: 0;
+  border-radius: 14px;
+  padding: 16px 16px 12px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+html[data-variant="briefing"] .chart-title { margin-bottom: 8px; }
+html[data-variant="briefing"] .chart-title h3 { font-size: 0.95rem; }
+html[data-variant="briefing"] .chart-unit { font-size: 0.8rem; }
+html[data-variant="briefing"] .chart-canvas { height: 168px; }
+html[data-variant="briefing"] .chart-legend { font-size: 0.8rem; gap: 14px; margin-top: 8px; }
+
+/* ------------------------------------------------------------------ log */
+html[data-variant="briefing"] details.panel > summary.panel-head { margin-bottom: 0; }
+html[data-variant="briefing"] .log-summary { justify-content: flex-start; gap: 10px; }
+html[data-variant="briefing"] .log-summary .log-summary-hint { flex: 0 1 auto; margin-left: auto; }
+html[data-variant="briefing"] details.panel[open] > summary.panel-head { margin-bottom: 18px; }
+html[data-variant="briefing"] .log-viewport {
+  height: 340px;
+  border-radius: 12px;
+  border: 0;
+  background: #0b0e13;
+}
+html[data-variant="briefing"] .log-row {
+  grid-template-columns: 72px 66px 78px 1fr auto;
+  padding: 8px 12px;
+  font-size: 0.86rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+html[data-variant="briefing"] .log-time,
+html[data-variant="briefing"] .log-node { font-size: 0.76rem; }
+html[data-variant="briefing"] .filters { gap: 16px; margin-bottom: 12px; }
+html[data-variant="briefing"] .chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+}
+html[data-variant="briefing"] .field { font-size: 0.82rem; gap: 8px; }
+html[data-variant="briefing"] .field select,
+html[data-variant="briefing"] .field input,
+html[data-variant="briefing"] textarea {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+@media (pointer: coarse) {
+  /* mobile-native: anything under 16px zooms the page on focus in iOS Safari. */
+  html[data-variant="briefing"] .field select,
+  html[data-variant="briefing"] .field input,
+  html[data-variant="briefing"] textarea { font-size: 16px; }
+}
+html[data-variant="briefing"] .toggle { font-size: 0.84rem; }
+
+/* ------------------------------------------------------------------ controls */
+html[data-variant="briefing"] .controls-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+html[data-variant="briefing"] .control-card {
+  background: var(--bg-2);
+  border: 0;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+html[data-variant="briefing"] .control-card p.muted { font-size: 0.86rem; line-height: 1.55; }
+html[data-variant="briefing"] .pending-item { border-radius: 12px; border: 0; background: rgba(255, 255, 255, 0.05); padding: 12px 14px; }
+html[data-variant="briefing"] .result { font-size: 0.86rem; }
+html[data-variant="briefing"] .result pre { border-radius: 10px; border: 0; background: #0b0e13; }
+
+/* ------------------------------------------------------------------ your node */
+html[data-variant="briefing"] .panel-mynode .muted.small { max-width: 70ch; }
+html[data-variant="briefing"] .mynode-form { gap: 14px; }
+html[data-variant="briefing"] .empty { font-size: 0.95rem; padding: 32px; }
+
+/* ------------------------------------------------------------------ chat */
+html[data-variant="briefing"] { --chat-w: 392px; }
+html[data-variant="briefing"] .chat-panel {
+  top: 0;
+  background: rgba(21, 24, 30, 0.96);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.5);
+  padding: 18px;
+  gap: 12px;
+}
+html[data-variant="briefing"] .chat-intro,
+html[data-variant="briefing"] .chat-foot { font-size: 0.8rem; line-height: 1.5; }
+html[data-variant="briefing"] .chat-msg { border-radius: 14px; border: 0; background: rgba(255, 255, 255, 0.05); padding: 12px 14px; }
+html[data-variant="briefing"] .chat-msg-user { background: rgba(103, 208, 255, 0.12); }
+html[data-variant="briefing"] .chat-text { font-size: 0.9rem; line-height: 1.55; }
+html[data-variant="briefing"] .chat-chip { border-radius: 999px; }
+html[data-variant="briefing"] .chat-form textarea { font-size: 16px; }
+@media (pointer: fine) {
+  html[data-variant="briefing"] .chat-form textarea { font-size: 0.9rem; }
+}
+
+/* The shipped panel shifts the page when it opens, so it never covers the
+ * incident view. That rule (`body.chat-open .layout`) loses to this variant's
+ * own `.layout` padding — same specificity, later sheet — so the intent is
+ * restated here at a specificity that wins. The column keeps its 1040px reading
+ * measure and simply gives up the width the panel occupies. */
+@media (min-width: 901px) {
+  html[data-variant="briefing"] body.chat-open .layout {
+    padding-right: calc(var(--chat-w) + 28px);
+    max-width: calc(1040px + var(--chat-w) + 28px);
+  }
+  html[data-variant="briefing"] body.chat-open .topbar { padding-right: calc(var(--chat-w) + 20px); }
+}
+
+/* ------------------------------------------------------------------ craft fixes */
+/* Two shipped behaviours that read as defects in any direction, fixed in the
+ * prototype layer only (the root page is untouched): a .linklike <button> in a
+ * flex column stretches and centres its label, and the chat intro is clipped by
+ * max-height with no ellipsis (it stops mid-word). */
+html[data-variant="briefing"] .linklike { text-align: left; }
+html[data-variant="briefing"] .chat-intro {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-height: none;
+}
+
+/* ------------------------------------------------------------------ motion
+ * Gate: panels are occasional (one mount, then a page you read). Entrance gets
+ * the standard budget: 8px + opacity, 240ms strong ease-out, 40ms stagger —
+ * enough to say "this arrived" without making the page feel slow. Stagger is
+ * decorative and never blocks interaction. Press feedback is 120ms.
+ */
+@keyframes briefing-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+html[data-variant="briefing"][data-enter] .panel {
+  animation: briefing-rise 240ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+html[data-variant="briefing"][data-enter] .panel:nth-child(1) { animation-delay: 0ms; }
+html[data-variant="briefing"][data-enter] .panel:nth-child(2) { animation-delay: 40ms; }
+html[data-variant="briefing"][data-enter] .panel:nth-child(3) { animation-delay: 80ms; }
+html[data-variant="briefing"][data-enter] .panel:nth-child(4) { animation-delay: 120ms; }
+html[data-variant="briefing"][data-enter] .panel:nth-child(5) { animation-delay: 160ms; }
+html[data-variant="briefing"][data-enter] .panel:nth-child(6) { animation-delay: 200ms; }
+
+html[data-variant="briefing"] .btn:active:not(:disabled),
+html[data-variant="briefing"] .chip:active,
+html[data-variant="briefing"] .linklike:active { transform: scale(0.97); }
+
+@media (hover: hover) and (pointer: fine) {
+  html[data-variant="briefing"] .btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.18); }
+  /* The decision row is deliberately NOT in this group: its provenance rail is an
+     inset box-shadow, and a hover shadow would replace it — the honesty surface
+     would vanish under the pointer (self-review finding #1). */
+  html[data-variant="briefing"] .node-card:hover,
+  html[data-variant="briefing"] .chart-card:hover { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 36px -26px rgba(0, 0, 0, 0.95); }
+  html[data-variant="briefing"] .log-row:hover { background: rgba(255, 255, 255, 0.03); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Gentler, not zero: keep the fade that says "this arrived", drop the movement. */
+  @keyframes briefing-rise {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  html[data-variant="briefing"] .btn:active:not(:disabled),
+  html[data-variant="briefing"] .chip:active,
+  html[data-variant="briefing"] .linklike:active { transform: none; }
+}
+
+/* ------------------------------------------------------------------ phone */
+@media (max-width: 760px) {
+  html[data-variant="briefing"] .layout { padding: 18px 14px 40px; gap: 16px; }
+  html[data-variant="briefing"] .panel { padding: 18px 16px; border-radius: 16px; }
+  /* Two rows: brand, then one horizontally-scrolling row of status and actions. */
+  html[data-variant="briefing"] .topbar { padding: 10px 14px; flex-direction: column; align-items: stretch; gap: 8px; }
+  html[data-variant="briefing"] .topbar-right {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    width: 100%;
+    padding-bottom: 2px;
+  }
+  html[data-variant="briefing"] .brand-sub { display: none; }
+  html[data-variant="briefing"] .overview-grid { grid-template-columns: 1fr; }
+  html[data-variant="briefing"] .charts-grid { grid-template-columns: 1fr; }
+  html[data-variant="briefing"] .panel-head { margin-bottom: 16px; }
+  html[data-variant="briefing"] .log-row { grid-template-columns: 60px 1fr auto; padding: 7px 10px; }
+  html[data-variant="briefing"] .banner { margin: 8px 14px 0; }
+  html[data-variant="briefing"] .chat-panel { top: auto; }
+}
