@@ -181,14 +181,22 @@ class WsClient:
 
 
 class SseReader:
-    """Raw SSE client: reads headers, then yields (event, data) dicts."""
+    """Raw SSE client: reads headers, then yields (event, data) dicts.
 
-    def __init__(self, port: int, path: str) -> None:
+    `headers` is an optional dict of extra request headers (e.g. an
+    `Authorization: Bearer` credential); the response status line is captured on
+    `self.status` so a test can assert the auth result (200 vs 401/403).
+    """
+
+    def __init__(self, port: int, path: str, headers: dict | None = None) -> None:
         self.sock = socket.create_connection(("127.0.0.1", port), timeout=10)
-        req = f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/event-stream\r\n\r\n"
+        req = f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/event-stream\r\n"
+        for k, v in (headers or {}).items():
+            req += f"{k}: {v}\r\n"
+        req += "\r\n"
         self.sock.sendall(req.encode())
         self._buf = b""
-        self._read_until(b"\r\n\r\n")
+        self.status = self._read_until(b"\r\n\r\n").split(b"\r\n", 1)[0].decode()
 
     def _read_until(self, delim: bytes) -> bytes:
         while delim not in self._buf:
@@ -708,6 +716,65 @@ class DashboardIntegrationTest(unittest.TestCase):
         self.assertIn("log_id", d)
         self.assertIn("severity", d)
         self.assertIn("remediation", d)
+
+    def test_log_stream_authenticates_via_bearer_header(self):
+        # The dashboard SSE client puts the credential in the Authorization header
+        # (a credential in the URL is forbidden, t_5649d117). The route must read
+        # it there — with no `?token=` in the path — and still stream.
+        sse = SseReader(
+            PORT,
+            f"/v1/projects/{self.project_id}/logs?since={ulid.new_ulid()}",
+            headers={"Authorization": "Bearer dash-project-token"},
+        )
+        self.assertIn("200", sse.status, sse.status)
+        http("POST", f"/v1/projects/{self.project_id}/nodes/{self.node_a['node_id']}/actions/reboot",
+             {"delay_s": 0}, token="dash-project-token", port=PORT)
+        ev = sse.next_event(timeout=3.0)
+        sse.close()
+        self.assertIsNotNone(ev)
+        self.assertEqual(ev["event"], "log")
+        self.assertIn("log_id", ev["data"])
+
+    def test_log_stream_rejects_bad_bearer(self):
+        sse = SseReader(
+            PORT,
+            f"/v1/projects/{self.project_id}/logs",
+            headers={"Authorization": "Bearer wrong-token"},
+        )
+        sse.close()
+        # A wrong credential is refused (401 missing token / 403 invalid token);
+        # the point is that the route is no longer 200 for an unauthenticated
+        # caller and no longer ignores the Authorization header.
+        self.assertTrue(sse.status.startswith("HTTP/1.1 40"), sse.status)
+
+    def test_log_stream_preflight_allows_cache_control(self):
+        # The browser preflights the SSE fetch because it sends a non-simple
+        # `Authorization` header; the preflight response must list every request
+        # header the client sends, including `Cache-Control`.
+        sock = socket.create_connection(("127.0.0.1", PORT), timeout=10)
+        sock.sendall(
+            f"OPTIONS /v1/projects/{self.project_id}/logs HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{PORT}\r\n"
+            "Origin: https://dashboard.example\r\n"
+            "Access-Control-Request-Method: GET\r\n"
+            "Access-Control-Request-Headers: authorization, cache-control, x-termini-version\r\n"
+            "\r\n".encode(),
+        )
+        resp = b""
+        while b"\r\n\r\n" not in resp:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            resp += chunk
+        sock.close()
+        head = resp.decode(errors="replace")
+        allow_headers = next(
+            (ln.split(":", 1)[1].strip() for ln in head.split("\r\n")
+             if ln.lower().startswith("access-control-allow-headers:")),
+            "",
+        )
+        self.assertIn("Cache-Control", allow_headers)
+        self.assertIn("Authorization", allow_headers)
 
     def test_ws_stream_mirrors_log_and_remediation(self):
         ws = WsClient(PORT, f"/stream/v1?token=dash-project-token")

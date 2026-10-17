@@ -27,7 +27,7 @@ and dashboard.md §1–§4):
     GET  /v1/projects/{pid}/demo/faults           (project_token)    -> 200   operator-only
     POST /v1/projects/{pid}/demo/faults/clear     (project_token)    -> 200   operator-only
     DELETE /v1/projects/{pid}/demo/faults/{iid}   (project_token)    -> 200   operator-only
-    GET  /v1/projects/{pid}/logs                  (SSE, token in ?token)
+    GET  /v1/projects/{pid}/logs                  (SSE, Bearer auth; ?token= fallback)
     GET  /stream/v1?token=...                     (WebSocket event stream)
     GET  /terminal/v1/nodes/{node_id}?token=...    (WebSocket terminal)
 
@@ -195,7 +195,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", self._cors_origin())
         self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers",
-                         "Authorization, Content-Type, Idempotency-Key, X-Termini-Version, Last-Event-ID")
+                         "Authorization, Content-Type, Idempotency-Key, X-Termini-Version, Last-Event-ID, Cache-Control")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 
     def _send_json(self, status: int, obj) -> None:
@@ -2132,7 +2132,10 @@ class ControllerHandler(BaseHTTPRequestHandler):
     def _handle_sse_logs(self, project_id: str) -> None:
         q = self._query()
         try:
-            self._require_project_token(q.get("token"))
+            # The browser SSE client authenticates with `Authorization: Bearer`
+            # (a credential in the URL is forbidden by t_5649d117); `?token=` is
+            # kept only as a fallback for the documented curl/CLI clients.
+            self._require_project_token(self._bearer() or q.get("token"))
             if project_id != self.server.project["id"]:
                 raise errors.permission_denied("project_id does not match token scope")
         except errors.ApiError as e:
