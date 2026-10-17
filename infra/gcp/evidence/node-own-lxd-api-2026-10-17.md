@@ -130,12 +130,54 @@ config was restored to empty afterwards.)
 * Tests: `tests/test_bootstrap_lxd_api.py` (16), 
   `tests/test_controller_heartbeat_lxd_endpoint.py` (7); `tests/test_bootstrap_registration.py`
   stubs the precondition so HTTP-status classification stays a unit test.
+* `infra/gcp/tools/verify-node-lxd-api.py` — re-runnable acceptance: probes every
+  live node's own endpoint from the controller and exits non-zero on `000`
+  (§5a). It reads the controller's node table, so it asserts the endpoint the
+  executor would really dial, not a hand-typed URL.
 
 Test run: `python3 -m unittest tests.test_bootstrap_lxd_api tests.test_bootstrap_registration
 tests.test_bootstrap_telemetry tests.test_controller_heartbeat_lxd_endpoint
 tests.test_fleet_listing_default_view tests.test_operator_loop
 tests.test_operator_remediation_effect tests.test_lxdtrust tests.test_raise_lxd_trust`
 → **129 tests, OK**.
+
+## 5a. Re-verified live at 17:12Z (after the branch was rebased onto main)
+
+The listener is a live thing, so the acceptance was re-measured, not carried over.
+New re-runnable tool — `infra/gcp/tools/verify-node-lxd-api.py` — run **on the
+controller** against the controller's own node table. It probes the endpoint the
+controller would actually dial (the node-reported `nodes.lxd_endpoint`), and says
+so loudly when it has to fall back to the global URL:
+
+```
+$ TERMINI_DB_PATH=/data/controller.db python3 infra/gcp/tools/verify-node-lxd-api.py
+2026-10-17T17:12:33Z
+ok   01M4TGD31WXH97JAA5S6A4R10D  ba1f1fae…5713b 10.10.0.11:8443  [reported] HTTP 200
+ok   01M4ZQ7Q2J80ATY3K32PY3PPJH  33678f54…2486e6 10.10.0.13:8443  [reported] HTTP 200
+
+2/2 nodes answer their own LXD API (0 resolved via the global fallback)
+exit=0
+```
+
+`HTTP 200` (not `000`) is the acceptance: a non-zero status from the controller.
+Decommissioned/offline rows are excluded by default — they are history, not the
+fleet; `--include-offline` probes them too (it reported 7 stale rows from earlier
+demos, which is why the default is scoped).
+
+Real operator actions in the same window (controller API `GET /v1/operator/audits`),
+each one a successful `PUT /1.0/instances/demo-workload/state` on node-a:
+
+```
+17:12:19.211Z result=ok  lxd_endpoint=https://10.10.0.11:8443
+  operation Success: /1.0/operations/ad5c8394-159a-4287-8663-d4d54836b0b3; action=start
+17:12:11.047Z result=ok  lxd_endpoint=https://10.10.0.11:8443
+  operation Success: /1.0/operations/720669b4-1011-43b1-928b-0d4d11f0cec0; action=stop
+17:11:49.698Z result=ok  lxd_endpoint=https://10.10.0.11:8443
+  operation Success: /1.0/operations/a7834ac7-7a3f-4cf2-a1b0-3aec6bb2d040; action=restart
+```
+
+Full suite on the rebased branch: `python3 -m unittest discover -s tests` →
+**1050 tests, OK** (295 s).
 
 ## 6. Security posture (unchanged)
 
@@ -153,3 +195,14 @@ what drifted on node-a). The bootstrap now re-asserts and re-proves it on **ever
 boot and re-reports it on every heartbeat, so a drifted node either comes back by
 itself or refuses to register. A node whose daemon cannot start at all is a
 different fault and is visible as `lxd` `stopped` in its telemetry `services[]`.
+
+The **running** node-a/node-c still execute the baked copy at
+`/usr/local/bin/termini-bootstrap` from their current boot disk: the fail-closed
+daemon in this PR ships with the next node image build, while the listener on a
+freshly raised node is already guaranteed by the image itself
+(`image/pipeline/provision/10-node-os.sh` sets `core.https_address=:8443` and
+`bake-node-os.sh` fails the bake if `GET /1.0` does not answer — that is what
+`--raise` boots from). Restarting the enrollment unit on the demo node while the
+owner is evaluating it would risk the demo for no extra proof: the fail-closed
+path is already proven live against the real controller (§4), and the
+re-assert/heartbeat paths are covered by the suite.
