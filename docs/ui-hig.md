@@ -213,3 +213,18 @@ python3 evidence/hig/tools/capture.py --base http://127.0.0.1:8110 --out evidenc
 destination at 1440×900 and 390×844 in both appearances, measures the page, runs the a11y check,
 performs the keyboard walkthrough with real key events, and checks that switching away from the
 variant restores the shipped page. The report lands in `evidence/hig/audit/summary.json`.
+
+## Promotion (2026-10-17)
+
+The owner selected this variant, so it is no longer a prototype: `dashboard/index.html` now declares
+`data-variant="hig"` on `<html>`, links `proto/variants/hig.css` and loads `proto/variants/hig.js` — the same
+files the picker used, loaded exactly once, with no harness and no picker on the root. The three other variants
+stay at `/proto/` as references; the prototype page and the root render the same design when `?v=4` is selected.
+
+Two test guards were inverted rather than deleted, because the property they protect changed owners: the root must
+load ONE design layer, once, and must never embed the picker (`ui-hig.test.mjs`, `proto-variants.test.mjs`).
+
+Fixed in the same change: the node detail pane accumulated a second, stale block after each poll, because the
+dashboard rebuilds node cards and the parked `.hig-node-rest` outlived its card. `placeNodeDetail()` now keys each
+parked block to its node id, drops blocks whose node is gone, and replaces a rebuilt card's block instead of
+appending another.
