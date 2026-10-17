@@ -107,6 +107,23 @@ class Element {
     if (this.parentNode) this.parentNode.removeChild(this);
   }
 
+  /** Nearest ancestor-or-self matching a (single-compound) selector. */
+  closest(selector) {
+    const groups = String(selector)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    let node = this;
+    while (node && node.nodeType === ELEMENT_NODE) {
+      if (groups.some((g) => matchesCompound(node, g))) return node;
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  /** Layout is not modelled here; scrolling is a no-op by design. */
+  scrollIntoView() {}
+
   _detach() {
     if (this.parentNode) this.parentNode.removeChild(this);
   }
@@ -373,6 +390,20 @@ class Document {
 
   createDocumentFragment() {
     return new DocumentFragment();
+  }
+
+  getElementById(id) {
+    const found = this.body.querySelectorAll(`[id="${id}"]`)[0];
+    if (found) return found;
+    const walk = (node) => {
+      for (const child of node.children) {
+        if (child.id === id) return child;
+        const deep = walk(child);
+        if (deep) return deep;
+      }
+      return null;
+    };
+    return walk(this.documentElement);
   }
 
   querySelector(selector) {

@@ -1,0 +1,239 @@
+{
+  "browser": "Chrome/145.0.7632.6",
+  "url": "http://127.0.0.1:43209/?offline=1&dest=incidents",
+  "viewport": [
+    1440,
+    1200
+  ],
+  "checks": [
+    {
+      "check": "the incidents list rendered",
+      "ok": true,
+      "detail": "6 rows, first decision selected, pane 1536 chars"
+    },
+    {
+      "check": "rows are rows: no control nested in an option",
+      "ok": true,
+      "detail": "0 button/a/summary/details inside the list rows"
+    },
+    {
+      "check": "a row has a box to click",
+      "ok": true,
+      "detail": "{\"index\": 1, \"id\": \"01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050\", \"x\": 370, \"y\": 345}"
+    },
+    {
+      "check": "a click on that row selects that row",
+      "ok": true,
+      "detail": "aria-selected moved 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000020 -> 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050 (clicked 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050), 1 row selected"
+    },
+    {
+      "check": "the click moves focus, so ArrowDown continues here",
+      "ok": true,
+      "detail": "activeElement decision 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050, tabIndex 0 on ['01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050']"
+    },
+    {
+      "check": "the pane renders that decision's record (never blank)",
+      "ok": true,
+      "detail": "pane 1528 chars, parts ['01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050'], title 'Memory exhaustion on node a'"
+    },
+    {
+      "check": "the record pane moved, not just the highlight",
+      "ok": true,
+      "detail": "pane text changed: 'Disk write latency on /dev/sda' -> 'Memory exhaustion on node a'"
+    },
+    {
+      "check": "the full record is there: card, thinking log, breach, rationale, links",
+      "ok": true,
+      "detail": "cards 1, no-record 0, traces 1, links ['01H4KZ9Q2R…0060', 'telemetry sample', 'show on chart', 'Ask AI']"
+    },
+    {
+      "check": "the record's own controls stay usable",
+      "ok": true,
+      "detail": "7 buttons in the pane, 0 disabled"
+    },
+    {
+      "check": "the record the reader left is parked, and nothing is duplicated",
+      "ok": true,
+      "detail": "store holds 21 parts over 5 decisions, duplicate blocks 0, selected id still in the store: False"
+    },
+    {
+      "check": "ArrowDown continues from the clicked row",
+      "ok": true,
+      "detail": "selection 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050 -> 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000080, pane parts ['01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000080'], 1514 chars"
+    },
+    {
+      "check": "ArrowUp returns to the row the pointer selected",
+      "ok": true,
+      "detail": "selection 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000080 -> 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050"
+    },
+    {
+      "check": "the thinking log opens inside the record",
+      "ok": true,
+      "detail": "1 open disclosure(s) in the pane after a click on the summary"
+    },
+    {
+      "check": "the record survives the 3 s poll",
+      "ok": true,
+      "detail": "after 12s: selection 01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050, pane parts ['01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050'], 3684 chars, title 'Memory exhaustion on node a'"
+    },
+    {
+      "check": "no duplicated block, no lost disclosure",
+      "ok": true,
+      "detail": "duplicate blocks 0, cards 1, traces 1, open disclosures 1 (was 1), row controls 0"
+    }
+  ],
+  "pass": true,
+  "first": {
+    "rows": 6,
+    "selectedId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000020",
+    "selectedCount": 1,
+    "tab0": [
+      "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000020"
+    ],
+    "firstId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000020",
+    "secondId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+    "panePartIds": [
+      "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000020"
+    ],
+    "paneTextLen": 1536,
+    "paneText": "ai-generated incident incident_generated: \"model\" AI model Ask AI Disk write latency on /dev/sda write_latency_ms on /dev/sda reached 120 ms against a 50 ms threshold while free space stayed above the",
+    "paneTitle": "Disk write latency on /dev/sda",
+    "paneCards": 1,
+    "paneNoRecord": 0,
+    "paneLinks": [
+      "01H4KZ9Q2R…0030",
+      "telemetry sample",
+      "show on chart",
+      "Ask AI"
+    ],
+    "paneTrace": 1,
+    "paneDetails": 1,
+    "paneButtons": 7,
+    "paneDisabled": 0,
+    "rowControls": 0,
+    "storeCards": 4,
+    "storeParts": 21,
+    "storeUniqueIds": 5,
+    "storeHasSelected": false,
+    "duplicates": 0,
+    "openDetails": 0,
+    "activeId": null,
+    "emptyHidden": true,
+    "noBodyHidden": true
+  },
+  "clicked": {
+    "rows": 6,
+    "selectedId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+    "selectedCount": 1,
+    "tab0": [
+      "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050"
+    ],
+    "firstId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000020",
+    "secondId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+    "panePartIds": [
+      "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050"
+    ],
+    "paneTextLen": 1528,
+    "paneText": "ai-generated incident incident_generated: \"model\" AI model Ask AI Memory exhaustion on node a ram_used_bytes reached 96.4% of ram_total_bytes and stayed there for two consecutive samples, and one inst",
+    "paneTitle": "Memory exhaustion on node a",
+    "paneCards": 1,
+    "paneNoRecord": 0,
+    "paneLinks": [
+      "01H4KZ9Q2R…0060",
+      "telemetry sample",
+      "show on chart",
+      "Ask AI"
+    ],
+    "paneTrace": 1,
+    "paneDetails": 1,
+    "paneButtons": 7,
+    "paneDisabled": 0,
+    "rowControls": 0,
+    "storeCards": 4,
+    "storeParts": 21,
+    "storeUniqueIds": 5,
+    "storeHasSelected": false,
+    "duplicates": 0,
+    "openDetails": 0,
+    "activeId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+    "emptyHidden": true,
+    "noBodyHidden": true
+  },
+  "keyboard": {
+    "rows": 6,
+    "selectedId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000080",
+    "selectedCount": 1,
+    "tab0": [
+      "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000080"
+    ],
+    "firstId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000020",
+    "secondId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+    "panePartIds": [
+      "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000080"
+    ],
+    "paneTextLen": 1514,
+    "paneText": "controller-generated · model unavailable incident_generated: \"fallback\" controller-generated, model unavailable Ask AI oom on node a model unavailable (inference_unavailable); the deterministic playbo",
+    "paneTitle": "oom on node a",
+    "paneCards": 1,
+    "paneNoRecord": 0,
+    "paneLinks": [
+      "01H4KZ9Q2R…0090",
+      "telemetry sample",
+      "show on chart",
+      "Ask AI"
+    ],
+    "paneTrace": 1,
+    "paneDetails": 1,
+    "paneButtons": 7,
+    "paneDisabled": 0,
+    "rowControls": 0,
+    "storeCards": 4,
+    "storeParts": 21,
+    "storeUniqueIds": 5,
+    "storeHasSelected": false,
+    "duplicates": 0,
+    "openDetails": 0,
+    "activeId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000080",
+    "emptyHidden": true,
+    "noBodyHidden": true
+  },
+  "settled": {
+    "rows": 6,
+    "selectedId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+    "selectedCount": 1,
+    "tab0": [
+      "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050"
+    ],
+    "firstId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000020",
+    "secondId": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+    "panePartIds": [
+      "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050"
+    ],
+    "paneTextLen": 3684,
+    "paneText": "ai-generated incident incident_generated: \"model\" AI model Ask AI Memory exhaustion on node a ram_used_bytes reached 96.4% of ram_total_bytes and stayed there for two consecutive samples, and one inst",
+    "paneTitle": "Memory exhaustion on node a",
+    "paneCards": 1,
+    "paneNoRecord": 0,
+    "paneLinks": [
+      "01H4KZ9Q2R…0060",
+      "telemetry sample",
+      "show on chart",
+      "Ask AI"
+    ],
+    "paneTrace": 1,
+    "paneDetails": 1,
+    "paneButtons": 7,
+    "paneDisabled": 0,
+    "rowControls": 0,
+    "storeCards": 4,
+    "storeParts": 21,
+    "storeUniqueIds": 5,
+    "storeHasSelected": false,
+    "duplicates": 0,
+    "openDetails": 1,
+    "activeId": null,
+    "emptyHidden": true,
+    "noBodyHidden": true
+  },
+  "screenshot": "hig/shots/13-incidents-clicked-record-1440x1200-dark.png"
+}
