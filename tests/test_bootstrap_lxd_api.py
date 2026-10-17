@@ -34,6 +34,7 @@ import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from unittest import mock
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parent
@@ -293,6 +294,29 @@ class HeartbeatInterval(unittest.TestCase):
         self.assertEqual(self.mod.heartbeat_interval_s({"heartbeat_interval_s": "1"}), 5.0)
         self.assertEqual(self.mod.heartbeat_interval_s({"heartbeat_interval_s": "30"}), 30.0)
         self.assertEqual(self.mod.heartbeat_interval_s({"heartbeat_interval_s": "junk"}), 15.0)
+
+
+class UnixSocketOverride(unittest.TestCase):
+    """The one seam that keeps a test run off the HOST's real LXD.
+
+    The repair path WRITES `core.https_address` through the daemon's unix socket. A
+    suite run on a machine that happens to run LXD rewrote that machine's config
+    once (t_0139006c); ``TERMINI_LXD_UNIX_SOCKETS`` makes that impossible for any
+    test that starts the daemon as a subprocess and cannot patch the module.
+    """
+
+    def test_env_override_replaces_the_real_socket_list(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        bogus = [str(pathlib.Path(tmp.name) / "a.socket"), str(pathlib.Path(tmp.name) / "b.socket")]
+        with mock.patch.dict(os.environ, {"TERMINI_LXD_UNIX_SOCKETS": ":".join(bogus)}):
+            mod = load_daemon({})
+        self.assertEqual(mod.LXD_UNIX_SOCKETS, tuple(bogus))
+
+    def test_unset_or_empty_env_keeps_the_documented_sockets(self):
+        with mock.patch.dict(os.environ, {"TERMINI_LXD_UNIX_SOCKETS": ""}):
+            mod = load_daemon({})
+        self.assertEqual(mod.LXD_UNIX_SOCKETS[0], "/var/snap/lxd/common/lxd/unix.socket")
 
 
 if __name__ == "__main__":

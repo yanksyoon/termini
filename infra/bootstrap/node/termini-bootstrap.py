@@ -1937,7 +1937,15 @@ LXD_INVENTORY_TIMEOUT_S = float(os.environ.get("TERMINI_LXD_INVENTORY_TIMEOUT_S"
 # /run. The REST API over this socket answers the same
 # `GET /1.0/instances?recursion=2` view `lxc list` renders, and it needs no
 # privilege escalation — which is the whole point (see `_lxd_instances_over_socket`).
-LXD_UNIX_SOCKETS = (
+#
+# `TERMINI_LXD_UNIX_SOCKETS` overrides the list (colon-separated). It exists for one
+# reason: tests that exercise this daemon must never reach a REAL LXD on the machine
+# running them. A test run on a developer host once wrote `core.https_address`
+# through that host's socket, which is a side effect no test may have; pointing the
+# list at a path that does not exist makes such a write impossible.
+LXD_UNIX_SOCKETS: tuple[str, ...] = tuple(
+    p for p in os.environ.get("TERMINI_LXD_UNIX_SOCKETS", "").split(":") if p.strip()
+) or (
     "/var/snap/lxd/common/lxd/unix.socket",
     "/var/lib/lxd/unix.socket",
     "/run/lxd/unix.socket",

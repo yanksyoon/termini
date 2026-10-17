@@ -127,9 +127,21 @@ config was restored to empty afterwards.)
 * `docs/contracts/node-bootstrap.md` — §2 (`LXD_API_UNAVAILABLE`), §5.2 (endpoint is
   advertised only when proven; registration fails closed), §9 row 14, §13
   (`heartbeat_interval_s`).
-* Tests: `tests/test_bootstrap_lxd_api.py` (16), 
+* Tests: `tests/test_bootstrap_lxd_api.py` (18),
   `tests/test_controller_heartbeat_lxd_endpoint.py` (7); `tests/test_bootstrap_registration.py`
   stubs the precondition so HTTP-status classification stays a unit test.
+* `tests/test_client_installer.py` — the customer-enrollment end-to-end test now
+  presents the listener instead of assuming one: a real TLS stub answering
+  `GET /1.0` on an ephemeral port, selected through the documented `lxd_port` config
+  key, and it asserts the daemon actually probed it. CI caught this the honest way —
+  the first run of this branch was RED because the test had only ever passed on a
+  host that happened to run LXD at `:8443`; it no longer depends on the host.
+* `infra/bootstrap/node/termini-bootstrap.py` — `TERMINI_LXD_UNIX_SOCKETS` overrides
+  the daemon's unix-socket list. It exists so a suite run on a developer machine
+  cannot repair that machine's REAL LXD: this task's first test run wrote
+  `core.https_address` through the dev host's socket. The e2e test sets it to a path
+  that does not exist, and `tests/test_bootstrap_lxd_api.py` pins both the override
+  and the default.
 * `infra/gcp/tools/verify-node-lxd-api.py` — re-runnable acceptance: probes every
   live node's own endpoint from the controller and exits non-zero on `000`
   (§5a). It reads the controller's node table, so it asserts the endpoint the
