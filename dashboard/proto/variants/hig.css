@@ -1,0 +1,2109 @@
+/*
+ * VARIANT 4 — "Overview"
+ * AXIS: information architecture + platform convention. Three destinations
+ * (Fleet / Incidents / Settings) in a sidebar, master–detail on the two
+ * records surfaces, and the web's version of the HIG's semantic system:
+ * tokens instead of colours, one type family, two weights, 44 pt targets,
+ * light and dark, and attention reserved for things that are time-boxed.
+ *
+ * WHAT IT KEEPS: every panel, control, filter, honesty surface and disclosure
+ * the shipped page has — the thinking log, evidence with seq references, audit
+ * ids, model-vs-fallback provenance, demo/synthetic labels, the decider strip,
+ * the audit/sample dialogs, the raw operator stream, the AI chat, enrolment and
+ * connection settings. Nothing is removed; the things that are not the landing
+ * page's job move one level deeper (row → detail, destination → sheet).
+ *
+ * WHAT IT CHANGES: five stacked panels become three destinations; a node is one
+ * row with one overflow menu instead of a card with four buttons; the decision
+ * list is master–detail so the page is one screen however long the history is;
+ * colour is semantic (label / separator / red / orange / green, one accent);
+ * type is 22 / 17 / 15 / 13 / 11 at 400 and 600; both appearances follow the
+ * system with an explicit override in Settings; every control is ≥44 px.
+ *
+ * MOTION: 200–300 ms, transform and opacity only, ease-out, honoured under
+ * `prefers-reduced-motion`. A destination change is a 220 ms opacity fade; the
+ * log sheet rises 12 px; a menu fades 4 px. Nothing animates layout, and a poll
+ * (3 s) never moves anything: rows reconcile in place.
+ */
+
+/* ------------------------------------------------------------------ tokens
+ * Light is the base; the dark block is repeated for the media query and for
+ * the explicit override because CSS has no way to alias a block. Text tokens
+ * are the only ones carrying colour; everything else is neutral.
+ */
+html[data-variant="hig"] {
+  --hig-bg: #ffffff;
+  --hig-bg-elevated: #f7f7f8;
+  --hig-bg-sunken: #f0f0f2;
+  --hig-bg-selected: #e9e9ec;
+  --hig-label: #1d1d1f;
+  --hig-label-2: #4f4f53;
+  --hig-label-3: #62626a;
+  --hig-separator: rgba(60, 60, 67, 0.18);
+  --hig-separator-strong: rgba(60, 60, 67, 0.32);
+  --hig-red: #c0261c;
+  --hig-orange: #a35500;
+  --hig-green: #126b38;
+  --hig-accent: #0060cf;
+  --hig-on-accent: #ffffff;
+  --hig-on-tint: #ffffff;
+  --hig-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --hig-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --hig-radius: 12px;
+  --hig-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+  --hig-fs-title: 22px;
+  --hig-fs-body: 17px;
+  --hig-fs-mid: 15px;
+  --hig-fs-small: 13px;
+  --hig-fs-caption: 11px;
+
+  /* The shipped sheet and assets/mynode.css draw with their own token names.
+     Remapping them onto the semantic set is what makes "one palette" true for
+     surfaces this variant does not restyle individually (charts, dialogs, the
+     client-node form). */
+  --bg: var(--hig-bg);
+  --bg-1: var(--hig-bg-elevated);
+  --bg-2: var(--hig-bg-sunken);
+  --line: var(--hig-separator);
+  --line-2: var(--hig-separator-strong);
+  --fg: var(--hig-label);
+  --fg-dim: var(--hig-label-2);
+  --muted: var(--hig-label-3);
+  --accent: var(--hig-accent);
+  --ok: var(--hig-green);
+  --warn: var(--hig-orange);
+  --err: var(--hig-red);
+
+  color-scheme: light;
+  background: var(--hig-bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-variant="hig"]:not([data-hig-appearance="light"]) {
+    --hig-bg: #0e0e10;
+    --hig-bg-elevated: #17171a;
+    --hig-bg-sunken: #1c1c1f;
+    --hig-bg-selected: #26262b;
+    --hig-label: #f5f5f7;
+    --hig-label-2: #b0b0b6;
+    --hig-label-3: #94949a;
+    --hig-separator: rgba(235, 235, 245, 0.14);
+    --hig-separator-strong: rgba(235, 235, 245, 0.28);
+    --hig-red: #ff6f66;
+    --hig-orange: #ffb340;
+    --hig-green: #5ada8b;
+    --hig-accent: #4ea3ff;
+    --hig-on-accent: #06121f;
+    --hig-on-tint: #131313;
+    --hig-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+}
+
+html[data-variant="hig"][data-hig-appearance="dark"] {
+  --hig-bg: #0e0e10;
+  --hig-bg-elevated: #17171a;
+  --hig-bg-sunken: #1c1c1f;
+  --hig-bg-selected: #26262b;
+  --hig-label: #f5f5f7;
+  --hig-label-2: #b0b0b6;
+  --hig-label-3: #94949a;
+  --hig-separator: rgba(235, 235, 245, 0.14);
+  --hig-separator-strong: rgba(235, 235, 245, 0.28);
+  --hig-red: #ff6f66;
+  --hig-orange: #ffb340;
+  --hig-green: #5ada8b;
+  --hig-accent: #4ea3ff;
+  --hig-on-accent: #06121f;
+  --hig-on-tint: #131313;
+  --hig-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+html[data-variant="hig"][data-hig-appearance="light"] {
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------------- shell
+ * The document does not scroll: the shell is the viewport and each pane owns
+ * its own scroll, which is what keeps the fleet one screen at 1440×900.
+ */
+html[data-variant="hig"] body {
+  margin: 0;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--hig-bg);
+  color: var(--hig-label);
+  font-family: var(--hig-font);
+  font-size: var(--hig-fs-small);
+  font-weight: 400;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* The harness reserves room for its picker; the shell is the rest of the
+   viewport, so the pill never covers a control the owner is judging. */
+html[data-variant="hig"] .hig-shell {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  height: calc(100dvh - 116px);
+  background: var(--hig-bg);
+}
+
+html[data-variant="hig"] [hidden],
+html[data-variant="hig"] [data-hig-hidden],
+html[data-variant="hig"] [data-hig-layout] {
+  display: none !important;
+}
+
+html[data-variant="hig"] *,
+html[data-variant="hig"] *::before,
+html[data-variant="hig"] *::after {
+  box-sizing: border-box;
+}
+
+html[data-variant="hig"] :focus-visible {
+  outline: 2px solid var(--hig-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+html[data-variant="hig"] .hig-shell,
+html[data-variant="hig"] .hig-content,
+html[data-variant="hig"] .hig-main,
+html[data-variant="hig"] .hig-view {
+  min-width: 0;
+  min-height: 0;
+}
+
+html[data-variant="hig"] .hig-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+html[data-variant="hig"] .hig-main {
+  display: flex;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+html[data-variant="hig"] .hig-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  overflow: hidden;
+  animation: hig-fade 220ms var(--hig-ease) both;
+}
+
+/* ----------------------------------------------------------------- sidebar */
+html[data-variant="hig"] .hig-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 10px 12px;
+  background: var(--hig-bg-elevated);
+  border-right: 1px solid var(--hig-separator);
+  overflow: hidden;
+}
+
+html[data-variant="hig"] .hig-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+}
+html[data-variant="hig"] .hig-brand-mark {
+  color: var(--hig-orange);
+  font-size: 16px;
+  line-height: 1;
+}
+html[data-variant="hig"] .hig-brand-name {
+  font-size: var(--hig-fs-mid);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+html[data-variant="hig"] .hig-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+html[data-variant="hig"] .hig-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--hig-label);
+  font-family: inherit;
+  font-size: var(--hig-fs-mid);
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  /* opacity only — see MOTION at the top: colour is never transitioned. */
+  transition: opacity 200ms var(--hig-ease);
+}
+html[data-variant="hig"] .hig-nav-item.hig-on {
+  background: var(--hig-bg-selected);
+  font-weight: 600;
+}
+html[data-variant="hig"] .hig-nav-icon {
+  display: inline-flex;
+  color: var(--hig-label-2);
+}
+html[data-variant="hig"] .hig-nav-item.hig-on .hig-nav-icon {
+  color: var(--hig-label);
+}
+html[data-variant="hig"] .hig-nav-label {
+  flex: 1 1 auto;
+}
+
+/* The count is the quiet signal; the banner is the loud one, and only exists
+   while an approval is actually running out. */
+html[data-variant="hig"] .hig-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--hig-orange);
+  color: var(--hig-on-tint);
+  font-size: var(--hig-fs-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-variant="hig"] .hig-conn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: auto;
+  padding: 10px 8px 0;
+  border-top: 1px solid var(--hig-separator);
+}
+html[data-variant="hig"] .hig-conn .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+  white-space: nowrap;
+}
+html[data-variant="hig"] .hig-conn .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: none;
+}
+html[data-variant="hig"] .hig-conn .dot[class] {
+  box-shadow: none;
+}
+html[data-variant="hig"] .hig-conn .dot-ok {
+  background: var(--hig-green);
+}
+html[data-variant="hig"] .hig-conn .dot-warn {
+  background: var(--hig-orange);
+}
+html[data-variant="hig"] .hig-conn .dot-err {
+  background: var(--hig-red);
+}
+html[data-variant="hig"] .hig-conn .dot-muted {
+  background: var(--hig-label-3);
+}
+html[data-variant="hig"] .hig-conn .clock {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  text-align: left;
+  color: var(--hig-label-3);
+  font-family: inherit;
+  font-size: var(--hig-fs-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------- bar */
+html[data-variant="hig"] .hig-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 68px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--hig-separator);
+  background: var(--hig-bg);
+}
+html[data-variant="hig"] .hig-bar-title {
+  min-width: 0;
+}
+html[data-variant="hig"] .hig-title {
+  margin: 0;
+  font-size: var(--hig-fs-title);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+html[data-variant="hig"] .hig-sub {
+  margin: 2px 0 0;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-variant="hig"] .hig-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Buttons: the web equivalent of a 44 pt control. Same height whether it is a
+   menu item, a sheet footer or a banner action, so a thumb never misses. */
+html[data-variant="hig"] .btn,
+html[data-variant="hig"] .hig-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--hig-label);
+  font-family: inherit;
+  font-size: var(--hig-fs-mid);
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity 200ms var(--hig-ease);
+}
+html[data-variant="hig"] .btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+html[data-variant="hig"] .btn-primary {
+  border-color: transparent;
+  background: var(--hig-accent);
+  color: var(--hig-on-accent);
+  font-weight: 600;
+}
+html[data-variant="hig"] .btn-warn {
+  border-color: var(--hig-red);
+  color: var(--hig-red);
+  background: transparent;
+}
+html[data-variant="hig"] .btn-ok {
+  border-color: var(--hig-green);
+  color: var(--hig-green);
+  background: transparent;
+}
+html[data-variant="hig"] .btn-ghost {
+  border-color: transparent;
+}
+html[data-variant="hig"] .btn-sm {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+html[data-variant="hig"] .hig-back {
+  display: none;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--hig-accent);
+  font-family: inherit;
+  font-size: var(--hig-fs-mid);
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------- split view */
+html[data-variant="hig"] .hig-split {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+html[data-variant="hig"] .hig-list-pane {
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid var(--hig-separator);
+}
+html[data-variant="hig"] .hig-detail-pane {
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 20px 28px 40px;
+}
+
+/* Panels are containers in the shipped page. Here they are layout only: no
+   card, no border, no padding — the hierarchy comes from type and space. */
+html[data-variant="hig"] .panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  min-width: 0;
+}
+html[data-variant="hig"] .hig-list-pane .panel {
+  padding: 8px 14px 0;
+}
+html[data-variant="hig"] .panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 0 0 10px;
+}
+html[data-variant="hig"] .panel-head h2,
+html[data-variant="hig"] .hig-h2 {
+  margin: 0;
+  font-size: var(--hig-fs-mid);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+html[data-variant="hig"] .panel-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+html[data-variant="hig"] .muted,
+html[data-variant="hig"] .hig-note {
+  color: var(--hig-label-3);
+}
+html[data-variant="hig"] .small,
+html[data-variant="hig"] .hig-note {
+  font-size: var(--hig-fs-caption);
+  line-height: 1.45;
+}
+html[data-variant="hig"] p,
+html[data-variant="hig"] li,
+html[data-variant="hig"] dd {
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] h1,
+html[data-variant="hig"] h2,
+html[data-variant="hig"] h3,
+html[data-variant="hig"] h4,
+html[data-variant="hig"] strong,
+html[data-variant="hig"] b {
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------- fleet rows */
+html[data-variant="hig"] .overview-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+html[data-variant="hig"] .node-card {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--hig-separator);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-variant="hig"] .node-card[aria-current="true"] {
+  background: var(--hig-bg-selected);
+}
+html[data-variant="hig"] .hig-row-open {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 64px;
+  padding: 12px 52px 12px 14px;
+  cursor: pointer;
+  /* opacity only — see MOTION at the top: colour is never transitioned. */
+  transition: opacity 200ms var(--hig-ease);
+}
+html[data-variant="hig"] .hig-row-open .node-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+html[data-variant="hig"] .hig-row-open .node-ident {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+html[data-variant="hig"] .node-name {
+  font-size: var(--hig-fs-mid);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-variant="hig"] .node-sub {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .hig-row-open .metrics-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+}
+html[data-variant="hig"] .metric {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  min-width: 0;
+}
+html[data-variant="hig"] .metric .k {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .metric .v {
+  color: var(--hig-label);
+  font-size: var(--hig-fs-small);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+html[data-variant="hig"] .hig-row-open .reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0;
+}
+html[data-variant="hig"] .reason {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--hig-orange);
+  font-size: var(--hig-fs-caption);
+}
+
+/* Badges are exceptions only. The normal states (online, role) are text; the
+   dot carries the colour. Nothing is shouted in capitals. */
+html[data-variant="hig"] .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-caption);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: lowercase;
+}
+html[data-variant="hig"] .badge[class*="status-"]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hig-label-3);
+  flex: 0 0 auto;
+}
+html[data-variant="hig"] .badge.status-online::before {
+  background: var(--hig-green);
+}
+html[data-variant="hig"] .badge.status-degraded::before {
+  background: var(--hig-orange);
+}
+html[data-variant="hig"] .badge.status-offline::before {
+  background: var(--hig-red);
+}
+html[data-variant="hig"] .badge.synthetic,
+html[data-variant="hig"] .badge.inc-fallback,
+html[data-variant="hig"] .badge.src-fallback,
+html[data-variant="hig"] .badge.exec-err,
+html[data-variant="hig"] .badge.sev-warn,
+html[data-variant="hig"] .badge.sev-error,
+html[data-variant="hig"] .badge.trace-warn {
+  padding: 1px 6px;
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: 6px;
+}
+html[data-variant="hig"] .badge.inc-fallback,
+html[data-variant="hig"] .badge.src-fallback,
+html[data-variant="hig"] .badge.sev-warn,
+html[data-variant="hig"] .badge.trace-warn {
+  color: var(--hig-orange);
+}
+html[data-variant="hig"] .badge.exec-err,
+html[data-variant="hig"] .badge.sev-error {
+  color: var(--hig-red);
+}
+
+/* The row's single control. */
+html[data-variant="hig"] .hig-menu-btn {
+  position: absolute;
+  top: 10px;
+  right: 6px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--hig-label-2);
+  font-family: inherit;
+  font-size: var(--hig-fs-small);
+  line-height: 1;
+  cursor: pointer;
+  /* opacity only — see MOTION at the top: colour is never transitioned. */
+  transition: opacity 200ms var(--hig-ease);
+}
+html[data-variant="hig"] .hig-menu-btn[aria-expanded="true"] {
+  background: var(--hig-bg-sunken);
+}
+html[data-variant="hig"] .hig-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 216px;
+  padding: 6px;
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: var(--hig-radius);
+  background: var(--hig-bg-elevated);
+  box-shadow: var(--hig-shadow);
+  animation: hig-menu-in 200ms var(--hig-ease) both;
+}
+html[data-variant="hig"] .hig-menu .btn-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+html[data-variant="hig"] .hig-menu .btn {
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: var(--hig-fs-mid);
+  text-align: left;
+}
+html[data-variant="hig"] .hig-menu .btn.hig-destructive {
+  color: var(--hig-red);
+}
+
+/* ---------------------------------------------------------- node detail */
+html[data-variant="hig"] .hig-detail-title {
+  margin: 0;
+  font-size: var(--hig-fs-title);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+html[data-variant="hig"] .hig-detail-sub {
+  margin: 4px 0 18px;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .hig-node-rest {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 0 22px;
+}
+html[data-variant="hig"] .hig-node-rest .flag-row,
+html[data-variant="hig"] .hig-node-rest .services,
+html[data-variant="hig"] .hig-node-rest .processes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin: 0;
+}
+html[data-variant="hig"] .flag,
+html[data-variant="hig"] .services .flag,
+html[data-variant="hig"] .process,
+html[data-variant="hig"] .processes-label {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .flag.bad {
+  color: var(--hig-red);
+}
+html[data-variant="hig"] .flag.null,
+html[data-variant="hig"] .processes-label {
+  color: var(--hig-label-3);
+}
+html[data-variant="hig"] .node-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .hig-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+
+/* ------------------------------------------------------- incident master list
+ * One line per decision: time, node, action, outcome, provenance. The record
+ * itself (incident card, thinking log, evidence, audit row) is the pane.
+ */
+html[data-variant="hig"] .decision-viewport {
+  max-height: none;
+  height: auto;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+html[data-variant="hig"] .decision-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+html[data-variant="hig"] .decision-row {
+  position: relative;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--hig-separator);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  /* opacity only — see MOTION at the top: colour is never transitioned. */
+  transition: opacity 200ms var(--hig-ease);
+}
+html[data-variant="hig"] .decision-row[aria-selected="true"] {
+  background: var(--hig-bg-selected);
+}
+html[data-variant="hig"] .decision-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .decision-time {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+  font-variant-numeric: tabular-nums;
+}
+html[data-variant="hig"] .decision-node {
+  color: var(--hig-label);
+  font-size: var(--hig-fs-small);
+  font-weight: 600;
+}
+html[data-variant="hig"] .decision-rule {
+  color: var(--hig-label-3);
+  font-family: inherit;
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .decision-arrow {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .decision-action {
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .decision-action strong {
+  color: var(--hig-label);
+  font-weight: 600;
+}
+html[data-variant="hig"] .decision-target {
+  color: var(--hig-label-2);
+}
+html[data-variant="hig"] .decision-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 12px 0 0;
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .decision-id {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .decision-count {
+  padding: 10px 14px 4px;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .decision-note {
+  padding: 0 14px;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .hig-about {
+  margin: 6px 14px 18px;
+}
+html[data-variant="hig"] .hig-about-summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+  cursor: pointer;
+}
+html[data-variant="hig"] .hig-about .decider {
+  margin: 0 0 8px;
+}
+html[data-variant="hig"] .hig-about .decision-note {
+  padding: 0;
+}
+html[data-variant="hig"] .hig-about .decision-count {
+  padding: 8px 0 0;
+}
+html[data-variant="hig"] .decider {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0 14px 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--hig-bg-sunken);
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .decider-label {
+  color: var(--hig-label);
+  font-weight: 600;
+}
+html[data-variant="hig"] .decider-fields,
+html[data-variant="hig"] .decider-note {
+  color: var(--hig-label-3);
+}
+html[data-variant="hig"] .chipgroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+html[data-variant="hig"] .chip {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--hig-label-2);
+  font-family: inherit;
+  font-size: var(--hig-fs-small);
+  cursor: pointer;
+  transition: opacity 200ms var(--hig-ease);
+}
+html[data-variant="hig"] .chip.on {
+  border-color: var(--hig-separator-strong);
+  color: var(--hig-label);
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------- incident detail */
+html[data-variant="hig"] #hig-incident-detail:focus-visible {
+  outline-offset: -2px;
+}
+html[data-variant="hig"] .hig-detail-empty {
+  margin: 0;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .incident-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-variant="hig"] .incident-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+}
+html[data-variant="hig"] .incident-title {
+  margin: 0 0 6px;
+  font-size: var(--hig-fs-title);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+html[data-variant="hig"] .incident-explanation {
+  margin: 0 0 18px;
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-mid);
+  line-height: 1.5;
+}
+html[data-variant="hig"] .incident-block {
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+html[data-variant="hig"] .inc-label {
+  margin: 0 0 6px;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .inc-list,
+html[data-variant="hig"] .inc-evidence-list,
+html[data-variant="hig"] .inc-decided-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+html[data-variant="hig"] .inc-evidence-row,
+html[data-variant="hig"] .inc-decided-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .inc-field,
+html[data-variant="hig"] .inc-kind,
+html[data-variant="hig"] .inc-value,
+html[data-variant="hig"] .inc-target,
+html[data-variant="hig"] .inc-seq,
+html[data-variant="hig"] .inc-ts {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--hig-fs-small);
+  color: var(--hig-label);
+}
+html[data-variant="hig"] .inc-seq,
+html[data-variant="hig"] .inc-ts {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .decision-breach {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--hig-bg-sunken);
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .breach-label {
+  color: var(--hig-orange);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .breach-value {
+  color: var(--hig-label);
+  font-weight: 600;
+}
+html[data-variant="hig"] .decision-rationale {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+html[data-variant="hig"] .rat-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .rat-text {
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .trace-details {
+  margin: 0 0 16px;
+  border: 1px solid var(--hig-separator);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: transparent;
+}
+html[data-variant="hig"] .trace-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 0;
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+  cursor: pointer;
+}
+html[data-variant="hig"] .trace-body {
+  padding: 4px 0 12px;
+}
+html[data-variant="hig"] .trace-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+html[data-variant="hig"] .trace-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .trace-name,
+html[data-variant="hig"] .trace-detail,
+html[data-variant="hig"] .json {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--hig-fs-small);
+  color: var(--hig-label);
+}
+html[data-variant="hig"] .trace-idx,
+html[data-variant="hig"] .trace-ts,
+html[data-variant="hig"] .trace-label {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .trace-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0 0 8px;
+  padding: 6px 0;
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .trace-alert-fallback,
+html[data-variant="hig"] .trace-alert-state {
+  color: var(--hig-orange);
+}
+html[data-variant="hig"] .incident-none,
+html[data-variant="hig"] .incident-trace.trace-none {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0 0 12px;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-small);
+}
+
+/* Inline actions are controls too: a 13 px label with a 44 px hit area. */
+html[data-variant="hig"] .linklike {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--hig-accent);
+  font-family: inherit;
+  font-size: var(--hig-fs-small);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+html[data-variant="hig"] .linklike:disabled {
+  color: var(--hig-label-3);
+  text-decoration: none;
+  cursor: default;
+}
+
+/* ------------------------------------------------------------- approvals */
+html[data-variant="hig"] .hig-approvals {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--hig-separator);
+  background: var(--hig-bg-elevated);
+}
+html[data-variant="hig"] .hig-approvals-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+html[data-variant="hig"] .hig-approvals-count {
+  color: var(--hig-label);
+  font-size: var(--hig-fs-mid);
+  font-weight: 600;
+}
+html[data-variant="hig"] .hig-approvals-clock {
+  color: var(--hig-orange);
+  font-size: var(--hig-fs-small);
+  font-variant-numeric: tabular-nums;
+}
+html[data-variant="hig"] .hig-approvals-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+html[data-variant="hig"] .pending-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: 10px;
+  background: var(--hig-bg);
+}
+html[data-variant="hig"] .pending-item .row1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .pending-item .msg {
+  grid-column: 1 / -1;
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .pending-item .btn-row {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  flex-wrap: nowrap;
+}
+html[data-variant="hig"] .rem-status {
+  color: var(--hig-orange);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .pending-item .btn-ask {
+  color: var(--hig-accent);
+}
+
+/* ---------------------------------------------------------------- settings */
+html[data-variant="hig"] .hig-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 640px;
+  padding: 24px 28px 40px;
+  overflow: auto;
+}
+html[data-variant="hig"] .hig-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 0 24px;
+  border-bottom: 1px solid var(--hig-separator);
+}
+html[data-variant="hig"] .hig-section:last-child {
+  border-bottom: 0;
+}
+html[data-variant="hig"] .hig-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: 11px;
+  background: var(--hig-bg-sunken);
+  align-self: flex-start;
+}
+html[data-variant="hig"] .hig-seg-item {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--hig-label-2);
+  font-family: inherit;
+  font-size: var(--hig-fs-small);
+  cursor: pointer;
+  transition: opacity 200ms var(--hig-ease);
+}
+html[data-variant="hig"] .hig-seg-item.hig-on {
+  background: var(--hig-bg);
+  color: var(--hig-label);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+}
+html[data-variant="hig"] .hig-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------------------ forms */
+html[data-variant="hig"] .field,
+html[data-variant="hig"] .field.block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 10px;
+}
+html[data-variant="hig"] .field > span {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] input[type="text"],
+html[data-variant="hig"] input[type="password"],
+html[data-variant="hig"] input:not([type]),
+html[data-variant="hig"] select,
+html[data-variant="hig"] textarea {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: 10px;
+  background: var(--hig-bg);
+  color: var(--hig-label);
+  font-family: inherit;
+  font-size: var(--hig-fs-small);
+  line-height: 1.35;
+}
+html[data-variant="hig"] textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+html[data-variant="hig"] .toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+  cursor: pointer;
+}
+html[data-variant="hig"] input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--hig-accent);
+}
+html[data-variant="hig"] code,
+html[data-variant="hig"] pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--hig-fs-small);
+  color: var(--hig-label-2);
+}
+html[data-variant="hig"] .mynode-facts,
+html[data-variant="hig"] .kv {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 16px;
+  margin: 10px 0;
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .mynode-facts dt,
+html[data-variant="hig"] .kv dt {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .mynode-facts dd,
+html[data-variant="hig"] .kv dd {
+  margin: 0;
+  color: var(--hig-label);
+}
+html[data-variant="hig"] .mynode-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+html[data-variant="hig"] .mynode-form .field {
+  flex: 1 1 200px;
+  margin: 0;
+}
+html[data-variant="hig"] .mynode-state,
+html[data-variant="hig"] .mynode-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .result {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--hig-bg-sunken);
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .result.ok {
+  color: var(--hig-green);
+}
+html[data-variant="hig"] .result.err {
+  color: var(--hig-red);
+}
+html[data-variant="hig"] .empty {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .skeleton {
+  height: 56px;
+  margin: 0 0 1px;
+  border-radius: 0;
+  background: var(--hig-bg-sunken);
+}
+
+/* ----------------------------------------------------------------- charts */
+html[data-variant="hig"] .charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+html[data-variant="hig"] .chart-card {
+  padding: 14px;
+  border: 1px solid var(--hig-separator);
+  border-radius: var(--hig-radius);
+  background: var(--hig-bg);
+  box-shadow: none;
+}
+html[data-variant="hig"] .chart-title {
+  font-size: var(--hig-fs-small);
+  font-weight: 600;
+}
+html[data-variant="hig"] .chart-basis,
+html[data-variant="hig"] .chart-note {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .charts-grid text {
+  fill: var(--hig-label-3);
+  font-size: 11px;
+}
+html[data-variant="hig"] .charts-grid .grid line,
+html[data-variant="hig"] .charts-grid line.grid {
+  stroke: var(--hig-separator);
+}
+
+/* ---------------------------------------------------------------- controls */
+html[data-variant="hig"] .controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+html[data-variant="hig"] .control-card {
+  padding: 14px;
+  border: 1px solid var(--hig-separator);
+  border-radius: var(--hig-radius);
+  background: var(--hig-bg);
+}
+html[data-variant="hig"] .control-card h3 {
+  margin: 0 0 6px;
+  font-size: var(--hig-fs-small);
+  font-weight: 600;
+}
+html[data-variant="hig"] .control-card p {
+  margin: 0 0 10px;
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+
+/* ------------------------------------------------------------ log, sheet */
+html[data-variant="hig"] .hig-sheet {
+  width: min(620px, 96vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 0 0 auto;
+  padding: 0 20px 20px;
+  border: 0;
+  border-left: 1px solid var(--hig-separator-strong);
+  border-radius: 0;
+  background: var(--hig-bg-elevated);
+  color: var(--hig-label);
+  box-shadow: var(--hig-shadow);
+  overflow: auto;
+}
+html[data-variant="hig"] .hig-sheet[open] {
+  animation: hig-sheet-in 260ms var(--hig-ease) both;
+}
+html[data-variant="hig"] .hig-sheet::backdrop {
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(2px);
+}
+html[data-variant="hig"] .hig-sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 16px 0 12px;
+  background: var(--hig-bg-elevated);
+  border-bottom: 1px solid var(--hig-separator);
+}
+html[data-variant="hig"] .hig-sheet-head .hig-btn {
+  margin-left: auto;
+}
+html[data-variant="hig"] .hig-sheet-head .hig-note {
+  flex: 1 1 240px;
+}
+html[data-variant="hig"] #log-panel {
+  border: 0;
+  background: transparent;
+  padding: 12px 0 0;
+}
+html[data-variant="hig"] .log-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0;
+  cursor: pointer;
+}
+html[data-variant="hig"] .log-summary-hint,
+html[data-variant="hig"] .sec-badge {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .log-tools,
+html[data-variant="hig"] .filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin: 8px 0;
+}
+html[data-variant="hig"] .filters .field {
+  margin: 0;
+}
+html[data-variant="hig"] .log-viewport {
+  height: 52dvh;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--hig-separator);
+  border-radius: 10px;
+  background: var(--hig-bg);
+}
+html[data-variant="hig"] .log-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+html[data-variant="hig"] .log-row,
+html[data-variant="hig"] .log-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--hig-fs-small);
+  color: var(--hig-label-2);
+}
+html[data-variant="hig"] .log-msg {
+  color: var(--hig-label);
+}
+html[data-variant="hig"] .log-time,
+html[data-variant="hig"] .log-node,
+html[data-variant="hig"] .log-actor {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+
+/* ------------------------------------------------------------------- chat */
+html[data-variant="hig"] .chat-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  z-index: 90;
+  width: min(420px, 100vw);
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 0;
+  border-left: 1px solid var(--hig-separator-strong);
+  border-radius: 0;
+  background: var(--hig-bg-elevated);
+  box-shadow: var(--hig-shadow);
+  overflow: auto;
+}
+html[data-variant="hig"] .chat-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+html[data-variant="hig"] .chat-head h2 {
+  font-size: var(--hig-fs-mid);
+  font-weight: 600;
+  margin: 0;
+}
+html[data-variant="hig"] .chat-intro,
+html[data-variant="hig"] .chat-foot {
+  color: var(--hig-label-3);
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+html[data-variant="hig"] .chat-suggestions .chip,
+html[data-variant="hig"] .chat-suggestion {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--hig-label-2);
+  font-family: inherit;
+  font-size: var(--hig-fs-small);
+  cursor: pointer;
+}
+html[data-variant="hig"] .chat-messages {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+}
+html[data-variant="hig"] .chat-message,
+html[data-variant="hig"] .chat-msg {
+  font-size: var(--hig-fs-small);
+  color: var(--hig-label);
+}
+html[data-variant="hig"] .chat-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+html[data-variant="hig"] .chat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  background: var(--hig-bg-sunken);
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-caption);
+}
+
+/* ---------------------------------------------------------------- dialogs */
+html[data-variant="hig"] .dialog {
+  width: min(480px, 94vw);
+  max-height: 86dvh;
+  padding: 0;
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: 16px;
+  background: var(--hig-bg-elevated);
+  color: var(--hig-label);
+  box-shadow: var(--hig-shadow);
+  overflow: auto;
+}
+html[data-variant="hig"] .dialog::backdrop {
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(2px);
+}
+html[data-variant="hig"] .dialog form,
+html[data-variant="hig"] .dlg-form {
+  padding: 22px;
+}
+html[data-variant="hig"] .dialog h3 {
+  margin: 0 0 10px;
+  font-size: var(--hig-fs-mid);
+  font-weight: 600;
+}
+html[data-variant="hig"] .dialog .muted,
+html[data-variant="hig"] .dialog p {
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .dialog .btn-row {
+  justify-content: flex-end;
+}
+
+/* ------------------------------------------------------------------ toasts */
+html[data-variant="hig"] .toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 96px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(380px, 92vw);
+}
+html[data-variant="hig"] .toast {
+  padding: 10px 14px;
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: 12px;
+  background: var(--hig-bg-elevated);
+  color: var(--hig-label);
+  font-size: var(--hig-fs-small);
+  box-shadow: var(--hig-shadow);
+}
+html[data-variant="hig"] .banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 10px 24px;
+  border: 0;
+  border-bottom: 1px solid var(--hig-separator);
+  background: var(--hig-bg-elevated);
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .banner.err {
+  color: var(--hig-red);
+}
+html[data-variant="hig"] .banner-host {
+  position: static;
+}
+
+/* ---------------------------------------------- shipped-surface normalisation
+ * The shipped sheet carries its own type ramp for the dense console: 0.66–0.8rem
+ * labels, uppercase micro-labels, and chroma on the "derived basis" chips. In
+ * this variant those surfaces are caption text at the HIG scale, in sentence
+ * case, and the only chroma is the semantic three plus the accent.
+ */
+html[data-variant="hig"] .metric .k,
+html[data-variant="hig"] .inc-label,
+html[data-variant="hig"] .breach-label,
+html[data-variant="hig"] .rat-label,
+html[data-variant="hig"] .chart-chip,
+html[data-variant="hig"] .chat-chip-kind,
+html[data-variant="hig"] .chat-who,
+html[data-variant="hig"] .chat-form-label,
+html[data-variant="hig"] .sec-badge,
+html[data-variant="hig"] .mynode-card-label {
+  text-transform: none;
+  letter-spacing: 0;
+}
+html[data-variant="hig"] .chart-title h3 {
+  font-size: var(--hig-fs-mid);
+  font-weight: 600;
+}
+html[data-variant="hig"] .chart-unit,
+html[data-variant="hig"] .chart-chip,
+html[data-variant="hig"] .chart-basis,
+html[data-variant="hig"] .chart-fault,
+html[data-variant="hig"] .sample-note,
+html[data-variant="hig"] .mynode-card-hint {
+  font-size: var(--hig-fs-caption);
+}
+html[data-variant="hig"] .chart-unit,
+html[data-variant="hig"] .chart-chip,
+html[data-variant="hig"] .sample-note {
+  color: var(--hig-label-3);
+}
+html[data-variant="hig"] .chart-legend {
+  font-size: var(--hig-fs-small);
+  color: var(--hig-label-2);
+}
+html[data-variant="hig"] .chart-chip {
+  padding: 1px 6px;
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: 6px;
+}
+html[data-variant="hig"] .chart-chip.derived {
+  color: var(--hig-orange);
+  border-color: var(--hig-orange);
+}
+html[data-variant="hig"] .chart-fault {
+  color: var(--hig-orange);
+}
+html[data-variant="hig"] .sample-note.nr {
+  color: var(--hig-label-3);
+  font-style: normal;
+}
+html[data-variant="hig"] .mynode-empty,
+html[data-variant="hig"] .mynode-card {
+  padding: 14px 16px;
+  border: 1px solid var(--hig-separator);
+  border-radius: var(--hig-radius);
+  background: var(--hig-bg-sunken);
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .mynode-headline {
+  color: var(--hig-label);
+  font-size: var(--hig-fs-mid);
+  font-weight: 600;
+}
+html[data-variant="hig"] .mynode-cmd {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--hig-bg);
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+  overflow-wrap: anywhere;
+}
+html[data-variant="hig"] .mynode-steps {
+  color: var(--hig-label-2);
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .mynode-card-value {
+  color: var(--hig-label);
+  font-size: var(--hig-fs-mid);
+}
+
+/* The shipped type ramp, rounded onto the HIG scale (22/17/15/13/11). Only the
+   two document sizes are set: evidence and row detail become 13 px, micro
+   labels 11 px. Nothing is scaled with rem, so the two appearances agree. */
+html[data-variant="hig"] .inc-evidence-list,
+html[data-variant="hig"] .inc-decided-list,
+html[data-variant="hig"] .inc-executed-list,
+html[data-variant="hig"] .inc-detail,
+html[data-variant="hig"] .inc-idem,
+html[data-variant="hig"] .inc-at,
+html[data-variant="hig"] .inc-target,
+html[data-variant="hig"] .inc-endpoint,
+html[data-variant="hig"] .inc-field,
+html[data-variant="hig"] .inc-kind,
+html[data-variant="hig"] .inc-call,
+html[data-variant="hig"] .incident-none-text,
+html[data-variant="hig"] .trace-none-text,
+html[data-variant="hig"] .trace-summary-text,
+html[data-variant="hig"] .trace-detail,
+html[data-variant="hig"] .trace-reply-text,
+html[data-variant="hig"] .decision-target,
+html[data-variant="hig"] .decision-links,
+html[data-variant="hig"] .decision-count,
+html[data-variant="hig"] .breach-metric,
+html[data-variant="hig"] .breach-metric-label,
+html[data-variant="hig"] .breach-threshold,
+html[data-variant="hig"] .breach-fired,
+html[data-variant="hig"] .decider-fields,
+html[data-variant="hig"] .decider-note,
+html[data-variant="hig"] .log-time,
+html[data-variant="hig"] .log-node {
+  font-size: var(--hig-fs-small);
+}
+html[data-variant="hig"] .incident-prov,
+html[data-variant="hig"] .trace-summary-hint,
+html[data-variant="hig"] .trace-reply-note,
+html[data-variant="hig"] .trace-idx,
+html[data-variant="hig"] .trace-ts,
+html[data-variant="hig"] .trace-chip,
+html[data-variant="hig"] .trace-flag,
+html[data-variant="hig"] .badge.trace-clip,
+html[data-variant="hig"] .inc-seq,
+html[data-variant="hig"] .inc-ts,
+html[data-variant="hig"] .rat-label,
+html[data-variant="hig"] .breach-label {
+  font-size: var(--hig-fs-caption);
+}
+
+/* ------------------------------------------------ adopted-surface palette
+ * The shipped sheet hard-codes a dark palette: literal amber, green, red and
+ * violet, and literal ink backgrounds behind the raw reply, the "nothing
+ * recorded" blocks and the result pre. Those literals are the only colours in
+ * this variant that are not semantic tokens, and a literal tuned for the dark
+ * console is unreadable on the light one — so they are re-pointed at the token
+ * set here, in BOTH appearances. This is rule 6 of the card applied to the
+ * surfaces we adopted rather than rewrote.
+ */
+html[data-variant="hig"] .inc-detail,
+html[data-variant="hig"] .decision-rationale.not-model .rat-text,
+html[data-variant="hig"] .badge.status-degraded,
+html[data-variant="hig"] .badge.sev-warn,
+html[data-variant="hig"] .badge.trace-chip-clamped,
+html[data-variant="hig"] .badge.trace-chip-fallback,
+html[data-variant="hig"] .badge.trace-fallback,
+html[data-variant="hig"] .trace-flag,
+html[data-variant="hig"] .badge.trace-clip,
+html[data-variant="hig"] .trace-reply-note,
+html[data-variant="hig"] .log-row.sev-warn .log-msg,
+html[data-variant="hig"] .rem-status.pending_approval,
+html[data-variant="hig"] .flag.warn,
+html[data-variant="hig"] .reason,
+html[data-variant="hig"] .warn-tag,
+html[data-variant="hig"] .decider-unknown .decider-label,
+html[data-variant="hig"] .chart-fault {
+  color: var(--hig-orange);
+}
+html[data-variant="hig"] .badge.trace-chip-ok,
+html[data-variant="hig"] .badge.exec-ok,
+html[data-variant="hig"] .badge.status-online {
+  color: var(--hig-green);
+}
+html[data-variant="hig"] .badge.trace-chip-dropped,
+html[data-variant="hig"] .badge.trace-chip-rejected,
+html[data-variant="hig"] .badge.trace-chip-unclassified,
+html[data-variant="hig"] .badge.status-offline {
+  color: var(--hig-red);
+}
+html[data-variant="hig"] .badge.trace-chip-unclassified {
+  background: transparent;
+}
+html[data-variant="hig"] .badge.sev-info,
+html[data-variant="hig"] .badge.role-inference,
+html[data-variant="hig"] .inc-field,
+html[data-variant="hig"] .inc-kind,
+html[data-variant="hig"] .inc-call {
+  color: var(--hig-label-2);
+}
+html[data-variant="hig"] .badge.trace-noexec {
+  color: var(--hig-label-2);
+}
+
+/* The ink surfaces. Each keeps its meaning through the border and the label,
+   never through a literal background that only works in one appearance. */
+html[data-variant="hig"] .trace-detail-reply,
+html[data-variant="hig"] .trace-reply-text,
+html[data-variant="hig"] .result pre {
+  background: var(--hig-bg-sunken);
+  border-color: var(--hig-separator);
+  color: var(--hig-label);
+}
+html[data-variant="hig"] .trace-reply {
+  background: var(--hig-bg-sunken);
+  border-color: var(--hig-separator-strong);
+  color: var(--hig-label-2);
+}
+html[data-variant="hig"] .trace-reply-none {
+  background: var(--hig-bg-sunken);
+}
+html[data-variant="hig"] .trace-reply-withheld {
+  background: var(--hig-bg-sunken);
+  border-color: var(--hig-red);
+}
+html[data-variant="hig"] .trace-none,
+html[data-variant="hig"] .incident-none {
+  background: var(--hig-bg-sunken);
+}
+html[data-variant="hig"] .metric,
+html[data-variant="hig"] .pending-item,
+html[data-variant="hig"] .decider,
+html[data-variant="hig"] .log-panel .log-rows {
+  background: var(--hig-bg-sunken);
+  border-color: var(--hig-separator);
+}
+
+/* ------------------------------------------------------------------ motion */
+@keyframes hig-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes hig-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes hig-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html[data-variant="hig"] .hig-nav-item:hover {
+    background: var(--hig-bg-selected);
+  }
+  html[data-variant="hig"] .btn:hover:not(:disabled),
+  html[data-variant="hig"] .hig-btn:hover:not(:disabled),
+  html[data-variant="hig"] .hig-menu-btn:hover,
+  html[data-variant="hig"] .chip:hover,
+  html[data-variant="hig"] .hig-seg-item:hover:not(.hig-on) {
+    background: var(--hig-bg-sunken);
+  }
+  html[data-variant="hig"] .hig-row-open:hover,
+  html[data-variant="hig"] .decision-row:hover {
+    background: var(--hig-bg-sunken);
+  }
+  html[data-variant="hig"] .btn-primary:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+  html[data-variant="hig"] .linklike:hover {
+    text-decoration-thickness: 2px;
+  }
+}
+
+html[data-variant="hig"] .btn:active:not(:disabled),
+html[data-variant="hig"] .hig-btn:active:not(:disabled),
+html[data-variant="hig"] .hig-seg-item:active,
+html[data-variant="hig"] .hig-menu-btn:active {
+  transform: scale(0.98);
+}
+html[data-variant="hig"] .hig-row-open:active,
+html[data-variant="hig"] .decision-row:active {
+  background: var(--hig-bg-selected);
+}
+
+/* ----------------------------------------------------------- phone layout
+ * The sidebar becomes a top bar with the three destinations still visible;
+ * nothing hides behind a hamburger. A record is a push (list → detail) with a
+ * Back control, the way the platform does it, so the phone keeps one screen.
+ */
+@media (max-width: 820px) {
+  html[data-variant="hig"] .hig-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    height: calc(100dvh - 128px);
+  }
+  html[data-variant="hig"] .hig-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--hig-separator);
+    overflow: visible;
+  }
+  html[data-variant="hig"] .hig-brand {
+    display: none;
+  }
+  html[data-variant="hig"] .hig-nav {
+    flex-direction: row;
+    gap: 2px;
+  }
+  html[data-variant="hig"] .hig-nav-item {
+    width: auto;
+    padding: 0 12px;
+    gap: 6px;
+  }
+  html[data-variant="hig"] .hig-nav-label {
+    flex: 0 0 auto;
+    font-size: var(--hig-fs-small);
+  }
+  html[data-variant="hig"] .hig-conn {
+    flex: 1 0 100%;
+    order: 2;
+    margin-top: 0;
+    padding: 5px 0 2px;
+    border-top: 1px solid var(--hig-separator);
+    border-left: 0;
+    flex-wrap: wrap;
+  }
+  html[data-variant="hig"] .hig-conn .clock {
+    width: auto;
+  }
+  html[data-variant="hig"] .hig-bar {
+    min-height: 56px;
+    padding: 6px 14px;
+  }
+  html[data-variant="hig"] .hig-title {
+    font-size: var(--hig-fs-mid);
+  }
+  html[data-variant="hig"] .hig-sub {
+    display: none;
+  }
+  html[data-variant="hig"] .hig-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  html[data-variant="hig"] .hig-detail-pane {
+    display: none;
+  }
+  html[data-variant="hig"][data-hig-detail] .hig-list-pane {
+    display: none;
+  }
+  html[data-variant="hig"][data-hig-detail] .hig-detail-pane {
+    display: block;
+  }
+  html[data-variant="hig"] .hig-back {
+    display: none;
+  }
+  html[data-variant="hig"][data-hig-detail] .hig-back {
+    display: inline-flex;
+  }
+  html[data-variant="hig"] .hig-approvals {
+    padding: 10px 14px;
+  }
+  html[data-variant="hig"] .hig-settings {
+    padding: 18px 14px 32px;
+  }
+  html[data-variant="hig"] .charts-grid,
+  html[data-variant="hig"] .controls-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  html[data-variant="hig"] .chat-panel {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-variant="hig"] .hig-view,
+  html[data-variant="hig"] .hig-menu,
+  html[data-variant="hig"] .hig-sheet[open] {
+    animation: none;
+  }
+  html[data-variant="hig"] .btn,
+  html[data-variant="hig"] .hig-btn,
+  html[data-variant="hig"] .hig-nav-item,
+  html[data-variant="hig"] .hig-row-open,
+  html[data-variant="hig"] .decision-row,
+  html[data-variant="hig"] .chip,
+  html[data-variant="hig"] .hig-seg-item,
+  html[data-variant="hig"] .hig-menu-btn {
+    transition: none;
+  }
+  html[data-variant="hig"] .btn:active,
+  html[data-variant="hig"] .hig-btn:active,
+  html[data-variant="hig"] .hig-seg-item:active,
+  html[data-variant="hig"] .hig-menu-btn:active {
+    transform: none;
+  }
+}

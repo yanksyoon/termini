@@ -33,7 +33,7 @@ import { dirname, join } from "node:path";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DASHBOARD = join(HERE, "..");
 const PROTO = join(DASHBOARD, "proto");
-const VARIANTS = ["console", "briefing", "instrument"];
+const VARIANTS = ["console", "briefing", "instrument", "hig"];
 
 const readDashboard = (rel) => readFile(join(DASHBOARD, rel), "utf8");
 const readProto = (rel) => readFile(join(PROTO, rel), "utf8");

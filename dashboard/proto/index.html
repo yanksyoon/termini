@@ -12,12 +12,13 @@
 <title>Prototype — Termini dashboard</title>
 <link rel="stylesheet" href="../assets/styles.css" />
 <link rel="stylesheet" href="../assets/mynode.css" />
-<!-- One design layer per variant. All three are declared here so the cascade
+<!-- One design layer per variant. All four are declared here so the cascade
      order is fixed (variants always win over the shipped sheet, the harness
      chrome always wins over both); the harness enables exactly one. -->
 <link rel="stylesheet" class="proto-variant" data-variant="console" href="variants/console.css" disabled />
 <link rel="stylesheet" class="proto-variant" data-variant="briefing" href="variants/briefing.css" disabled />
 <link rel="stylesheet" class="proto-variant" data-variant="instrument" href="variants/instrument.css" disabled />
+<link rel="stylesheet" class="proto-variant" data-variant="hig" href="variants/hig.css" disabled />
 <link rel="stylesheet" href="harness.css" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e14'/%3E%3Cpath d='M8 20l8-11 8 11' stroke='%23ff9f0a' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
 </head>
@@ -285,6 +286,7 @@
     <button class="proto-picker-item" data-active aria-current="true">Console</button>
     <button class="proto-picker-item">Briefing</button>
     <button class="proto-picker-item">Instrument</button>
+    <button class="proto-picker-item">Overview</button>
     <span class="proto-picker-divider" aria-hidden="true"></span>
     <button class="proto-picker-item proto-picker-replay" aria-label="Replay animation (R)">↻</button>
   </nav>
@@ -292,6 +294,10 @@
   <script src="../config.js"></script>
   <script type="module" src="harness.js"></script>
   <script type="module" src="../js/main.js"></script>
+  <!-- Additive design module for variant 4 only. The harness announces picker
+       changes; this module mounts/unmounts the destination shell and leaves the
+       shipped page exactly as it found it when another variant is selected. -->
+  <script type="module" src="variants/hig.js"></script>
   <noscript><p class="empty">This dashboard requires JavaScript.</p></noscript>
 </body>
 </html>

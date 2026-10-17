@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Termini customer operations dashboard (dependency-free static bundle)",
   "scripts": {
-    "test": "node --test tests/core.test.mjs tests/credentials.test.mjs tests/client-node.test.mjs tests/decisions-panel.test.mjs tests/assistant.test.mjs tests/served-page.test.mjs tests/proto-variants.test.mjs",
+    "test": "node --test tests/core.test.mjs tests/credentials.test.mjs tests/client-node.test.mjs tests/decisions-panel.test.mjs tests/assistant.test.mjs tests/served-page.test.mjs tests/proto-variants.test.mjs tests/ui-hig.test.mjs",
     "mock": "python3 mock/server.py --port 8099",
     "verify": "node tests/run5min.mjs http://127.0.0.1:8099/ 300"
   },

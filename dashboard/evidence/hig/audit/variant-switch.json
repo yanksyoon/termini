@@ -1,0 +1,38 @@
+{
+  "onHig": {
+    "variant": "hig",
+    "higNodes": 101,
+    "marked": 9,
+    "ids": 110,
+    "nodeCards": 3,
+    "cardButtons": 15,
+    "menus": 6,
+    "decisionRows": 6,
+    "logInSheet": true,
+    "roleOptions": 6
+  },
+  "onConsole": {
+    "variant": "console",
+    "higNodes": 5,
+    "marked": 0,
+    "ids": 83,
+    "nodeCards": 3,
+    "cardButtons": 12,
+    "menus": 0,
+    "decisionRows": 6,
+    "logInSheet": false,
+    "roleOptions": 0
+  },
+  "backOnHig": {
+    "variant": "hig",
+    "higNodes": 106,
+    "marked": 9,
+    "ids": 100,
+    "nodeCards": 3,
+    "cardButtons": 15,
+    "menus": 6,
+    "decisionRows": 6,
+    "logInSheet": true,
+    "roleOptions": 6
+  }
+}
