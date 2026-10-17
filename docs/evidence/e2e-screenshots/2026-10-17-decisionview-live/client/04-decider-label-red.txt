@@ -1,0 +1,18 @@
+# Sidecar for 04-decider-label-red.png (step 04)
+# Purpose: the decider band as it really renders. NOT THE ACCEPTANCE FRAME: the label is derived from the operator log stream, and that stream cannot authenticate from the dashboard on this deployment (proof in the 03 sidecar) — so the band shows its honest unknown state.
+# Captured (UTC): 2026-10-17T03:42:37Z
+# Exact URL in the address bar: https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB
+# Window: 1280x1700, headful Chromium in Xvfb :99, browser chrome included, no crop/annotation.
+# Credential: the published demo project token, pasted into the dashboard Settings dialog and kept in this tab only (sessionStorage) — never in the URL.
+# Raw text behind the pixels follows.
+
+## As rendered on the published page (read back out of the live DOM)
+decider: decider unknownno externalModelCall record on the operator log stream yet
+
+## Page facts at the capture instant
+{"url":"https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB","logRows":0,"logOpen":true,"streamChip":"reconnecting · stream interrupted (Failed to fetch)","decisionsCount":"50 shown / 50 decisions · model 14 · fallback 7 · incident records 21 (AI 14 · controller-generated 7) · thinking logs 21 (model 14 · fallback 7)","decider":"decider: decider unknownno externalModelCall record on the operator log stream yet","banner":null,"headerPills":["nodes 3 · 1 degraded","backend ok","stream reconnecting"]}
+
+## What would populate it
+The band is parsed from the first `externalModelCall` line on the operator log
+stream (GET https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/logs). With the stream unreadable from the browser
+the label cannot be derived, and the panel says so instead of inventing one.
