@@ -636,6 +636,15 @@ class Handler(BaseHTTPRequestHandler):
         if not os.path.abspath(full).startswith(os.path.abspath(DASHBOARD_ROOT)):
             self._json(403, {"error": {"code": "PERMISSION_DENIED", "message": "path traversal"}})
             return
+        # Directory index, the way Firebase Hosting serves /proto/ from
+        # /proto/index.html. Without this the local dev server 404s a path that
+        # works in production, which is exactly the kind of difference that eats
+        # an hour during evidence capture (task t_4458a089).
+        if os.path.isdir(full):
+            index = os.path.join(full, "index.html")
+            if os.path.isfile(index):
+                full = index
+                safe = posixpath.join(safe, "index.html") if safe else "index.html"
         if not os.path.isfile(full):
             self._json(404, {"error": {"code": "NOT_FOUND", "message": f"not found: {path}"}})
             return

@@ -1,0 +1,579 @@
+/*
+ * VARIANT 1 — "Console"
+ * AXIS: density. A dense operator console: the fleet rail, the incident console
+ * and the instruments are on screen together, at one glance, with near-static
+ * motion. Monochrome; the only chroma is status (ok / warn / error) and the
+ * provenance rail on a decision. Numbers are monospace and tabular; labels are
+ * 10px uppercase; borders are hairlines; nothing floats.
+ *
+ * WHAT IT KEEPS: every panel, control, filter, honesty surface and disclosure of
+ * the shipped dashboard — it re-arranges and re-weights them, it never removes
+ * them. The log stays a collapsed <details>; the thinking log stays a <details>;
+ * the "absent, not zero" and provenance treatments keep their own colour because
+ * they are the product's honesty, not decoration.
+ *
+ * WHAT IT CHANGES: three columns instead of one long page, 12.5px type, 2px
+ * radii, panel heads become section labels, node cards become dense blocks, the
+ * nested incident card is flattened into its decision row.
+ *
+ * MOTION: near-static by design (frequency: an operator watches this for hours).
+ * Press feedback only — 100ms transform, `ease-out`. No entrance animation, no
+ * row-in animation: at this frequency motion is latency. The picker's ↻ is a
+ * no-op here, on purpose.
+ *
+ * FOR: the person who leaves this on a second monitor all day and wants maximum
+ * signal per screen. COST: it reads as instrumentation, not as a welcome.
+ */
+
+html[data-variant="console"] {
+  --bg: #0a0c10;
+  --bg-1: #0d1015;
+  --bg-2: #11151c;
+  --line: #1b2028;
+  --line-2: #262d38;
+  --fg: #dfe4ea;
+  --fg-dim: #9aa4b3;
+  --muted: #6c7787;
+  --accent: #7aa7c7;           /* quiet: a steel blue, not a brand shout */
+  --ok: #3ecf72;
+  --warn: #f2a33c;
+  --err: #ff5d4e;
+  --radius: 3px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --fs-base: 12.5px;
+}
+
+/* ------------------------------------------------------------------ shell */
+html[data-variant="console"] body {
+  background: var(--bg);
+  color: var(--fg);
+  font-size: var(--fs-base);
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+html[data-variant="console"] h1,
+html[data-variant="console"] h2,
+html[data-variant="console"] h3 { font-weight: 600; }
+
+/* Panel heads become section labels: the page is a console, not a magazine. */
+html[data-variant="console"] .panel-head {
+  margin-bottom: 8px;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+html[data-variant="console"] .panel-head h2 {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  font-family: var(--mono);
+}
+html[data-variant="console"] .panel-head .muted,
+html[data-variant="console"] .panel-head .small { font-size: 10.5px; }
+
+/* ------------------------------------------------------------------ topbar */
+html[data-variant="console"] .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 0 12px;
+  height: 40px;
+  gap: 10px;
+  background: #07090d;
+  border-bottom: 1px solid var(--line-2);
+}
+html[data-variant="console"] .brand { gap: 8px; }
+html[data-variant="console"] .brand-mark { font-size: 14px; color: var(--accent); }
+html[data-variant="console"] .brand-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+html[data-variant="console"] .brand-sub { font-size: 10.5px; letter-spacing: 0.04em; }
+html[data-variant="console"] .topbar-right { gap: 6px; }
+html[data-variant="console"] .pill {
+  padding: 3px 8px;
+  border-radius: 2px;
+  border-color: var(--line-2);
+  background: #0b0e13;
+  font-size: 10.5px;
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+}
+html[data-variant="console"] .pill .dot { width: 6px; height: 6px; }
+html[data-variant="console"] .clock { font-size: 12px; min-width: 72px; }
+html[data-variant="console"] .banner-host { top: 40px; }
+html[data-variant="console"] .banner {
+  padding: 5px 12px;
+  font-size: 11.5px;
+  background: #2b1d05;
+  border-bottom-color: #5e4210;
+}
+
+/* ------------------------------------------------------------------ layout
+ * Three panes at 1240px+: fleet + instruments in the rail (left), the incident
+ * console taking the remaining width. The log spans the bottom because it is the
+ * secondary surface and reads best as a full-width tail.
+ */
+html[data-variant="console"] .layout {
+  display: grid;
+  grid-template-columns: 336px minmax(0, 1fr);
+  grid-template-areas:
+    "overview  decisions"
+    "metrics   decisions"
+    "mynode    controls"
+    "logs      logs";
+  align-items: start;
+  gap: 8px;
+  padding: 8px 12px 12px;
+  max-width: none;
+}
+
+html[data-variant="console"] .panel {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+  min-width: 0;
+}
+html[data-variant="console"] .panel-overview { grid-area: overview; }
+html[data-variant="console"] .panel-decisions { grid-area: decisions; }
+html[data-variant="console"] .panel-metrics { grid-area: metrics; }
+html[data-variant="console"] .panel-controls { grid-area: controls; }
+html[data-variant="console"] .panel-logs { grid-area: logs; }
+html[data-variant="console"] .panel-mynode {
+  grid-area: mynode;
+  /* The enrolment surface is for the first five minutes of a node's life.
+     At console density it is the least-visited block, so it sits last in the
+     rail and its onboarding prose is demoted, not deleted. */
+  order: 9;
+}
+
+/* 1100–1240px: two panes, the rail folds under the console. */
+@media (max-width: 1240px) {
+  html[data-variant="console"] .layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "decisions"
+      "overview"
+      "metrics"
+      "controls"
+      "logs"
+      "mynode";
+  }
+}
+
+/* ------------------------------------------------------------------ node cards */
+html[data-variant="console"] .overview-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+html[data-variant="console"] .node-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-left-width: 2px;
+  border-radius: 2px;
+  padding: 7px 8px;
+  gap: 5px;
+}
+html[data-variant="console"] .node-name {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+html[data-variant="console"] .node-sub { font-size: 10px; }
+html[data-variant="console"] .badge {
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  font-family: var(--mono);
+}
+html[data-variant="console"] .metrics-row { grid-template-columns: 1fr 1fr 1.45fr; gap: 3px; }
+html[data-variant="console"] .metric {
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--line-2);
+  border-radius: 0;
+  padding: 1px 0 1px 6px;
+  min-width: 0;
+}
+html[data-variant="console"] .metric .k {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+html[data-variant="console"] .metric .v { font-size: 12.5px; font-weight: 500; }
+/* The disk value carries a unit and a free-space figure ("ok · 116.4 GB free");
+   at 1/3 of a 336px rail it would wrap into the card's rhythm. One step down in
+   size keeps it on its own baseline without hiding it. */
+html[data-variant="console"] .metric:nth-child(3) .v { font-size: 11px; letter-spacing: -0.01em; }
+html[data-variant="console"] .flag,
+html[data-variant="console"] .reason {
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: 9.5px;
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+}
+/* Services and processes are a line of text, not a row of controls: keep the
+   tinted chip, drop the border that makes them compete with the status flags. */
+html[data-variant="console"] .services .flag,
+html[data-variant="console"] .process,
+html[data-variant="console"] .processes-label {
+  border-color: transparent;
+  background: #0b0e13;
+  border-radius: 2px;
+}
+html[data-variant="console"] .services,
+html[data-variant="console"] .processes { font-size: 10px; gap: 4px; }
+html[data-variant="console"] .processes-label,
+html[data-variant="console"] .process {
+  padding: 0 4px;
+  border-radius: 2px;
+  background: #0b0e13;
+  color: var(--muted);
+}
+html[data-variant="console"] .node-foot { font-size: 10px; }
+html[data-variant="console"] .node-card .btn-row { margin: 2px 0 0; gap: 4px; }
+html[data-variant="console"] .node-card .btn {
+  padding: 2px 7px;
+  font-size: 10.5px;
+  border-radius: 2px;
+}
+html[data-variant="console"] .skeleton { height: 92px; border-radius: 2px; }
+
+/* ------------------------------------------------------------------ controls */
+html[data-variant="console"] .btn {
+  padding: 4px 9px;
+  border-radius: 2px;
+  font-size: 11px;
+  background: #12161d;
+  border-color: var(--line-2);
+  transition: background 120ms cubic-bezier(0.25, 0.1, 0.25, 1), border-color 120ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+html[data-variant="console"] .btn-primary { background: #0f3a52; border-color: #1d6c93; }
+html[data-variant="console"] .btn-warn { background: #231a09; border-color: #4d3a12; color: #f4cf9a; }
+html[data-variant="console"] .btn-sm { padding: 2px 6px; font-size: 10px; }
+html[data-variant="console"] .btn-row { gap: 6px; margin: 6px 0 3px; }
+
+/* ------------------------------------------------------------------ decisions */
+/* One record = one row. The nested incident card is flattened so a decision
+   reads as a single console line block rather than a card inside a card.
+   The list is capped at a reading width: a 1200px-wide evidence line is not
+   density, it is a saccade. */
+html[data-variant="console"] .decision-viewport {
+  max-height: none;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  max-width: 1120px;
+}
+html[data-variant="console"] .decision-list { gap: 4px; }
+html[data-variant="console"] .decision-row {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-left-width: 2px;
+  border-radius: 2px;
+  padding: 6px 8px;
+  gap: 4px;
+}
+html[data-variant="console"] .decision-head { gap: 6px; }
+html[data-variant="console"] .decision-time { font-size: 10px; }
+html[data-variant="console"] .decision-node,
+html[data-variant="console"] .decision-target { font-size: 10px; }
+html[data-variant="console"] .decision-rule,
+html[data-variant="console"] .decision-action { font-size: 11.5px; }
+html[data-variant="console"] .decision-breach { font-size: 10.5px; gap: 5px; }
+html[data-variant="console"] .breach-label { font-size: 9px; }
+html[data-variant="console"] .decision-rationale { font-size: 11px; }
+html[data-variant="console"] .decision-rationale .rat-label { font-size: 9px; }
+html[data-variant="console"] .decision-links { font-size: 10.5px; gap: 8px; }
+html[data-variant="console"] .decision-count { font-size: 10px; }
+
+html[data-variant="console"] .decider {
+  border-radius: 2px;
+  padding: 5px 8px;
+  margin-bottom: 6px;
+  gap: 1px;
+}
+html[data-variant="console"] .decider-label { font-size: 11px; }
+html[data-variant="console"] .decider-fields { font-size: 10px; }
+html[data-variant="console"] .decider-note { font-size: 9.5px; }
+html[data-variant="console"] .decision-note {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  margin-bottom: 6px;
+  max-width: 96ch;
+}
+
+/* The incident card: flattened into its row. Provenance keeps its colour rail —
+   model / fallback / unlabelled must never look alike. */
+html[data-variant="console"] .incident-card {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  gap: 3px;
+}
+html[data-variant="console"] .incident-title { font-size: 12.5px; line-height: 1.35; }
+html[data-variant="console"] .incident-explanation { font-size: 11px; line-height: 1.45; color: var(--fg-dim); }
+html[data-variant="console"] .inc-label {
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+}
+html[data-variant="console"] .inc-evidence-list,
+html[data-variant="console"] .inc-decided-list,
+html[data-variant="console"] .inc-executed-list { font-size: 10.5px; }
+html[data-variant="console"] .inc-field,
+html[data-variant="console"] .inc-kind,
+html[data-variant="console"] .inc-call,
+html[data-variant="console"] .inc-target,
+html[data-variant="console"] .inc-endpoint { font-size: 10px; }
+html[data-variant="console"] .incident-none,
+html[data-variant="console"] .trace-none { border-radius: 2px; padding: 4px 7px; }
+html[data-variant="console"] .incident-none-text,
+html[data-variant="console"] .trace-none-text { font-size: 10.5px; }
+
+/* Thinking log: still a disclosure, denser. Honesty alerts stay OUTSIDE it. */
+html[data-variant="console"] details.trace-details { border-radius: 2px; padding: 3px 6px; }
+html[data-variant="console"] .trace-summary-text,
+html[data-variant="console"] .trace-alert { font-size: 10px; }
+html[data-variant="console"] .trace-steps { gap: 1px; }
+html[data-variant="console"] .trace-step { font-size: 10px; padding-left: 6px; }
+html[data-variant="console"] .trace-reply-text { font-size: 10px; max-height: 10rem; }
+html[data-variant="console"] .trace-body { gap: 4px; margin-top: 4px; }
+
+/* ------------------------------------------------------------------ log */
+html[data-variant="console"] details.panel > summary.panel-head { margin-bottom: 0; }
+/* The disclosure marker + label + badge read as one line; the hint sits right. */
+html[data-variant="console"] .log-summary { justify-content: flex-start; gap: 8px; }
+html[data-variant="console"] .log-summary .log-summary-hint { flex: 0 1 auto; margin-left: auto; }
+html[data-variant="console"] .log-viewport {
+  height: 300px;
+  border-radius: 2px;
+  background: #080a0e;
+  padding: 2px;
+}
+html[data-variant="console"] .log-row {
+  grid-template-columns: 62px 62px 72px 1fr auto;
+  gap: 6px;
+  padding: 2px 6px;
+  font-size: 10.5px;
+  border-bottom: 1px solid #12161d;
+}
+html[data-variant="console"] .log-time,
+html[data-variant="console"] .log-node { font-size: 9.5px; }
+html[data-variant="console"] .filters { gap: 10px; margin-bottom: 5px; }
+html[data-variant="console"] .chip {
+  padding: 1px 7px;
+  border-radius: 2px;
+  font-size: 9.5px;
+  font-family: var(--mono);
+}
+html[data-variant="console"] .field { font-size: 10px; gap: 4px; }
+html[data-variant="console"] .field select,
+html[data-variant="console"] .field input,
+html[data-variant="console"] textarea {
+  border-radius: 2px;
+  padding: 3px 6px;
+  font-size: 11px;
+  background: #0b0e13;
+}
+html[data-variant="console"] .toggle { font-size: 10px; }
+html[data-variant="console"] .stream-state { font-size: 10px; }
+
+/* ------------------------------------------------------------------ charts */
+html[data-variant="console"] .charts-grid { gap: 4px; grid-template-columns: 1fr; }
+html[data-variant="console"] .chart-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 6px 7px 4px;
+}
+html[data-variant="console"] .chart-title { margin-bottom: 2px; }
+html[data-variant="console"] .chart-title h3 { font-size: 10.5px; font-weight: 500; }
+html[data-variant="console"] .chart-unit,
+html[data-variant="console"] .chart-basis { font-size: 9.5px; }
+html[data-variant="console"] .chart-canvas { height: 118px; }
+html[data-variant="console"] .chart-legend { font-size: 9px; gap: 8px; margin-top: 3px; }
+html[data-variant="console"] .chart-caption { font-size: 9.5px; }
+html[data-variant="console"] .sample-row { font-size: 9.5px; }
+html[data-variant="console"] .sample-row .sr-where,
+html[data-variant="console"] .sample-row .sr-label,
+html[data-variant="console"] .sample-row .sr-unit,
+html[data-variant="console"] .sample-row .sr-flags { font-size: 9px; }
+html[data-variant="console"] .chart-ask { font-size: 9.5px; }
+html[data-variant="console"] .process-row { font-size: 9.5px; }
+
+/* ------------------------------------------------------------------ controls */
+html[data-variant="console"] .controls-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 6px;
+}
+html[data-variant="console"] .control-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 7px 8px;
+}
+html[data-variant="console"] .control-card h3 { font-size: 11px; }
+html[data-variant="console"] .control-card p.muted { font-size: 10.5px; line-height: 1.4; }
+html[data-variant="console"] .pending-item { border-radius: 2px; padding: 5px 7px; }
+html[data-variant="console"] .pending-item .row1 { font-size: 10.5px; }
+html[data-variant="console"] .pending-item .msg { font-size: 10px; }
+html[data-variant="console"] .result { font-size: 10.5px; }
+html[data-variant="console"] .result pre { font-size: 10px; border-radius: 2px; }
+
+/* ------------------------------------------------------------------ your node */
+html[data-variant="console"] .panel-mynode p.muted.small { font-size: 10px; line-height: 1.45; }
+/* The first-run onboarding block is five numbered steps; at console density it
+   would set the height of the whole row. It stays complete and scrollable — it
+   is simply not allowed to push the console around. */
+html[data-variant="console"] #mynode-empty {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #2b3442 transparent;
+}
+html[data-variant="console"] .mynode-form { gap: 4px; }
+html[data-variant="console"] .mynode-facts { font-size: 10px; }
+html[data-variant="console"] .mynode-empty { font-size: 10.5px; }
+html[data-variant="console"] .empty { font-size: 10.5px; padding: 10px; }
+
+/* ------------------------------------------------------------------ chat
+ * Same docked panel, console skin. It still shifts the page instead of covering
+ * the incident view, and on a phone it is still a bottom sheet. */
+html[data-variant="console"] { --chat-w: 356px; }
+html[data-variant="console"] .chat-panel {
+  top: 40px;
+  border-left: 1px solid var(--line-2);
+  background: #0b0e13;
+  box-shadow: -10px 0 24px rgba(0, 0, 0, 0.4);
+  padding: 10px;
+  gap: 8px;
+}
+html[data-variant="console"] .chat-head h2 {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+html[data-variant="console"] .chat-intro,
+html[data-variant="console"] .chat-foot { font-size: 10px; line-height: 1.45; }
+html[data-variant="console"] .chat-chip { border-radius: 2px; font-size: 10.5px; }
+html[data-variant="console"] .chat-msg { border-radius: 2px; padding: 6px 8px; }
+html[data-variant="console"] .chat-text { font-size: 11.5px; }
+html[data-variant="console"] .chat-suggestion { font-size: 10.5px; }
+html[data-variant="console"] .chat-form textarea { font-size: 16px; } /* mobile-native: no iOS zoom */
+@media (pointer: fine) {
+  html[data-variant="console"] .chat-form textarea { font-size: 12px; }
+}
+html[data-variant="console"] .chat-exec-row { border-radius: 2px; }
+
+/* The shipped panel shifts the page when it opens, so it never covers the
+ * incident view. That rule (`body.chat-open .layout`) loses to this variant's
+ * own `.layout` padding — same specificity, later sheet — so the intent is
+ * restated here at a specificity that wins. Above 900px only: below that the
+ * panel is a bottom sheet and the shipped rule is already the right one. */
+@media (min-width: 901px) {
+  html[data-variant="console"] body.chat-open .layout { padding-right: calc(var(--chat-w) + 28px); }
+  html[data-variant="console"] body.chat-open .topbar { padding-right: calc(var(--chat-w) + 20px); }
+}
+
+/* ------------------------------------------------------------------ craft fixes */
+/* Two shipped behaviours that read as defects at any density, fixed in the
+ * prototype layer only (the root page is untouched):
+ *   - a .linklike <button> inside a flex column stretches and centres its label,
+ *     so "Ask AI about this thinking log" floats mid-row instead of reading as a
+ *     link;
+ *   - the chat intro is clipped by max-height with no ellipsis, so it stops
+ *     mid-word. Clamp it to three lines with an ellipsis instead. */
+html[data-variant="console"] .linklike { text-align: left; }
+html[data-variant="console"] .chat-intro {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-height: none;
+}
+
+/* ------------------------------------------------------------------ motion
+ * Frequency gate: an operator console is watched for hours. Entrance motion is
+ * a cost here, so there is none. What remains is press feedback (the interface
+ * confirming it heard the user, 100ms) and colour-only hover, gated to a fine
+ * pointer so a tap does not leave a hover state stuck on.
+ */
+
+html[data-variant="console"] .btn:active:not(:disabled),
+html[data-variant="console"] .chip:active,
+html[data-variant="console"] .linklike:active,
+html[data-variant="console"] .node-card .btn:active {
+  transform: scale(0.97);
+  transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+html[data-variant="console"] .btn,
+html[data-variant="console"] .chip { transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1), background 120ms ease, border-color 120ms ease; }
+
+@media (hover: hover) and (pointer: fine) {
+  html[data-variant="console"] .btn:hover:not(:disabled) { background: #171d26; border-color: #33404f; }
+  html[data-variant="console"] .node-card:hover { border-color: var(--line-2); }
+  html[data-variant="console"] .log-row:hover { background: #0f1319; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-variant="console"] .btn:active:not(:disabled),
+  html[data-variant="console"] .chip:active { transform: none; }
+}
+
+/* ------------------------------------------------------------------ phone
+ * Below 720px the console becomes one column; the rail folds above the console
+ * because node state is the first question on a phone. Horizontal filters scroll
+ * instead of wrapping to five lines. */
+@media (max-width: 720px) {
+  html[data-variant="console"] .layout { padding: 6px 8px 10px; gap: 6px; }
+  /* Two rows: brand, then one horizontally-scrolling row of status and actions.
+     Wrapping them into four stacked rows turns the header into a third of the
+     screen. */
+  html[data-variant="console"] .topbar { height: auto; padding: 6px 8px; flex-direction: column; align-items: stretch; gap: 6px; }
+  html[data-variant="console"] .topbar-right {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    width: 100%;
+    padding-bottom: 2px;
+  }
+  html[data-variant="console"] .brand-sub { display: none; }
+  html[data-variant="console"] .clock { display: none; }
+  html[data-variant="console"] .banner-host { top: auto; position: static; }
+  /* Touch, not mouse: the console's 24px desktop buttons are too small for a
+     fingertip, so the density gives way at the point where it stops being
+     usable rather than being carried over as decoration. */
+  html[data-variant="console"] .btn { padding: 8px 12px; font-size: 12px; }
+  html[data-variant="console"] .node-card .btn { padding: 7px 10px; font-size: 11.5px; }
+  html[data-variant="console"] .chip { padding: 5px 9px; font-size: 10.5px; }
+  html[data-variant="console"] .metric .v { font-size: 13px; }
+  html[data-variant="console"] .filters,
+  html[data-variant="console"] .panel-head .panel-tools {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 2px;
+  }
+  html[data-variant="console"] .log-row { grid-template-columns: 52px 1fr auto; }
+  html[data-variant="console"] .chat-panel { top: auto; }
+}

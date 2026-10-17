@@ -1,0 +1,772 @@
+/*
+ * VARIANT 3 — "Instrument"
+ * AXIS: personality + motion. A light, precise instrument: paper-white surfaces,
+ * hairline rules, ink type, one electric accent (a blue that only ever marks state
+ * or action), tabular figures. Motion is expressive but strictly inside the UI
+ * budget — entrances rise 6px at 200ms, plots wipe in at 260ms, a new decision
+ * fades in at 180ms, press feedback at 120ms — all transform / opacity /
+ * clip-path, all with a reduced-motion path.
+ *
+ * WHAT IT KEEPS: every panel, control, filter, honesty surface and disclosure of
+ * the shipped dashboard. Nothing is softened to look cleaner: a fallback decision
+ * keeps its amber rail, an absent record keeps its dashed "no record" line, demo
+ * nodes keep their label, the degraded-backend banner keeps its voice.
+ *
+ * WHAT IT CHANGES: light theme (the other two are dark, which is the point of a
+ * comparison), two panes — the incident console reads on the left, the
+ * instruments answer on the right; hairline rules instead of shadows; 8px radii;
+ * 14px type with mono section labels.
+ *
+ * ONE DELIBERATE EXCEPTION: the plot cards stay dark. `js/charts.js` draws its
+ * grid, axes and series in light-on-dark ink (rgba(255,255,255,.08) grid,
+ * #5ac8fa series) and the prototype surface may not modify shipped modules, so a
+ * light plot area would be an unreadable inversion. Treating a plot as a screen
+ * inset in the paper is the honest resolution — and the readings on it are then
+ * exactly the ones the product draws.
+ *
+ * FOR: someone who wants the tool to feel made rather than merely loaded, and
+ * who reads this in daylight. COST: a light dashboard is loud across a room, and
+ * the motion, though fast, is real motion.
+ */
+
+html[data-variant="instrument"] {
+  --bg: #f3f3f0;
+  --bg-1: #ffffff;
+  --bg-2: #f7f7f4;
+  --line: #e4e5e1;
+  --line-2: #d5d7d1;
+  --fg: #15181d;
+  --fg-dim: #3d4552;
+  --muted: #6f7784;
+  --accent: #1a4dff;
+  --ok: #0b6b35;
+  --warn: #8f5200;
+  --err: #b3251b;
+  --radius: 8px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --fs-base: 14px;
+}
+
+/* ------------------------------------------------------------------ shell */
+html[data-variant="instrument"] body {
+  background: var(--bg);
+  color: var(--fg);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+html[data-variant="instrument"] h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+html[data-variant="instrument"] h3 { font-size: 0.9rem; font-weight: 600; }
+html[data-variant="instrument"] a { color: var(--accent); }
+
+/* ------------------------------------------------------------------ topbar */
+html[data-variant="instrument"] .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 10px 18px;
+  /* Opaque enough that the page scrolling under it never garbles the pills and
+     the clock: the material carries hierarchy, it does not smear content. */
+  background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  backdrop-filter: blur(20px) saturate(1.2);
+  border-bottom: 1px solid var(--line);
+}
+html[data-variant="instrument"] .brand-mark { color: var(--accent); }
+html[data-variant="instrument"] .brand-name { font-size: 1.05rem; letter-spacing: -0.01em; color: var(--fg); }
+html[data-variant="instrument"] .brand-sub { font-size: 0.8rem; color: var(--muted); }
+html[data-variant="instrument"] .pill {
+  padding: 4px 9px;
+  border: 1px solid var(--line-2);
+  background: #fff;
+  color: var(--fg-dim);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+html[data-variant="instrument"] .dot-ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(11, 107, 53, 0.12); }
+html[data-variant="instrument"] .dot-warn { background: var(--warn); box-shadow: 0 0 0 3px rgba(143, 82, 0, 0.12); }
+html[data-variant="instrument"] .dot-err { background: var(--err); box-shadow: 0 0 0 3px rgba(179, 37, 27, 0.12); }
+html[data-variant="instrument"] .clock { color: var(--fg-dim); font-size: 0.92rem; }
+html[data-variant="instrument"] .banner-host { position: sticky; top: 57px; z-index: 30; }
+html[data-variant="instrument"] .banner {
+  background: #fdf4e3;
+  border-bottom: 1px solid #e8cfa4;
+  color: #6f4300;
+  font-size: 0.84rem;
+  padding: 8px 18px;
+}
+html[data-variant="instrument"] .banner.err { background: #fdeeec; border-color: #e8b7b1; color: #8d1f16; }
+
+/* ------------------------------------------------------------------ layout
+ * Two panes: the incident console reads on the left (it is the product's
+ * conclusion), the instruments answer on the right (numbers, levers, enrolment).
+ * The raw log closes the page full width, because it is the secondary surface.
+ */
+html[data-variant="instrument"] .layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 396px;
+  grid-template-areas:
+    "overview  metrics"
+    "decisions metrics"
+    "decisions controls"
+    "decisions mynode"
+    "logs      logs";
+  align-items: start;
+  gap: 14px;
+  padding: 14px 18px 20px;
+  max-width: none;
+}
+html[data-variant="instrument"] .panel-overview { grid-area: overview; }
+html[data-variant="instrument"] .panel-decisions { grid-area: decisions; }
+html[data-variant="instrument"] .panel-metrics { grid-area: metrics; }
+html[data-variant="instrument"] .panel-controls { grid-area: controls; }
+html[data-variant="instrument"] .panel-logs { grid-area: logs; }
+html[data-variant="instrument"] .panel-mynode { grid-area: mynode; }
+
+html[data-variant="instrument"] .panel {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  min-width: 0;
+}
+html[data-variant="instrument"] .panel-head {
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  align-items: baseline;
+}
+html[data-variant="instrument"] .panel-head h2 {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@media (max-width: 1180px) {
+  html[data-variant="instrument"] .layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "decisions"
+      "overview"
+      "metrics"
+      "controls"
+      "logs"
+      "mynode";
+  }
+}
+
+/* ------------------------------------------------------------------ node cards */
+html[data-variant="instrument"] .overview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+html[data-variant="instrument"] .node-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-2);
+  border-radius: 6px;
+  padding: 12px;
+  gap: 10px;
+  position: relative;
+  /* Only `transform` is transitioned: it is the GPU-composited half of the hover
+     response. The shadow is a separate pseudo-element whose *opacity* fades in,
+     which keeps the paint off the transition (self-review finding #3). */
+  transition: transform 160ms var(--ease-out);
+}
+html[data-variant="instrument"] .node-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.1);
+  opacity: 0;
+  transition: opacity 160ms var(--ease-out);
+}
+html[data-variant="instrument"] .node-card.status-online { border-left-color: var(--ok); }
+html[data-variant="instrument"] .node-card.status-degraded { border-left-color: var(--warn); }
+html[data-variant="instrument"] .node-card.status-offline { border-left-color: var(--err); }
+html[data-variant="instrument"] .node-name { font-size: 0.95rem; font-family: var(--mono); }
+html[data-variant="instrument"] .node-sub { font-size: 0.72rem; color: var(--muted); }
+html[data-variant="instrument"] .badge {
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  border-color: var(--line-2);
+  color: var(--fg-dim);
+}
+html[data-variant="instrument"] .metrics-row { grid-template-columns: 1fr 1fr 1.55fr; gap: 8px; }
+html[data-variant="instrument"] .metric {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+html[data-variant="instrument"] .metric .k { font-size: 0.64rem; color: var(--muted); }
+html[data-variant="instrument"] .metric .v { font-size: 0.95rem; font-weight: 600; letter-spacing: -0.01em; }
+/* The disk figure is a sentence, not a number ("ok · 130.2 GiB free"): one
+   grade down and a wider column keeps it on two lines instead of three. */
+html[data-variant="instrument"] .metric:nth-child(3) .v { font-size: 0.84rem; }
+html[data-variant="instrument"] .flag,
+html[data-variant="instrument"] .reason {
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 0.7rem;
+  border-color: var(--line-2);
+  color: var(--fg-dim);
+  background: #fff;
+}
+html[data-variant="instrument"] .flag.ok { color: var(--ok); border-color: #b7dcc6; background: #f0f9f3; }
+html[data-variant="instrument"] .flag.bad { color: var(--err); border-color: #e8b7b1; background: #fdf1ef; }
+html[data-variant="instrument"] .flag.warn { color: var(--warn); border-color: #e8cfa4; background: #fdf7ec; }
+html[data-variant="instrument"] .reason { color: var(--warn); border-color: #e8cfa4; background: #fdf7ec; }
+html[data-variant="instrument"] .services,
+html[data-variant="instrument"] .processes { color: var(--muted); font-size: 0.7rem; }
+html[data-variant="instrument"] .node-foot { font-size: 0.74rem; color: var(--muted); }
+html[data-variant="instrument"] .skeleton { height: 130px; border-radius: 6px; background: linear-gradient(90deg, #f1f1ee, #e9e9e5, #f1f1ee); background-size: 200% 100%; }
+
+/* ------------------------------------------------------------------ buttons */
+html[data-variant="instrument"] .btn {
+  padding: 6px 11px;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  background: #fff;
+  color: var(--fg);
+  font-size: 0.82rem;
+  transition: transform 120ms var(--ease-out), background 150ms ease, border-color 150ms ease;
+}
+html[data-variant="instrument"] .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+html[data-variant="instrument"] .btn-warn { background: #fff; border-color: #e0b978; color: #7a4600; }
+html[data-variant="instrument"] .btn-ok { background: #f0f9f3; border-color: #b7dcc6; color: var(--ok); }
+html[data-variant="instrument"] .btn-sm { padding: 3px 8px; font-size: 0.74rem; border-radius: 5px; }
+html[data-variant="instrument"] .btn-ghost { background: transparent; }
+html[data-variant="instrument"] .linklike { color: var(--accent); text-decoration-color: rgba(26, 77, 255, 0.4); }
+html[data-variant="instrument"] .linklike:disabled { color: var(--muted); }
+
+/* ------------------------------------------------------------------ decisions */
+html[data-variant="instrument"] .decider {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+html[data-variant="instrument"] .decider-label { font-size: 0.86rem; }
+html[data-variant="instrument"] .decider-fields { color: var(--fg-dim); font-size: 0.72rem; }
+html[data-variant="instrument"] .decider-note { color: var(--muted); font-size: 0.72rem; }
+html[data-variant="instrument"] .decider-forwarded { border-color: #b9d3f7; background: #f1f6ff; }
+html[data-variant="instrument"] .decider-forwarded .decider-label { color: #0b3d8c; }
+html[data-variant="instrument"] .decider-local { border-color: #b7dcc6; background: #f2faf4; }
+html[data-variant="instrument"] .decider-local .decider-label { color: var(--ok); }
+html[data-variant="instrument"] .decider-unknown { border-color: #e8cfa4; background: #fdf7ec; }
+html[data-variant="instrument"] .decider-unknown .decider-label { color: var(--warn); }
+html[data-variant="instrument"] .decision-note { font-size: 0.76rem; color: var(--muted); line-height: 1.55; max-width: 92ch; }
+html[data-variant="instrument"] .decision-note code { color: var(--fg-dim); }
+
+html[data-variant="instrument"] .decision-viewport {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  max-height: none;
+  overflow: visible;
+}
+html[data-variant="instrument"] .decision-list { gap: 10px; }
+html[data-variant="instrument"] .decision-row {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-2);
+  border-radius: 6px;
+  padding: 11px 13px;
+  gap: 8px;
+}
+html[data-variant="instrument"] .decision-row.src-model { border-left-color: var(--accent); }
+html[data-variant="instrument"] .decision-row.src-fallback { border-left-color: var(--warn); background: #fdf9f0; }
+html[data-variant="instrument"] .decision-row.src-det { border-left-color: #7a3fd0; }
+html[data-variant="instrument"] .decision-time { font-size: 0.72rem; color: var(--muted); }
+html[data-variant="instrument"] .decision-node,
+html[data-variant="instrument"] .decision-target { color: var(--fg-dim); font-size: 0.72rem; }
+html[data-variant="instrument"] .decision-rule,
+html[data-variant="instrument"] .decision-action { font-size: 0.84rem; }
+html[data-variant="instrument"] .decision-breach { font-size: 0.78rem; }
+html[data-variant="instrument"] .breach-threshold { color: var(--warn); }
+html[data-variant="instrument"] .decision-rationale { font-size: 0.8rem; }
+html[data-variant="instrument"] .decision-links { font-size: 0.74rem; }
+html[data-variant="instrument"] .decision-count { font-size: 0.74rem; }
+
+html[data-variant="instrument"] .incident-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  gap: 8px;
+}
+html[data-variant="instrument"] .incident-card.inc-model { border-left: 2px solid var(--accent); }
+html[data-variant="instrument"] .incident-card.inc-fallback { border-left: 2px solid var(--warn); background: #fdf9f0; }
+html[data-variant="instrument"] .incident-card.inc-bug { border-left: 2px solid var(--err); background: #fdf1ef; }
+html[data-variant="instrument"] .incident-title { font-size: 0.92rem; line-height: 1.4; }
+html[data-variant="instrument"] .incident-explanation { font-size: 0.82rem; line-height: 1.55; color: var(--fg-dim); max-width: 88ch; }
+html[data-variant="instrument"] .inc-label { font-size: 0.62rem; letter-spacing: 0.08em; color: var(--muted); }
+html[data-variant="instrument"] .inc-evidence-list,
+html[data-variant="instrument"] .inc-decided-list,
+html[data-variant="instrument"] .inc-executed-list { font-size: 0.76rem; }
+html[data-variant="instrument"] .inc-note { color: var(--muted); }
+
+/* dashed "no record" states: the honesty surface, still visibly provisional */
+html[data-variant="instrument"] .incident-none,
+html[data-variant="instrument"] .trace-none {
+  background: #fbfbf9;
+  border: 1px dashed var(--line-2);
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+html[data-variant="instrument"] .incident-none-text,
+html[data-variant="instrument"] .trace-none-text { color: var(--muted); font-size: 0.76rem; }
+html[data-variant="instrument"] details.trace-details {
+  background: #fbfbf9;
+  border: 1px dashed var(--line-2);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+html[data-variant="instrument"] .trace-summary-text { color: var(--fg-dim); font-size: 0.76rem; }
+html[data-variant="instrument"] .trace-alert { font-size: 0.74rem; color: var(--fg-dim); border-left-color: var(--line-2); }
+html[data-variant="instrument"] .trace-step { font-size: 0.74rem; border-left-color: var(--line-2); }
+html[data-variant="instrument"] .trace-name { color: #0b3d8c; }
+html[data-variant="instrument"] .trace-label { color: var(--fg-dim); }
+html[data-variant="instrument"] .trace-detail { color: var(--muted); }
+html[data-variant="instrument"] .trace-detail-reply {
+  background: #f7f5fb;
+  border: 1px solid #ddd2f2;
+  color: #3b2a5c;
+}
+html[data-variant="instrument"] .trace-reply {
+  background: #faf7ff;
+  border: 1px dashed #b9a3e0;
+}
+html[data-variant="instrument"] .trace-reply-text {
+  background: #fff;
+  border: 1px solid #ddd2f2;
+  color: #3b2a5c;
+}
+
+/* ------------------------------------------------------------------ log */
+html[data-variant="instrument"] details.panel > summary.panel-head { margin-bottom: 0; border-bottom: 0; padding-bottom: 0; }
+html[data-variant="instrument"] .log-summary { justify-content: flex-start; gap: 8px; }
+html[data-variant="instrument"] .log-summary .log-summary-hint { flex: 0 1 auto; margin-left: auto; }
+html[data-variant="instrument"] details.panel[open] > summary.panel-head { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+html[data-variant="instrument"] details.panel > summary.panel-head::before { color: var(--muted); }
+html[data-variant="instrument"] .log-viewport {
+  background: #fbfbf9;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  height: 320px;
+}
+html[data-variant="instrument"] .log-row {
+  border-bottom: 1px solid #eeeeea;
+  font-size: 0.78rem;
+  padding: 5px 8px;
+  grid-template-columns: 68px 62px 76px 1fr auto;
+}
+html[data-variant="instrument"] .log-time,
+html[data-variant="instrument"] .log-node { color: var(--muted); font-size: 0.7rem; }
+html[data-variant="instrument"] .log-row.sev-warn .log-msg { color: #7a4600; }
+html[data-variant="instrument"] .log-row.sev-error .log-msg { color: #8d1f16; }
+html[data-variant="instrument"] .log-row.sev-debug .log-msg { color: var(--muted); }
+html[data-variant="instrument"] .log-row.log-control { background: #fdf7ec; }
+html[data-variant="instrument"] .log-row.log-control .log-msg { color: #7a4600; }
+html[data-variant="instrument"] .filters { gap: 12px; margin-bottom: 8px; }
+html[data-variant="instrument"] .chip {
+  background: #fff;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  color: var(--fg-dim);
+  font-size: 0.74rem;
+  padding: 3px 9px;
+  transition: transform 120ms var(--ease-out), background 150ms ease, border-color 150ms ease;
+}
+html[data-variant="instrument"] .chip.on { border-color: var(--accent); color: var(--accent); background: #f1f4ff; }
+html[data-variant="instrument"] .chip.sev-info.on { border-color: #0b3d8c; color: #0b3d8c; background: #f1f6ff; }
+html[data-variant="instrument"] .chip.sev-warn.on { border-color: #b57a16; color: #7a4600; background: #fdf7ec; }
+html[data-variant="instrument"] .chip.sev-error.on { border-color: #b3251b; color: #8d1f16; background: #fdf1ef; }
+html[data-variant="instrument"] .field { color: var(--muted); font-size: 0.74rem; }
+html[data-variant="instrument"] .field select,
+html[data-variant="instrument"] .field input,
+html[data-variant="instrument"] textarea {
+  background: #fff;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  color: var(--fg);
+  font-size: 0.8rem;
+  padding: 5px 8px;
+}
+html[data-variant="instrument"] .toggle { color: var(--fg-dim); font-size: 0.76rem; }
+html[data-variant="instrument"] .stream-state { color: var(--fg-dim); font-size: 0.74rem; }
+html[data-variant="instrument"] .empty { color: var(--muted); font-size: 0.82rem; }
+
+/* ------------------------------------------------------------------ plots
+ * The one dark surface, on purpose (see the file header): the shipped canvas
+ * renderer draws light ink on a dark plot, and the prototype surface may not
+ * modify shipped modules. So a plot is a screen inset in the paper.
+ */
+html[data-variant="instrument"] .charts-grid { gap: 10px; grid-template-columns: 1fr; }
+html[data-variant="instrument"] .chart-card,
+html[data-variant="instrument"] .process-card {
+  background: #0e1116;
+  border: 1px solid #1d222b;
+  border-radius: 6px;
+  padding: 9px 10px 7px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+}
+html[data-variant="instrument"] .chart-title { margin-bottom: 4px; }
+html[data-variant="instrument"] .chart-title h3 { color: #e6e9ef; font-size: 0.8rem; font-weight: 500; }
+html[data-variant="instrument"] .chart-unit,
+html[data-variant="instrument"] .chart-basis { color: #8b95a5; font-size: 0.68rem; }
+html[data-variant="instrument"] .chart-canvas { height: 128px; }
+html[data-variant="instrument"] .chart-legend { color: #a7b0c0; font-size: 0.68rem; }
+html[data-variant="instrument"] .chart-caption,
+html[data-variant="instrument"] .chart-fault { color: #ffdca8; font-size: 0.7rem; }
+html[data-variant="instrument"] .chart-chip { color: #8b95a5; border-color: #2a3140; }
+html[data-variant="instrument"] .chart-chip.derived { color: #ffdca8; border-color: #5e4210; }
+html[data-variant="instrument"] .chart-chip.raw { color: #a7b0c0; }
+html[data-variant="instrument"] .chart-ask { color: #bfe9ff; }
+html[data-variant="instrument"] .chart-selection { color: #bfe9ff; }
+html[data-variant="instrument"] .chart-card.chart-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+html[data-variant="instrument"] .chart-card.fault { border-color: #8a6a1f; }
+html[data-variant="instrument"] .process-row,
+html[data-variant="instrument"] .sample-row { color: #cbd5e6; font-size: 0.7rem; }
+html[data-variant="instrument"] .sample-row { border-bottom-color: rgba(255, 255, 255, 0.06); }
+html[data-variant="instrument"] .sample-row .sr-where,
+html[data-variant="instrument"] .sample-row .sr-unit,
+html[data-variant="instrument"] .sample-row .sr-flags { color: #8b95a5; }
+html[data-variant="instrument"] .sample-note { color: #8b95a5; }
+html[data-variant="instrument"] .sr-value.nr,
+html[data-variant="instrument"] .sample-note.nr { color: #ffb4a2; }
+
+/* ------------------------------------------------------------------ controls */
+html[data-variant="instrument"] .controls-grid {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+}
+html[data-variant="instrument"] .control-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+}
+html[data-variant="instrument"] .control-card h3 { margin-bottom: 6px; }
+html[data-variant="instrument"] .control-card p.muted { color: var(--muted); font-size: 0.76rem; line-height: 1.5; }
+html[data-variant="instrument"] .pending-item { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; }
+html[data-variant="instrument"] .pending-item .msg { color: var(--fg-dim); font-size: 0.76rem; }
+html[data-variant="instrument"] .result { font-size: 0.78rem; }
+html[data-variant="instrument"] .result.ok { color: var(--ok); }
+html[data-variant="instrument"] .result.bad { color: var(--err); }
+html[data-variant="instrument"] .result pre {
+  background: #fbfbf9;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--fg-dim);
+  font-size: 0.72rem;
+}
+html[data-variant="instrument"] .plan .alloc { border-left-color: var(--line-2); }
+html[data-variant="instrument"] .warn-tag { color: var(--warn); }
+html[data-variant="instrument"] .err-tag { color: var(--err); }
+
+/* ------------------------------------------------------------------ your node */
+html[data-variant="instrument"] .panel-mynode p.muted.small { color: var(--muted); font-size: 0.74rem; line-height: 1.5; }
+html[data-variant="instrument"] .mynode-form { gap: 8px; }
+html[data-variant="instrument"] .mynode-facts { font-size: 0.74rem; }
+html[data-variant="instrument"] .mynode-state { font-size: 0.82rem; }
+html[data-variant="instrument"] #mynode-empty {
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------------ chat */
+html[data-variant="instrument"] { --chat-w: 384px; }
+html[data-variant="instrument"] .chat-panel {
+  top: 0;
+  background: #fff;
+  border-left: 1px solid var(--line);
+  box-shadow: -16px 0 40px rgba(16, 24, 40, 0.1);
+  padding: 14px;
+  gap: 10px;
+}
+html[data-variant="instrument"] .chat-head h2 { font-size: 0.95rem; }
+html[data-variant="instrument"] .chat-mode-grounded { color: #0b3d8c; border-color: #b9d3f7; background: #f1f6ff; }
+html[data-variant="instrument"] .chat-mode-fixture { color: var(--warn); border-color: #e8cfa4; background: #fdf7ec; }
+html[data-variant="instrument"] .chat-intro,
+html[data-variant="instrument"] .chat-foot { color: var(--muted); font-size: 0.74rem; line-height: 1.5; }
+html[data-variant="instrument"] .chat-context { background: var(--bg-2); border-color: var(--line-2); }
+html[data-variant="instrument"] .chat-chip { background: #f1f6ff; border-color: #b9d3f7; color: #0b3d8c; }
+html[data-variant="instrument"] .chat-chip-kind { color: #3b6bbd; }
+html[data-variant="instrument"] .chat-msg { background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; }
+html[data-variant="instrument"] .chat-msg-user { background: #f1f6ff; border-color: #cfdffb; }
+html[data-variant="instrument"] .chat-text { color: var(--fg); font-size: 0.84rem; line-height: 1.55; }
+html[data-variant="instrument"] .chat-who { color: var(--muted); }
+html[data-variant="instrument"] .chat-fixture { background: #fdf7ec; border-color: #e8cfa4; color: #6f4300; }
+html[data-variant="instrument"] .chat-fixture-badge { color: var(--warn); border-color: #e8cfa4; }
+html[data-variant="instrument"] .chat-defect { background: #fdf1ef; border-color: #e8b7b1; color: #8d1f16; }
+html[data-variant="instrument"] .chat-defect-badge { color: var(--err); border-color: #e8b7b1; }
+html[data-variant="instrument"] .chat-error-text { color: #8d1f16; }
+html[data-variant="instrument"] .chat-err-badge { color: var(--err); border-color: #e8b7b1; background: #fdf1ef; }
+html[data-variant="instrument"] .chat-exec-row { background: #f2faf4; border-color: #b7dcc6; }
+html[data-variant="instrument"] .chat-exec-id { color: #0b3d8c; }
+html[data-variant="instrument"] .chat-errors { color: var(--warn); }
+html[data-variant="instrument"] .chat-form textarea { font-size: 16px; }
+@media (pointer: fine) {
+  html[data-variant="instrument"] .chat-form textarea { font-size: 0.84rem; }
+}
+
+/* The shipped panel shifts the page when it opens, so it never covers the
+ * incident view. That rule (`body.chat-open .layout`) loses to this variant's
+ * own `.layout` padding — same specificity, later sheet — so the intent is
+ * restated here at a specificity that wins. */
+@media (min-width: 901px) {
+  html[data-variant="instrument"] body.chat-open .layout {
+    padding-right: calc(var(--chat-w) + 28px);
+    /* the rail gives up width first: the incident column keeps its reading width */
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+  html[data-variant="instrument"] body.chat-open .topbar { padding-right: calc(var(--chat-w) + 20px); }
+}
+
+/* ------------------------------------------------------------------ dialogs */
+html[data-variant="instrument"] .dialog {
+  background: #fff;
+  border: 1px solid var(--line-2);
+  color: var(--fg);
+  box-shadow: 0 30px 80px rgba(16, 24, 40, 0.25);
+}
+html[data-variant="instrument"] .dialog::backdrop { background: rgba(20, 24, 32, 0.4); }
+html[data-variant="instrument"] .detail-dialog .json {
+  background: #fbfbf9;
+  border: 1px solid var(--line);
+  color: var(--fg-dim);
+}
+html[data-variant="instrument"] .kv dt { color: var(--muted); }
+
+/* ------------------------------------------------------------------ toasts */
+html[data-variant="instrument"] .toast {
+  background: #fff;
+  border: 1px solid var(--line-2);
+  border-left-width: 3px;
+  color: var(--fg);
+  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.14);
+}
+html[data-variant="instrument"] .toast .t-body { color: var(--fg-dim); }
+
+/* ------------------------------------------------------------------ craft fixes */
+/* Two shipped behaviours that read as defects in any direction, fixed in the
+ * prototype layer only (the root page is untouched): a .linklike <button> in a
+ * flex column stretches and centres its label, and the chat intro is clipped by
+ * max-height with no ellipsis (it stops mid-word). */
+html[data-variant="instrument"] .linklike { text-align: left; }
+html[data-variant="instrument"] .chat-intro {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-height: none;
+}
+
+/* ------------------------------------------------------------------ motion
+ * Gate: panels mount occasionally; a new decision is an occasional event; a
+ * 3s poll re-render is not — so rows fade and never move, and panels rise once.
+ * Every value is inside the UI budget and only transform / opacity / clip-path
+ * animate. Hover motion is gated to a fine pointer; press is on :active, which
+ * works on touch too.
+ */
+@keyframes instrument-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes instrument-wipe {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@keyframes instrument-row-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+html[data-variant="instrument"][data-enter] .panel {
+  animation: instrument-rise 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+html[data-variant="instrument"][data-enter] .panel:nth-child(1) { animation-delay: 0ms; }
+html[data-variant="instrument"][data-enter] .panel:nth-child(2) { animation-delay: 30ms; }
+html[data-variant="instrument"][data-enter] .panel:nth-child(3) { animation-delay: 60ms; }
+html[data-variant="instrument"][data-enter] .panel:nth-child(4) { animation-delay: 90ms; }
+html[data-variant="instrument"][data-enter] .panel:nth-child(5) { animation-delay: 120ms; }
+html[data-variant="instrument"][data-enter] .panel:nth-child(6) { animation-delay: 150ms; }
+html[data-variant="instrument"][data-enter] .chart-canvas {
+  animation: instrument-wipe 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+/* A decision that arrives is a state change worth one breath — opacity only, so
+   nothing in a list that updates every 3s ever moves under the cursor. */
+html[data-variant="instrument"] .decision-row {
+  animation: instrument-row-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+html[data-variant="instrument"] .btn:active:not(:disabled),
+html[data-variant="instrument"] .chip:active,
+html[data-variant="instrument"] .linklike:active,
+html[data-variant="instrument"] .chat-suggestion:active { transform: scale(0.97); }
+
+@media (hover: hover) and (pointer: fine) {
+  html[data-variant="instrument"] .btn:hover:not(:disabled) { background: #f4f5f2; border-color: #b9bcb5; }
+  html[data-variant="instrument"] .btn-primary:hover:not(:disabled) { background: #1442e0; border-color: #1442e0; }
+  html[data-variant="instrument"] .node-card:hover { transform: translateY(-1px); }
+  html[data-variant="instrument"] .node-card:hover::after { opacity: 1; }
+  html[data-variant="instrument"] .log-row:hover { background: #f4f4f1; }
+  html[data-variant="instrument"] .chip:hover { border-color: #b9bcb5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes instrument-rise {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes instrument-wipe {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  html[data-variant="instrument"] .decision-row { animation: none; }
+  html[data-variant="instrument"] .btn:active:not(:disabled),
+  html[data-variant="instrument"] .chip:active,
+  html[data-variant="instrument"] .linklike:active { transform: none; }
+  html[data-variant="instrument"] .node-card:hover { transform: none; }
+}
+
+/* ------------------------------------------------------------------ phone */
+@media (max-width: 760px) {
+  html[data-variant="instrument"] .layout { padding: 10px 10px 16px; gap: 10px; }
+  html[data-variant="instrument"] .panel { padding: 12px; }
+  /* Two rows: brand, then one horizontally-scrolling row of status and actions. */
+  html[data-variant="instrument"] .topbar { padding: 8px 10px; flex-direction: column; align-items: stretch; gap: 8px; }
+  html[data-variant="instrument"] .topbar-right {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    width: 100%;
+    padding-bottom: 2px;
+  }
+  html[data-variant="instrument"] .brand-sub { display: none; }
+  html[data-variant="instrument"] .clock { display: none; }
+  html[data-variant="instrument"] .banner-host { position: static; }
+  html[data-variant="instrument"] .log-row { grid-template-columns: 56px 1fr auto; }
+  html[data-variant="instrument"] .chat-panel { top: auto; }
+  html[data-variant="instrument"] .overview-grid { grid-template-columns: 1fr; }
+}
+
+/* ================================================================ light ink
+ * `assets/styles.css` names its ink per component rather than per token, and
+ * those literals are light-on-dark by construction. A light variant has to
+ * restate each one, or the surface goes invisible. This block is the complete
+ * remap: every literal colour in the shipped sheet that lands on a light
+ * surface in this variant, and nothing else. It exists so a reader can check the
+ * claim "no honesty surface was softened" against one list.
+ */
+
+/* severity + status badges */
+html[data-variant="instrument"] .badge.status-online { color: var(--ok); border-color: #b7dcc6; background: #f0f9f3; }
+html[data-variant="instrument"] .badge.status-degraded { color: var(--warn); border-color: #e8cfa4; background: #fdf7ec; }
+html[data-variant="instrument"] .badge.status-offline { color: var(--err); border-color: #e8b7b1; background: #fdf1ef; }
+html[data-variant="instrument"] .badge.role-inference { color: #0b3d8c; border-color: #b9d3f7; background: #f1f6ff; }
+html[data-variant="instrument"] .badge.sev-debug { color: #5b6472; border-color: var(--line-2); background: #f7f7f4; }
+html[data-variant="instrument"] .badge.sev-info { color: #0b3d8c; border-color: #b9d3f7; background: #f1f6ff; }
+html[data-variant="instrument"] .badge.sev-warn { color: var(--warn); border-color: #e8cfa4; background: #fdf7ec; }
+html[data-variant="instrument"] .badge.sev-error { color: var(--err); border-color: #e8b7b1; background: #fdf1ef; }
+html[data-variant="instrument"] .badge.synthetic { color: #5b2b9e; border-color: #d9c8f2; background: #f7f2ff; }
+html[data-variant="instrument"] .badge.sec-badge { color: #5b2b9e; border-color: #d9c8f2; background: #f7f2ff; }
+
+/* decision provenance: model / controller-generated fallback / deterministic */
+html[data-variant="instrument"] .badge.src-model,
+html[data-variant="instrument"] .badge.inc-model,
+html[data-variant="instrument"] .badge.trace-model { color: #0b3d8c; border-color: #b9d3f7; background: #f1f6ff; }
+html[data-variant="instrument"] .badge.src-fallback,
+html[data-variant="instrument"] .badge.inc-fallback,
+html[data-variant="instrument"] .badge.trace-fallback { color: var(--warn); border-color: #e8cfa4; background: #fdf7ec; }
+html[data-variant="instrument"] .badge.src-det,
+html[data-variant="instrument"] .badge.trace-det { color: #5b2b9e; border-color: #d9c8f2; background: #f7f2ff; }
+html[data-variant="instrument"] .badge.inc-bug,
+html[data-variant="instrument"] .badge.trace-bug { color: var(--err); border-color: #e8b7b1; background: #fdf1ef; }
+html[data-variant="instrument"] .badge.exec-ok { color: var(--ok); border-color: #b7dcc6; background: #f0f9f3; }
+html[data-variant="instrument"] .badge.exec-err { color: var(--err); border-color: #e8b7b1; background: #fdf1ef; }
+html[data-variant="instrument"] .badge.exec-none { color: var(--muted); border-color: var(--line-2); }
+html[data-variant="instrument"] .badge.inc-none-badge,
+html[data-variant="instrument"] .badge.trace-none-badge { color: var(--muted); border-color: var(--line-2); }
+html[data-variant="instrument"] .badge.trace-warn,
+html[data-variant="instrument"] .badge.trace-clip,
+html[data-variant="instrument"] .badge.trace-noexec { color: #5b2b9e; border-color: #d9c8f2; background: #f7f2ff; }
+html[data-variant="instrument"] .badge.trace-bug { color: var(--err); border-color: #e8b7b1; background: #fdf1ef; }
+html[data-variant="instrument"] .badge.trace-chip-ok { color: var(--ok); border-color: #b7dcc6; }
+html[data-variant="instrument"] .badge.trace-chip-clamped { color: var(--warn); border-color: #e8cfa4; }
+html[data-variant="instrument"] .badge.trace-chip-dropped,
+html[data-variant="instrument"] .badge.trace-chip-rejected,
+html[data-variant="instrument"] .badge.trace-chip-unclassified { color: var(--err); border-color: #e8b7b1; }
+html[data-variant="instrument"] .badge.trace-chip-skipped { color: var(--muted); }
+html[data-variant="instrument"] .badge.trace-chip-fallback { color: var(--warn); border-color: #e8cfa4; }
+
+/* incident / thinking-log ink that was written for a dark surface */
+html[data-variant="instrument"] .incident-prov-null { color: var(--err); }
+html[data-variant="instrument"] .inc-field,
+html[data-variant="instrument"] .inc-kind,
+html[data-variant="instrument"] .inc-call { color: #0b3d8c; }
+html[data-variant="instrument"] .inc-value { color: var(--fg); }
+html[data-variant="instrument"] .inc-target,
+html[data-variant="instrument"] .inc-endpoint,
+html[data-variant="instrument"] .inc-note { color: var(--fg-dim); }
+html[data-variant="instrument"] .inc-detail { color: var(--warn); }
+html[data-variant="instrument"] .trace-alert-fallback,
+html[data-variant="instrument"] .trace-alert-state { color: var(--warn); border-left-color: #e8cfa4; }
+html[data-variant="instrument"] .trace-alert-reject,
+html[data-variant="instrument"] .trace-alert-bug { color: var(--err); border-left-color: #e8b7b1; }
+html[data-variant="instrument"] .trace-state-ok { border-left-color: #9ed3b2; }
+html[data-variant="instrument"] .trace-state-clamped { border-left-color: #e8cfa4; }
+html[data-variant="instrument"] .trace-state-dropped,
+html[data-variant="instrument"] .trace-state-rejected,
+html[data-variant="instrument"] .trace-state-unclassified { border-left-color: #e8b7b1; }
+html[data-variant="instrument"] .trace-state-skipped { border-left-color: var(--line-2); }
+html[data-variant="instrument"] .trace-reply-none { border-color: var(--line-2); background: #fbfbf9; }
+html[data-variant="instrument"] .trace-reply-withheld { border-color: #e8b7b1; background: #fdf1ef; }
+html[data-variant="instrument"] .trace-reply-note,
+html[data-variant="instrument"] .trace-flag { color: var(--warn); }
+html[data-variant="instrument"] .breach-value { color: var(--fg); }
+html[data-variant="instrument"] .breach-threshold { color: var(--warn); }
+html[data-variant="instrument"] .decision-rationale.not-model .rat-text { color: #7a4600; }
+
+/* remediation chips in the log rows */
+html[data-variant="instrument"] .rem-status { color: var(--muted); border-color: var(--line-2); background: #fff; }
+html[data-variant="instrument"] .rem-status.pending_approval { color: var(--warn); border-color: #e8cfa4; background: #fdf7ec; }
+html[data-variant="instrument"] .rem-status.succeeded { color: var(--ok); border-color: #b7dcc6; background: #f0f9f3; }
+html[data-variant="instrument"] .rem-status.failed,
+html[data-variant="instrument"] .rem-status.denied,
+html[data-variant="instrument"] .rem-status.timed_out { color: var(--err); border-color: #e8b7b1; background: #fdf1ef; }
+html[data-variant="instrument"] .truncated { color: var(--warn); }
+
+/* chat odds and ends */
+html[data-variant="instrument"] .chat-pending { color: var(--warn); }
+html[data-variant="instrument"] .chat-label { color: var(--muted); }
+html[data-variant="instrument"] .chat-exec-state.chat-exec-queued,
+html[data-variant="instrument"] .chat-exec-state.chat-exec-already_applied { color: var(--warn); border-color: #e8cfa4; }
+html[data-variant="instrument"] .chat-exec-state.chat-exec-rejected,
+html[data-variant="instrument"] .chat-exec-state.chat-exec-error { color: var(--err); border-color: #e8b7b1; }
+html[data-variant="instrument"] .chat-exec-state.chat-exec-ok { color: var(--ok); border-color: #b7dcc6; }
+html[data-variant="instrument"] .chat-exec-reason { color: #7a4600; }
+html[data-variant="instrument"] .chat-proposed li { color: var(--fg-dim); }
+html[data-variant="instrument"] .chat-truncated { color: var(--warn); }
+html[data-variant="instrument"] .chat-answer-meta { color: var(--muted); }
