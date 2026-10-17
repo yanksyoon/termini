@@ -57,4 +57,6 @@ class ExecResult:
     operation: str = ""             # LXD operation id, when returned
     reason: str = ""                # short machine-readable refusal code, "" = none
                                     # (e.g. "target_missing": the action was NOT issued
-                                    # because its target does not exist on the node)
+                                    # because its target does not exist on the node;
+                                    # "target_unverified": the probe could not answer,
+                                    # the write WAS issued, and LXD then 404'd it)

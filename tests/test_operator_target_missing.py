@@ -154,6 +154,68 @@ class ProbeNotRefusedTest(unittest.TestCase):
         self.assertEqual(r.method, "PUT")
 
 
+class UnverifiedProbeTest(unittest.TestCase):
+    """A 404 answered to a write sent after an UNANSWERABLE probe.
+
+    Measured live (2026-10-17T16:32:14Z, controller tree 8d7ac5a, the very tree
+    that carries the fail-closed guard): node-a's LXD answered *nothing* to the
+    existence probe while the operator was 27 s behind, so `instance_exists`
+    returned None, the write was attempted by design (`ProbeNotRefusedTest`
+    above), and LXD answered 404. The audit then carried the raw body —
+
+        detail: HTTP 404: {"type":"error",...,"error":"Failed to fetch instance
+                \\"NNB9287WRHGFDPEZ995TKCXDNW\\" ... Instance not found"}
+
+    — the old signature the fix was supposed to make impossible. The write is
+    still the right call (an unreachable node must not read as an absent
+    target), but the audit must say the target was UNVERIFIED, not replay LXD's
+    body as if the probe had confirmed anything.
+    """
+
+    def _script(self, name):
+        return {
+            # the probe cannot answer (5xx, transport error, timeout): UNKNOWN
+            ("GET", f"/1.0/instances/{name}"): (500, '{"error":"node overloaded"}'),
+            # the write is attempted and LXD itself says the target is absent
+            ("PUT", f"/1.0/instances/{name}/state"):
+                (404, '{"type":"error","error_code":404,"error":'
+                      '"Failed to fetch instance \\"' + name + '\\" in project '
+                      '\\"default\\": Instance not found"}'),
+        }
+
+    def _assert_unverified(self, r, name):
+        self.assertEqual(r.result, "error")
+        self.assertEqual(r.reason, "target_unverified")
+        self.assertIn("target_unverified", r.detail)
+        self.assertIn(name, r.detail)
+        # The raw LXD body is replaced by the reason — the DB's `%HTTP 404%`
+        # predicate must not match a row this executor writes.
+        self.assertNotIn("HTTP 404", r.detail)
+        self.assertNotIn("Failed to fetch instance", r.detail)
+
+    def test_restart_404_after_an_unanswered_probe_is_target_unverified(self):
+        ex = _ScriptedTransport(self._script("ghost"))
+        r = ex.restart_instance("ghost")
+        self._assert_unverified(r, "ghost")
+        # The write WAS attempted: an unanswered probe is not "absent".
+        self.assertIn(("PUT", "/1.0/instances/ghost/state",
+                       {"action": "restart", "force": True, "timeout": 30}), ex.calls)
+
+    def test_stop_404_after_an_unanswered_probe_is_target_unverified(self):
+        ex = _ScriptedTransport(self._script("ghost"))
+        r = ex.stop_instance("ghost")
+        self._assert_unverified(r, "ghost")
+        self.assertIn(("PUT", "/1.0/instances/ghost/state",
+                       {"action": "stop", "force": True}), ex.calls)
+
+    def test_start_404_after_an_unanswered_probe_is_target_unverified(self):
+        ex = _ScriptedTransport(self._script("ghost"))
+        r = ex.start_instance("ghost")
+        self._assert_unverified(r, "ghost")
+        self.assertIn(("PUT", "/1.0/instances/ghost/state",
+                       {"action": "start"}), ex.calls)
+
+
 def oom_sample(seq: int, ts: str, vm_id: str) -> dict:
     return {
         "seq": seq, "ts": ts,
@@ -268,6 +330,39 @@ class LoopRefusalTest(unittest.TestCase):
         self.assertEqual(severity, "warn")
         self.assertIn(FABRICATED_VM_ID, message)
         self.assertNotIn("HTTP 404", message)
+
+    def test_404_after_an_unanswered_probe_is_recorded_as_target_unverified(self):
+        """The 2026-10-17T16:32Z live row, reproduced at the audit boundary.
+
+        The probe cannot answer (node overloaded), the write is attempted, and
+        LXD answers 404. The audit row must carry `target_unverified` and a
+        target-shaped detail — not the raw LXD body the live row carried.
+        """
+        self._insert([oom_sample(300 + i, f"2026-10-04T10:00:{i:02d}Z", FABRICATED_VM_ID)
+                      for i in range(3)])
+        self.lxd.probe_unavailable.add(FABRICATED_VM_ID)
+        self.lxd.strict_state_404 = True
+
+        produced = self._make_loop().run_once()
+
+        self.assertEqual(len(produced), 1)
+        # The write WAS attempted — an unanswerable probe is not "absent".
+        self.assertEqual(len(self.lxd.state_requests()), 1)
+
+        audits = self._audits()
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0]["result"], "error")
+        self.assertEqual(audits[0]["reason"], "target_unverified")
+        self.assertTrue(audits[0]["detail"].startswith("target_unverified"),
+                        audits[0]["detail"])
+        self.assertIn(FABRICATED_VM_ID, audits[0]["detail"])
+        self.assertNotIn("HTTP 404", audits[0]["detail"])
+        self.assertNotIn("Instance not found", audits[0]["detail"])
+
+        line = [row for row in self._logs() if "target_unverified" in (row[1] or "")]
+        self.assertEqual(len(line), 1, self._logs())
+        self.assertEqual(line[0][0], "warn")
+        self.assertNotIn("HTTP 404", line[0][1])
 
     def test_live_inventory_resolves_the_vm_id_to_the_real_instance(self):
         """A vm_id the NODE reported resolves to the instance it came from.

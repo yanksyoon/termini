@@ -72,6 +72,16 @@ _ALREADY_STOPPED = re.compile(r"already\s+stopped|(?<!not\s)is\s+stopped", re.I)
 # defect this reason exists to make impossible (see `_refuse_missing_target`).
 TARGET_MISSING = "target_missing"
 
+# The existence probe could not answer (transport error, 5xx, timeout), so the
+# state change was ATTEMPTED by design — "could not ask" must not be read as
+# "absent" — and LXD then answered 404. The target really is not on the node,
+# but the audit must not replay LXD's raw body as if the probe had confirmed
+# anything; it records that the target was UNVERIFIED and what the write saw.
+# (Measured live 2026-10-17T16:32:14Z: a probe that timed out while node-a was
+# overloaded shipped the PUT and the audit carried `HTTP 404 ... Instance not
+# found` — the old signature, on the tree that already had the fail-closed guard.)
+TARGET_UNVERIFIED = "target_unverified"
+
 
 def _instance_already_running(detail: object) -> bool:
     return bool(_ALREADY_RUNNING.search(str(detail or "")))
@@ -330,6 +340,41 @@ class LxdExecutor:
         refused.operation = ""
         return refused
 
+    def _missing_after_unverified_probe(self, name: str, *, probe: ExecResult,
+                                        write: ExecResult) -> ExecResult:
+        """Rewrite a 404 answered to a write sent after an UNANSWERABLE probe.
+
+        `instance_exists` returning None means "could not ask" (transport error,
+        5xx, timeout) — NOT "the instance is absent". Reading it as absent would
+        turn a transient blip into a refused remediation, so the write is still
+        attempted (`ProbeNotRefusedTest` pins that). When that write is then
+        answered 404, the target is genuinely not on the node, but the audit must
+        say so in terms of the TARGET and of the unverified probe — not replay
+        LXD's error body, which on the demo screen is indistinguishable from the
+        AI failing (the 2026-10-17T16:32Z live row).
+
+        The write is recorded truthfully (method/path/body/status): unlike
+        `_refuse_missing_target`, a state change WAS issued.
+        """
+        probe_detail = str(probe.detail or "").strip()[:200] or "no detail"
+        detail = (
+            f"{TARGET_UNVERIFIED}: probe GET /1.0/instances/{name} could not answer "
+            f"({probe_detail}), so PUT {write.path or f'/1.0/instances/{name}/state'} "
+            f"was attempted on {self.base_url} — LXD then answered 404: the target is "
+            f"not on this node. The write was attempted because a probe that cannot "
+            f"answer is not proof of absence; the audit reports the target as "
+            f"unverified rather than replaying LXD's error body."
+        )
+        log.warning("node %s: %s", self.base_url, detail)
+        out = ExecResult(
+            result="error", reason=TARGET_UNVERIFIED, detail=detail,
+            method=write.method or "PUT",
+            path=write.path or f"/1.0/instances/{name}/state",
+            body=write.body or "", status=write.status,
+        )
+        out.operation = write.operation or ""
+        return out
+
     def _await_write(self, r: ExecResult, *, timeout_s: float = 120.0) -> ExecResult:
         """Poll the operation a write returned, so `ok` means *done*.
 
@@ -415,6 +460,8 @@ class LxdExecutor:
         r = self._await_write(self._request("PUT", path, body),
                               timeout_s=max(120.0, float(timeout) + 30.0))
         if r.result != "ok":
+            if exists is None and r.status == 404:
+                return self._missing_after_unverified_probe(name, probe=probe, write=r)
             return r
         return self._confirm_state(name, "Running", action=action, before=before, r=r)
 
@@ -441,6 +488,8 @@ class LxdExecutor:
             r.detail = f"instance {name} already stopped — idempotent no-op"
             return r
         if r.result != "ok":
+            if exists is None and r.status == 404:
+                return self._missing_after_unverified_probe(name, probe=probe, write=r)
             return r
         return self._confirm_state(name, "Stopped", action="stop", before="", r=r)
 
@@ -473,7 +522,11 @@ class LxdExecutor:
             r.result = "already_applied"
             r.detail = f"instance {name} already running — idempotent no-op"
             return r
-        if r.result != "ok" or not wait:
+        if r.result != "ok":
+            if exists is None and r.status == 404:
+                return self._missing_after_unverified_probe(name, probe=probe, write=r)
+            return r
+        if not wait:
             return r
 
         op = _operation_url(r.detail)

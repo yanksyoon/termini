@@ -77,6 +77,13 @@ class StubLxd:
         self.operation_status = "Success"  # status the operation poll reports
         self.operation_error = ""          # the operation's own `err` string (metadata.err)
         self.operation_gone = False        # the op was reaped before we polled it
+        # Existence-probe surface: names whose `GET /1.0/instances/<name>` answers
+        # 500 (node overloaded / transport-looking failure), so `instance_exists`
+        # returns None ("unknown") instead of True/False. Paired with
+        # `strict_state_404` to reproduce the 2026-10-17T16:32Z live signature: an
+        # unanswerable probe lets the write through, and LXD then answers 404.
+        self.probe_unavailable: set[str] = set()
+        self.strict_state_404 = False      # PUT .../state on an unknown name -> 404
         # Exec surface (agent task API, t_1a2c913c): the recored stdout/stderr of a
         # `POST /1.0/instances/{name}/exec` with `record-output: true`, served back
         # from `/1.0/instances/{name}/logs/...` exactly like real LXD. `exec_handler`
@@ -121,6 +128,15 @@ class StubLxd:
         """
         name = path[len("/1.0/instances/"): -len("/state")]
         action = (body or {}).get("action", "")
+
+        if self.strict_state_404 and not self._known(name):
+            # Real LXD's answer to a state change on an instance it does not
+            # have: 404 with this body (measured live 2026-10-17T16:32Z).
+            return 404, {"type": "error", "status": "", "status_code": 0,
+                         "operation": "", "error_code": 404,
+                         "error": f'Failed to fetch instance "{name}" in project '
+                                  f'"default": Instance not found',
+                         "metadata": None}
 
         if action == "start":
             if not self._known(name):
@@ -311,7 +327,12 @@ class StubLxd:
                     # instance is not there — the answer the executor's fail-closed
                     # guard turns into a refusal instead of a state change.
                     name = self.path[len("/1.0/instances/"):].split("?", 1)[0]
-                    if stub._known(name):
+                    if name in stub.probe_unavailable:
+                        # The probe could not answer (node overloaded): UNKNOWN,
+                        # not "absent". The executor must not read this as a 404.
+                        self._send(500, {"type": "error", "error_code": 500,
+                                         "error": "Failed to get instance: node overloaded"})
+                    elif stub._known(name):
                         self._send(200, {"type": "sync", "status_code": 200,
                                          "metadata": {"name": name,
                                                       "status": stub.state_of(name)}})
