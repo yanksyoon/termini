@@ -331,6 +331,10 @@ owner is **refused** (exit 3) with the holder's id, purpose and expiry. There is
 ("The live fleet — one window at a time") and the audit attribution rules are in
 `docs/contracts/controller-api.md` §4.7 (`X-Termini-Actor`, `DEPLOY_ACTOR`).
 
+Both paths are proven live on 2026-10-17 — the concurrent-take race, the exit-3 and
+exit-4 deploy refusals with byte-identical `/opt/termini` hashes, and clear/restart
+attribution — in [`evidence/live-window-lease-2026-10-17.md`](evidence/live-window-lease-2026-10-17.md).
+
 ## Verification (acceptance)
 
 ```bash
