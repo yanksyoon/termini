@@ -1,0 +1,23 @@
+[termini-node-install] controller:  https://34-93-190-64.sslip.io
+[termini-node-install] node name:   verif-e2e   role: auto
+[termini-node-install] this machine is already registered as node_id=01M54063FK6ZK8SPS5ZCNDW9A4 — reusing its persisted identity
+[termini-node-install] the enrollment credential you supplied is NOT used and is NOT consumed
+[termini-node-install]   (enrollment credentials are single-use; this node never needs another)
+[termini-node-install] node runtime: already present on this machine (nothing to install)
+[termini-node-install] client status helper: already installed (//usr/local/bin/termini-node-status)
+[termini-node-install] termini-bootstrap.service started; waiting up to 90s for the controller to acknowledge the registration
+YOUR NODE IS REGISTERED
+  node_id        01M54063FK6ZK8SPS5ZCNDW9A4
+  role           compute
+  project        01J0DEM0WARM000000000000AB
+  registered_at  2026-10-17T03:58:42Z
+  register_ms    82 (controller acknowledgement)
+HEALTH (your node, read with your node's own credential)
+  seq=3 ts=2026-10-17T03:58:53Z cpu=0.0% ram=1.5% load1=1.63720703125 disk_free=54.7% ctrl_rtt=0.786ms
+  seq=2 ts=2026-10-17T03:58:50Z cpu=53.33% ram=1.5% load1=1.5185546875 disk_free=54.7% ctrl_rtt=0.843ms
+  seq=1 ts=2026-10-17T03:58:42Z cpu=48.28% ram=1.3% load1=1.56396484375 disk_free=54.7% ctrl_rtt=0.739ms
+[termini-node-install] done — this node is part of your Termini deployment.
+[termini-node-install] your own view of it, using only this node's credential:
+[termini-node-install]   termini-node-status           # registration + latest health
+[termini-node-install]   termini-node-status --watch   # stream its health
+RERUN_EXIT=0

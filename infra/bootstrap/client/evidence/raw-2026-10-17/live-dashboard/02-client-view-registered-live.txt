@@ -1,0 +1,30 @@
+url: https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB
+endpoint chip: https://34-93-190-64.sslip.io/v1/nodes/01M4TGD31WXH97JAA5S6A4R10D/telemetry/recent
+sessionStorage keys: ['termini.dashboard.node']
+
+registered · online
+last sample 6s ago
+
+REGISTRATION
+registered
+LAST SEEN
+6s ago
+HEARTBEAT
+seq 28282
+2026-10-17T04:35:04Z
+CPU
+100%
+2 cores
+MEMORY
+60.4%
+5026746368 / 8319729664 bytes
+UPTIME
+7h 30m
+LOAD (1M)
+2.86
+NODE RUNTIME
+Ubuntu 24.04
+kernel 7.0.0-1011-gcp
+SERVICES
+3/3 running
+termini-bootstrap:running · lxd:running · sshd:running

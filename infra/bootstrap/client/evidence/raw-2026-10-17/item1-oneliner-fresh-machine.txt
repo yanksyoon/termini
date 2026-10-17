@@ -1,0 +1,20 @@
+[termini-node-install] controller:  https://34-93-190-64.sslip.io
+[termini-node-install] node name:   verif-item1   role: auto
+[termini-node-install] node runtime: not present — installing it from the controller
+[termini-node-install] node runtime: termini-bootstrap installed
+[termini-node-install] client status helper: installed (//usr/local/bin/termini-node-status)
+[termini-node-install] enrollment credential stored (0600) at //var/lib/termini/enrollment.token
+[termini-node-install] termini-bootstrap.service started; waiting up to 90s for the controller to acknowledge the registration
+YOUR NODE IS REGISTERED
+  node_id        01M541YZQTQKD599W5QP74SY5H
+  role           compute
+  project        01J0DEM0WARM000000000000AB
+  registered_at  2026-10-17T04:29:46Z
+  register_ms    179 (controller acknowledgement)
+HEALTH (your node, read with your node's own credential)
+  seq=1 ts=2026-10-17T04:29:46Z cpu=100.0% ram=1.2% load1=5.10595703125 disk_free=63.9% ctrl_rtt=0.987ms
+[termini-node-install] done — this node is part of your Termini deployment.
+[termini-node-install] your own view of it, using only this node's credential:
+[termini-node-install]   termini-node-status           # registration + latest health
+[termini-node-install]   termini-node-status --watch   # stream its health
+ONELINER_EXIT=0

@@ -1,0 +1,33 @@
+
+########## ITEM 4: unreachable controller (expect exit 5) ##########
+
+Pushing /var/lib/snapd/hostfs/tmp/vcfg.yaml to /etc/termini/config.yaml: 100% (94.04MB/s)
+                                                                                          
+
+Pushing /var/lib/snapd/hostfs/tmp/vtok to /var/lib/termini/enrollment.token: 100% (41.73MB/s)
+                                                                                              
+--- config.yaml ---
+controller_url: http://127.0.0.1:9
+node_name: verif-fail
+role_hint: auto
+telemetry_interval_ms: 1000
+--- enrollment.token (len) ---
+28
+daemon_pid=988
+--- daemon.log (last 6 lines) ---
+2026-10-17T04:20:17Z [termini-bootstrap] registration retry 1/3 in 1s: register unreachable (connection refused): [Errno 111] Connection refused
+2026-10-17T04:20:18Z [termini-bootstrap] registration retry 2/3 in 2s: register unreachable (connection refused): [Errno 111] Connection refused
+2026-10-17T04:20:20Z [termini-bootstrap] registration retry 3/3 in 4s: register unreachable (connection refused): [Errno 111] Connection refused
+2026-10-17T04:20:24Z [termini-bootstrap] REGISTRATION_FAILED (terminal, kind=unreachable_refused, attempts=4): register unreachable (connection refused): [Errno 111] Connection refused
+2026-10-17T04:20:24Z [termini-bootstrap] no auto-retry: operator must re-provision (fresh token / fix config) and restart termini-bootstrap
+--- termini-node-status --wait (client's own view) ---
+REGISTRATION FAILED: the controller could not be reached
+  * Check the controller URL is exact (scheme, host, port, no path);
+  * check this machine has outbound access to it (port 443/80) and
+    that no proxy or firewall strips the connection;
+  * check the controller is running.
+  The node daemon keeps retrying while its service runs; the
+  installer can simply be re-run once the controller answers.
+  registration_attempts=4
+  controller said: register unreachable (connection refused): [Errno 111] Connection refused
+STATUS_EXIT=5

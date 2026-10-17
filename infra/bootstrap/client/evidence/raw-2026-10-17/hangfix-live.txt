@@ -1,0 +1,127 @@
+# Hang-fix live check — `systemctl restart --no-block` on a real systemd host
+# host: node-a (LXD container verif-hangfix, image agent-os/w4)   utc: 2026-10-17T04:38:14Z
+# why: t_7a98a110 found the documented one-liner BLOCKS at `systemctl restart`
+#      on every failure path, because the unit is Type=notify +
+#      TimeoutStartSec=infinity and a terminal enrollment failure never sends
+#      READY=1. A customer with a bad credential therefore never sees the 3/4/5
+#      message. This check runs the deployed installer (before) and the branch's
+#      installer (after) on the same machine with the same bad credential.
+# NOTE ON EDITING: three kinds of noise are elided — the ssh transport's IAP/NumPy
+# banners, the ~200 image-pull progress lines (agent-os/w4), and the ~17 KB base64
+# argument used to push the branch installer (whose sha256 is kept, next to the
+# local sha256 of the same file). No command output was changed or reordered.
+
+$ sudo lxc launch agent-os/w4 verif-hangfix -c limits.cpu=1 -c limits.memory=1GB
+Launching verif-hangfix
+
+[image pull: agent-os/w4 unpacked — 200 progress lines elided]
+
+[wall 81.4s]
+
+$ sudo lxc exec verif-hangfix -- systemctl is-system-running
+running
+
+$ sudo lxc exec verif-hangfix -- sh -c 'ls -l /etc/termini/config.yaml /var/lib/termini/identity/node.json /var/lib/termini/enrollment.token 2>&1; echo ---; grep -c termin c /etc/hosts || true'
+ls: cannot access '/etc/termini/config.yaml': No such file or directory
+ls: cannot access '/var/lib/termini/identity/node.json': No such file or directory
+ls: cannot access '/var/lib/termini/enrollment.token': No such file or directory
+---
+/etc/hosts:0
+[wall 4.7s]
+
+$ sudo lxc exec verif-hangfix -- sh -c "grep -q '34-93-190-64.sslip.io' /etc/hosts || echo '10.10.0.2 34-93-190-64.sslip.io' >> /etc/hosts; curl -sS -o /dev/null -w 'install_surface_http=%{http_code}\n' https://34-93-190-64.sslip.io/install/termini-node.sh"
+install_surface_http=200
+[wall 6.3s]
+
+$ sudo lxc exec verif-hangfix -- sh -c 'curl -fsSL https://34-93-190-64.sslip.io/install/termini-node.sh > /tmp/install-deployed.sh; grep -n "systemctl restart" /tmp/install-deployed.sh; wc -l /tmp/install-deployed.sh'
+310:systemctl restart termini-bootstrap.service
+331 /tmp/install-deployed.sh
+[wall 4.9s]
+
+## A. the deployed installer, rejected credential, bounded by `timeout 45`
+$ sudo lxc exec verif-hangfix -- timeout 45 sh /tmp/install-deployed.sh \
+      --controller https://34-93-190-64.sslip.io --token not-a-real-credential --name verif-hangfix
+[termini-node-install] controller:  https://34-93-190-64.sslip.io
+[termini-node-install] node name:   verif-hangfix   role: auto
+[termini-node-install] node runtime: not present — installing it from the controller
+[termini-node-install] node runtime: termini-bootstrap installed
+[termini-node-install] client status helper: installed (//usr/local/bin/termini-node-status)
+[termini-node-install] enrollment credential stored (0600) at //var/lib/termini/enrollment.token
+INSTALLER_EXIT=124   [wall 50.9s]  (124 = killed by timeout: it hung)
+
+=> reproduced: the deployed installer never returns on a rejected credential.
+   The customer sees no message and no exit code at all, because it is parked in
+   `systemctl restart` waiting for a READY=1 that a failing daemon never sends.
+
+$ sudo lxc exec verif-hangfix -- sh -c 'systemctl stop termini-bootstrap.service 2>/dev/null; systemctl reset-failed termini-bootstrap.service 2>/dev/null; systemctl is-active termini-bootstrap.service || true'
+inactive
+[wall 4.8s]
+
+## B. the installer from THIS BRANCH (`--no-block`), same machine, same bad credential
+
+$ sudo sh -c 'printf %s <base64 of the branch's termini-node-install.sh> | base64 -d > /tmp/install-fixed.sh; chmod 0644 /tmp/install-fixed.sh; sha256sum /tmp/install-fixed.sh; grep -n "systemctl restart" /tmp/install-fixed.sh'
+e38edc8d1f5be02e46e57b39aeff45c42fbfcd7176408732fb1fb081c97e2267  /tmp/install-fixed.sh
+318:systemctl restart --no-block termini-bootstrap.service
+[wall 4.6s]
+# local sha256 of the same file: e38edc8d1f5be02e46e57b39aeff45c42fbfcd7176408732fb1fb081c97e2267
+
+$ sudo lxc file push /tmp/install-fixed.sh verif-hangfix/tmp/install-fixed.sh
+Pushing /var/lib/snapd/hostfs/tmp/install-fixed.sh to /tmp/install-fixed.sh: 100% (19.71GB/s)
+                                                                                              
+[wall 5.9s]
+
+$ sudo lxc exec verif-hangfix -- timeout 60 sh /tmp/install-fixed.sh \
+      --controller https://34-93-190-64.sslip.io --token not-a-real-credential --name verif-hangfix
+[termini-node-install] controller:  https://34-93-190-64.sslip.io
+[termini-node-install] node name:   verif-hangfix   role: auto
+[termini-node-install] node runtime: already present on this machine (nothing to install)
+[termini-node-install] client status helper: installed (//usr/local/bin/termini-node-status)
+[termini-node-install] enrollment credential stored (0600) at //var/lib/termini/enrollment.token
+[termini-node-install] termini-bootstrap.service started; waiting up to 20s for the controller to acknowledge the registration
+[termini-node-install] this node did NOT register (exit 3). Nothing else on this machine was changed.
+[termini-node-install] fix what the message above names and re-run this installer; the node that is
+[termini-node-install] already registered here keeps its identity and needs no new credential.
+
+REGISTRATION FAILED: your enrollment credential was rejected by the controller
+  The controller does not recognise the credential (single-use and
+  scoped to one registration).
+  * Check the whole token was copied — no missing characters and no
+    shell quoting damage;
+  * check it is the credential your provider issued for THIS node
+    (every node needs its own);
+  * then ask your provider for a fresh enrollment credential and
+    re-run the installer with it.
+  registration_attempts=4
+  controller said: register failed: HTTP 401 UNAUTHENTICATED: {'error': {'code': 'UNAUTHENTICATED', 'message': 'unknown bootstrap token', 'details': [], 'request_id': '01M542KQ5JR4QKWD6J9X87B3A3'}}
+INSTALLER_EXIT=3   [wall 13.2s]  (3 = the documented 'credential rejected')
+
+## C. the fixed installer against an UNREACHABLE controller
+$ sudo lxc exec verif-hangfix -- timeout 60 sh /tmp/install-fixed.sh \
+      --controller http://127.0.0.1:9 --token not-a-real-credential --wait-seconds 12
+[termini-node-install] controller:  http://127.0.0.1:9
+[termini-node-install] node name:   verif-hangfix   role: auto
+[termini-node-install] node runtime: already present on this machine (nothing to install)
+
+curl: (7) Failed to connect to 127.0.0.1 port 9 after 0 ms: Couldn't connect to server
+[termini-node-install] ERROR: cannot download termini-node-status.py from http://127.0.0.1:9/install/termini-node-status.py
+  * check the controller URL is exact (scheme, host, port, no trailing path);
+  * check this machine has outbound network access to it, and that no proxy or
+    firewall is stripping the request;
+  * check the controller answers:      curl -fsS http://127.0.0.1:9/healthz
+  Nothing on this machine was changed.
+INSTALLER_EXIT=1   [wall 5.4s]
+=> on a fresh machine the unreachable controller is caught EARLIER, when the
+   installer cannot fetch the status helper: its own exit 1 with the three
+   'check the controller URL / outbound access / proxy / curl /healthz' bullets,
+   and nothing on the machine changed. The status-helper exit 5 for an
+   unreachable controller applies once the helper is installed (an already
+   registered node's re-run) — see item4b-unreachable-controller.txt.
+
+$ sudo lxc delete -f verif-hangfix; sudo rm -f /tmp/install-fixed.sh /tmp/install-deployed.sh; echo 'containers now:'; sudo lxc list --format csv -c n
+containers now:
+demo-workload
+termini-01m4wjhwqr3b8pcav2tvqbgg-0-0
+termini-01m4wjhwqr3b8pcav2tvqbgg-0-1
+termini-01m537g26sm8qgkmztn8stbt-0-0
+termini-01m537km0trb189a6e1gz546-0-0
+[wall 12.7s]
