@@ -1,0 +1,40 @@
+# Sidecar for 03-log-panel-events-red.png (step 03)
+# Purpose: the log panel as it really renders on the published URL, with its stream chip. THIS IS NOT THE ACCEPTANCE FRAME: the card asks for a chip reading 'live · resumed from the oldest retained line' and this deployment cannot produce one — the proofs are below, and the frame is kept labelled rather than left as a silent hole.
+# Captured (UTC): 2026-10-17T03:42:35Z
+# Exact URL in the address bar: https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB
+# Window: 1280x1700, headful Chromium in Xvfb :99, browser chrome included, no crop/annotation.
+# Credential: the published demo project token, pasted into the dashboard Settings dialog and kept in this tab only (sessionStorage) — never in the URL.
+# Raw text behind the pixels follows.
+
+## As rendered on the published page (read back out of the live DOM)
+{"url":"https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB","logRows":0,"logOpen":true,"streamChip":"reconnecting · stream interrupted (Failed to fetch)","decisionsCount":"50 shown / 50 decisions · model 14 · fallback 7 · incident records 21 (AI 14 · controller-generated 7) · thinking logs 21 (model 14 · fallback 7)","decider":"decider: decider unknownno externalModelCall record on the operator log stream yet","banner":null,"headerPills":["nodes 3 · 1 degraded","backend ok","stream reconnecting"]}
+
+## Why the chip reads what it reads — the endpoint, probed three ways
+### 1. The page`s own fetch, exactly as js/stream.js makes it
+with Cache-Control: THREW TypeError: Failed to fetch | Authorization header only: HTTP 401
+
+### 2. curl with the Authorization header (what the dashboard sends)
+HTTP/2 401 
+
+{"error": {"code": "UNAUTHENTICATED", "message": "missing or invalid token", "details": [], "request_id": "01M53Z8AYXB4TAR5G5VXTTN7RP"}}
+
+### 3. curl with ?token= (the only style the controller accepts here)
+HTTP/2 200 
+
+# 13317 non-empty lines in the capture; last 8 shown
+event: log
+data: {"log_id": "01M53Z8BKTR44A499N5Y481ZBW", "ts": "2026-10-17T03:42:27.450Z", "project_id": "01J0DEM0WARM000000000000AB", "node_id": "01M4NZK46WXG5ZEFAGAAV5JRXM", "severity": "info", "actor": "ai_operator", "message": "disk-degrade-01: instance.stop demo-workload -> ok (threshold: free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s)", "remediation": null}
+id: 01M53Z8FK4FHTEMFQBT5GJRMNV
+event: log
+data: {"log_id": "01M53Z8FK4FHTEMFQBT5GJRMNV", "ts": "2026-10-17T03:42:31.524Z", "project_id": "01J0DEM0WARM000000000000AB", "node_id": "01M4NZK474BVARFBXYQBMVA8GV", "severity": "warn", "actor": "ai_operator", "message": "oom-guard-01: forced deterministic (fallback cooldown)", "remediation": null}
+id: 01M53Z8GPFAVF41NCHK28B551S
+event: log
+data: {"log_id": "01M53Z8GPFAVF41NCHK28B551S", "ts": "2026-10-17T03:42:32.655Z", "project_id": "01J0DEM0WARM000000000000AB", "node_id": "01M4NZK474BVARFBXYQBMVA8GV", "severity": "info", "actor": "ai_operator", "message": "oom-guard-01: instance.restart demo-workload -> ok (threshold: >= 95% of ram_total_bytes for 2 consecutive samples)", "remediation": null}
+
+## The controller code that decides it (origin/main)
+controller/app/server.py:_handle_sse_logs -> self._require_project_token(q.get("token"))
+  — the Authorization header is not consulted on this route, while every other
+  route reads it. dashboard/js/stream.js sends the credential ONLY in the header
+  (t_5649d117 forbids it in a URL) and also sends a `Cache-Control` request
+  header that the controller`s CORS allow-list does not include, so the
+  preflight fails and fetch() rejects before a status is ever seen.
