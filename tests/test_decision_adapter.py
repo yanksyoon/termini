@@ -242,6 +242,95 @@ class TestParseAccepted(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# parse(): robust extraction — a fenced / prose-wrapped / multiline reply
+# ---------------------------------------------------------------------------
+#
+# These are the shapes that failed on the live demo (2026-10-17): Gemini
+# answered, but the reply was wrapped in a ```json fence and/or polite prose, so
+# `json.loads` on the whole string raised and the deterministic playbook decided
+# instead of the model. CAPTURED_REPLY is the exact regression fixture; it must
+# parse into a DecisionResponse without weakening the schema checks.
+
+CAPTURED_REPLY = (
+    "Here is the remediation decision for the disk degradation on this node.\n\n"
+    "```json\n"
+    "{\n"
+    "  \"schema_version\": 1,\n"
+    "  \"request_id\": \"01M5588N1CWHZMZ4KAF5PQAM1D\",\n"
+    "  \"action_id\": \"instance.stop\",\n"
+    "  \"params\": {\"instance_name\": \"heaviest\", \"force\": true},\n"
+    "  \"confidence\": 0.88,\n"
+    "  \"rationale\": \"free_bytes fell toward the floor while write_latency_ms rose; stopping the heaviest writer sheds the I/O load before the device fails.\",\n"
+    "  \"incident_title\": \"Degrading disk I/O on /dev/sda\",\n"
+    "  \"explanation\": \"disk.write_latency_ms is 80 ms and free space is near the 5% floor while the mount is still writable, so the device is degrading rather than failed; shedding the heaviest writer removes the load.\",\n"
+    "  \"evidence\": [\n"
+    "    {\"field\": \"disk.write_latency_ms\", \"value\": 80.0, \"seq\": 2077},\n"
+    "    {\"field\": \"disk.mount_ro\", \"value\": false, \"seq\": 2077}\n"
+    "  ],\n"
+    "  \"actions\": [\n"
+    "    {\"action_kind\": \"instance.stop\", \"target\": \"heaviest\", \"note\": \"shed the heaviest writer while the device is still writable\"}\n"
+    "  ]\n"
+    "}\n"
+    "```\n\n"
+    "I hope that helps."
+)
+
+
+class TestParseRobustExtraction(unittest.TestCase):
+    def test_captured_fenced_prose_reply_parses(self):
+        result = parse(CAPTURED_REPLY)
+        self.assertIsInstance(result, DecisionResponse)
+        self.assertEqual(result.action_id, "instance.stop")
+        self.assertEqual(result.params["instance_name"], "heaviest")
+        self.assertEqual(result.params["force"], True)
+        self.assertAlmostEqual(result.confidence, 0.88)
+        self.assertEqual(result.request_id, "01M5588N1CWHZMZ4KAF5PQAM1D")
+        self.assertEqual(result.incident_title, "Degrading disk I/O on /dev/sda")
+        self.assertTrue(result.explanation)
+        self.assertEqual(len(result.evidence), 2)
+        self.assertEqual(len(result.actions), 1)
+
+    def test_leading_prose_before_json_is_tolerated(self):
+        result = parse("My recommendation is as follows:\n" + GOOD_COMPLETION)
+        self.assertIsInstance(result, DecisionResponse)
+        self.assertEqual(result.action_id, "instance.restart")
+
+    def test_trailing_prose_after_json_is_tolerated(self):
+        result = parse(GOOD_COMPLETION + "\nLet me know if you need anything else.")
+        self.assertIsInstance(result, DecisionResponse)
+        self.assertEqual(result.action_id, "instance.restart")
+
+    def test_multiline_pretty_json_without_fence_is_tolerated(self):
+        payload = {
+            "schema_version": 1,
+            "action_id": "instance.stop",
+            "params": {"instance_name": "heaviest", "force": True},
+            "confidence": 0.8,
+            "rationale": "shed load",
+        }
+        result = parse(json.dumps(payload, indent=2))
+        self.assertIsInstance(result, DecisionResponse)
+        self.assertEqual(result.action_id, "instance.stop")
+
+    def test_fenced_json_with_trailing_prose_is_tolerated(self):
+        result = parse("```json\n" + GOOD_COMPLETION + "\n```\nDone.")
+        self.assertIsInstance(result, DecisionResponse)
+        self.assertEqual(result.action_id, "instance.restart")
+
+    def test_prose_without_any_json_is_still_rejected(self):
+        # The extraction must not fabricate a decision out of prose: a reply
+        # with no JSON at all remains a parse_error (guardrail untouched).
+        result = parse("I think you should restart it, but I am not sure which one.")
+        self.assertIsInstance(result, DecisionError)
+        self.assertEqual(result.reason, REASON_PARSE_ERROR)
+
+    def test_truncated_json_is_still_rejected(self):
+        result = parse("```json\n{\"action_id\": \"instance.restart\", \"confidence\": 0.8")
+        self.assertIsInstance(result, DecisionError)
+        self.assertEqual(result.reason, REASON_PARSE_ERROR)
+
+
+# ---------------------------------------------------------------------------
 # parse(): detect + report malformed output (never pass through, never guess)
 # ---------------------------------------------------------------------------
 
