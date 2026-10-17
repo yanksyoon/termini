@@ -153,13 +153,25 @@ def degraded_reasons(sample: dict | None, role: str, last_seen_age_s: float) -> 
 
 
 def derive_status(last_seen_age_s: float, reasons: list[str], flags: dict) -> str:
-    """status ∈ online | degraded | offline (dashboard.md §1.1, frozen)."""
+    """status ∈ online | degraded | offline | fenced (dashboard.md §1.1).
+
+    `fenced` (F05, amendment): a node whose latest telemetry still shows a disk
+    remounted read-only (`disk_ok == false`) is fenced, not merely degraded —
+    the operator's workload has been stopped and must not be restarted until a
+    human replaces the disk. The dashboard renders it as
+    "needs a human: disk failed, workload fenced".
+    """
     if last_seen_age_s > OFFLINE_AFTER_S:
         return "offline"
+    # Read-only disk -> fenced, before the generic degraded fallback: it is the
+    # one state that changes what the operator is allowed to do (no restart).
+    if flags.get("disk_ok") is False:
+        return "fenced"
     if last_seen_age_s > DEGRADED_AFTER_S:
         return "degraded"
-    # any health flag false (non-null) OR any allowlisted service not running.
-    if flags.get("disk_ok") is False or flags.get("gpu_ok") is False or flags.get("inference_ok") is False:
+    # any remaining health flag false (non-null) OR any allowlisted service not
+    # running -> degraded.
+    if flags.get("gpu_ok") is False or flags.get("inference_ok") is False:
         return "degraded"
     if any(s.get("status") != "running" for s in flags.get("services", [])):
         return "degraded"

@@ -217,6 +217,18 @@ test("health: status derivation from heartbeat age (contract §1.1)", () => {
   assert.equal(gone.status, "offline");
 });
 
+test("health: a read-only disk derives the F05 fenced state", () => {
+  const now = Date.parse("2026-10-04T07:49:00Z");
+  const v = nodeView(
+    { ...COMPUTE, last_seen_at: "2026-10-04T07:48:59Z" },
+    sample({ disk: [{ path: "/dev/sda", mount_ro: true }] }),
+    now,
+  );
+  assert.equal(v.status, "fenced");
+  assert.equal(v.health.disk_ok, false);
+  assert.ok(v.reasons.includes("disk_read_only"));
+});
+
 test("health: server-provided status/health is respected", () => {
   const now = Date.parse("2026-10-04T07:49:00Z");
   const v = nodeView(

@@ -469,9 +469,21 @@ class OperatorLoop(threading.Thread):
             )
             dry_run = False
         else:
-            # No transaction is open across the LXD REST call either.
-            result = ex.execute(action)
-            dry_run = bool(ex.dry_run)
+            # F05 restart-refusal guard: while the node's latest telemetry still
+            # shows a read-only disk mount, refuse to (re)start the workload. The
+            # refusal is guardrail-level — applied to the C0 telemetry state the
+            # decision already carries, whatever the model/playbook decided.
+            refusal = decision.fenced_action_refusal(ctx.state, action.kind)
+            if refusal:
+                result = ExecResult(
+                    result="error", reason=refusal,
+                    detail=decision.fenced_refusal_detail(ctx.state, action.kind, node_id),
+                )
+                dry_run = bool(ex.dry_run)
+            else:
+                # No transaction is open across the LXD REST call either.
+                result = ex.execute(action)
+                dry_run = bool(ex.dry_run)
 
         audit_id = ulid.new_ulid()
         # Remediation latency: chooser start -> remediation completed (includes

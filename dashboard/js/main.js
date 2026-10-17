@@ -916,8 +916,9 @@ function updatePills() {
   const count = state.nodes.length;
   const degraded = state.nodes.filter((n) => n.status === "degraded").length;
   const offline = state.nodes.filter((n) => n.status === "offline").length;
-  const kind = offline ? "err" : degraded ? "warn" : count ? "ok" : "muted";
-  setPill(dom.pillNodes, dom.pillNodesText, kind, `nodes ${count}${degraded ? ` · ${degraded} degraded` : ""}${offline ? ` · ${offline} offline` : ""}`);
+  const fenced = state.nodes.filter((n) => n.status === "fenced").length;
+  const kind = offline || fenced ? "err" : degraded ? "warn" : count ? "ok" : "muted";
+  setPill(dom.pillNodes, dom.pillNodesText, kind, `nodes ${count}${degraded ? ` · ${degraded} degraded` : ""}${offline ? ` · ${offline} offline` : ""}${fenced ? ` · ${fenced} fenced` : ""}`);
   const b = state.backend;
   setPill(dom.pillBackend, dom.pillBackendText, b.fails ? "err" : "ok", b.fails ? "backend error" : "backend ok");
 }

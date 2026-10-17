@@ -4,7 +4,7 @@
  */
 
 import { el, clear } from "./dom.js";
-import { nodeView, REASON_LABELS } from "../core/health.js";
+import { nodeView, REASON_LABELS, STATUS_LABELS, STATUS_NEEDS_HUMAN } from "../core/health.js";
 import { pct, bytes, ago, uptime, shortId } from "../core/format.js";
 
 export function renderOverview(container, state, handlers) {
@@ -53,7 +53,7 @@ function card(node, sample, view, state, handlers) {
       // contract §1.1: a `synthetic: true` row is fabricated by the demo seeder,
       // so it is labelled rather than presented as hardware.
       node.synthetic ? el("span", { class: "badge synthetic", text: "demo", title: "fabricated by the demo seeder (synthetic: true)" }) : null,
-      el("span", { class: `badge status-${status}`, text: status }),
+      el("span", { class: `badge status-${status}`, text: STATUS_LABELS[status] || status, title: STATUS_NEEDS_HUMAN[status] || status }),
     ]),
   ]);
 
@@ -92,6 +92,12 @@ function card(node, sample, view, state, handlers) {
   for (const r of view.reasons || []) {
     reasons.appendChild(el("span", { class: "reason", text: REASON_LABELS[r] || r }));
   }
+
+  // F05: a fenced node gets a distinct, prominent line — the operator must not
+  // bring the workload back onto a failed disk.
+  const needsHuman = status === "fenced"
+    ? el("div", { class: "needs-human", text: STATUS_NEEDS_HUMAN.fenced })
+    : null;
 
   const foot = el("div", { class: "node-foot" }, [
     el("span", { text: `seen ${view.staleMs === null ? "never" : ago(node.last_seen_at, state.now)}` }),
@@ -139,6 +145,7 @@ function card(node, sample, view, state, handlers) {
     metrics,
     flags,
     reasons,
+    needsHuman,
     svc,
     procs,
     foot,

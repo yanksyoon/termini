@@ -282,9 +282,12 @@ export function nodeView(node, sample, nowMs = Date.now()) {
   const health = serverHealth ? mergeHealth(serverHealth, derived) : derived;
 
   // Locally derived status (contract §1.1) — used when the controller omits it
-  // or leaves it at its default.
+  // or leaves it at its default. `fenced` (F05): a read-only disk is a distinct
+  // state — the workload is stopped and must not be restarted until a human
+  // replaces the disk.
   let derivedStatus = "online";
-  if (staleMs === null || staleMs > HF_OFFLINE_MS) derivedStatus = staleMs === null ? "offline" : "offline";
+  if (staleMs === null || staleMs > HF_OFFLINE_MS) derivedStatus = "offline";
+  else if (health.disk_ok === false) derivedStatus = "fenced";
   else if (staleMs > HF_DEGRADED_MS) derivedStatus = "degraded";
   else if (healthHasFalse(health) || serviceNotRunning(health)) derivedStatus = "degraded";
 
@@ -332,4 +335,17 @@ export const REASON_LABELS = {
   gpu_overtemp: "GPU over-temp",
   inference_down: "inference down",
   service_failed: "service failed",
+};
+
+/** Short badge text per status (contract §1.1, plus the F05 `fenced` state). */
+export const STATUS_LABELS = {
+  online: "online",
+  degraded: "degraded",
+  offline: "offline",
+  fenced: "fenced",
+};
+
+/** The one-line human message the F05 `fenced` state renders on the node card. */
+export const STATUS_NEEDS_HUMAN = {
+  fenced: "needs a human: disk failed, workload fenced",
 };

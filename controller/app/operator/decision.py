@@ -42,6 +42,7 @@ from .. import governance
 from .. import fields as F
 from .models import HealthEvent, RemediationAction
 from . import playbook
+from . import detect
 
 # The controller runs both from the repo root (PYTHONPATH=/app in the image;
 # `python3 -m unittest` in CI) and from `controller/` (`make run`). Ensure the
@@ -735,6 +736,27 @@ def _sanitize_incident(resp: DecisionResponse, decisions: list[dict]) -> tuple[d
     }, None
 
 
+def _fallback_read_only_mounts(event: HealthEvent) -> list[str]:
+    """Read-only disk mount paths from an event's own C0 evidence (sample tail).
+
+    Used by `build_fallback_incident` so a disk-fail fallback names the mount(s)
+    without touching model output. Returns `[]` when no sample carries one.
+    """
+    mounts: list[str] = []
+    evidence = event.evidence if isinstance(event.evidence, list) else []
+    for sample in reversed(evidence):
+        if not isinstance(sample, dict):
+            continue
+        for entry in sample.get("disk") or []:
+            if isinstance(entry, dict) and entry.get("mount_ro") is True:
+                path = str(entry.get("path") or entry.get("mount") or "unknown")
+                if path not in mounts:
+                    mounts.append(path)
+        if mounts:
+            break
+    return mounts
+
+
 def build_fallback_incident(event: HealthEvent, action: RemediationAction | None,
                             reason: str) -> dict:
     """The §8.1 labelled fallback record — built ONLY from the fired event's C0
@@ -759,11 +781,25 @@ def build_fallback_incident(event: HealthEvent, action: RemediationAction | None
     target = ""
     if action is not None and isinstance(action.params, dict):
         target = str(action.params.get("instance_name") or "").strip()
-    explanation = (
-        f"model unavailable ({reason}); the deterministic playbook chose {kind}"
-        + (f" on {target}" if target else "")
-        + f" for rule {event.rule_id}"
-    )
+    # F05: a disk-fail fallback must NAME the mount and the read-only cause, and
+    # must not claim recovery — the workload is fenced, not fixed. The mount path
+    # comes from the event's own C0 evidence (the sample tail), never from model
+    # output.
+    disk_mounts = _fallback_read_only_mounts(event)
+    if disk_mounts:
+        explanation = (
+            f"model unavailable ({reason}); disk remounted read-only on "
+            f"{', '.join(disk_mounts)} (mount_ro=true) — the deterministic playbook "
+            f"chose {kind}"
+            + (f" on {target}" if target else "")
+            + f" for rule {event.rule_id}. The workload is fenced; it is not recovered."
+        )
+    else:
+        explanation = (
+            f"model unavailable ({reason}); the deterministic playbook chose {kind}"
+            + (f" on {target}" if target else "")
+            + f" for rule {event.rule_id}"
+        )
     explanation = explanation[:EXPLANATION_MAX_CHARS]
 
     evidence: list[dict] = []
@@ -1483,6 +1519,69 @@ def _iso_add_seconds(now_iso: str, seconds: float) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# F05 restart-refusal guard — fence the workload off a read-only disk (§7)
+# --------------------------------------------------------------------------- #
+# The counterweight to the F01 restart: when a disk remounts read-only, the
+# right move is to STOP writes and then refuse to put the workload back. This
+# guard is the "refuse" half, and it is guardrail-level, not prompt-level: the
+# loop and the standalone CLI apply it to the node's latest telemetry state
+# regardless of what the model or the playbook decided, so a `restart`/`start`
+# that would resume writes onto the failed disk never reaches the executor.
+
+# The machine-readable refusal reason (also written to the audit row's `reason`).
+DISK_FENCED = "disk_fenced"
+
+# Action kinds that would bring a workload back onto a node (a restart, or a
+# start of a stopped instance): refused while the node's latest telemetry still
+# shows a read-only disk mount.
+FENCED_ACTION_KINDS = ("instance.restart", "instance.start")
+
+
+def read_only_mounts(state: Any) -> list[str]:
+    """`path`s of the disk entries whose mount is read-only in `state`.
+
+    `state` is the node's latest telemetry sample (the C0 `DecisionContext.state`
+    the loop already carries). Returns `[]` when nothing is read-only.
+    """
+    if not isinstance(state, dict):
+        return []
+    out: list[str] = []
+    for entry in state.get("disk") or []:
+        if isinstance(entry, dict) and entry.get("mount_ro") is True:
+            out.append(str(entry.get("path") or entry.get("mount") or "unknown"))
+    return out
+
+
+def fenced_action_refusal(state: Any, action_kind: str) -> str | None:
+    """Return `DISK_FENCED` when `action_kind` would (re)start a workload on a
+    node whose latest telemetry still shows a read-only disk mount, else None.
+
+    This is the F05 restart-refusal guard: once a disk has remounted read-only,
+    the workload is fenced and must NOT be brought back — a restart/start would
+    resume writes onto the failing disk. A stop/delete/prune is always allowed
+    (stopping writes is the correct half of the response).
+    """
+    if action_kind not in FENCED_ACTION_KINDS:
+        return None
+    if not isinstance(state, dict):
+        return None
+    if detect.any_disk_mount_ro(state):
+        return DISK_FENCED
+    return None
+
+
+def fenced_refusal_detail(state: Any, action_kind: str, node_id: str) -> str:
+    """Human-readable explanation for a refused (re)start: names the mount(s)."""
+    mounts = ", ".join(read_only_mounts(state)) or "an unreported mount"
+    return (
+        f"{DISK_FENCED}: refused {action_kind} on node {node_id} — the node's "
+        f"latest telemetry has a disk remounted read-only (mount_ro=true on "
+        f"{mounts}); the workload is fenced and must not be brought back until "
+        f"a human replaces the disk and raises the instance elsewhere"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Provider factory (operator-decision.md §14.1 — main.py)
 # --------------------------------------------------------------------------- #
 
@@ -1514,11 +1613,13 @@ def build_decision_provider(cfg, *, playbooks: dict | None = None,
 
 __all__ = [
     "ACTION_IDS",
+    "DISK_FENCED",
     "DecisionContext",
     "DecisionProvider",
     "DecisionResult",
     "DecisionTrace",
     "DeterministicDecisionProvider",
+    "FENCED_ACTION_KINDS",
     "Guardrail",
     "GuardrailResult",
     "ModelDecisionProvider",
@@ -1528,7 +1629,10 @@ __all__ = [
     "build_decision_provider",
     "build_fallback_incident",
     "build_window_deltas",
+    "fenced_action_refusal",
+    "fenced_refusal_detail",
     "in_forced_cooldown",
+    "read_only_mounts",
     "safe_int_display",
     "sha256_display",
     "transition_fallback_state",

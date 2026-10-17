@@ -125,6 +125,7 @@ p { margin: 0; }
 .node-card.status-online { border-left-color: var(--ok); }
 .node-card.status-degraded { border-left-color: var(--warn); }
 .node-card.status-offline { border-left-color: var(--err); }
+.node-card.status-fenced { border-left-color: #ff8a3c; }
 .node-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
 .node-name {
   font-weight: 700; font-size: 1.05rem;
@@ -149,6 +150,7 @@ p { margin: 0; }
 .badge.status-online { color: #b6f0c8; border-color: #2f8a4d; }
 .badge.status-degraded { color: #ffdca8; border-color: #8a6a1f; }
 .badge.status-offline { color: #ffc0bb; border-color: #8a2f28; }
+.badge.status-fenced { color: #ffd0a8; border-color: #b05a20; }
 .badge.sev-debug { color: #a9b2c0; }
 .badge.sev-info { color: #9fe0ff; border-color: #26678f; }
 .badge.sev-warn { color: #ffdca8; border-color: #8a6a1f; }
@@ -165,6 +167,7 @@ p { margin: 0; }
 .flag.null { color: var(--muted); }
 .reasons { display: flex; flex-wrap: wrap; gap: 6px; }
 .reason { font-size: .76rem; padding: 2px 8px; border-radius: 6px; background: #3a2408; color: #ffdca8; border: 1px solid #6a4a12; }
+.needs-human { font-size: .82rem; font-weight: 600; padding: 6px 10px; border-radius: 6px; background: #33150a; color: #ffb08a; border: 1px solid #b05a20; }
 .node-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: .82rem; }
 .services { display: flex; gap: 8px; flex-wrap: wrap; font-size: .76rem; color: var(--muted); }
 
