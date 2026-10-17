@@ -153,7 +153,14 @@ def run_one(base: str, token: str, node: dict, *, index: int, params: dict | Non
         st, ev = http(base, "GET", f"/v1/operator/events?node={node_id}&limit=8", token=token)
         if st == 200 and isinstance(ev, dict):
             for e in ev.get("events", []):
-                if e.get("rule_id") == "oom-guard-01":
+                # Only an event that fired AFTER this injection counts — a stale
+                # oom-guard-01 event from an earlier run must not be matched, or
+                # `decided()` would chase a decision that has scrolled out of the
+                # recent-decisions window.
+                if e.get("rule_id") != "oom-guard-01":
+                    continue
+                fired = epoch(e.get("fired_at"))
+                if fired is not None and fired >= injected_at - 1.0:
                     return e
         return None
     event = wait_until(fired_event, 60, label="oom-guard-01 firing")
