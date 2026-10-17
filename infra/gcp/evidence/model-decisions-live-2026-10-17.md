@@ -7,9 +7,22 @@ acceptance run 21:00–21:06, raw-capture reproduction 21:11–21:13, post-resto
 re-check 21:16:37Z).
 **Deployed tree:** `9430db15d1a362a2c160fe5657714c091f0974d8` (branch
 `wt/t_77f26781-model-decision-robust` on top of merged `main` `0d995f1`), read back
-from `/opt/termini/DEPLOYED_COMMIT` after the deploy at 20:52:21Z. The later commits
-on the branch touch only `infra/gcp/evidence/tools/model-decisions-live.py`
-(`git diff 9430db1..HEAD --stat`), never a runtime file.
+from `/opt/termini/DEPLOYED_COMMIT` after the deploy at 20:52:21Z — the tree the
+acceptance run above executed on. It was redeployed from branch commit
+`4a982b00ac841994c513da3633c706c0f0beef17` at 21:17:55Z; between the two,
+`git diff 9430db1..4a982b0 --stat` touches only `infra/gcp/evidence/` (this doc and the
+three driver/evidence tools), and the five runtime files this card changes hash
+identically to the commit:
+
+```
+$ sha256sum /opt/termini/controller/app/operator/decision.py …      # on the controller
+70c466d9…  controller/app/operator/decision.py
+929382ea…  controller/app/operator/external_call.py
+e97978b8…  termini/decision/adapter.py
+29abcf72…  termini/decision/config.py
+6bf6d504…  termini/decision/types.py
+$ for f in …; do git show HEAD:$f | sha256sum; done                  # same values
+```
 **Node:** `termini-node-a` / `01M4TGD31WXH97JAA5S6A4R10D`, `lxd_endpoint=https://10.10.0.11:8443`.
 **Model surface:** `https://…` loopback provider proxy `:8085` → `gemini-2.5-flash`
 (trace `answered_by=forwarded-managed-model`).
@@ -321,3 +334,6 @@ sudo journalctl -u termini-controller --since "-6min" | grep "fell back (reason=
   and the raw excerpt in the journal. It claims the truncation that caused *this* card's
   fallbacks is fixed, is reported honestly when it does happen, and that six
   consecutive live fires now decide on the model.
+* After the redeploy from `4a982b0` (21:17:55Z), one more fire decided on the model —
+  `01M55VPTRHFGTM03XHXBPRRS9D` at 21:18:53.613Z, confidence 0.9, completion 371 tokens,
+  `finish=stop` — so the tree that is live now is the tree that was measured.
