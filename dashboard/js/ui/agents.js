@@ -105,15 +105,22 @@ export class AgentsPanel {
       return;
     }
 
+    const boxes = new Map();
     for (const group of groups) {
-      root.appendChild(this._group(group));
+      const box = this._group(group);
+      boxes.set(group.nodeId, box);
+      root.appendChild(box);
     }
 
-    // A just-applied plan's instances that telemetry has not listed yet.
+    // A just-applied plan's instances that telemetry has not listed yet. They go
+    // INSIDE their node's group when that node is on screen — the plan's outcome
+    // must appear where the reader looks, not orphaned below the last node — and
+    // fall back to the panel root only when the node is not in the view.
     for (const row of this.expected) {
       const group = groups.find((g) => g.nodeId === row.nodeId);
       if (group && group.agents.some((a) => a.vmId === row.vmId)) continue; // appeared
-      root.appendChild(this._expectedRow(row, group));
+      const host = (row.nodeId && boxes.get(row.nodeId)) || root;
+      host.appendChild(this._expectedRow(row, group));
     }
   }
 
@@ -347,17 +354,32 @@ export class AgentsPanel {
   }
 
   _expectedRow(row, group) {
-    const nodeLabel = group ? group.label : (row.nodeId || "node");
+    const nodeLabel = group ? group.label : row.nodeId ? shortId(row.nodeId) : "node not reported";
+    const state = row.state || "provisioning";
+    const unconfirmed = state !== "provisioning";
+    const parts = [
+      `applied plan · instance ${row.name || "?"} on ${nodeLabel} — `,
+      unconfirmed
+        ? "no node has reported this instance yet. The apply may have been rolled back, or its node " +
+          "cannot read its own LXD; telemetry is the only inventory, so this row is not proof it exists."
+        : "waiting for the node's next telemetry sample to report it RUNNING. " +
+          "The controller returns the instance name; the node reports its derived id, so the row is matched by that id.",
+    ];
+    if (row.hashed === false) {
+      parts.push(
+        " This page cannot derive the id (crypto.subtle needs a secure context), so this row will not " +
+          "be matched to the reported one automatically.",
+      );
+    }
     return el("div", { class: "agent-row agent-row-expected", dataset: { expected: row.name || "" } }, [
       el("div", { class: "agent-row-head" }, [
         el("span", { class: "agent-name", text: row.vmId ? shortId(row.vmId) : "new agent" }),
-        el("span", { class: "badge agent-state agent-state-provisioning", text: "provisioning" }),
+        el("span", {
+          class: `badge agent-state agent-state-${unconfirmed ? "unconfirmed" : "provisioning"}`,
+          text: unconfirmed ? "not yet reported" : "provisioning",
+        }),
       ]),
-      el("div", { class: "muted small" }, [
-        `applied plan · instance ${row.name || "?"} on ${nodeLabel} — `,
-        "waiting for the node's next telemetry sample to report it RUNNING. " +
-          "The controller returns the instance name; the node reports its derived id, so the row is matched by that id.",
-      ]),
+      el("div", { class: "muted small" }, parts),
     ]);
   }
 }

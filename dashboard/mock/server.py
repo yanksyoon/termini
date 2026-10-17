@@ -57,7 +57,7 @@ LOG_RING = 10000
 class World:
     """Mutable demo state: telemetry, node liveness, logs, commands."""
 
-    def __init__(self, project_id: str, token: str):
+    def __init__(self, project_id: str, token: str, materialise_delay_s: float = 4.0):
         self.project_id = project_id
         self.token = token
         self.lock = threading.RLock()
@@ -71,6 +71,16 @@ class World:
         self.subscribers: set[queue.Queue] = set()
         self.commands: dict[str, dict] = {}
         self.pending: dict[str, dict] = {}
+        # Plans validated through POST /intents, so POST /vms/apply can resolve a
+        # plan_id the way the controller does (it stores plans; a plan_id it
+        # never issued is NOT_FOUND, not an empty job).
+        self.plans: dict[str, dict] = {}
+        # Instances an apply materialised: node_id -> {name -> {entry, visible_at}}.
+        # They join that node's `lxd_instances[]` only after `visible_at`, so the
+        # dashboard sees the provisioning placeholder FIRST and the reported row
+        # after — the same two stages the live fleet shows.
+        self.materialised: dict[str, dict[str, dict]] = {}
+        self.materialise_delay_s = float(materialise_delay_s)
         # One operator bundle for the process lifetime: decision/event/audit ids
         # must be STABLE across polls, otherwise every 3 s refresh looks like a
         # brand-new decision set and the assistant's citations (and the panel's
@@ -80,6 +90,12 @@ class World:
         self._seed()
 
     # -- telemetry ---------------------------------------------------------
+    def _visible_instances(self, node_id: str, t_sec: float) -> list[dict]:
+        """Instances an apply materialised on this node and the node has noticed."""
+        with self.lock:
+            recs = self.materialised.get(node_id) or {}
+            return [r["entry"] for r in recs.values() if r["visible_at"] <= t_sec]
+
     def current_sample(self, node: dict, advance: bool = True, t_sec: float | None = None) -> dict:
         with self.lock:
             nid = node["node_id"]
@@ -87,7 +103,8 @@ class World:
                 self.seq[nid] += 1
             t = t_sec if t_sec is not None else time.time()
             uptime = int(t - self.booted)
-            s = fx.sample(node, t, self.seq[nid], uptime)
+            s = fx.sample(node, t, self.seq[nid], uptime,
+                          extra_instances=self._visible_instances(nid, t))
             self.history[nid].append(s)
             if advance and fx_now_ms() >= self.stall_until.get(nid, 0):
                 self.last_seen[nid] = fx_now_ms()
@@ -219,6 +236,35 @@ class World:
         self.emit(fx.log_line(node["node_id"], sev, "ai_operator", msg))
 
     # -- commands ----------------------------------------------------------
+    def apply(self, plan: dict) -> dict:
+        """Materialise a plan: record its instances and answer the 202 body.
+
+        The instances are recorded per node with a `visible_at` a few seconds out,
+        so the client's `provisioning` placeholder has a window in which the node
+        genuinely does not list them yet — the state the live fleet put the panel
+        in for ~50 s. Nothing here fakes telemetry: the node's own sample carries
+        them from `visible_at` on, and only then does the row turn RUNNING.
+        """
+        job = fx.apply_job(plan)
+        now = time.time()
+        with self.lock:
+            for alloc in job["allocations"]:
+                nid = alloc.get("node_id")
+                for slot, name in enumerate(alloc.get("vm_ids") or []):
+                    if not nid:
+                        continue
+                    self.materialised.setdefault(nid, {})[name] = {
+                        "entry": fx.instance_entry(name, slot),
+                        "visible_at": now + self.materialise_delay_s,
+                    }
+        self.emit(fx.log_line(
+            (job["allocations"][0].get("node_id") if job["allocations"] else None),
+            "info", "human",
+            f"apply plan {job['plan_id']}: {job['state']} ({len(job['vm_ids'])} vm(s))",
+            job,
+        ))
+        return job
+
     def issue(self, node_id: str, ctype: str, approval: str, issued_by: str = "human") -> dict:
         cid = fx.ulid()
         cmd = {
@@ -538,6 +584,11 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             prompt = str(body.get("prompt") or "")
             plan = fx.intent_plan(prompt)
+            # The controller stores every plan it issues, and apply resolves the
+            # plan_id against that store (controller-api §4.2). Keep the same
+            # shape here so an apply can return per-allocation outcomes.
+            with self.world.lock:
+                self.world.plans[plan["plan_id"]] = plan
             if plan["outcome"] != "accepted":
                 payload = dict(plan)
                 payload["error"] = {"code": "GUARDRAIL_REJECTED", "message": "plan rejected by guardrail", "details": [], "request_id": plan["request_id"]}
@@ -548,7 +599,16 @@ class Handler(BaseHTTPRequestHandler):
 
         m = re.fullmatch(r"/v1/projects/([^/]+)/vms/apply/?", path)
         if m:
-            self._json(202, {"job_id": fx.ulid(), "state": "provisioning", "vm_ids": [fx.ulid(), fx.ulid(), fx.ulid()]})
+            plan_id = str(body.get("plan_id") or "")
+            with self.world.lock:
+                plan = self.world.plans.get(plan_id)
+            if plan is None:
+                self._json(404, fx.err("NOT_FOUND", f"plan {plan_id} not found", 404)[1])
+                return
+            if plan.get("outcome") != "accepted":
+                self._json(409, fx.err("CONFLICT", "plan is not accepted", 409)[1])
+                return
+            self._json(202, self.world.apply(plan))
             return
 
         m = re.fullmatch(r"/v1/projects/([^/]+)/remediations/([^/]+)/(approve|deny)/?", path)
@@ -701,12 +761,17 @@ def main(argv=None) -> int:
              "'some' = demo agents, 'none' = every node reports an empty array "
              "(the Agents panel's empty state), 'absent' = every node omits the "
              "field (inventory not reported)")
+    ap.add_argument(
+        "--materialise-delay", type=float, default=4.0,
+        help="seconds before a node's telemetry lists an instance an apply "
+             "materialised (the window in which the Agents panel shows its "
+             "'provisioning' placeholder); 0 lists it on the next sample")
     args = ap.parse_args(argv)
 
     fx.AGENTS = args.agents
 
     random.seed(args.seed)
-    world = World(args.project, args.token)
+    world = World(args.project, args.token, materialise_delay_s=args.materialise_delay)
     world.start_background()
 
     Handler.world = world

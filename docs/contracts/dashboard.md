@@ -477,7 +477,18 @@ validated plan. It reuses the frozen intent flow (`controller-api.md` §4.2):
    guardrail-validated `AllocationPlan` (`outcome: accepted`, per-class
    `clamped_fields` / `reject_reasons`).
 2. User reviews the plan, then `POST /v1/projects/{project_id}/vms/apply` with
-   `{plan_id}` → `202 {job_id, state: "provisioning", vm_ids}`.
+   `{plan_id}` → `202 {job_id, state, vm_ids, allocations[]}`
+   (`controller-api.md` §4.2; `state` is terminal — `ready` or `failed` — and
+   `vm_ids[]` are the deterministic LXD instance **names**, not ids).
+3. The plan's outcome lands in the **Agents panel**, not only in a toast
+   (card `t_6d63e8a2`): the client hashes each returned instance name with the §4.6 rule
+   (`vm_id = base32(sha256("termini-vm-id:" + name))`) and draws it as a
+   `provisioning` row under its node. The node's own telemetry is the only thing
+   that can turn it `running`; a row no node reports within 2 minutes stops
+   claiming to be provisioning, and is dropped after 10 (`dashboard/js/core/agents.js`
+   `expectedRows` / `pruneExpected`). A response that carries only the flat
+   `vm_ids` roll-up still yields rows — with the node shown as not reported,
+   never invented.
 
 Guardrail = the deterministic `guardrailClamp()` validator
 (`controller-api.md` §5, `vm-allocation.schema.json`). The dashboard renders
