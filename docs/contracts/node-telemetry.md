@@ -47,7 +47,11 @@ every field name. There is no second telemetry schema document.
 | `pause_5s`    | Halt telemetry for 5 s, then resume; heartbeat continues |
 
 `rejected` counts samples dropped as out-of-order/duplicate `seq` within an
-otherwise-valid batch — not validation rejections. Validation is **fail-closed,
+otherwise-valid batch — not validation rejections. Dedup is per sample source
+(`node` vs the demo console's `demo_fault` channel, `store.NODE_SOURCE` /
+`store.DEMO_FAULT_SOURCE`): a batch from the node is compared only with the
+highest stored `seq` of the node's own channel, never with an injected series.
+Validation is **fail-closed,
 whole-batch**: a governance or schema violation in ANY sample rejects the entire
 batch (see §7), so a rejected sample never egresses (fail-closed per governance.md
 §6). A sample that fails the node-side redactor is dropped on the node and never

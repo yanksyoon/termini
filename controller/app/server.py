@@ -1799,7 +1799,9 @@ class ControllerHandler(BaseHTTPRequestHandler):
             self._publish_node_events(conn, node, store.latest_sample(conn, node_id))
             return 202, {"accepted": 0, "rejected": len(samples), "backpressure": "none"}
 
-        inserted, dropped = store.insert_samples(conn, node_id, clean["call_id"], samples)
+        inserted, dropped = store.insert_samples(
+            conn, node_id, clean["call_id"], samples, source=store.NODE_SOURCE
+        )
         store.insert_batch(conn, clean, node_id, inserted, dropped, now)
         conn.execute("UPDATE nodes SET last_seen_at = ? WHERE id = ?", (now, node_id))
 

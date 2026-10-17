@@ -33,9 +33,15 @@ Two consequences worth stating plainly:
   injected ones and the fault would flap instead of holding the rule across its
   debounce count. This is a demo control surface on a demo project, and it is
   fenced: project token only, one open injection per (node, rule).
-* The faulted samples ARE the node's series while the injection runs, so the
-  durable provenance is the `demo_faults` row plus the operator-log lines
-  ("fault injected by operator: …"), not a per-sample marker.
+* The faulted samples ARE the node's series while the injection runs, and they are
+  stored in their own provenance channel: every row the driver writes carries
+  `telemetry_samples.source = 'demo_fault'` while the node's own rows carry
+  `'node'` (`store.DEMO_FAULT_SOURCE` / `store.NODE_SOURCE`). The channel also owns
+  its own `seq` namespace, which is what stops a 1 Hz injected series from
+  occupying the node's upcoming `seq` values and starving its real stream after a
+  clear (t_c37aa0dc — see `store.insert_samples`). Durable provenance is the
+  `demo_faults` row plus the operator-log line ("fault injected by operator: …")
+  AND the per-row channel, so the stored series says which samples were simulated.
 
 Safety (the card's §3)
 ----------------------
@@ -570,19 +576,24 @@ class DemoFaultInjector(threading.Thread):
         return triggers.merge_config(parts) if parts else detect.Thresholds()
 
     def _next_seq(self, conn, row: dict, node_id: str) -> int:
-        """Monotonic sample sequence for the node.
+        """Next sequence number in the INJECTION's own channel.
 
         The store drops any sample whose `seq` is not greater than the highest it
-        already holds, so a restarted injection must resume above the node's own
-        last sample rather than from its own counter.
+        already holds *for that sample source*, and the injector writes to
+        `store.DEMO_FAULT_SOURCE` — never the node's own channel. That separation
+        is the fix for t_c37aa0dc: a 1 Hz injected series used to share the node's
+        `seq` head, so after a 60 s injection the node's own slower counter was
+        tens of seqs behind and every real sample it posted was dropped (measured
+        2 m 19 s of missing node telemetry after a clear).
         """
-        latest = store.recent_samples(conn, node_id, 1)
-        last = int(latest[0].get("seq") or 0) if latest else 0
-        return max(int(row["next_seq"] or 0), last + 1)
+        last = store.max_seq(conn, node_id, store.DEMO_FAULT_SOURCE)
+        return max(int(row["next_seq"] or 0), last + 1, 1)
 
     def _insert_sample(self, conn, node: dict, sample: dict) -> str | None:
         call_id = ulid.new_ulid()
-        inserted, dropped = store.insert_samples(conn, node["id"], call_id, [sample])
+        inserted, dropped = store.insert_samples(
+            conn, node["id"], call_id, [sample], source=store.DEMO_FAULT_SOURCE
+        )
         batch = {
             "_redaction": {"version": "redactor-config v3", "config_hash": "3f2a1b", "result": "ok"},
             "call_id": call_id,

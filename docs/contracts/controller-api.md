@@ -828,8 +828,15 @@ as if the node had reported it. Two consequences are normative:
   flapping between the fault and the node's healthy reports. Only one injection may
   hold a node's series per (node, rule) — see the refusals below.
 - **The `demo_faults` row is the durable provenance** (migration `0014`), together
-  with the operator-log lines described below. The stored samples themselves are not
-  individually marked.
+  with the operator-log lines described below. Since migration `0021` the stored
+  samples are additionally marked per row: injected samples carry
+  `telemetry_samples.source = 'demo_fault'`, the node's own rows carry `'node'`.
+  Each source has its **own `seq` namespace** — dedup and head lookups are per
+  `(node_id, source)` — so the injected 1 Hz series can never occupy a `seq` value
+  the node has not sent yet. That separation is normative: with a shared `seq`
+  head, a 60 s injection left the node's own ~0.3 Hz counter behind the injected
+  range and every real sample it posted after the clear was accepted (`202`) and
+  dropped (measured 2 m 19 s of missing node telemetry, t_c37aa0dc).
 
 ### Scenarios
 
