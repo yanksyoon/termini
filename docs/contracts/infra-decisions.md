@@ -23,7 +23,7 @@ This document answers every open **infrastructure** question in `project.md` and
 | D6 | Node ↔ controller control topology | **Outbound-only control channel from each node** (mTLS WebSocket); push telemetry; no inbound SSH required | Controller pulls/scrapes nodes, inbound SSH from internet |
 | D7 | Cluster storage | **Local `zfs` pool per member** (`local`); no shared storage in the demo | MicroCeph/Ceph, NFS shared pool |
 | D8 | Telemetry transport & cadence | **Push over the D6 channel**, demo cadence **1000 ms**, default 15000 ms, bounded local spool | Prometheus scrape, fixed slow polling |
-| D9 | One inference address, two surfaces | **Split them: agents are served by LOCAL weights on Node C (`10.10.0.13:8080`, `backend=local`); the operator's diagnosis is served by Gemini from the CONTROLLER only (`127.0.0.1:8085`, `backend=gemini-proxy`)** — ⚠️ **SUPERSEDED by `t_957956e5` / `t_3fcee90b`: Node C's `:8080` ships `backend=gemini-proxy` (managed model) again; `local` is the one-variable fallback. Read the Supersession block in D9 before relying on this row.** | One endpoint with a backend flag, a forwarded managed model on the agent port, a key file on either host |
+| D9 | One inference address, two surfaces | **Split them: agents are served by LOCAL weights on Node C (`10.10.0.13:8080`, `backend=local`); the operator's diagnosis is served by Gemini from the CONTROLLER only (`127.0.0.1:8085`, `backend=gemini-proxy`)** — ⚠️ **SUPERSEDED by `t_957956e5` / `t_3fcee90b`: Node C's `:8080` ships `backend=gemini-proxy` (managed model) again; `local` is the one-variable fallback. Read the Supersession block in D9 before relying on this row.** Also amended 2026-10-17 (`t_d7e0bf4e`): on this CPU-only fleet no node can carry `role=inference`, so the `inference_vm` reference resolves to the node serving the agent-facing front door (node-c) — a resolution rule, not a role change. | One endpoint with a backend flag, a forwarded managed model on the agent port, a key file on either host |
 
 These choices share one bias: **maximise demo reliability and minimise the number of distributed systems that can fail live**, while keeping the architecture honest enough that the "your hardware, your data, our operations" story survives an adversarial read.
 
@@ -332,6 +332,51 @@ MicroCeph for cheap true live migration.
 >   and the expectations that pinned `local` (`infra/gcp/userdata/verify/main.tf`,
 >   `infra/gcp/verify-cloud-init.sh` §8, `tests/test_node_c_first_boot.py`,
 >   `tests/test_inference_surfaces.py`) — inverted, not deleted.
+
+> ### Amendment — 2026-10-17, kanban `t_d7e0bf4e`: the `inference_vm` reference must resolve on a CPU-only fleet
+>
+> **Measured defect.** On the live standing fleet the demo's headline prompt
+> (`deploy 3 worker agents for coding plus a fast LLM`) answered `422
+> GUARDRAIL_REJECTED` with `invalid_target_node_type` /
+> `"inference_vm must resolve to the inference node"`. Cause: role assignment is
+> GPU-gated (§4.1 — `>= 12 GiB` VRAM), so after the pivot above **no node can
+> carry `role=inference`**; the only such row was the seeder's synthetic node,
+> which the provenance rule correctly refuses. Every `inference_vm`, from any
+> client, was therefore unrunnable — while the node the reference class actually
+> means (CPU-only node-c, `10.10.0.13:8080`, `backend=gemini-proxy`) was
+> registered and answering.
+>
+> **Decision.** The role rule is **not** changed (a machine without a usable GPU
+> keeps registering `compute`; claiming otherwise would be dishonest). The
+> **resolution** rule for the reference class is widened (`controller-api.md`
+> §5.2 step 3): an `inference_vm` resolves, in order, to
+> 1. a real node the role rule assigned `inference` (unchanged, GPU path first),
+> 2. **else the real node that serves the agent-facing inference front door** —
+>    the host of `TERMINI_INFERENCE_BASE_URL` (or an operator-named host in
+>    `TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`), i.e. node-c today,
+> 3. else `REJECT` `invalid_target_node_type`, with a `detail` that names both
+>    ways to satisfy the reference and what was actually matched.
+>
+> `realized_as` stays `host_service`: no VM is launched, no GPU is claimed, no
+> capacity is committed (the class still reserves nothing in §5.2 step 7). A
+> seeder-fabricated row is never chosen as the front-door host, so the seeder is
+> not resurrected as an inference node.
+>
+> **Rejected alternatives.** *Run a genuine GPU node* — blocked by the L4 quota
+> (`t_294d2159`, `t_21ac1bd8`); this amendment is what lets the reference class
+> work until that changes. *Map "a fast LLM" to some other class in the intent
+> extractor* — that hides the defect instead of fixing it: any client naming
+> `inference_vm` directly (or any future extractor output) would still be
+> rejected, and the contract would still promise a class that cannot resolve.
+> The extractor is unchanged; the contract it emits into is now satisfiable.
+>
+> **Consequences.** The plan's `node_id` for the reference names the front-door
+> host, so an auditor can see *which* machine serves it; the node's `role` stays
+> `compute` and must not be read as "not the inference host". `invalid_target_node_type`
+> remains for a genuinely wrong target (a node that is neither an inference node
+> nor the front-door host), and its detail now names the node and the address that
+> was looked for. The GPU path stays first, so re-adding a GPU node needs no
+> further change.
 
 **Decision.** The footprint runs **two inference listeners with different
 guarantees**, and neither may stand in for the other:

@@ -1326,7 +1326,12 @@ class ControllerHandler(BaseHTTPRequestHandler):
 
         for i, spec in enumerate(result.allocations):
             resolved_node = self._resolve_target(spec, nodes)
-            role_ok, role_reason = _role_check(spec, resolved_node)
+            # §5.2 step 3: an `inference_vm` may resolve to the node that serves
+            # the agent-facing inference front door even though it reports
+            # `compute` (no local GPU on this fleet). Resolution and the role
+            # guardrail must agree on that, so compute it once here.
+            service_host = _is_inference_service_host(self, resolved_node)
+            role_ok, role_reason = _role_check(spec, resolved_node, service_host=service_host)
             if role_ok is False:
                 allocations.append({
                     "index": i, "status": "rejected", "resolved": spec.to_dict(),
@@ -1340,7 +1345,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 reject_reasons.append({
                     "index": i,
                     "reason": role_reason,
-                    "detail": _ROLE_REJECT_DETAILS.get(role_reason, role_reason),
+                    "detail": _role_reject_detail(role_reason, resolved_node, self),
                 })
                 continue
             clamped = [d.to_dict() for d in result.decisions if d.index == i]
@@ -1472,13 +1477,27 @@ class ControllerHandler(BaseHTTPRequestHandler):
             return None
         candidates = _selection_pool(nodes)
         if spec.type == "inference_vm":
-            # Reference-class resolution (controller-api.md §5.2 step 3): `auto`
-            # resolves to the (single) inference node hosting the always-on
-            # service; no inference node registered -> None -> REJECT upstream.
+            # Reference-class resolution (controller-api.md §5.2 step 3), two steps:
+            #
+            # 1. (unchanged, frozen §4.1) a node the role rule assigned `inference`
+            #    because it reports a >= 12 GiB GPU. Kept first so a real GPU node
+            #    still wins if the fleet ever has one again.
+            # 2. the node that serves the agent-facing inference FRONT DOOR — the
+            #    address the controller itself dials (`TERMINI_INFERENCE_BASE_URL`,
+            #    e.g. node-c 10.10.0.13:8080, `backend=gemini-proxy` after the
+            #    CPU/proxy pivot). That node reports `compute` (there is no local
+            #    GPU — the L4 quota is blocked, t_294d2159), yet it is exactly the
+            #    host the reference class means: a host SERVICE, no VM, no GPU.
+            #    Without this step EVERY `inference_vm` is rejected on a CPU-only
+            #    fleet, so the demo's headline prompt is a guaranteed 422
+            #    (t_d7e0bf4e, infra-decisions.md D9 amendment).
+            #
+            # No match at all -> None -> REJECT upstream (`invalid_target_node_type`).
             for n in candidates:
                 if n["role"] == "inference":
                     return n
-            return None
+            return _inference_service_host(self, candidates)
+
         # auto (agent_vm): the node that serves the always-on model is a SERVICE
         # host, not an agent target (see `agent_placement_excluded_hosts`) — the
         # demo's CPU model host registers `compute`, so without this it wins the
@@ -2160,17 +2179,20 @@ def node_address_host(node: dict) -> str:
     return _endpoint_host(node.get("lxd_endpoint")) or _endpoint_host(node.get("source_ip"))
 
 
-def agent_placement_excluded_hosts(cfg) -> set[str]:
-    """Hosts that must not receive *auto* agent placement (controller-api.md §5.2 step 5).
+def inference_service_hosts(cfg) -> set[str]:
+    """Hosts that serve the agent-facing inference FRONT DOOR (controller-api.md §5.2 step 3).
 
-    The node that serves the always-on decision model is a *service* host — it is
-    running llama.cpp for the whole fleet, so it is not an agent compute target.
-    Nothing in the frozen role rule expresses that: role is GPU-gated
-    (`node-bootstrap.md` §5.3 / controller-api.md §4.1), so a CPU-only model host
-    like the demo's node C registers `compute` and would otherwise beat the real
-    compute node on free RAM. The exclusion is therefore stated in terms of the
-    model address the controller already knows (`TERMINI_INFERENCE_BASE_URL`),
-    plus any operator-named hosts (`TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`).
+    The reference class `inference_vm` does not describe a VM that would be
+    launched — it describes the always-on host SERVICE that answers agent traffic
+    at the frozen agent address. The controller already knows that address
+    (`TERMINI_INFERENCE_BASE_URL`, e.g. `http://10.10.0.13:8080`), which is the
+    authoritative statement of *which host* serves it, and the operator can name
+    further hosts explicitly (`TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`, the same
+    list §5.2 step 5 uses to keep agents off the model host).
+
+    This is deliberately NOT a role rule: nothing in the frozen role vocabulary
+    (GPU-gated, §4.1) says a CPU-only model host is special, which is why a
+    CPU-only fleet had no resolvable `inference_vm` at all.
     """
     hosts: set[str] = set()
     if cfg is None:
@@ -2185,10 +2207,61 @@ def agent_placement_excluded_hosts(cfg) -> set[str]:
     return hosts
 
 
+def agent_placement_excluded_hosts(cfg) -> set[str]:
+    """Hosts that must not receive *auto* agent placement (controller-api.md §5.2 step 5).
+
+    The node that serves the always-on decision model is a *service* host — it is
+    running llama.cpp for the whole fleet, so it is not an agent compute target.
+    Nothing in the frozen role rule expresses that: role is GPU-gated
+    (`node-bootstrap.md` §5.3 / controller-api.md §4.1), so a CPU-only model host
+    like the demo's node C registers `compute` and would otherwise beat the real
+    compute node on free RAM. The exclusion is therefore stated in terms of the
+    model address the controller already knows (`TERMINI_INFERENCE_BASE_URL`),
+    plus any operator-named hosts (`TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`).
+
+    It is exactly the front-door host set (`inference_service_hosts`): the machine
+    agents must not be *placed on* is the machine the inference reference *is*.
+    """
+    return inference_service_hosts(cfg)
+
+
 def _placement_excluded_hosts(handler) -> set[str]:
     """Excluded placement hosts for a request handler (tolerates `self=None`)."""
     cfg = getattr(getattr(handler, "server", None), "cfg", None)
     return agent_placement_excluded_hosts(cfg)
+
+
+def _inference_front_door_hosts(handler) -> set[str]:
+    """Front-door host set for a request handler (tolerates `self=None`)."""
+    cfg = getattr(getattr(handler, "server", None), "cfg", None)
+    return inference_service_hosts(cfg)
+
+
+def _inference_service_host(handler, nodes: list[dict]) -> dict | None:
+    """The real node that serves the agent-facing inference front door, or None.
+
+    Never a seeder-fabricated row: the reference class names the fleet's REAL
+    model host, and the provenance rule (§5.2 step 5) applies to it too — a
+    synthetic row must not be resurrected as an inference node
+    (t_d7e0bf4e). Deterministic: lowest node_id among matching hosts.
+    """
+    hosts = _inference_front_door_hosts(handler)
+    if not hosts:
+        return None
+    matches = [
+        n for n in nodes
+        if not n.get("synthetic") and node_address_host(n) in hosts
+    ]
+    return min(matches, key=lambda n: n["id"]) if matches else None
+
+
+def _is_inference_service_host(handler, node) -> bool:
+    """True when `node` is the real host of the agent-facing inference service."""
+    if node is None or node.get("synthetic"):
+        return False
+    if not node_address_host(node):
+        return False
+    return node_address_host(node) in _inference_front_door_hosts(handler)
 
 
 def _parse_rfc3339(s: str) -> float:
@@ -2302,16 +2375,22 @@ def _add_repo_root() -> None:
         sys.path.insert(0, root)
 
 
-def _role_check(spec, resolved_node) -> tuple[bool, str | None]:
+def _role_check(spec, resolved_node, service_host: bool = False) -> tuple[bool, str | None]:
     """Frozen role guardrails (controller-api.md §5.2 steps 3/5, architecture.md R16)."""
     if spec.type == "inference_vm":
-        # R16: inference_vm is a REFERENCE to the always-on Node C host inference
+        # R16: inference_vm is a REFERENCE to the always-on host inference
         # service, not a launchable VM. No GPU passthrough requirement (it is a
-        # structural rejection upstream, not here). It must resolve to the
-        # inference node; zero VMs are materialized for it.
-        if resolved_node is None or resolved_node.get("role") != "inference":
+        # structural rejection upstream, not here). It must resolve either to a
+        # node the frozen §4.1 rule assigned `inference` (>= 12 GiB GPU) or to the
+        # node that serves the agent-facing inference front door (`service_host`,
+        # resolved from TERMINI_INFERENCE_BASE_URL — see D9 amendment in
+        # infra-decisions.md: a CPU-only fleet has no GPU node, and rejecting
+        # every reference there is what made the headline prompt a 422).
+        if resolved_node is None:
             return False, "invalid_target_node_type"
-        return True, None
+        if service_host or resolved_node.get("role") == "inference":
+            return True, None
+        return False, "invalid_target_node_type"
     # agent_vm
     if spec.passthrough_gpu:
         return False, "gpu_not_allowed_for_agent"
@@ -2324,10 +2403,43 @@ def _role_check(spec, resolved_node) -> tuple[bool, str | None]:
 # top-level 422 details[] alongside the machine-readable code). Values are the
 # same frozen codes as vm-allocation.schema.json §clamped_field.reason.
 _ROLE_REJECT_DETAILS = {
-    "invalid_target_node_type": "inference_vm must resolve to the inference node",
+    "invalid_target_node_type": (
+        "inference_vm must resolve to the inference node or to the node serving "
+        "the agent-facing inference service"
+    ),
     "invalid_target_node": "agent_vm target node could not be resolved to a compute node",
     "gpu_not_allowed_for_agent": "GPU passthrough is not permitted on agent_vm",
 }
+
+
+def _role_reject_detail(reason: str | None, resolved_node, handler) -> str:
+    """Human-readable detail for a role-level rejection, naming what was looked for.
+
+    The frozen CODE is what clients switch on (`invalid_target_node_type`); the
+    detail is what makes it actionable. For an `inference_vm` that did not resolve
+    it must say *both* ways to satisfy the reference class and what actually
+    matched — otherwise a CPU-only fleet reads as "the feature is broken" when the
+    controller is correctly refusing an unknown host (t_d7e0bf4e).
+    """
+    base = _ROLE_REJECT_DETAILS.get(reason or "") or str(reason or "")
+    if reason != "invalid_target_node_type":
+        return base
+    hosts = sorted(_inference_front_door_hosts(handler))
+    if resolved_node is not None:
+        return (
+            f"{base}: node {resolved_node.get('id')} is neither an inference node "
+            f"(a node reporting a >= 12 GiB GPU) nor the host of the agent-facing "
+            f"inference service"
+        )
+    if not hosts:
+        return (
+            f"{base}: no inference node is registered and no agent-facing inference "
+            f"service address is configured (TERMINI_INFERENCE_BASE_URL)"
+        )
+    return (
+        f"{base}: no inference node is registered and no registered real node "
+        f"serves the agent-facing inference service at {', '.join(hosts)}"
+    )
 
 # Human-readable detail for each per-node capacity rejection reason
 # (controller-api.md §5.2 step 6), surfaced alongside the machine-readable code.
