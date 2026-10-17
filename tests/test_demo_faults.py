@@ -310,6 +310,19 @@ class FaultEndpointsTest(unittest.TestCase):
         self.assertEqual(st, 422, body)
         self.assertEqual(body["error"]["code"], "INVALID_ARGUMENT")
 
+    def test_removed_scenarios_are_rejected_with_the_allowed_set(self):
+        """disk-degrade and latency are no longer injectable (owner decision).
+
+        The 422 must list the allowed set — not 500, not a silent accept.
+        """
+        for scenario in ("disk-degrade", "latency"):
+            with self.subTest(scenario=scenario):
+                st, body = self._inject(scenario=scenario)
+                self.assertEqual(st, 422, body)
+                self.assertEqual(body["error"]["code"], "INVALID_ARGUMENT")
+                self.assertIn("oom", body["error"]["message"])
+                self.assertIn("disk-fail", body["error"]["message"])
+
     def test_duration_out_of_range_is_rejected(self):
         st, body = self._inject(scenario="oom", duration_s=1)
         self.assertEqual(st, 422, body)
@@ -405,17 +418,17 @@ class FaultEndpointsTest(unittest.TestCase):
         self.assertEqual(again["status"], "already_cleared")
 
     def test_second_injection_for_the_same_rule_is_refused(self):
-        st, inj = self._inject(scenario="latency", duration_s=120)
+        st, inj = self._inject(scenario="oom", duration_s=120)
         self.assertEqual(st, 201, inj)
         try:
-            st, dup = self._inject(scenario="latency", duration_s=30)
+            st, dup = self._inject(scenario="oom", duration_s=30)
             self.assertEqual(st, 409, dup)
             self.assertEqual(dup["error"]["code"], "CONFLICT")
             reasons = [d["reason"] for d in dup["error"]["details"]]
             self.assertIn("fault_already_active", reasons)
             self.assertIn(inj["injection_id"], json.dumps(dup))
             # …but a different rule on the same node is still injectable.
-            st, other = self._inject(scenario="disk-degrade", duration_s=120)
+            st, other = self._inject(scenario="disk-fail", duration_s=120)
             self.assertEqual(st, 201, other)
             self._clear(other["injection_id"])
         finally:
@@ -502,7 +515,7 @@ class FaultEndpointsTest(unittest.TestCase):
     def test_injection_ends_loudly_at_its_ttl(self):
         synth = self._new_node(synthetic=True)
         st, inj = self._inject(node_id=synth["node_id"], target="synthetic",
-                               scenario="latency", duration_s=5)
+                               scenario="oom", duration_s=5)
         self.assertEqual(st, 201, inj)
         time.sleep(5 + inj["clear_samples_needed"] + 4)
         st, listing = http(self.base, "GET", f"/v1/projects/{PROJECT_ID}/demo/faults",
@@ -516,7 +529,7 @@ class FaultEndpointsTest(unittest.TestCase):
 
     def test_clear_all_closes_every_open_injection(self):
         a = self._inject(scenario="oom", duration_s=120)[1]
-        b = self._inject(scenario="disk-degrade", duration_s=120)[1]
+        b = self._inject(scenario="disk-fail", duration_s=120)[1]
         self.assertEqual(a["state"], "active")
         self.assertEqual(b["state"], "active")
         st, body = http(self.base, "POST", f"/v1/projects/{PROJECT_ID}/demo/faults/clear",

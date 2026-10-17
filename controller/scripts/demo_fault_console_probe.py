@@ -421,7 +421,7 @@ def main(argv=None) -> int:
         # ---- e. TTL ------------------------------------------------------- #
         print("\n== e. a live injection ends by itself at its TTL (never silently) ==")
         st, ttl_inj = call(base, "POST", f"/v1/projects/{project_id}/demo/faults",
-                           {"node_id": syn["node_id"], "scenario": "latency", "duration_s": 5,
+                           {"node_id": syn["node_id"], "scenario": "oom", "duration_s": 5,
                             "target": "synthetic"}, token=project_token)
         check("inject on the synthetic node -> 201", st == 201, f"HTTP {st}")
         ttl_id = ttl_inj["injection_id"]
@@ -442,7 +442,7 @@ def main(argv=None) -> int:
         # ---- f. a restart cannot leave an injection silently live ---------- #
         print("\n== f. a controller restart sweeps an injection it can no longer drive ==")
         st, orphan = call(base, "POST", f"/v1/projects/{project_id}/demo/faults",
-                          {"node_id": syn["node_id"], "scenario": "disk-degrade",
+                          {"node_id": syn["node_id"], "scenario": "disk-fail",
                            "duration_s": 120, "target": "synthetic"}, token=project_token)
         orphan_id = (orphan or {}).get("injection_id")
         check("injection running before the restart", st == 201 and bool(orphan_id), f"HTTP {st}")

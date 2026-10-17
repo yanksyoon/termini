@@ -87,11 +87,13 @@ a silent one.
 ## Operator fault console (`/console/`)
 
 `console/fault_console/` is the **operator-only** control surface for demo faults
-(contract `docs/contracts/controller-api.md` §4.7): it lists the scenarios the
-harness already implements (`oom`, `disk-degrade`, `disk-fail`, `latency`), lets the
-operator pick a node from the fleet listing, a scenario, a TTL and whether the node
-is `real` or `synthetic`, and shows the currently-active injections with a **Clear**
-button. Before it, fault injection existed only as `seed_demo.py`'s oscillation —
+(contract `docs/contracts/controller-api.md` §4.7): it lists the two demo scenarios
+(`oom`, `disk-fail`), lets the operator pick a node from the fleet listing, a
+scenario, a TTL and whether the node is `real` or `synthetic`, and shows the
+currently-active injections with a **Clear** button. The `disk-degrade` and
+`latency` detector rules remain implemented in the controller (a real customer
+node can still produce those signals), but the demo can no longer inject them.
+Before it, fault injection existed only as `seed_demo.py`'s oscillation —
 there was no way to trigger a chosen fault on a chosen node from the UI, and no way
 to clear one that was running.
 

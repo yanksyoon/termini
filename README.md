@@ -115,7 +115,7 @@ pre-approved action, and the remediation lands with a full audit trail — while
 non-conforming batch is rejected fail-closed at the governance gate
 ([`docs/architecture.md`](docs/architecture.md) §4.3–§4.4). The decision step is a
 seam, and **the shipped demo runs it model-driven**: `oom-guard-01` and
-`disk-degrade-01` route through **`llama.cpp` on Node C** (CPU-only, alias
+`disk-fail-01` route through **`llama.cpp` on Node C** (CPU-only, alias
 `gemma` = Gemma 3 4B IT), which picks
 the action under a hard constraint stack — a GBNF grammar that makes an
 out-of-allowlist command unencodable, a param/guardrail validator, and a
@@ -199,7 +199,7 @@ console/run-demo.sh
 export TERMINI_BOOTSTRAP_TOKEN="$(openssl rand -base64 32)"
 cd controller && make run          # or: python3 -m app.main
 
-# 3. One fault scenario end to end (oom | disk-degrade | latency | healthy)
+# 3. One fault scenario end to end (oom | disk-fail | healthy)
 make chaos SCENARIO=oom
 ```
 

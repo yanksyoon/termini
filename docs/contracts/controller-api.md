@@ -833,15 +833,18 @@ as if the node had reported it. Two consequences are normative:
 
 ### Scenarios
 
-The scenario set is the one the harness already implements (`chaos/chaos.json`), so
-an injected fault has the same signature the chaos runs prove.
+The demo fault library offers exactly two scenarios — `oom` (F01) and `disk-fail`
+(F05). The `disk-degrade` and `latency` scenarios are NOT injectable: their
+detector rules (`disk-degrade-01`, `latency-01`) remain frozen in
+`node-telemetry.md` §5 and implemented in `operator/detect.py` — a real customer
+node can still produce those signals and the operator must still handle them —
+but the demo can no longer inject them (owner decision 2026-10-17). Do not
+"restore" them as a missing feature.
 
-| `scenario`     | rule it drives     | injected signal |
-|----------------|--------------------|-----------------|
-| `oom`          | `oom-guard-01`     | host RAM → 97 % of `ram_total_bytes`, CPU raised, nested `lxd_instances[].ram_used_bytes` kept consistent |
-| `disk-degrade` | `disk-degrade-01`  | every `disk[].free_bytes` → 3 % of total, `write_latency_ms` → 80 |
-| `disk-fail`    | `disk-fail-01`     | every `disk[].mount_ro` → `true` (EXT4 remount-ro, Scenario B) |
-| `latency`      | `latency-01`       | every `net[].latency_ms` → 600 |
+| `scenario`  | rule it drives  | injected signal |
+|-------------|-----------------|-----------------|
+| `oom`       | `oom-guard-01`  | host RAM → 97 % of `ram_total_bytes`, CPU raised, nested `lxd_instances[].ram_used_bytes` kept consistent |
+| `disk-fail` | `disk-fail-01`  | every `disk[].mount_ro` → `true` (EXT4 remount-ro, Scenario B) |
 
 `clear` is not a scenario: it is the `DELETE` below.
 
@@ -894,7 +897,7 @@ Returns every injection this project has run, newest first:
 
 ```json
 { "project_id": "01M4349RPSZFTB60AVJEG0ZZY9",
-  "scenarios": ["oom", "disk-degrade", "disk-fail", "latency"],
+  "scenarios": ["oom", "disk-fail"],
   "faults": [ { "…": "injection view as above" } ],
   "open_count": 1 }
 ```

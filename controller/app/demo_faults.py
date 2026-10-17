@@ -76,10 +76,14 @@ from .operator import store as opstore
 log = logging.getLogger("termini.demo_faults")
 
 # --------------------------------------------------------------------------- #
-# Scenarios — the frozen set the harness already implements
-# (`chaos/chaos.json`: oom, disk-degrade, disk-fail, latency). Parameter values
-# mirror the harness's, so an injected fault is the same signature the chaos runs
-# prove out; `rule_id` is the frozen rule the scenario drives.
+# Scenarios — the two demo faults the operator may inject. `disk-degrade` and
+# `latency` are deliberately absent: their detector rules (`disk-degrade-01`,
+# `latency-01`) are frozen in node-telemetry.md §5 and stay implemented in
+# `operator/detect.py` — a real customer node can still produce those signals
+# and the operator must still handle them — but the DEMO can no longer inject
+# them (owner decision 2026-10-17). Parameter values mirror the harness's
+# (`chaos/chaos.json`), so an injected fault is the same signature the chaos
+# runs prove out; `rule_id` is the frozen rule the scenario drives.
 # --------------------------------------------------------------------------- #
 SCENARIOS: dict[str, dict] = {
     "oom": {
@@ -87,20 +91,10 @@ SCENARIOS: dict[str, dict] = {
         "description": "Ramp host RAM utilisation past the OOM threshold and hold it.",
         "params": {"ram_peak_pct": 97.0, "cpu_util_pct": 92.0, "instance_ram_pct": 85.0},
     },
-    "disk-degrade": {
-        "rule_id": "disk-degrade-01",
-        "description": "Consume free disk toward the floor and raise write latency past the disk thresholds.",
-        "params": {"free_floor_pct": 3.0, "write_latency_ms": 80.0, "instance_disk_pct": 95.0},
-    },
     "disk-fail": {
         "rule_id": "disk-fail-01",
         "description": "Flip a disk mount read-only (EXT4 remount-ro) — the Scenario B signature.",
         "params": {},
-    },
-    "latency": {
-        "rule_id": "latency-01",
-        "description": "Raise the reported network latency above the latency threshold.",
-        "params": {"latency_ms": 600.0},
     },
 }
 SCENARIO_NAMES = tuple(SCENARIOS)
@@ -128,8 +122,6 @@ OPEN_STATES = ("active", "recovering")
 _CLEAR_ATTR = {
     "oom-guard-01": "oom_clear_consecutive",
     "disk-fail-01": "disk_fail_clear_consecutive",
-    "disk-degrade-01": "disk_clear_consecutive",
-    "latency-01": "latency_clear_consecutive",
 }
 
 
@@ -211,28 +203,10 @@ def fault_sample(base: dict, scenario: str, params: dict | None = None, *, seq: 
             lim = inst.get("ram_limit_bytes")
             if isinstance(lim, (int, float)) and lim > 0:
                 inst["ram_used_bytes"] = int(lim * float(p.get("instance_ram_pct", 85.0)) / 100.0)
-    elif scenario == "disk-degrade":
-        floor = float(p.get("free_floor_pct", 3.0))
-        lat = float(p.get("write_latency_ms", 80.0))
-        for d in s.get("disk") or []:
-            if not isinstance(d, dict):
-                continue
-            tot = d.get("total_bytes")
-            if isinstance(tot, (int, float)) and tot > 0:
-                d["free_bytes"] = int(tot * floor / 100.0)
-            d["write_latency_ms"] = lat
-        for inst in s.get("lxd_instances") or []:
-            if isinstance(inst, dict):
-                inst["disk_used_bytes"] = int(8 * 1024 ** 3 * float(p.get("instance_disk_pct", 95.0)) / 100.0)
     elif scenario == "disk-fail":
         for d in s.get("disk") or []:
             if isinstance(d, dict):
                 d["mount_ro"] = True
-    elif scenario == "latency":
-        lat_ms = float(p.get("latency_ms", 600.0))
-        for n in s.get("net") or []:
-            if isinstance(n, dict):
-                n["latency_ms"] = lat_ms
     return s
 
 

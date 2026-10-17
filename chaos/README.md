@@ -41,7 +41,7 @@ step in this build.
 # one scenario, end to end (boots controller + stub + node + operator)
 make chaos SCENARIO=oom
 
-# the full acceptance suite (oom, disk-degrade, latency, healthy)
+# the full acceptance suite (oom, disk-fail, healthy)
 make chaos-verify
 
 # fast unit tests (no controller)
@@ -57,8 +57,7 @@ running.
 | SCENARIO       | What it injects                                                     | Frozen rule that must fire | Expected remediation |
 |----------------|---------------------------------------------------------------------|----------------------------|----------------------|
 | `oom`          | RAM utilisation ramps 62%→97% over 3 s, then holds                  | `oom-guard-01` (≥95% for ≥2 samples) | `vm.restart` LXD call |
-| `disk-degrade` | free disk 40%→3% and `write_latency_ms` 3→80 over 6 s, then holds   | `disk-degrade-01` (write latency ≥50 ms for ≥5, or free ≤5%) | `disk.drain` LXD call |
-| `latency`      | `net[].latency_ms` held at 600 ms                                   | `latency-01` (≥250 ms for ≥3 samples) | `net.probe` LXD call |
+| `disk-fail`    | `disk[].mount_ro` flips `true` after 1 s (EXT4 remount-ro)          | `disk-fail-01` (any `mount_ro`) | `disk.drain` LXD call |
 | `healthy`      | steady baseline (62% RAM, 78% free, 3 ms write, 0.8 ms net)         | **none** (false-positive guard) | **no command** |
 
 Rules are the frozen demo thresholds from
@@ -124,10 +123,7 @@ overridden from the environment (useful for CI or a live demo):
 Thresholds in-tree (frozen defaults):
 
 ```json
-{"oom_ram_pct": 95.0, "oom_consecutive": 2,
- "disk_free_pct": 5.0, "disk_free_consecutive": 3,
- "disk_write_latency_ms": 50.0, "disk_latency_consecutive": 5,
- "latency_ms": 250.0, "latency_consecutive": 3}
+{"oom_ram_pct": 95.0, "oom_consecutive": 2}
 ```
 
 ## Driving the production operator loop
@@ -156,11 +152,11 @@ still asserts that a real command reached the endpoint; with a real LXD
 TERMINI_CHAOS_LXD_URL="https://10.0.0.5:8443" make chaos SCENARIO=oom
 ```
 
-## Note: latency vs. p95
+## Note: demo fault library vs. detector rules
 
-The frozen telemetry schema (`docs/telemetry-schema.md`) has **no `p95` field** —
-the only latency signal it carries is `net[].latency_ms` (round-trip to the
-controller). The `latency` scenario therefore drives that field, and the
-`latency-01` rule above is the harness's own threshold on it. If the operator
-loop needs application p95 latency, a new C0 field must be added to
-`governance.md` §4.1 and the telemetry schema first (per governance §10.1).
+The demo fault library offers only `oom` (F01) and `disk-fail` (F05). The
+`disk-degrade-01` and `latency-01` detector rules are **still implemented** in
+`controller/app/operator/detect.py` and frozen in
+[`docs/contracts/node-telemetry.md`](../docs/contracts/node-telemetry.md) §5 — a
+real customer node can still produce those signals and the operator must still
+handle them. The change is only that the demo can no longer *inject* them.

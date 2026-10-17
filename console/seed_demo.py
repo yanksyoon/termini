@@ -3,11 +3,17 @@
 
 Registers a compute node and an inference node with the controller's single-use
 bootstrap tokens, then streams telemetry so the dashboard shows live health and
-the AI-operator loop has fresh samples to act on. The two synthetic nodes are
-driven through an out-of-phase fault pattern (RAM pressure on the inference
-node, disk-write latency on the compute node) so the operator emits a steady
+the AI-operator loop has fresh samples to act on. The inference node is driven
+through a memory-pressure (OOM) fault window so the operator emits a steady
 stream of log lines — exactly what the dashboard's *live AI-operator log* panel
-and the ``/logs`` SSE surface consume.
+and the ``/logs`` SSE surface consume. The compute node reports healthy
+telemetry. The demo fault library offers only `oom` and `disk-fail`; the
+`disk-degrade` and `latency` detector rules remain implemented in the controller
+(`operator/detect.py`) but the demo can no longer inject them. Pass
+``--no-faults`` (alias ``--healthy``) to hold a fully healthy baseline: both
+synthetic nodes keep reporting HEALTHY telemetry at the normal cadence (the
+fleet stays visible and the header pills stay green) with no fault window
+driven, so the operator can inject exactly one fault from the console.
 
 Run until interrupted (or ``--duration`` seconds), so start it next to the
 controller and the composed console:
@@ -322,22 +328,18 @@ def advertised_vm_ids(node_id: str, instance_names: list[str],
 # seeder drives faults as on/off windows, so the synthetic evidence follows the
 # same on/off shape.
 
-# The fault windows a ticker drives. `None` is the healthy half of the period.
-FAULT_DISK = "disk"       # disk-degrade (compute node): I/O saturates, RAM flat
+# The fault window a ticker drives. `None` is the healthy half of the period.
+# Only the OOM (memory-pressure) window remains in the demo fault library;
+# `disk-degrade` and `latency` are no longer injectable (their detector rules
+# stay implemented in `controller/app/operator/detect.py`).
 FAULT_MEMORY = "memory"   # memory-pressure (inference node): reclaim + OOM
 
 # PSI pressure (node-telemetry.md §4.12): percent of time tasks stalled, 10 s
-# average. Disk-degrade stalls on I/O only; memory-pressure stalls on memory and
-# keeps I/O flat — that split is the whole point of the group.
+# average. Memory-pressure stalls on memory and keeps I/O flat — the split that
+# distinguishes the OOM window from a healthy node.
 _PRESSURE_HEALTHY = {
     "cpu_some_avg10": 0.0,
     "io_some_avg10": 0.0,
-    "memory_some_avg10": 0.0,
-    "memory_full_avg10": 0.0,
-}
-_PRESSURE_DISK = {
-    "cpu_some_avg10": 12.4,
-    "io_some_avg10": 68.9,
     "memory_some_avg10": 0.0,
     "memory_full_avg10": 0.0,
 }
@@ -349,10 +351,8 @@ _PRESSURE_MEMORY = {
 }
 
 # mem_available_bytes (node-telemetry.md §4.12): the kernel's own "would not
-# swap" estimate. Healthy when idle, modestly reduced by a disk fault (page-cache
-# pressure, not memory exhaustion), cratered under memory pressure.
+# swap" estimate. Healthy when idle, cratered under memory pressure.
 _MEM_AVAILABLE_HEALTHY = 40 * 1024 ** 3
-_MEM_AVAILABLE_DISK = 30 * 1024 ** 3
 _MEM_AVAILABLE_MEMORY = 512 * 1024 ** 2
 
 # Static §4.13 fields with plausible values. The demo drives no inode or
@@ -361,9 +361,6 @@ _INODE_USED = 1129359
 _INODE_TOTAL = 12976128
 _CONNTRACK_COUNT = 457
 _CONNTRACK_MAX = 262144
-# disk[].io_in_flight is a queue-depth gauge: 0 when idle, saturated under a
-# disk-degrade window.
-_IO_IN_FLIGHT_DISK = 42
 
 
 def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
@@ -378,10 +375,6 @@ def sample(node_id: str, project_id: str, seq: int, *, ram_used_bytes: int,
         pressure = dict(_PRESSURE_MEMORY)
         mem_available = _MEM_AVAILABLE_MEMORY
         io_in_flight = 0
-    elif fault == FAULT_DISK:
-        pressure = dict(_PRESSURE_DISK)
-        mem_available = _MEM_AVAILABLE_DISK
-        io_in_flight = _IO_IN_FLIGHT_DISK
     else:
         pressure = dict(_PRESSURE_HEALTHY)
         mem_available = _MEM_AVAILABLE_HEALTHY
@@ -495,7 +488,7 @@ class NodeTicker(threading.Thread):
     def __init__(self, base: str, node: dict, project_id: str,
                  period_s: float, phase: float, high_ram: bool,
                  gpu: list | None = None, *, instance_names: list[str] | None = None,
-                 synthetic_ids: bool = False,
+                 synthetic_ids: bool = False, faults_enabled: bool = True,
                  timeout_s: float = TELEMETRY_TIMEOUT_S,
                  attempts: int = 3, retry_base_s: float = 0.5,
                  max_retry_s: float = 8.0):
@@ -514,6 +507,7 @@ class NodeTicker(threading.Thread):
         # seeder cannot leave the node advertising an id from another node.
         self.instance_names = list(instance_names or [])
         self.synthetic_ids = bool(synthetic_ids)
+        self.faults_enabled = bool(faults_enabled)
         self.stop = threading.Event()
         self.timeout_s = timeout_s
         self.attempts = max(1, int(attempts))
@@ -631,11 +625,7 @@ class NodeTicker(threading.Thread):
         self.pgmajfaults += 3
         self.tcp_retrans += 1 if self.seq % 4 == 0 else 0
         self.io_ticks_ms += 40
-        if fault == FAULT_DISK:
-            # Disk-degrade: the device is saturated, so its cumulative I/O time
-            # climbs steeply. RAM, pressure and the OOM counters stay flat.
-            self.io_ticks_ms += 3200
-        elif fault == FAULT_MEMORY:
+        if fault == FAULT_MEMORY:
             # Memory-pressure: reclaim thrashes pages to disk (major faults) and
             # the OOM killer fires periodically, hitting the target instance.
             self._mem_fault_ticks += 1
@@ -648,14 +638,17 @@ class NodeTicker(threading.Thread):
     def _tick(self, t0: float) -> None:
         phase = ((time.monotonic() - t0 + self.phase) % self.period) / self.period
         hot = phase < 0.5  # half the period "faulted"
-        ram = 66000000000 if (self.high_ram and hot) else 18000000000
-        disk_lat = 120.0 if (not self.high_ram and hot) else 3.0
-        net_lat = 0.8
-        # The active fault window for THIS tick (None = the healthy half). It is
-        # the same on/off state the RAM/disk values above already express.
+        # Only the memory-pressure (OOM) window remains in the demo fault
+        # library. The compute node (high_ram=False) reports healthy at all
+        # times; the inference node (high_ram=True) oscillates into the OOM
+        # window unless the whole seeder is in quiet mode (--no-faults).
         fault = None
-        if hot:
-            fault = FAULT_MEMORY if self.high_ram else FAULT_DISK
+        ram = 18000000000
+        disk_lat = 3.0
+        net_lat = 0.8
+        if self.faults_enabled and self.high_ram and hot:
+            fault = FAULT_MEMORY
+            ram = 66000000000
         self._advance_counters(fault)
         self.seq += 1
         s = sample(self.node_id, self.project_id, self.seq,
@@ -709,7 +702,9 @@ class NodeTicker(threading.Thread):
         fresh = NodeTicker(self.base, {"node_id": self.node_id, "node_token": self.token},
                            self.project_id, self.period, self.phase, self.high_ram,
                            gpu=self.gpu, instance_names=self.instance_names,
-                           synthetic_ids=self.synthetic_ids, timeout_s=self.timeout_s,
+                           synthetic_ids=self.synthetic_ids,
+                           faults_enabled=self.faults_enabled,
+                           timeout_s=self.timeout_s,
                            attempts=self.attempts, retry_base_s=self.retry_base_s,
                            max_retry_s=self.max_retry_s)
         fresh.seq = self.seq
@@ -811,6 +806,10 @@ def main(argv=None) -> int:
                     dest="synthetic_instance_ids",
                     help="advertise an INVENTED instance id even when --lxd-instance is "
                          "given: use only to demonstrate the fail-closed guard")
+    ap.add_argument("--no-faults", "--healthy", action="store_true", dest="no_faults",
+                    help="quiet mode: the synthetic nodes keep reporting HEALTHY "
+                         "telemetry at the normal cadence with no fault window driven, "
+                         "so the operator can inject exactly one fault from the console")
     args = ap.parse_args(argv)
 
     base = args.controller.rstrip("/")
@@ -860,12 +859,17 @@ def main(argv=None) -> int:
         NodeTicker(base, node_a, project_id, period_s=6.0, phase=0.0, high_ram=False,
                    instance_names=instances,
                    synthetic_ids=args.synthetic_instance_ids,
+                   faults_enabled=not args.no_faults,
                    timeout_s=args.telemetry_timeout),
         NodeTicker(base, node_c, project_id, period_s=6.0, phase=3.0, high_ram=True,
                    gpu=GPU_TELEMETRY, instance_names=instances,
                    synthetic_ids=args.synthetic_instance_ids,
+                   faults_enabled=not args.no_faults,
                    timeout_s=args.telemetry_timeout),
     ]
+    if args.no_faults:
+        print("[seed] quiet mode (--no-faults): synthetic nodes report HEALTHY "
+              "telemetry only; no fault window is driven.", flush=True)
     for t in tickers:
         t.start()
 
