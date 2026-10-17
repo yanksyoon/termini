@@ -1,0 +1,196 @@
+frame      : 02-node-health-real-fleet.png
+card step  : 02
+captured_at: 2026-10-17T20:26:32Z
+window     : 1280x1000 (Xvfb :99, headful Chromium, full window incl. browser chrome)
+url        : see address bar
+command    : python3 tools/capture-e2e-client.py
+
+WHAT IT PROVES
+after signing in through Settings the node-health panel lists the real registered fleet — node-a (compute, 2 vCPU) and node-c (8 vCPU, the inference host) — both online and reporting real hardware with no GPU, so these are not the seeder's synthetic rows
+
+--- signed in with ---
+Settings dialog (project token, sent in the Authorization header only)
+
+--- DOM read back ---
+{
+ "agents": "",
+ "agents_inference": "inference: not yet reported",
+ "apply_disabled": true,
+ "banner": "",
+ "chart_text": "",
+ "charts": 0,
+ "decider": "decider: unknown",
+ "decisions_count": "0 decisions",
+ "intent_result": "",
+ "log_count": "0 lines",
+ "log_state": "connecting\u2026",
+ "overview": "",
+ "pills": [
+  "nodes \u2014",
+  "agents \u2014",
+  "backend \u2014",
+  "stream \u2014"
+ ],
+ "terminal_hidden": true,
+ "url": "https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1&projectId=01J0DEM0WARM000000000000AB&dest=fleet"
+}
+
+--- GET /projects/{pid}/nodes (HTTP 200) ---
+{
+ "nodes": [
+  {
+   "capacity": {
+    "cpu_allocated": 1,
+    "cpu_cores": 2,
+    "cpu_free": 3,
+    "disk_allocated_gb": 8,
+    "disk_free_gb": 44,
+    "disk_gb": 57,
+    "disk_known": true,
+    "gpu_free": 0,
+    "ram_allocated_gb": 1,
+    "ram_free_gb": 4,
+    "ram_gb": 7
+   },
+   "hardware": {
+    "cpu": {
+     "cores": 2,
+     "model": "Intel(R) Xeon(R) CPU @ 2.80GHz",
+     "sockets": 1,
+     "threads": 2
+    },
+    "disks": [
+     {
+      "device": "/dev/root",
+      "health": "ok",
+      "size_bytes": 61285326848,
+      "type": "ssd"
+     }
+    ],
+    "gpus": [],
+    "memory": {
+     "total_bytes": 8319729664
+    }
+   },
+   "health": {
+    "cpu_util_pct": 0.0,
+    "degraded_reasons": [],
+    "disk_ok": true,
+    "gpu_ok": null,
+    "inference_ok": null,
+    "ram_used_pct": 40.9,
+    "services": [
+     {
+      "name": "termini-bootstrap",
+      "status": "running"
+     },
+     {
+      "name": "lxd",
+      "status": "running"
+     },
+     {
+      "name": "sshd",
+      "status": "running"
+     }
+    ]
+   },
+   "last_seen_at": "2026-10-17T20:26:26Z",
+   "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+   "registration_id": "ba1f1faeacb4501aed12cf8ea1e5713b",
+   "role": "compute",
+   "status": "online",
+   "synthetic": false,
+   "uptime_sec": 14064
+  },
+  {
+   "capacity": {
+    "cpu_allocated": 0,
+    "cpu_cores": 8,
+    "cpu_free": 16,
+    "disk_allocated_gb": 0,
+    "disk_free_gb": 52,
+    "disk_gb": 57,
+    "disk_known": true,
+    "gpu_free": 0,
+    "ram_allocated_gb": 0,
+    "ram_free_gb": 29,
+    "ram_gb": 31
+   },
+   "hardware": {
+    "cpu": {
+     "cores": 8,
+     "model": "Intel(R) Xeon(R) CPU @ 2.20GHz",
+     "sockets": 1,
+     "threads": 8
+    },
+    "disks": [
+     {
+      "device": "/dev/root",
+      "health": "ok",
+      "size_bytes": 61285326848,
+      "type": "ssd"
+     }
+    ],
+    "gpus": [],
+    "memory": {
+     "total_bytes": 33646968832
+    }
+   },
+   "health": {
+    "cpu_util_pct": 0.0,
+    "degraded_reasons": [],
+    "disk_ok": true,
+    "gpu_ok": null,
+    "inference_ok": null,
+    "ram_used_pct": 18.0,
+    "services": [
+     {
+      "name": "termini-bootstrap",
+      "status": "running"
+     },
+     {
+      "name": "lxd",
+      "status": "running"
+     },
+     {
+      "name": "sshd",
+      "status": "running"
+     },
+     {
+      "name": "llama-cpp",
+      "status": "running"
+     }
+    ]
+   },
+   "last_seen_at": "2026-10-17T20:26:27Z",
+   "node_id": "01M4ZQ7Q2J80ATY3K32PY3PPJH",
+   "registration_id": "33678f54a5e3e25cc03620b1bd2486e6",
+   "role": "compute",
+   "status": "online",
+   "synthetic": false,
+   "uptime_sec": 84105
+  }
+ ]
+}
+
+--- real vs synthetic ---
+{
+ "all_synthetic_false": true,
+ "cpu_cores": [
+  2,
+  8
+ ],
+ "gpus": [
+  [],
+  []
+ ],
+ "node_ids": [
+  "01M4TGD31WXH97JAA5S6A4R10D",
+  "01M4ZQ7Q2J80ATY3K32PY3PPJH"
+ ],
+ "returned_by_default": 2,
+ "role": [
+  "compute",
+  "compute"
+ ]
+}

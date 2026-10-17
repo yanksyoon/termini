@@ -1,0 +1,42 @@
+frame      : 13-post-reset-prompt-succeeds.png
+card step  : 11
+captured_at: 2026-10-17T20:58:51Z
+window     : 1280x1000 (Xvfb :99, headful Chromium, full window incl. browser chrome)
+url        : see address bar
+command    : python3 tools/capture-e2e-client.py
+
+WHAT IT PROVES
+the headline prompt "deploy 3 worker agents for coding plus a fast LLM" is accepted again after the reset (200 accepted, no rejection), so the reset left the fleet in a working state rather than merely freeing numbers
+
+--- raw response the page received (POST /intents, after the reset) ---
+null
+
+--- DOM read back ---
+{
+ "agents": "",
+ "agents_inference": "inference: not yet reported",
+ "apply_disabled": true,
+ "banner": "",
+ "chart_text": "",
+ "charts": 0,
+ "decider": "decider: unknown",
+ "decisions_count": "0 decisions",
+ "intent_result": "",
+ "log_count": "0 lines",
+ "log_state": "connecting\u2026",
+ "overview": "",
+ "pills": [
+  "nodes \u2014",
+  "agents \u2014",
+  "backend \u2014",
+  "stream \u2014"
+ ],
+ "terminal_hidden": true,
+ "url": "https://termini-510609.web.app/terminal/"
+}
+
+--- plan_id ---
+null
+
+--- note ---
+This is the same prompt validated again AFTER the reset, to prove the reset left the fleet usable. The plan is then released again so the demo is left clean for the next visitor (see the run log).

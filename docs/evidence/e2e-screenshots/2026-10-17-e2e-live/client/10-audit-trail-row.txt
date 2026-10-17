@@ -1,0 +1,95 @@
+frame      : 10-audit-trail-row.png
+card step  : 09
+captured_at: 2026-10-17T20:53:37Z
+window     : 1280x1000 (Xvfb :99, headful Chromium, full window incl. browser chrome)
+url        : see address bar
+command    : python3 tools/capture-e2e-client.py
+
+WHAT IT PROVES
+the audit row opens from the decision and names what executed: action_kind, the target instance, result=ok, executed_at, the LXD operation and the endpoint that was dialled, with the same row reproduced as raw JSON
+
+--- DOM read back ---
+{
+ "dialogs": [],
+ "json_blocks": [
+  "GET /v1/operator/decisions",
+  "/events",
+  "/audits"
+ ],
+ "url": "https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1&projectId=01J0DEM0WARM000000000000AB&dest=incidents"
+}
+
+--- GET /operator/audits?limit=3 (HTTP 200) — the raw rows behind the dialog ---
+{
+ "audits": [
+  {
+   "action_kind": "instance.restart",
+   "conversation_id": null,
+   "decision_id": "01M55T8DH380QES47818SMT8B3",
+   "detail": "operation Success: /1.0/operations/b162acb4-dcb1-421b-bda7-2ba1cc4799d1; action=restart; state Running -> Running",
+   "dry_run": 0,
+   "event_id": "01M55T8AD9Y02CRE9X727YMCDS",
+   "executed_at": "2026-10-17T20:53:32.245Z",
+   "id": "01M55T8FJXERACV4J23JGHZCQK",
+   "idempotency_key": "01M4TGD31WXH97JAA5S6A4R10D:oom-guard-01:instance.restart:demo-workload:22",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"restart\", \"force\": true, \"timeout\": 30}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/b162acb4-dcb1-421b-bda7-2ba1cc4799d1",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "oom-guard-01"
+  },
+  {
+   "action_kind": "instance.restart",
+   "conversation_id": null,
+   "decision_id": "01M55T889MC0HTZTVWMCZ4WCB3",
+   "detail": "operation Success: /1.0/operations/8617f16e-9a0e-471a-a203-ddfdce507b0f; action=restart; state Running -> Running",
+   "dry_run": 0,
+   "event_id": "01M55T887VTS78CTQ2SD40G05D",
+   "executed_at": "2026-10-17T20:53:30.000Z",
+   "id": "01M55T8ABDM4V1EHX8F08N5AEV",
+   "idempotency_key": "01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:demo-workload:3554",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"restart\", \"force\": true, \"timeout\": 30}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/8617f16e-9a0e-471a-a203-ddfdce507b0f",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "oom-guard-01"
+  },
+  {
+   "action_kind": "instance.restart",
+   "conversation_id": null,
+   "decision_id": "01M55T84609J6K9V6WTNDJ9Y8P",
+   "detail": "operation Success: /1.0/operations/236b58d9-fe15-4374-9240-ce7607a950ab; action=restart; state Running -> Running",
+   "dry_run": 0,
+   "event_id": "01M55T843MNXQZMJAP34TGQ4AB",
+   "executed_at": "2026-10-17T20:53:25.771Z",
+   "id": "01M55T868160GSEJ474M6KRBH8",
+   "idempotency_key": "01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:demo-workload:3553",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"restart\", \"force\": true, \"timeout\": 30}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/236b58d9-fe15-4374-9240-ce7607a950ab",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "oom-guard-01"
+  }
+ ]
+}
+
+--- finding ---
+The dashboard's audit dialog shows action, target, result, executed_at, the LXD method/path and the LXD endpoint it dialled (10.10.0.11:8443). The EXTERNAL destination for the model call (aiplatform.googleapis.com) is NOT part of the audit row: it lives on the operator log's externalModelCall line and in the decision trace. Recorded as a finding, not smoothed over.
