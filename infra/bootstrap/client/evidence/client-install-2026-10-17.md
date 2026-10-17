@@ -109,7 +109,7 @@ Artifacts at this commit (sha256, first 16 hex):
 | `infra/bootstrap/client/termini-node-install.sh` | `e38edc8d1f5be02e…` | the one-liner; **this PR** changes only the start call (`systemctl restart --no-block`, §7.4) |
 | `infra/bootstrap/client/termini-node-status.py` | `606a6398de5d2536…` | byte-identical to the copy the live controller serves |
 | `infra/bootstrap/client/issue-enrollment.py` | `2d1c4c7df43e51dd…` | provider half (loopback mint + handover) |
-| `infra/bootstrap/client/README.md` | `283d0ee4625b332b…` | the customer guide |
+| `infra/bootstrap/client/README.md` | `884c757ff5373d75…` | the customer guide |
 
 The controller under test serves the **pre-fix** installer
 (`sha256 801d67c9b061ea4a…` = `origin/main`'s copy), which is what §7.4's
