@@ -29,6 +29,7 @@ import json
 import os
 import pathlib
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -67,6 +69,65 @@ def _load_cfg(db_path: str):
     }
     with mock.patch.dict(os.environ, env, clear=False):
         return config.Config.load()
+
+
+def _mint_self_signed(dest: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+    """A throwaway server certificate/key for the stub LXD below (openssl, 1 day)."""
+    cert, key = dest / "stub-lxd-cert.pem", dest / "stub-lxd-key.pem"
+    subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", str(key), "-out", str(cert), "-days", "1",
+         "-subj", "/CN=termini-stub-lxd"],
+        check=True, capture_output=True, text=True, timeout=120,
+    )
+    return cert, key
+
+
+class StubNodeLxd:
+    """A TLS listener answering `GET /1.0`, standing in for the node's own LXD.
+
+    A node now REFUSES to register when its own LXD API does not answer
+    (`node-bootstrap.md` §9 row 14): that is the defect this guards, and a test that
+    wants the customer's enrollment flow to succeed has to present a listener, not
+    assume one. Real LXD serves HTTPS with its own self-signed certificate and this
+    stub does the same on an ephemeral port; the test points the daemon at it with
+    the documented `lxd_port` config key (`node-bootstrap.md` §13) instead of
+    depending on a host that happens to run LXD.
+    """
+
+    def __init__(self, cert_dir: str | pathlib.Path):
+        cert, key = _mint_self_signed(pathlib.Path(cert_dir))
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(cert), str(key))
+        stub = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):  # noqa: N802 — http.server's spelling
+                stub.paths.append(self.path)
+                body = json.dumps({"type": "sync", "status": "Success",
+                                   "status_code": 200, "metadata": {}}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format, *args):  # noqa: A002 — base's signature
+                return
+
+        self.paths: list[str] = []
+        self.server = ThreadingHTTPServer(("", 0), Handler)
+        self.server.socket = ctx.wrap_socket(self.server.socket, server_side=True)
+        self.port = self.server.server_address[1]
+        self._thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self._thread.join(timeout=10)
 
 
 class _ControllerCase(unittest.TestCase):
@@ -368,6 +429,18 @@ class FailureMessageTest(unittest.TestCase):
 class ClientEnrollmentEndToEndTest(_ControllerCase):
     """A node registers through the customer's credential, then reads itself back."""
 
+    def setUp(self):
+        super().setUp()
+        if shutil.which("openssl") is None:
+            self.skipTest("openssl is needed to mint the stub LXD's certificate")
+        # The node's own LXD API is a precondition of registration (§9 row 14):
+        # this test machine has no LXD, so present the listener the daemon proves
+        # before it enrolls. It must be a REAL answered listener, not a stub of the
+        # probe — the daemon's fail-closed path is exercised by
+        # tests/test_bootstrap_lxd_api.py.
+        self.stub_lxd = StubNodeLxd(self.tmp)
+        self.addCleanup(self.stub_lxd.close)
+
     def _installer(self, root: str, token: str):
         return subprocess.run(
             ["sh", str(INSTALLER), "--root", root, "--no-start",
@@ -382,10 +455,25 @@ class ClientEnrollmentEndToEndTest(_ControllerCase):
             "TERMINI_IDENTITY_DIR": os.path.join(root, "var/lib/termini/identity"),
             "TERMINI_STATE_PATH": os.path.join(root, "var/lib/termini/state.json"),
             "TERMINI_SPOOL_DIR": os.path.join(root, "var/lib/termini/telemetry"),
+            # Never let this subprocess repair a REAL LXD on the host running the
+            # suite: if the stub listener is somehow unreachable, the daemon's repair
+            # write must land on a path that does not exist (see the daemon's
+            # LXD_UNIX_SOCKETS), not on the host's own socket.
+            "TERMINI_LXD_UNIX_SOCKETS": os.path.join(root, "no-such-lxd.socket"),
         })
         return env
 
+    def _point_node_at_stub_lxd(self, root: str) -> None:
+        """Set the documented `lxd_port` config key at the stub listener's port."""
+        config_path = os.path.join(root, "etc/termini/config.yaml")
+        with open(config_path, encoding="utf-8") as fh:
+            text = fh.read()
+        if "lxd_port:" not in text:
+            with open(config_path, "w", encoding="utf-8") as fh:
+                fh.write(text.rstrip("\n") + f"\nlxd_port: {self.stub_lxd.port}\n")
+
     def _start_daemon(self, root: str):
+        self._point_node_at_stub_lxd(root)
         env = self._daemon_env(root)
         proc = subprocess.Popen([sys.executable, str(DAEMON)], env=env,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -423,6 +511,8 @@ class ClientEnrollmentEndToEndTest(_ControllerCase):
 
         daemon, state, env = self._start_daemon(root)
         self.assertEqual(state.get("state"), "ONLINE", state)
+        # ... and it got there by PROVING its own LXD API, not by assuming one.
+        self.assertIn("/1.0", self.stub_lxd.paths)
 
         # The credential is spent exactly once, by this registration.
         self.assertIsNotNone(self._token_state(token_1))
