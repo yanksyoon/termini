@@ -42,6 +42,10 @@ TERM_DIR = os.path.join(REPO_ROOT, "frontend", "terminal")
 # the operator pastes the token themselves, so an unauthenticated visitor can load
 # the page and do nothing with it (the controller answers 401/403).
 FAULT_DIR = os.path.join(HERE, "fault_console")
+# The demo fault page: one button per fault, each with a plain-language description
+# of what will be injected and how. Same operator-only stance as the console above
+# (no token injected; the operator pastes it and it lives in this tab only).
+DEMO_DIR = os.path.join(HERE, "fault_demo")
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -62,6 +66,7 @@ TERM_ANCHOR = '<script type="module" src="js/app.js"></script>'
 # window.__TERMINI_FAULT_DEFAULTS__. Controller URL + project id ONLY — the console
 # is useless (and must stay useless) without the operator typing the project token.
 FAULT_ANCHOR = '<script src="js/app.js"></script>'
+DEMO_ANCHOR = "<!-- __TERMINI_DEFAULTS__ -->"
 
 
 def _read(path: str) -> bytes:
@@ -120,6 +125,23 @@ class ConsoleConfig:
             text = text.replace(FAULT_ANCHOR, script + FAULT_ANCHOR, 1)
         else:  # anchor moved/renamed -> fail loud rather than serve a console that cannot talk
             raise RuntimeError("fault console index.html is missing the app.js anchor")
+        return text.encode("utf-8")
+
+    def demo_index_html(self, base_html: bytes) -> bytes:
+        """Return the demo fault page with the non-secret defaults injected.
+
+        Same contract as `fault_index_html`: apiBase + projectId only. The project
+        token is never written into the page; the operator pastes it and it stays in
+        the tab's sessionStorage.
+        """
+        defaults = {"apiBase": self.controller, "projectId": self.project}
+        script = ("<script>window.__TERMINI_FAULT_DEFAULTS__ = "
+                  + json.dumps(defaults) + ";</script>")
+        text = base_html.decode("utf-8")
+        if DEMO_ANCHOR in text:
+            text = text.replace(DEMO_ANCHOR, script, 1)
+        else:  # anchor moved/renamed -> fail loud rather than serve a page that cannot talk
+            raise RuntimeError("fault demo index.html is missing the __TERMINI_DEFAULTS__ anchor")
         return text.encode("utf-8")
 
     def terminal_index_html(self, base_html: bytes) -> bytes:
@@ -198,6 +220,15 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if norm.startswith("/terminal/"):
             return self._static(TERM_DIR, norm[len("/terminal/"):])
 
+        # demo fault page: one button per fault
+        if norm in ("/demo", "/demo/", "/demo/index.html"):
+            base = _read(os.path.join(DEMO_DIR, "index.html"))
+            return self._send(200, self.server.cfg.demo_index_html(base),
+                              "text/html; charset=utf-8")
+
+        if norm.startswith("/demo/"):
+            return self._static(DEMO_DIR, norm[len("/demo/"):])
+
         # operator-only fault console (controller-api.md §4.7)
         if norm in ("/console", "/console/", "/console/index.html"):
             base = _read(os.path.join(FAULT_DIR, "index.html"))
@@ -252,6 +283,7 @@ def main(argv=None) -> int:
     print(f"[console] terminal   : http://{host}:{port}/terminal/")
     print(f"[console] fault console (operator-only, project token required): "
           f"http://{host}:{port}/console/")
+    print(f"[console] demo faults : http://{host}:{port}/demo/")
     sys.stdout.flush()
     try:
         srv.serve_forever()
