@@ -188,8 +188,8 @@ each one a successful `PUT /1.0/instances/demo-workload/state` on node-a:
   operation Success: /1.0/operations/a7834ac7-7a3f-4cf2-a1b0-3aec6bb2d040; action=restart
 ```
 
-Full suite on the rebased branch: `python3 -m unittest discover -s tests` →
-**1050 tests, OK** (295 s).
+Full suite on the branch: `python3 -m unittest discover -s tests` →
+**1052 tests, OK** (262 s locally; CI `sanity` green on 511616f, 4m20s).
 
 ## 6. Security posture (unchanged)
 
