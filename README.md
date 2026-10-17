@@ -416,6 +416,9 @@ GO/NO-GO; this document does not assert one.
 - [`docs/ui-demo-walkthrough.md`](docs/ui-demo-walkthrough.md) — per-element walkthrough
   of the Fleet destination: what each chart, indicator and control is and where it
   comes from
+- [`docs/ui-demo-walkthrough-incidents.md`](docs/ui-demo-walkthrough-incidents.md) —
+  per-element walkthrough of the Incidents destination: the decision row, the record
+  (incident card, thinking log, breach, executed), and the click that loads it
 - [`docs/narrative.md`](docs/narrative.md) — positioning + the three proof points
 - [`docs/spec-answers.md`](docs/spec-answers.md) — judge-facing answers to the
   four open spec questions
