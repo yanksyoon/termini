@@ -1186,6 +1186,14 @@ class ControllerHandler(BaseHTTPRequestHandler):
         `404` (as is a malformed `plan_id` a `422`), never a crash. The commit row
         is soft-released, so the audit trail survives (this is why release, not a
         DB wipe, is the recovery path).
+
+        Release also TEARS DOWN what the plan materialised. Returning capacity
+        while leaving the containers RUNNING is a silent leak: the accounting says
+        the node is free, the node is not, and nothing in `GET /nodes` can show
+        it (found live on node-a, 2026-10-17). The teardown keys off exactly the
+        names `vm_allocations.vm_ids_json` recorded for this plan on each node —
+        never a pattern match — and is best-effort: per-instance failures are
+        reported (`failed[]`) and never abort the capacity release or the others.
         """
         self._require_project(conn, project_id)
         body = self._read_body()
@@ -1199,20 +1207,41 @@ class ControllerHandler(BaseHTTPRequestHandler):
         if reason is not None and (not isinstance(reason, str) or len(reason) > 200):
             raise errors.invalid_argument("reason must be a string of at most 200 chars")
 
+        # Read the LIVE rows BEFORE the soft-release: after it, `released_at` is
+        # set and the record of what to tear down is only historical. A repeat
+        # release therefore reads nothing here and deletes nothing a second time.
+        pending = store.live_allocation_rows(conn, project_id, plan_id=plan_id)
         result = store.release_allocations(
             conn, project_id, plan_id=plan_id, reason=reason or "released_by_user")
         if not result["had_commit"]:
             raise errors.not_found(f"no committed capacity for plan {plan_id}")
 
+        teardown = {"deleted": [], "failed": [], "unknown_instances": False}
+        if result["rows_released"]:
+            teardown = self._teardown_plan_instances(conn, pending)
+
         logs = getattr(self.server, "operator_logs", None)
         if logs is not None and result["rows_released"]:
             r = result["released"]
+            message = (f"released plan {plan_id}: {r['ram_allocated_gb']} GiB RAM, "
+                       f"{r['cpu_allocated']} vCPU returned to the pool")
+            if teardown["deleted"]:
+                message += "; tore down " + ", ".join(teardown["deleted"])
+            if not teardown["deleted"] and not teardown["unknown_instances"]:
+                message += "; no materialised instance recorded"
+            if teardown["failed"]:
+                message += (f"; {len(teardown['failed'])} instance(s) could NOT be "
+                            f"deleted: {', '.join(f['name'] for f in teardown['failed'])}")
+            if teardown["unknown_instances"]:
+                message += ("; vm_ids unknown (apply never recorded the instances) —"
+                            " check the node for leftovers")
             logs.append(
-                conn, project_id, severity="info", actor="human",
-                message=(f"released plan {plan_id}: {r['ram_allocated_gb']} GiB RAM, "
-                         f"{r['cpu_allocated']} vCPU returned to the pool"),
+                conn, project_id,
+                severity="warn" if (teardown["failed"] or teardown["unknown_instances"]) else "info",
+                actor="human", message=message,
                 remediation={"plan_id": plan_id, "released": r,
-                             "reason": reason or "released_by_user"},
+                             "reason": reason or "released_by_user",
+                             "teardown": teardown},
             )
         return 200, {
             "plan_id": plan_id,
@@ -1220,7 +1249,72 @@ class ControllerHandler(BaseHTTPRequestHandler):
             "released": result["released"],
             "rows_released": result["rows_released"],
             "released_at": result["released_at"],
+            "deleted": teardown["deleted"],
+            "failed": teardown["failed"],
+            "unknown_instances": teardown["unknown_instances"],
         }
+
+    def _teardown_plan_instances(self, conn, rows: list[dict]) -> dict:
+        """Delete the LXD instances a just-released plan recorded, best-effort.
+
+        `rows` are the plan's LIVE commits as read before the release; each names
+        the node the instances live on and the exact instance names recorded by
+        `_apply_plan` (`vm_ids_json`). Deletion is per instance through the
+        node's own LXD endpoint with `force=True` — a RUNNING instance cannot be
+        deleted otherwise, and a released plan's agents are typically still up.
+
+        Rules this follows, each of them learned from the leak it repairs:
+
+        * **Never guess a name.** Only recorded names are deleted. A name derived
+          from the plan id would delete an instance this controller did not create
+          (and `termini-<plan>-*` is a shape, not a proof of ownership).
+        * **Never abort the release.** Capacity is already back in the pool when
+          this runs; a container that refuses to die is collected in `failed[]`
+          with its LXD error and the remaining names are still attempted.
+        * **Never hide an unknown.** `vm_ids_json IS NULL` means apply was
+          interrupted before it recorded what it created, so the names cannot be
+          known: report `unknown_instances: true` rather than silently leaving a
+          container that no accounting can see.
+        * `already_applied` from the executor is LXD's 404 (the instance is
+          already gone) — the postcondition holds, so it counts as deleted.
+        """
+        deleted: list[str] = []
+        failed: list[dict] = []
+        unknown = False
+        cfg = self.server.cfg
+        for row in rows:
+            if not row.get("vm_ids_recorded"):
+                unknown = True
+                continue
+            names = row.get("vm_ids") or []
+            if not names:
+                continue
+            node = store.get_node(conn, row["node_id"])
+            if node is None:
+                for name in names:
+                    failed.append({"name": name, "node_id": row["node_id"],
+                                   "error": "node not found in this project; cannot delete"})
+                continue
+            try:
+                executor = op_target.executor_for_node(cfg, node)
+            except Exception as exc:  # noqa: BLE001 - teardown must not abort the release
+                for name in names:
+                    failed.append({"name": name, "node_id": row["node_id"],
+                                   "error": f"{type(exc).__name__}: {exc}"})
+                continue
+            for name in names:
+                try:
+                    r = executor.delete_instance(name, force=True)
+                except Exception as exc:  # noqa: BLE001
+                    failed.append({"name": name, "node_id": row["node_id"],
+                                   "error": f"{type(exc).__name__}: {exc}"})
+                    continue
+                if r.result in ("ok", "already_applied"):
+                    deleted.append(name)
+                else:
+                    failed.append({"name": name, "node_id": row["node_id"],
+                                   "error": r.detail or r.result})
+        return {"deleted": deleted, "failed": failed, "unknown_instances": unknown}
 
     def _decommission_node(self, conn, project_id: str, node_id: str) -> tuple[int, dict]:
         """POST /v1/projects/{pid}/nodes/{node_id}/decommission — retire a node.

@@ -438,8 +438,11 @@ preloaded on the node, never a registry pull (D3).
 
 #### POST /v1/projects/{project_id}/vms/release
 
-Release a plan's **committed capacity** back to its node's pool. This is the
-inverse of the §5.2 step 7 commit. Body:
+Release a plan's **committed capacity** back to its node's pool **and tear down the
+LXD instances the plan materialised**. This is the inverse of the §5.2 step 7
+commit, and the second half of it: capacity returned while the containers keep
+running is invisible to the accounting and leaks the node (found live on node-a,
+2026-10-17). Body:
 
 ```json
 { "plan_id": "01M4349RQ2P5DPC7K59W4WJCR", "reason": "stale_demo_state" }
@@ -452,7 +455,10 @@ Response `200 OK`:
   "status": "released",
   "released": { "cpu_allocated": 6, "ram_allocated_gb": 12, "disk_allocated_gb": 24 },
   "rows_released": 1,
-  "released_at": "2026-10-12T15:32:00Z" }
+  "released_at": "2026-10-12T15:32:00Z",
+  "deleted": [ "termini-01m4349rq2p5dp-0-0" ],
+  "failed": [],
+  "unknown_instances": false }
 ```
 
 Without this route, committed capacity was permanent: nothing decremented a
@@ -463,10 +469,24 @@ audit trail. `reason` is optional (≤200 chars); the default is `released_by_us
 
 - **Idempotent.** The commit row is *soft-released* (marked `released_at`), never
   deleted, so the audit trail survives. Releasing the same plan again finds no
-  live commitment and returns `200` with `"status": "already_released"` and a zero
-  `released` object — never a double decrement, never an error. The node's
-  `capacity.*_free` (and the §5.2 step 6 clamp) immediately reflect the returned
-  capacity.
+  live commitment and returns `200` with `"status": "already_released"`, a zero
+  `released` object and empty `deleted`/`failed` — never a double decrement, never
+  an error, and never a second delete. The node's `capacity.*_free` (and the §5.2
+  step 6 clamp) immediately reflect the returned capacity.
+- **Teardown.** The instances deleted are exactly the names `_apply_plan` recorded
+  on the plan's commit (`vm_allocations.vm_ids_json`) — per node, through that
+  node's own LXD endpoint, with `force=True` (a released plan's agents are
+  typically still RUNNING, and LXD refuses to delete a running instance).
+  `deleted[]` names what is now gone from the node (`termini-<plan>-<index>-<slot>`
+  names, or the plan's instance names); a container the plan did not record —
+  `demo-workload`, another plan's instance — is **never** touched, and names are
+  never derived by pattern-matching the plan id.
+- **Best-effort, never silent.** Capacity release is the primary effect and always
+  happens. A delete that fails does not abort the others or turn the response into
+  a `5xx`: its name and the LXD error go into `failed[]` (`{name, node_id, error}`)
+  and the operator log names them. A plan whose `vm_ids_json` is `NULL` (apply
+  interrupted before it recorded anything) answers `unknown_instances: true` —
+  the leftovers are not guessable, so they are reported instead of hidden.
 - A `plan_id` that never committed anything is `404 NOT_FOUND`; a missing or
   malformed `plan_id` is `422 INVALID_ARGUMENT`. Neither crashes.
 - A plan committed but never applied may be released with this route; the *automatic*
@@ -1164,10 +1184,11 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
 7. **Commit**: allocate capacity for accepted/clamped `agent_vm` classes (the
    `inference_vm` reference class reserves no GPU/VM capacity), append the
    `guardrail_audit` record, and return the `AllocationPlan`. A committed class
-   releases its capacity when its materialisation fails, when the plan is released
-   (`POST …/vms/release`), when its node is decommissioned, or automatically when
-   its materialised instances are gone (`POST …/vms/reconcile`); the commit row is
-   soft-released, so the audit trail survives.
+   releases its capacity — and, for an explicit release, tears down the LXD
+   instances its apply recorded — when its materialisation fails, when the plan is
+   released (`POST …/vms/release`), when its node is decommissioned, or
+   automatically when its materialised instances are gone (`POST …/vms/reconcile`);
+   the commit row is soft-released, so the audit trail survives.
 
 ### 5.3 Reject vs clamp — reference table
 
