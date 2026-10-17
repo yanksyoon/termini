@@ -183,8 +183,10 @@ HEALTH (your node, read with your node's own credential)
 
 The `--json` form (identity + samples, the node's own token only) is
 [`item2-status-client-view-json.txt`](raw-2026-10-17/item2-status-client-view-json.txt);
-the node tokens in it are redacted in the committed copy — they are live
-credentials and that proof node has since been decommissioned.
+it was captured on the earlier `verif-e2e` proof node
+(`01M54063FK6ZK8SPS5ZCNDW9A4`) rather than this one, so the ids differ. The node
+tokens in it are redacted in the committed copy — they are live credentials, and
+that proof node has since been decommissioned.
 
 **In the dashboard** (`https://termini-510609.web.app`, pointed at the live
 controller), with the node's `node_id` + `node_token` pasted into the **Your
@@ -244,8 +246,13 @@ visible in the UI.
 
 ## 6. Acceptance (b) — a re-run reuses the identity and burns no second token
 
+Re-run on an **already-registered** machine (the `verif-e2e` container, which had
+registered as `01M54063FK6ZK8SPS5ZCNDW9A4`; the property is a property of the
+installer not touching `/var/lib/termini/identity/node.json`, so it is the same on
+any machine):
+
 ```
-$ <the same one-liner> --controller https://34-93-190-64.sslip.io --token <CRED3> --name verif-item1
+$ <the same one-liner> --controller https://34-93-190-64.sslip.io --token <CRED3> --name verif-e2e
 [termini-node-install] this machine is already registered as node_id=01M54063FK6ZK8SPS5ZCNDW9A4 — reusing its persisted identity
 [termini-node-install] the enrollment credential you supplied is NOT used and is NOT consumed
 [termini-node-install]   (enrollment credentials are single-use; this node never needs another)
@@ -260,6 +267,10 @@ CRED2 (item 1) -> USED by 01M54063FK6ZK8SPS5ZCNDW9A4 at 03:58:42Z
 CRED3 (item 3) -> UNUSED   (identity reused, no second token burned)
 bootstrap_tokens minted/unused/used = 83 / 5 / 78   (unchanged across the re-run)
 ```
+
+`CRED2` is the credential that machine burned when it first registered (03:58:42Z —
+the timestamp in the `already registered` line above); `CRED3` is the one supplied
+to the re-run and it stayed unused.
 
 Full file: [`item3-rerun-same-machine.txt`](raw-2026-10-17/item3-rerun-same-machine.txt).
 This is the same property the seeder card requires, and it is a property of the
