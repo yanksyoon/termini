@@ -63,6 +63,11 @@ class StubLxd:
         # a switch to force every create to fail (the failure-semantics path).
         self.instances: dict[str, dict] = {}
         self.fail_create = False
+        # Teardown surface (#t_28ab1be5): instance names whose DELETE answers a
+        # real LXD 500 (device busy) and leaves the instance in place, so a test
+        # can prove a per-instance teardown failure is reported and does not abort
+        # the rest of the release.
+        self.fail_delete: set[str] = set()
         # State-change surface (the single, capitalised state map).
         self.instance_states: dict[str, str] = {}
         self.default_state = "Running"
@@ -228,6 +233,12 @@ class StubLxd:
                 stub.requests.append(("DELETE", self.path, None))
                 if self.path.startswith("/1.0/instances/"):
                     name = self.path.rsplit("/", 1)[-1]
+                    if name in stub.fail_delete:
+                        # A real LXD refuses some deletes (device busy); the
+                        # instance stays, so the caller must report it.
+                        self._send(500, {"type": "error", "error_code": 500,
+                                         "error": f"cannot delete instance {name!r}: device busy"})
+                        return
                     stub.instances.pop(name, None)
                     stub.instance_states.pop(name, None)
                 self._send(200, {"type": "sync", "status_code": 200, "metadata": {}})
@@ -309,6 +320,11 @@ class StubLxd:
     def create_requests(self) -> list[tuple[str, str, dict | None]]:
         """POST /1.0/instances requests (the materialisation calls)."""
         return [r for r in self.requests if r[0] == "POST" and r[1] == "/1.0/instances"]
+
+    def delete_requests(self) -> list[tuple[str, str, dict | None]]:
+        """DELETE /1.0/instances/{name} requests (the teardown calls)."""
+        return [r for r in self.requests if r[0] == "DELETE" and
+                r[1].startswith("/1.0/instances/")]
 
     def exec_requests(self, instance: str | None = None) -> list[tuple[str, str, dict | None]]:
         """Exec calls made inside an instance (the agent task transport)."""

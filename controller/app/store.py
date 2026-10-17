@@ -642,6 +642,48 @@ def live_allocations(conn, project_id: str) -> list[dict]:
     return out
 
 
+def live_allocation_rows(conn, project_id: str, *, plan_id: str | None = None,
+                         node_id: str | None = None) -> list[dict]:
+    """Committed-capacity rows still claiming an instance, per node/plan.
+
+    Same LIVE filter as `live_allocations`, but keeps the two facts a *teardown*
+    needs and `live_allocations` cannot express:
+
+    * `node_id` — the node the instances were materialised on, so the teardown can
+      address that node's own LXD endpoint;
+    * `vm_ids_recorded` — whether `vm_ids_json` is NOT NULL, i.e. whether the
+      apply path ever wrote down what it created.
+
+    The distinction is the difference between "recorded, and there is nothing to
+    delete" (`vm_ids` empty, `vm_ids_recorded` true) and "we do not know what this
+    plan materialised" (`vm_ids_recorded` false — an apply interrupted before it
+    recorded anything). Teardown must report the second case, never guess names
+    and never silently ignore it: a leftover container nobody accounted for is
+    exactly the leak this helper exists to make visible.
+    """
+    where = ["project_id = ?"]
+    args: list[Any] = [project_id]
+    if plan_id is not None:
+        where.append("plan_id = ?")
+        args.append(plan_id)
+    if node_id is not None:
+        where.append("node_id = ?")
+        args.append(node_id)
+    rows = conn.execute(
+        "SELECT * FROM vm_allocations WHERE " + " AND ".join(where) +
+        " AND released_at IS NULL ORDER BY created_at",
+        args,
+    ).fetchall()
+    out: list[dict] = []
+    for r in rows:
+        d = dict(r)
+        raw = d.pop("vm_ids_json", None)
+        d["vm_ids"] = json.loads(raw) if raw else []
+        d["vm_ids_recorded"] = raw is not None
+        out.append(d)
+    return out
+
+
 def release_allocations(conn, project_id: str, *, plan_id: str | None = None,
                         node_id: str | None = None, reason: str | None = None,
                         now: str | None = None) -> dict:
