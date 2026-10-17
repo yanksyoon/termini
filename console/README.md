@@ -84,6 +84,21 @@ reproduces the timeout, and asserts the ticker survives it, that an unguarded ca
 really does kill a thread, and that the watchdog respawns a dead ticker and reports
 a silent one.
 
+## Demo fault page (`/demo/`)
+
+`console/fault_demo/` is the one-button demo surface: one card per fault, each stating **what you will see**,
+**how it is injected**, and **the expected resolution**, with a duration choice and a single *Inject fault* button.
+It reads the same operator-only endpoints as the console (`GET/POST/DELETE /v1/projects/{pid}/demo/faults`), keeps the
+project token in the tab's `sessionStorage`, and is served without a token by `console/serve.py`.
+The node picker defaults to a real node; choosing a synthetic one is labelled as such and the `target` field is sent to
+match the node's provenance (the controller refuses a mismatch). While an injection is open the card shows the samples
+written and a *Clear now* button; a cleared injection reads `recovering` until the rule's healthy samples re-arm it.
+
+```bash
+python3 console/serve.py --controller https://your-controller --project <project_id> --port 8090
+# demo faults: http://127.0.0.1:8090/demo/   (open it on the tailnet/host the audience can reach)
+```
+
 ## Operator fault console (`/console/`)
 
 `console/fault_console/` is the **operator-only** control surface for demo faults

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Termini — inject a fault</title>
+<!-- __TERMINI_DEFAULTS__ -->
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#12161b; --panel2:#171c23; --line:#242b34; --ink:#e7ecf2;
+    --muted:#8b97a6; --ok:#3ddc97; --warn:#ffb020; --err:#ff5c5c; --accent:#6ea8fe;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line)}
+  header h1{font-size:16px;margin:0;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  main{max-width:1080px;margin:0 auto;padding:20px}
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--panel);
+       border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:16px}
+  input,select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+               border-radius:8px;padding:8px 10px;font:inherit}
+  input[readonly]{color:var(--muted)}
+  button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);
+         background:var(--panel2);color:var(--ink);padding:8px 12px}
+  button:hover{border-color:#38424f}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:var(--accent);color:#08111f;border-color:transparent;font-weight:600}
+  .status{font-size:12px;color:var(--muted)}
+  .status.ok{color:var(--ok)} .status.err{color:var(--err)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px}
+  .fault{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;
+         display:flex;flex-direction:column;gap:10px}
+  .fault h2{margin:0;font-size:17px}
+  .rule{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--muted)}
+  .fault p{margin:0;color:#c3ccd8;font-size:13px}
+  .fault p b{color:var(--ink)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .pill{border-radius:999px;padding:4px 10px;font-size:12px;border:1px solid var(--line);
+        color:var(--muted);cursor:pointer;background:transparent}
+  .pill.on{border-color:var(--accent);color:var(--accent)}
+  .go{padding:12px 18px;font-size:15px}
+  .active{border-color:var(--warn);background:#1d1809}
+  .active .badge{color:var(--warn);font-weight:600}
+  .badge{font-size:12px}
+  .log{margin-top:16px;color:var(--muted);font-size:12px;font-family:ui-monospace,Menlo,monospace;
+       white-space:pre-wrap;max-height:160px;overflow:auto}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .warnline{color:var(--warn);font-size:12px}
+  footer{padding:10px 20px 30px;color:var(--muted);font-size:12px;max-width:1080px;margin:0 auto}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Termini · inject a fault</h1>
+  <span class="sub">one button per fault — the operator sees it like the real thing</span>
+  <span class="spacer"></span>
+  <span id="conn" class="status">not connected</span>
+</header>
+
+<main>
+  <div class="bar">
+    <label class="status" for="token">project token</label>
+    <input id="token" type="password" placeholder="paste project_token" size="28" autocomplete="off" />
+    <button id="connect" class="primary">Connect</button>
+    <span class="spacer"></span>
+    <label class="status" for="node">node</label>
+    <select id="node" disabled><option>—</option></select>
+  </div>
+  <div id="nodehint" class="hint"></div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="bar" style="margin-top:16px">
+    <button id="clearall">Clear all injections</button>
+    <span class="spacer"></span>
+    <span class="status" id="pollline">—</span>
+  </div>
+
+  <details style="margin-top:8px">
+    <summary class="status">API log</summary>
+    <div id="log" class="log"></div>
+  </details>
+</main>
+
+<footer>
+  Operator-only surface: the controller accepts this only with the project token, and refuses it from a node
+  credential. An injection writes <em>synthetic telemetry</em> into the same sample table real telemetry uses —
+  it does not stress the machine. The AI operator cannot tell the difference; you can.
+</footer>
+
+<script>
+(() => {
+  "use strict";
+  const D = window.__TERMINI_FAULT_DEFAULTS__ || {};
+  const q = new URLSearchParams(location.search);
+  const apiBase = (q.get("apiBase") || D.apiBase || "").replace(/\/v1\/?$/, "");
+  const projectId = q.get("projectId") || D.projectId || "";
+  const TOKEN_KEY = "termini.faultDemo.token";
+
+  const $ = (id) => document.getElementById(id);
+  const logEl = $("log");
+  let token = sessionStorage.getItem(TOKEN_KEY) || "";
+  let nodes = [];
+  let scenarios = [];
+  let active = [];
+  const durChoice = {};  // scenario -> chosen duration_s, kept across re-renders
+
+  const FAULTS = {
+    oom: {
+      title: "Memory exhaustion (OOM)",
+      rule: "oom-guard-01",
+      dur: 60,
+      sees: "Host RAM climbs to ~96% of total and holds. The rule needs <b>2 consecutive samples at or above 95%</b>, so it fires about two seconds in.",
+      how: "Once a second the controller's fault driver writes a faulted sample into the same table real telemetry uses: ram_used ≈ 96% of ram_total, swap in use, OOM kill counters rising. Nothing on the machine is stressed — the sample stream is.",
+      expect: "The operator restarts the one leaking instance (a reversible action). RAM falls back under threshold and the rule re-arms after 3 healthy samples. It must not stop or delete anything."
+    },
+    "disk-fail": {
+      title: "Disk remounted read-only",
+      rule: "disk-fail-01",
+      dur: 45,
+      sees: "A disk reports <b>mount_ro = true</b> in the next sample. One sample fires the rule — this one is not a trend, it is a state.",
+      how: "Once a second the driver writes samples where the mount is read-only and its write path is failing, exactly as an EXT4 remount-ro after an I/O error looks from the node.",
+      expect: "The operator stops the workload before more writes land on a dead disk, and then must <b>not</b> put it back on that disk. Stopping is the correct call here — that contrast with the OOM case is the point."
+    }
+  };
+
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const log = (label, obj) => {
+    const text = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    logEl.textContent = `[${new Date().toLocaleTimeString()}] ${label}\n${text}\n\n` + logEl.textContent;
+  };
+  const setConn = (text, cls) => { const n = $("conn"); n.textContent = text; n.className = "status " + (cls || ""); };
+
+  async function api(method, path, body) {
+    const res = await fetch(`${apiBase}/v1/projects/${projectId}${path}`, {
+      method,
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await res.text();
+    let parsed = null;
+    try { parsed = text ? JSON.parse(text) : null; } catch (_) { parsed = { raw: text }; }
+    log(`${method} ${path} -> ${res.status}`, parsed);
+    if (!res.ok) {
+      const msg = (parsed && parsed.error && parsed.error.message) || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+    return parsed;
+  }
+
+  function selectedNode() { return nodes.find((n) => n.node_id === $("node").value) || nodes[0]; }
+  // The server decides what is still driving samples: `open` stays true only while
+  // the injector is writing. `recovering` means cleared and waiting for the rule's
+  // healthy samples to re-arm — not an active injection, and injectable again.
+  const isOpen = (a) => (a.open !== undefined ? !!a.open : a.state === "active");
+
+  function render() {
+    const grid = $("grid");
+    grid.innerHTML = "";
+    for (const sc of scenarios) {
+      const f = FAULTS[sc];
+      const node = selectedNode();
+      const rule = f ? f.rule : sc + "-01";
+      const open = active.find((a) => isOpen(a) && a.scenario === sc && node && a.node_id === node.node_id);
+      const last = active.find((a) => a.scenario === sc && node && a.node_id === node.node_id);
+      const card = document.createElement("div");
+      card.className = "fault" + (open ? " active" : "");
+      card.innerHTML = `
+        <h2>${esc(f ? f.title : sc)}</h2>
+        <div class="rule">rule ${esc(rule)} · scenario “${esc(sc)}”</div>
+        <p><b>What you will see.</b> ${f ? f.sees : "See the injection table in controller-api.md §4.7."}</p>
+        <p><b>How it is injected.</b> ${f ? f.how : "The controller's fault driver writes faulted telemetry samples for the scenario."}</p>
+        <p><b>Expected resolution.</b> ${f ? f.expect : "Defined by the operator playbook for this rule."}</p>
+        <div class="row" data-dur="${esc(sc)}">
+          <span class="status">duration</span>
+          ${[30, 60, 120].map((d) => `<button class="pill${d === (durChoice[sc] || (f ? f.dur : 60)) ? " on" : ""}" data-sec="${d}">${d}s</button>`).join("")}
+        </div>
+        <div class="row">
+          <button class="primary go" ${open ? "disabled" : ""}>${open ? "Injection active" : "Inject fault"}</button>
+          <span class="badge">${open ? `active · ${open.samples_written} samples` : (last && last.state === "recovering" ? `cleared · recovering (${last.samples_written} samples written, awaiting healthy samples)` : "")}</span>
+          ${open ? `<span class="spacer"></span><button data-clear="${esc(open.injection_id)}">Clear now</button>` : ""}
+        </div>`;
+      const durRow = card.querySelector("[data-dur]");
+      durRow.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-sec]");
+        if (!b) return;
+        durRow.querySelectorAll("[data-sec]").forEach((x) => x.classList.toggle("on", x === b));
+        durChoice[sc] = Number(b.getAttribute("data-sec"));
+      });
+      card.querySelector("button.go").addEventListener("click", () => inject(sc, card));
+      const clear = card.querySelector("[data-clear]");
+      if (clear) clear.addEventListener("click", () => clearOne(clear.getAttribute("data-clear")));
+      grid.appendChild(card);
+    }
+  }
+
+  async function inject(scenario, card) {
+    const node = selectedNode();
+    if (!node) return;
+    const dur = Number(card.querySelector(".pill.on")?.getAttribute("data-sec") || durChoice[scenario] || 60);
+    durChoice[scenario] = dur;
+    const target = node.synthetic ? "synthetic" : "real";
+    try {
+      const out = await api("POST", "/demo/faults", { node_id: node.node_id, scenario, duration_s: dur, target });
+      log("injected", `${out.injection_id} · ${scenario} on ${out.node_registration_id || node.node_id} for ${dur}s`);
+      await refresh();
+    } catch (e) {
+      log("inject refused", e.message);
+      $("pollline").textContent = "refused: " + e.message;
+      $("pollline").className = "status err";
+    }
+  }
+
+  async function clearOne(id) {
+    try { await api("DELETE", `/demo/faults/${encodeURIComponent(id)}?reason=demo_console_clear`); await refresh(); }
+    catch (e) { log("clear failed", e.message); }
+  }
+
+  async function refresh() {
+    try {
+      const f = await api("GET", "/demo/faults");
+      scenarios = f.scenarios || scenarios;
+      active = f.faults || [];
+      const open = active.filter(isOpen);
+      $("pollline").textContent = `${open.length} open injection${open.length === 1 ? "" : "s"} · ${scenarios.length} scenarios offered`;
+      $("pollline").className = "status";
+      render();
+    } catch (e) {
+      $("pollline").textContent = "refresh failed: " + e.message;
+      $("pollline").className = "status err";
+    }
+  }
+
+  async function connect() {
+    token = $("token").value.trim() || token;
+    if (!token) { setConn("paste the project token first", "err"); return; }
+    sessionStorage.setItem(TOKEN_KEY, token);
+    try {
+      const n = await api("GET", "/nodes?include=synthetic");
+      nodes = n.nodes || [];
+      const f = await api("GET", "/demo/faults");
+      scenarios = f.scenarios || [];
+      active = f.faults || [];
+      const sel = $("node");
+      sel.innerHTML = "";
+      for (const nd of nodes) {
+        const o = document.createElement("option");
+        o.value = nd.node_id;
+        o.textContent = `${nd.registration_id || nd.node_id.slice(-6)} · ${nd.role}${nd.synthetic ? " · synthetic" : ""} · ${nd.status}`;
+        sel.appendChild(o);
+      }
+      const firstReal = nodes.find((nd) => !nd.synthetic);
+      if (firstReal) sel.value = firstReal.node_id;
+      sel.disabled = false;
+      sel.onchange = () => { hint(); render(); };
+      setConn(`connected · ${nodes.length} nodes · ${scenarios.length} scenarios`, "ok");
+      hint();
+      render();
+      const openNow = active.filter(isOpen).length;
+      $("pollline").textContent = `${openNow} open injection${openNow === 1 ? "" : "s"} · ${scenarios.length} scenarios offered`;
+      $("pollline").className = "status";
+      if (!refreshTimer) refreshTimer = setInterval(() => { if (!document.hidden) refresh(); }, 3000);
+    } catch (e) {
+      setConn("connect failed: " + e.message, "err");
+    }
+  }
+
+  function hint() {
+    const nd = selectedNode();
+    $("nodehint").innerHTML = !nd ? "" :
+      nd.synthetic
+        ? `This node reports <b>synthetic</b> telemetry (demo fleet). Injections here are labelled synthetic and the target is refused if it does not match the node's provenance.`
+        : `Real node <b>${esc(nd.registration_id || nd.node_id)}</b> — injections here write into its live telemetry window.`;
+  }
+
+  let refreshTimer = null;
+  $("token").value = token;
+  $("connect").addEventListener("click", connect);
+  $("clearall").addEventListener("click", async () => {
+    try { await api("POST", "/demo/faults/clear", { reason: "demo_console_clear_all" }); await refresh(); }
+    catch (e) { log("clear all failed", e.message); }
+  });
+  if (token) connect();
+
+  // sanity: never fire against a page we could not configure
+  if (!apiBase || !projectId) {
+    setConn("this page needs console/serve.py (apiBase + projectId are injected)", "err");
+  }
+})();
+</script>
+</body>
+</html>
