@@ -8,31 +8,47 @@ should be able to read this page and reach every required deliverable.
 
 ## 1. Category specification (required)
 
-> **Problem statement: Manufacturing — Intelligent Operations & Industrial Efficiency**
+> **Problem statement: Future of Work & Enterprise Productivity**
 
 **Why this theme, in the competition's own words.** The theme asks for solutions
-that *"demonstrate how AI can transform operational data into meaningful insights,
-recommendations, or actions"* across industrial operations, addressing *"efficiency,
-quality, reliability"*. Termini does exactly that and nothing else: it takes live
-machine telemetry, has a model reason over it, and turns it into a **remediated
-action on the infrastructure** — not a dashboard, not a recommendation someone
-still has to act on.
+that *"transform how individuals and organizations access knowledge, collaborate,
+make decisions, and complete everyday work"* and show *"meaningful improvements in
+productivity, efficiency, knowledge accessibility, or workflow execution."* That is
+Termini's customer and Termini's job almost literally: a twelve-person clinic
+answers its phones, reconciles insurance claims, finds the answer to "how did we do
+this last time?", and produces its own management reports — with AI, on hardware it
+owns, and without a single record leaving the building.
 
-The industrial-operations reading is deliberate. Termini's operator is a **day-2
-reliability engineer for an on-premise fleet**: it watches memory, disk, GPU and
-inference health, and when a resource crosses a threshold it diagnoses the fault
-and executes the fix. Every remedy is written to an audit record. The same loop
-applies to a factory-floor cluster, an edge inference node, or a lab appliance —
-anywhere operational data must stay on the premises.
+**Why not Manufacturing.** v1 was filed under *Manufacturing — Intelligent
+Operations & Industrial Efficiency*, which the page scopes to "manufacturing and
+industrial operations." Termini's deliverables are industrial-grade — bootstrap,
+day-2 remediation, a fail-closed governance boundary — but **the buyer in this
+submission is a small organisation, not a factory**. Filing a clinic's operating
+model under Manufacturing described our buyer as something they are not. The
+operational loop is unchanged: telemetry in, a model reasons over it, an action
+comes out, the action is audited.
+
+**The work being transformed.** Termini turns bare, on-premise hardware into a
+self-operating AI fleet: a cloud control plane registers and joins the node on
+day-0, a governed AI operator watches and remediates it on day-2, and the data
+boundary is enforced (C2 never egresses) rather than asserted. The productivity
+claim is the one the clinic already proved by hand: **the work that used to be
+done by an extra hire, an accountant and a handful of SaaS subscriptions runs on the box
+in the back room** — except that nobody has to spend six months of evenings
+building it.
 
 ### Who benefits
 
-Operators who **cannot send their operational data to a SaaS cloud**: regulated
-manufacturers, national-infrastructure labs, and small industrial teams with no SRE
-bench. Today those teams either ship telemetry off-site (losing the governance
-argument) or run unmonitored and let failures page a human at 3am. Termini gives
-them day-0 bring-up and day-2 self-healing **without the data leaving**, and the
-governance boundary is an enforceable, checkable property rather than a claim.
+Two sides of the same market:
+
+1. **Small and mid-sized organisations that hold governance-sensitive data** —
+   clinics and practices, professional-services firms, workshops, local
+   manufacturers, public institutions. They either ship their data to a SaaS
+   cloud (losing the governance argument) or run unmonitored and page a human at
+   3am. They have no SRE bench, and they are the majority of the economy.
+2. **Hardware owners** — colocation, edge and private-cloud operators who already
+   own the metal and the power, and cannot sell it as AI because they cannot staff
+   the operations. Termini is the layer that makes their hardware sellable.
 
 ---
 
@@ -40,7 +56,7 @@ governance boundary is an enforceable, checkable property rather than a claim.
 
 | # | Requirement (competition wording) | Artifact | Status |
 |---|---|---|---|
-| 1 | **Clear proposal** — "a deck/PPT converted into a PDF", stating problem, benefit, feasibility and scalability | [`deck/termini-demo-deck.pdf`](deck/termini-demo-deck.pdf) (15 slides, 16:9) — source [`deck/index.html`](deck/index.html) | ✅ ready |
+| 1 | **Clear proposal** — "a deck/PPT converted into a PDF", stating problem, benefit, feasibility and scalability | [`deck/v2/termini-deck-v2.pdf`](deck/v2/termini-deck-v2.pdf) (18 slides, 16:9) — source [`deck/v2/index.html`](deck/v2/index.html). v1 kept at [`deck/termini-demo-deck.pdf`](deck/termini-demo-deck.pdf) | ✅ ready |
 | 2 | **Functional prototype** — "working prototype using Google Cloud's AI tools & deployed on Cloud Run/GCP/Firebase" | Live on GCP — links in §3, evidence in §4 | ✅ deployed |
 | 3 | **Comprehensive documentation** — "a link to a public YouTube/Vimeo video or public Google Drive link (3 minutes) showcasing your AI creation in action" | [`docs/video-script-3min.md`](docs/video-script-3min.md) — shot-by-shot script | ⚠️ **script ready; the recorded video + public link is a human step — see §5** |
 | 4 | **Category specification** | §1 above | ✅ stated |
@@ -49,7 +65,8 @@ governance boundary is an enforceable, checkable property rather than a claim.
 > "(Healthcare, Education, Sustainability, Accessibility, Social Good)", which does
 > not match the six challenge themes listed on the same page. We have followed the
 > **challenge themes** list and named the theme verbatim:
-> *Manufacturing — Intelligent Operations & Industrial Efficiency*.
+> *Future of Work & Enterprise Productivity*. (v1 named *Manufacturing —
+> Intelligent Operations & Industrial Efficiency*; see §1 for why v2 changed.)
 
 ---
 
@@ -259,14 +276,14 @@ than an honest gap for a judge.
 
 | Criterion | Where |
 |---|---|
-| Meaningful use of Gen AI | §4 — the model *decides* the remediation; it is not a chatbot bolted onto a dashboard. Slide 12 of the deck. |
+| Meaningful use of Gen AI | §4 — the model *decides* the remediation; it is not a chatbot bolted onto a dashboard. Deck slide 16 (Gemini decides, Gemma stays home). |
 | Technical implementation | Live GCP deployment (§3); repo test suite; `docs/architecture.md`; acceptance commands in the README. |
-| Scalability & sustainability | Deck slide 13 (roadmap); Fleet HA/storage path; model-agnostic serving — the product is ops + governance, not the weights. |
-| Problem alignment | §1 — operational data → **actions**, not just insights. |
+| Scalability & sustainability | Deck slide 17 (roadmap) and slide 12 (how it lands); Fleet HA/storage path; model-agnostic serving — the product is ops + governance, not the weights. |
+| Problem alignment | §1 and deck slides 3–5 — the adoption paradox (MIT NANDA, McKinsey) and the three gates; operational data → **actions**, not just insights. |
 | Potential impact | §1 "Who benefits". |
-| Originality & differentiation | Deck slide 5 — same delegation as SaaS observability, opposite data flow. |
-| Innovation in Gen AI use | Grammar-constrained decoding as the safety mechanism: the model *can't* emit an out-of-policy action, rather than being filtered after the fact. |
-| Usability & accessibility | Browser-first dashboard, no install; SSH access via short-lived certificates, no passwords to manage. |
+| Originality & differentiation | Deck slide 6 — same delegation as SaaS observability, opposite data flow, with Datadog and Samsung × Mistral as evidence that the boundary is already being bought at the top of the market; slide 7 — the plural-intelligence thesis, argued and conceded on slide 9. |
+| Innovation in Gen AI use | Deck slide 11 — grammar-constrained decoding as the safety mechanism: the model *can't* emit an out-of-policy action, rather than being filtered after the fact. |
+| Usability & accessibility | Deck slide 10 — bare node to running agents with no install and no specialist; browser-first dashboard; SSH access via short-lived certificates, no passwords to manage. |
 | Experience & integration | One loop spanning bootstrap → telemetry → decision → execution → audit, on one screen. |
 
 ---
@@ -276,7 +293,7 @@ than an honest gap for a judge.
 | Path | What |
 |---|---|
 | [`README.md`](README.md) | Product + deployed-stack overview, quickstart, verification |
-| [`deck/`](deck/README.md) | Proposal deck (HTML source + PDF export) |
+| [`deck/v2/`](deck/v2/index.html) | Proposal deck v2 — 18 slides, HTML source + CDP-rendered PDF (`termini-deck-v2.pdf`); v1 kept at `deck/index.html` |
 | [`docs/architecture.md`](docs/architecture.md) | Frozen architecture, contracts index, R1–R24 answers |
 | [`docs/contracts/governance.md`](docs/contracts/governance.md) | The C0/C1/C2 boundary and the external-model rule |
 | [`docs/contracts/operator-decision.md`](docs/contracts/operator-decision.md) | The decision step's contract |

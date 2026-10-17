@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Termini AI-Infra — The Dentist's Server Room (Deck v2)</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --surface: #121820;
+    --surface-2: #18222d;
+    --line: #24303d;
+    --text: #e8eef5;
+    --muted: #93a1b0;
+    --accent: #54e0c8;
+    --accent2: #6ea8ff;
+    --warn: #f0b04a;
+    --danger: #ff6b6b;
+    --good: #57d98a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #05070a; }
+
+  .deck { width: 1280px; height: 720px; position: relative; transform-origin: top left; }
+  .slide {
+    width: 1280px; height: 720px; position: relative; overflow: hidden;
+    background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(84,224,200,0.08), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(110,168,255,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    padding: 52px 64px 44px;
+    display: flex; flex-direction: column;
+    page-break-after: always; break-after: page;
+  }
+  .slide::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 64px 64px; opacity: 0.25;
+    mask-image: linear-gradient(180deg, rgba(0,0,0,0.5), transparent 70%);
+  }
+
+  .kicker { font-size: 15px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 14px; position: relative; }
+  .kicker .n { color: var(--muted); letter-spacing: 0.1em; }
+  h1 { font-size: 46px; line-height: 1.08; font-weight: 800; letter-spacing: -0.01em; position: relative; }
+  h2 { font-size: 40px; line-height: 1.1; font-weight: 800; letter-spacing: -0.01em; position: relative; }
+  .lede { font-size: 20px; line-height: 1.45; color: var(--muted); position: relative; margin-top: 12px; max-width: 1040px; }
+  .lede strong, .lede b { color: var(--text); }
+  .accent { color: var(--accent); }
+  .blue { color: var(--accent2); }
+  .warn { color: var(--warn); }
+  .good { color: var(--good); }
+  .danger { color: var(--danger); }
+
+  .footer { position: absolute; left: 64px; right: 64px; bottom: 26px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
+  .tagline-chip { color: var(--accent); font-weight: 600; letter-spacing: 0.02em; }
+  .pageno { font-variant-numeric: tabular-nums; }
+
+  .slide.title { justify-content: center; align-items: flex-start; }
+  .brand { font-size: 15px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--muted); margin-bottom: 26px; font-weight: 600; }
+  .slide.title h1 { font-size: 78px; line-height: 1.02; letter-spacing: -0.02em; }
+  .slide.title .sub { font-size: 25px; color: var(--muted); margin-top: 22px; font-weight: 500; line-height: 1.4; max-width: 980px; }
+  .slide.title .sub b { color: var(--text); }
+  .tagline-hero { margin-top: 36px; font-size: 28px; font-weight: 700; color: var(--accent); }
+  .title-meta { margin-top: 32px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .meta-chip { font-size: 14px; color: var(--muted); border: 1px solid var(--line); padding: 8px 15px; border-radius: 20px; background: var(--surface); }
+
+  .cols { display: grid; gap: 24px; position: relative; margin-top: 22px; }
+  .cols.two { grid-template-columns: 1fr 1fr; }
+  .cols.three { grid-template-columns: 1fr 1fr 1fr; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  .card h3 { font-size: 19px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+  .card p, .card li { font-size: 16.5px; line-height: 1.5; color: var(--muted); }
+  .card p b, .card li b, .card li strong { color: var(--text); }
+  .card ul { list-style: none; margin-top: 4px; }
+  .card li { padding-left: 20px; position: relative; margin-bottom: 7px; }
+  .card li::before { content: "›"; position: absolute; left: 2px; color: var(--accent); font-weight: 700; }
+  .card.compact { padding: 16px 18px; }
+  .card.compact h3 { font-size: 17px; margin-bottom: 7px; }
+  .card.compact p { font-size: 14.5px; line-height: 1.42; }
+
+  .num { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; font-weight: 800; font-size: 18px; background: var(--surface-2); color: var(--accent); flex: none; }
+
+  .big-line { font-size: 23px; line-height: 1.4; position: relative; margin-top: 16px; max-width: 1080px; }
+  .big-line .mark { color: var(--accent); font-weight: 700; }
+
+  .quote { position: relative; margin-top: 18px; padding: 18px 24px; border-left: 4px solid var(--accent); background: rgba(84,224,200,0.05); border-radius: 0 12px 12px 0; }
+  .quote .q { font-size: 27px; line-height: 1.35; font-weight: 700; letter-spacing: -0.01em; }
+  .quote .who { font-size: 14px; color: var(--muted); margin-top: 7px; letter-spacing: 0.04em; }
+
+  .ledger { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 6px 20px; position: relative; }
+  .ledger .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--line); font-size: 16px; }
+  .ledger .row:last-child { border-bottom: none; }
+  .ledger .k { color: var(--muted); }
+  .ledger .v { font-weight: 700; color: var(--text); text-align: right; }
+  .ledger .v.hot { color: var(--accent); }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 24px; position: relative; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  .stat .v { font-size: 40px; font-weight: 800; color: var(--accent); letter-spacing: -0.02em; line-height: 1; }
+  .stat .v.warnv { color: var(--warn); }
+  .stat .k { font-size: 15.5px; color: var(--muted); margin-top: 9px; line-height: 1.45; }
+  .stat .k b { color: var(--text); }
+  .stat .src { font-size: 12px; color: #6b7885; margin-top: 8px; letter-spacing: 0.03em; }
+
+  .flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 22px; position: relative; }
+  .flow .step { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 11px 14px; font-size: 15px; font-weight: 600; white-space: nowrap; }
+  .flow .step.gate { border-color: rgba(240,176,74,0.5); color: var(--warn); }
+  .flow .step.hot { border-color: rgba(84,224,200,0.5); color: var(--accent); }
+  .flow .arrow { color: var(--muted); font-weight: 700; }
+  .flow.tight { gap: 6px; }
+  .flow.tight .step { font-size: 14px; padding: 9px 12px; border-radius: 9px; }
+  .flow.tight .arrow { font-size: 13px; }
+
+  .loop-wrap { position: relative; margin-top: 14px; }
+  .loopback { position: relative; margin-top: 13px; font-size: 13px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .loopback span { color: var(--warn); font-weight: 700; }
+
+  .tbl { width: 100%; border-collapse: collapse; position: relative; margin-top: 18px; font-size: 16px; }
+  .tbl th { text-align: left; font-size: 12.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 700; padding: 0 14px 10px; border-bottom: 1px solid var(--line); }
+  .tbl td { padding: 12px 14px; border-bottom: 1px solid var(--line); color: var(--muted); vertical-align: top; line-height: 1.42; }
+  .tbl td:first-child { color: var(--text); font-weight: 700; white-space: nowrap; }
+  .tbl tr:last-child td { border-bottom: none; }
+  .tbl .tag { display: inline-block; font-size: 11.5px; font-weight: 800; letter-spacing: 0.1em; padding: 3px 8px; border-radius: 5px; }
+  .tag.ok { background: rgba(87,217,138,0.15); color: var(--good); }
+  .tag.warn { background: rgba(240,176,74,0.15); color: var(--warn); }
+  .tag.bad { background: rgba(255,107,107,0.15); color: var(--danger); }
+
+  .obj { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 22px; padding: 15px 0; border-top: 1px solid var(--line); position: relative; }
+  .obj .o { font-size: 18px; font-weight: 700; line-height: 1.4; color: #c9d4e0; }
+  .obj .o::before { content: "“"; color: var(--muted); }
+  .obj .o::after { content: "”"; color: var(--muted); }
+  .obj .a { font-size: 16.5px; line-height: 1.48; color: var(--muted); }
+  .obj .a b { color: var(--text); }
+  .concession { margin-top: 18px; position: relative; font-size: 18px; line-height: 1.45; background: rgba(110,168,255,0.07); border: 1px solid rgba(110,168,255,0.28); border-radius: 10px; padding: 14px 18px; }
+  .concession b { color: var(--accent2); }
+
+  .note { margin-top: 14px; position: relative; font-size: 14px; line-height: 1.45; color: #7f8c99; }
+  .note a { color: var(--accent2); text-decoration: none; }
+
+  .close-actions { display: flex; gap: 14px; margin-top: 36px; position: relative; }
+
+  @page { size: 1280px 720px; margin: 0; }
+  @media print {
+    html, body { background: #fff; }
+    .deck { transform: none !important; left: 0 !important; top: 0 !important; }
+    .slide { display: flex !important; box-shadow: none; }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+  }
+  .ui-hint { position: fixed; right: 16px; top: 10px; font-size: 12px; color: #3a4652; z-index: 10; }
+  @media print { .ui-hint { display: none; } }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <!-- 1 · TITLE -->
+  <section class="slide title">
+    <div class="brand">Termini &nbsp;·&nbsp; AI Builder Cup 2026 &nbsp;·&nbsp; Future of Work &amp; Enterprise Productivity</div>
+    <h1>The dentist's<br>server room</h1>
+    <div class="sub">Every organisation should be able to run its own intelligence. <b>Termini is the layer that makes that possible</b> — bare hardware in, a governed AI fleet out, and the data never leaves the building.</div>
+    <div class="tagline-hero">“Your hardware. Your data. Our operations.”</div>
+    <div class="title-meta">
+      <span class="meta-chip">Day-0 · registered in 150&nbsp;ms</span>
+      <span class="meta-chip">Day-2 · self-healing, audited</span>
+      <span class="meta-chip">Fail-closed governance</span>
+    </div>
+  </section>
+
+  <!-- 2 · THE ROOM -->
+  <section class="slide">
+    <div class="kicker"><span class="n">01</span> &nbsp;A room in a clinic</div>
+    <h2>There is a data centre <span class="accent">behind the dental chair</span></h2>
+    <div class="lede">A dentist in a small Korean clinic — a biology graduate, not a computer scientist — spent six months building one in his back room. He started by asking ChatGPT what a dental clinic could do with AI. He had exactly one rule.</div>
+    <div class="quote">
+      <div class="q">Patient information does not leave this building. Not one character.</div>
+      <div class="who">The principle the whole build was organised around</div>
+    </div>
+    <div class="cols two" style="margin-top:20px;">
+      <div class="ledger">
+        <div class="row"><span class="k">Accelerators</span><span class="v hot">12 DGX Spark-class, wired in rings of four</span></div>
+        <div class="row"><span class="k">Voice &amp; documents</span><span class="v">2× Mac mini M5 Pro + an M4 mini</span></div>
+        <div class="row"><span class="k">Internal services</span><span class="v">3 virtualisation servers</span></div>
+        <div class="row"><span class="k">Power</span><span class="v">6 UPS units</span></div>
+      </div>
+      <div class="ledger">
+        <div class="row"><span class="k">Telephony</span><span class="v">A PBX he built himself</span></div>
+        <div class="row"><span class="k">Models in production</span><span class="v hot">DeepSeek · GLM · others, side by side</span></div>
+        <div class="row"><span class="k">Data sent off-site</span><span class="v good">None</span></div>
+        <div class="row"><span class="k">Who runs it</span><span class="v warn">Him, after hours</span></div>
+      </div>
+    </div>
+    <div class="note">Source: arca.live/b/aihomelab/185810092 — “A neighbourhood dental clinic's AX transformation” (13 Oct 2026; 330k+ views).</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">02</span></div>
+  </section>
+
+  <!-- 3 · THE TURN -->
+  <section class="slide">
+    <div class="kicker"><span class="n">02</span> &nbsp;The turn</div>
+    <h2>He succeeded. <span class="danger">That is the scandal.</span></h2>
+    <div class="cols two" style="margin-top:18px;">
+      <div class="card">
+        <h3><span class="num">+</span> What the clinic got</h3>
+        <ul>
+          <li>Phones answered by AI — <b>first token in 0.1&nbsp;s</b>, transcribed live, summarised with a to-do list</li>
+          <li>Insurance claims reconciled line by line — <b>the task staff hated most</b></li>
+          <li>Three models write a monthly diagnosis of the same numbers; <b>he only looks when they disagree</b></li>
+          <li>Accountant cancelled. SaaS subscriptions cancelled. Marketing spend: <b>zero</b></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="num">−</span> What it cost</h3>
+        <ul>
+          <li><b>Six months of evenings</b>, on top of dentistry</li>
+          <li>A five-figure hardware bet, justified as <b>“cheaper than the salary of a bad hire”</b></li>
+          <li>Skills no clinic should have to hire for: <b>networking, virtualisation, PBX, inference serving</b></li>
+          <li>A single point of failure called <b>“the owner”</b></li>
+        </ul>
+      </div>
+    </div>
+    <div class="big-line" style="font-size:26px; margin-top:26px;">A market that requires heroics is not yet a market. <span class="mark">The technology works. The product doesn't exist.</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">03</span></div>
+  </section>
+
+  <!-- 4 · ADOPTION PARADOX -->
+  <section class="slide">
+    <div class="kicker"><span class="n">03</span> &nbsp;The adoption paradox</div>
+    <h2>Capability is compounding. <span class="warn">Deployment is flat.</span></h2>
+    <div class="lede">The most capable technology in history is not compounding where work actually happens — in the twelve-person firm, the clinic, the workshop, the practice.</div>
+    <div class="stats">
+      <div class="stat">
+        <div class="v warnv">95%</div>
+        <div class="k">of enterprise GenAI pilots produced <b>no measurable P&amp;L impact</b></div>
+        <div class="src">MIT NANDA, The GenAI Divide, Jul 2025 — preliminary, contested</div>
+      </div>
+      <div class="stat">
+        <div class="v warnv">$30–40B</div>
+        <div class="k">of enterprise GenAI spend behind that number; <b>~5% reached production</b></div>
+        <div class="src">Same study — “high adoption, low transformation”</div>
+      </div>
+      <div class="stat">
+        <div class="v">88% · 6%</div>
+        <div class="k">of organisations use AI somewhere; <b>6% are high performers</b></div>
+        <div class="src">McKinsey, The State of AI, 2025</div>
+      </div>
+    </div>
+    <div class="big-line">The gap is not model quality. The gap is <span class="mark">where the work is</span> — and who is allowed to put the model next to it.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">04</span></div>
+  </section>
+
+  <!-- 5 · THREE GATES -->
+  <section class="slide">
+    <div class="kicker"><span class="n">04</span> &nbsp;Why adoption isn't explosive</div>
+    <h2>Three gates between a model <span class="accent">and the work</span></h2>
+    <div class="cols three" style="margin-top:24px;">
+      <div class="card">
+        <h3><span class="num">1</span> Permission</h3>
+        <p>The data that would make AI valuable is the data you are <b>not allowed to move</b>: patient records, payroll, insurance claims, designs, source code.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">2</span> Operations</h3>
+        <p>On-prem means <b>you are the SRE</b>. A twelve-person firm has nobody to watch disks, memory and inference health at 3am — so it doesn't buy the box.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">3</span> Context</h3>
+        <p>Generic tools don't retain feedback or learn your workflow. The data that would teach them is <b>the data that can't leave</b>.</p>
+      </div>
+    </div>
+    <div class="big-line" style="font-size:24px;">Three gates, one cause: <span class="mark">value scales with context, and context is exactly what cannot be uploaded.</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">05</span></div>
+  </section>
+
+  <!-- 6 · THE DEADLOCK -->
+  <section class="slide">
+    <div class="kicker"><span class="n">05</span> &nbsp;The deadlock</div>
+    <h2>So the loop closes <span class="danger">on itself</span></h2>
+    <div class="flow tight" style="margin-top:28px;">
+      <span class="step">Entity holds the data</span><span class="arrow">→</span>
+      <span class="step">It can't be sent to a cloud</span><span class="arrow">→</span>
+      <span class="step">The model stays generic</span><span class="arrow">→</span>
+      <span class="step">Worth less to that entity</span><span class="arrow">→</span>
+      <span class="step gate">No adoption</span>
+    </div>
+    <div class="loopback">↺ &nbsp;<span>and the cycle holds</span> — because the next best option is still to send the data</div>
+    <div class="big-line" style="margin-top:22px;">Cloud AI asks you to <b>export the asset</b> in order to <b>rent the tool</b>. The dentist's six months is what that bargain costs when one person refuses to accept it.</div>
+    <div class="cols two" style="margin-top:20px;">
+      <div class="card compact">
+        <h3>SaaS ops already proved delegation</h3>
+        <p><b>Datadog</b> runs best-in-class day-2 operations with an agentic surface — but it is SaaS-architected, with no self-hosted or air-gapped AI offering. It assumes the infrastructure already exists.</p>
+      </div>
+      <div class="card compact">
+        <h3>The top of the market is buying the boundary</h3>
+        <p><b>Samsung × Mistral</b> (Sept 2026) keeps AI on-prem for data sovereignty — bespoke, equity-backed, and covering models and platform, <b>not day-2 operations</b>.</p>
+      </div>
+    </div>
+    <div class="note">Even the largest buyers are paying for the boundary. Nobody is selling it to the long tail.</div>
+    <div class="big-line" style="font-size:24px; margin-top:28px;">So the model gets smarter every quarter, and the firm that needs it most <span class="mark">gets no closer to using it.</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">06</span></div>
+  </section>
+
+  <!-- 7 · PLURAL INTELLIGENCE -->
+  <section class="slide">
+    <div class="kicker"><span class="n">06</span> &nbsp;The inversion</div>
+    <h2>Intelligence should be <span class="accent">plural</span></h2>
+    <div class="cols two" style="margin-top:18px;">
+      <div class="card">
+        <h3>Today: one model, everyone's data</h3>
+        <p>One answer for everyone · value accrues to the <b>model owner</b> · shared blind spots · the entity's own context is the raw material, and it is spent.</p>
+      </div>
+      <div class="card" style="border-color:rgba(84,224,200,0.4);">
+        <h3>Inverted: one model per entity</h3>
+        <p>Its own data, its own answer · value accrues to the <b>entity</b> · different priors, so disagreement becomes <b>signal</b> · the context compounds instead of leaking.</p>
+      </div>
+    </div>
+    <div class="cols three" style="margin-top:18px;">
+      <div class="card compact">
+        <h3>More useful</h3>
+        <p>A 4B model that has read twelve years of your claims beats a frontier model that hasn't. <b>The marginal token of general intelligence is worth less than your context in the loop.</b></p>
+      </div>
+      <div class="card compact">
+        <h3>More reliable</h3>
+        <p>Centralisation correlates failure: same weights, same blind spots. A population of sovereign models is a <b>portfolio</b>, and a jury beats an oracle.</p>
+      </div>
+      <div class="card compact">
+        <h3>More shareable</h3>
+        <p>Evals, weights and lessons can travel between entities. <b>Records don't have to.</b> That is what enriching the ecosystem actually means.</p>
+      </div>
+    </div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">07</span></div>
+  </section>
+
+  <!-- 8 · EVIDENCE -->
+  <section class="slide">
+    <div class="kicker"><span class="n">07</span> &nbsp;Evidence from the clinic</div>
+    <h2>He didn't buy intelligence. <span class="accent">He grew one.</span></h2>
+    <div class="lede">Three things he built, almost by accident, that we think are the product category:</div>
+    <div class="cols three" style="margin-top:20px;">
+      <div class="card">
+        <h3><span class="num">A</span> A jury</h3>
+        <p>DeepSeek, GLM and others each diagnose the same month's numbers. When all three agree, it is probably real. <b>When they disagree, he looks.</b></p>
+      </div>
+      <div class="card">
+        <h3><span class="num">B</span> An eval loop</h3>
+        <p>He grades the AI's call summaries by hand — a <b>human-judgement screen</b>. That becomes ground truth, then a model comparison, then training material.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">C</span> A private corpus</h3>
+        <p>Twelve years of claims, calls and outcomes that <b>no foundation model has ever seen</b> — and that no cloud vendor could be given.</p>
+      </div>
+    </div>
+    <div class="big-line" style="font-size:24px;">Local governance is not a compliance tax. <span class="mark">It is the only way the feedback loop closes.</span></div>
+    <div class="note">A single case, cited as a case — not as a market.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">08</span></div>
+  </section>
+
+  <!-- 9 · COUNTERARGUMENT -->
+  <section class="slide">
+    <div class="kicker"><span class="n">08</span> &nbsp;The honest objection</div>
+    <h2>“Isn't local just <span class="danger">worse</span>?”</h2>
+    <div style="position:relative; margin-top:10px;">
+      <div class="obj">
+        <div class="o">Frontier models keep improving. A 4B model on your box is a toy.</div>
+        <div class="a">The model is a <b>swappable part</b>. The product is the loop, the boundary and the operations. Swap the weights when better ones ship — Gemma today, something else next quarter.</div>
+      </div>
+      <div class="obj">
+        <div class="o">SMBs don't want to own infrastructure. That's why cloud won.</div>
+        <div class="a">Correct — which is why <b>we don't sell ownership</b>. We sell the operations that make ownership survivable: we run what they bought.</div>
+      </div>
+      <div class="obj">
+        <div class="o">Local AI is a compliance story, not a value story.</div>
+        <div class="a"><b>Compliance gets the budget. The eval loop keeps it.</b> A model graded on your own work, over your own data, is the only one that gets better at your job.</div>
+      </div>
+    </div>
+    <div class="concession"><b>Our concession:</b> if your work is generic, use the cloud. This is for the work that isn't — and most of the economy is work that isn't.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">09</span></div>
+  </section>
+
+  <!-- 10 · DAY 0 -->
+  <section class="slide">
+    <div class="kicker"><span class="n">09</span> &nbsp;The product · day-0</div>
+    <h2>Six months, compressed <span class="accent">into an afternoon</span></h2>
+    <div class="flow tight">
+      <span class="step">Bare node</span><span class="arrow">→</span>
+      <span class="step">Pre-baked image</span><span class="arrow">→</span>
+      <span class="step hot">Registered 150&nbsp;ms</span><span class="arrow">→</span>
+      <span class="step">Plain-English intent</span><span class="arrow">→</span>
+      <span class="step gate">Guardrail clamps</span><span class="arrow">→</span>
+      <span class="step">Agents running</span>
+    </div>
+    <table class="tbl">
+      <tr><th></th><th>The dentist's path</th><th>Termini's path</th></tr>
+      <tr><td>Hardware</td><td>Wiring, hypervisor, cluster join, PBX — by hand, at night</td><td>Boot the image; the controller registers it and joins the cluster</td></tr>
+      <tr><td>Model</td><td>Pick, quantise, serve, benchmark, re-pick</td><td>A config knob — Gemma resident, Gemini where the customer permits it</td></tr>
+      <tr><td>Operations</td><td>Watch it yourself, forever</td><td>A governed operator plus a human dashboard</td></tr>
+      <tr><td>Governance</td><td>A rule enforced by discipline</td><td>A gate that rejects C2 fail-closed, before storage</td></tr>
+    </table>
+    <div class="big-line" style="font-size:22px; margin-top:18px;">What took him six months of evenings is <span class="mark">the product's first hour</span>.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">10</span></div>
+  </section>
+
+  <!-- 11 · DAY 2 -->
+  <section class="slide">
+    <div class="kicker"><span class="n">10</span> &nbsp;The product · day-2</div>
+    <h2>The part the dentist <span class="warn">had to become</span></h2>
+    <div class="flow tight">
+      <span class="step">Telemetry</span><span class="arrow">→</span>
+      <span class="step">Threshold rule fires</span><span class="arrow">→</span>
+      <span class="step">Model decides — allowlist only</span><span class="arrow">→</span>
+      <span class="step">Audited LXD execution</span><span class="arrow">→</span>
+      <span class="step hot">Audit row</span>
+    </div>
+    <div class="cols three" style="margin-top:24px;">
+      <div class="card">
+        <h3><span class="num">1</span> Detect deterministically</h3>
+        <p>A threshold rule fires. <b>Never a model.</b> Rules are the detector; the model is only ever the decider — so the loop works even when the model doesn't.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">2</span> Decide inside a cage</h3>
+        <p>Grammar-constrained decoding: an off-allowlist action has <b>no valid encoding</b>. Plus parameter guards, a confidence gate, and a mandatory deterministic fallback.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">3</span> Prove it afterwards</h3>
+        <p>Every autonomous change links <b>trigger → decision → action → result</b> in one audit record. “The AI did it” becomes a row you can read.</p>
+      </div>
+    </div>
+    <div class="big-line" style="font-size:23px;">Ownership without the ops burden — <span class="mark">the only version of on-prem a twelve-person firm can survive.</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">11</span></div>
+  </section>
+
+  <!-- 12 · HOW IT LANDS -->
+  <section class="slide">
+    <div class="kicker"><span class="n">11</span> &nbsp;How it lands</div>
+    <h2>Two motions, <span class="accent">one control plane</span></h2>
+    <div class="cols three" style="margin-top:26px;">
+      <div class="card">
+        <h3><span class="num">A</span> The SME buys an outcome</h3>
+        <p>Through hardware partners and integrators: a box, an afternoon, a governed fleet. <b>We take the operations subscription</b> — the part they cannot staff.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">B</span> The hardware owner licenses the layer</h3>
+        <p>Colocation, edge and private-cloud operators already own the metal and the power. <b>We make it sellable as AI</b> without them building an ops team.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">C</span> The model stays a knob</h3>
+        <p>Gemma by default, Gemini where the customer permits it, a different open-weight family next quarter. <b>No lock-in to weights</b> — the layer is the product.</p>
+      </div>
+    </div>
+    <div class="big-line" style="font-size:24px;">We are not in the hardware business. <span class="mark">We are in the business of making other people's hardware useful.</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">12</span></div>
+  </section>
+
+  <!-- 13 · PROOF -->
+  <section class="slide">
+    <div class="kicker"><span class="n">12</span> &nbsp;Proof</div>
+    <h2>What runs today, <span class="accent">measured</span></h2>
+    <div class="cols three" style="margin-top:24px;">
+      <div class="stat"><div class="v">150&nbsp;ms</div><div class="k">Node registration from the pre-baked image — <b>zero installs at boot</b></div></div>
+      <div class="stat"><div class="v">128→8</div><div class="k">A 128-vCPU request <b>clamped</b> to the host ceiling, with reasons</div></div>
+      <div class="stat"><div class="v">422</div><div class="k">C2 field <b>rejected before storage</b> — fail-closed, three ways checked</div></div>
+    </div>
+    <div class="cols three" style="margin-top:18px;">
+      <div class="stat"><div class="v good">1</div><div class="k">Remediation <b>decided by the model</b>, executed, audited end-to-end</div></div>
+      <div class="stat"><div class="v">1.8&nbsp;s</div><div class="k">Diagnosis warm on the managed path — <b>402&nbsp;s</b> on local CPU weights, stated not hidden</div></div>
+      <div class="stat"><div class="v">live</div><div class="k">On GCE + Firebase + Vertex AI — <b>a judge can open it and watch</b></div></div>
+    </div>
+    <div class="big-line" style="font-size:22px;">Three claims, three measurements. <span class="mark">Nothing on this slide is a projection.</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">13</span></div>
+  </section>
+
+  <!-- 14 · ARCHITECTURE -->
+  <section class="slide">
+    <div class="kicker"><span class="n">13</span> &nbsp;Technical · the architecture</div>
+    <h2>The architecture <span class="accent">is the governance claim</span></h2>
+    <div class="flow tight" style="margin-top:24px;">
+      <span class="step">Node on premises</span><span class="arrow">→</span>
+      <span class="step">On-node redactor</span><span class="arrow">→</span>
+      <span class="step">Outbound-only mTLS</span><span class="arrow">→</span>
+      <span class="step gate">Controller gate</span><span class="arrow">→</span>
+      <span class="step">Operator loop</span><span class="arrow">→</span>
+      <span class="step hot">Audit chain</span>
+    </div>
+    <div class="cols two" style="margin-top:20px;">
+      <div class="card compact">
+        <h3>Substrate and channel — adopted, not invented</h3>
+        <p>Ubuntu + an <b>LXD cluster</b> across nodes; one <b>outbound-only mTLS WebSocket</b> per node carrying heartbeat, telemetry, commands and acks. There is no inbound path from the internet to a node, and no route from an agent VM to the controller.</p>
+      </div>
+      <div class="card compact">
+        <h3>Boundary and loop — the two things we build</h3>
+        <p>A <b>fail-closed</b> telemetry gate that rejects a non-conforming batch (422) rather than dropping fields, and a <b>governed operator loop</b>: detect → decide inside an allowlist → execute against LXD → write the audit row.</p>
+      </div>
+    </div>
+    <div class="cols three" style="margin-top:16px;">
+      <div class="card compact"><h3>Bootstrap</h3><p>Pre-baked image, single-use enrolment token, CSR → client cert, role assigned, cluster joined. <b>150&nbsp;ms.</b></p></div>
+      <div class="card compact"><h3>Placement</h3><p>Natural language → structured allocation → <b>guardrail clamp</b> → real LXD instances, rolled back on failure.</p></div>
+      <div class="card compact"><h3>Access</h3><p>A controller-held <b>SSH CA</b>: browser-generated keypair, ≤8h principal-bound certificate. No shared keys.</p></div>
+    </div>
+    <div class="big-line" style="font-size:23px; margin-top:30px;"><span class="mark">The node keeps the data. The controller keeps the proof.</span> That is the whole design.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">14</span></div>
+  </section>
+
+  <!-- 15 · WHAT LEAVES -->
+  <section class="slide">
+    <div class="kicker"><span class="n">14</span> &nbsp;Technical · the boundary</div>
+    <h2>What leaves the building, <span class="warn">exactly</span></h2>
+    <table class="tbl">
+      <tr><th style="width:110px;">Class</th><th style="width:175px;">Leaves?</th><th>Contents</th></tr>
+      <tr><td><span class="tag ok">C0</span></td><td>Yes — allowlisted</td><td>Hardware and OS health: CPU, RAM, disk, GPU, inference liveness, instance inventory, rule metrics</td></tr>
+      <tr><td><span class="tag warn">C1</span></td><td>Yes — transformed</td><td>Salted hashes, bounded display labels, timestamps. Never raw identifiers</td></tr>
+      <tr><td><span class="tag bad">C2</span></td><td><b style="color:var(--danger)">Never</b></td><td>Workload payloads, call transcripts, patient or customer records, prompts, credentials, logs</td></tr>
+    </table>
+    <div class="cols two" style="margin-top:18px;">
+      <div class="card compact">
+        <h3>The one external call — disclosed</h3>
+        <p>The operator's <b>diagnosis</b> runs on Gemini via Vertex AI from the controller's loopback listener. Prompt: <b>C0 telemetry only</b>. The audit row records <code>egress=external</code>. One variable, <code>backend=local</code>, puts the same decision back on the node's own weights.</p>
+      </div>
+      <div class="card compact">
+        <h3>Why we publish the exception</h3>
+        <p>Because a boundary you cannot see is not a boundary. The claim is not “nothing leaves” — it is <b>“nothing C2 leaves, and everything that does is named, classified and audited.”</b></p>
+      </div>
+    </div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">15</span></div>
+  </section>
+
+  <!-- 16 · BUILT ON GOOGLE -->
+  <section class="slide">
+    <div class="kicker"><span class="n">15</span> &nbsp;Built on Google AI &amp; Google Cloud</div>
+    <h2>Gemini decides. <span class="accent">Gemma stays home.</span></h2>
+    <div class="cols three" style="margin-top:26px;">
+      <div class="card">
+        <h3><span class="num">1</span> Gemini 2.5 Flash · Vertex AI</h3>
+        <p>The <b>diagnosis</b> — naming the remediation from C0 telemetry. Measured 1.8&nbsp;s warm. The only call that leaves the premises, and it says so in the audit trail.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">2</span> Gemma 3 4B · on Node C</h3>
+        <p>Google's <b>open weights</b>, served by <code>llama.cpp</code> on CPU-only GCE. Agents and intent extraction run here and <b>forward nothing</b>. 8–10 tok/s — stated, not hidden.</p>
+      </div>
+      <div class="card">
+        <h3><span class="num">3</span> Cloud Run · GPU reference</h3>
+        <p>The same Gemma on <b>1× L4</b> with vLLM, deployed as the managed reference model — and the shape this takes when GPU quota stops being the blocker.</p>
+      </div>
+    </div>
+    <div class="flow tight" style="margin-top:22px;">
+      <span class="step">GCE · controller</span><span class="arrow">·</span>
+      <span class="step">GCE · node C</span><span class="arrow">·</span>
+      <span class="step">Firebase Hosting · dashboard</span><span class="arrow">·</span>
+      <span class="step">Cloud Storage · weights</span><span class="arrow">·</span>
+      <span class="step">Pre-baked node image</span>
+    </div>
+    <div class="big-line" style="font-size:22px;">Open weights on the customer's metal. A managed model where the customer permits it. <span class="mark">The same code path either way.</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">16</span></div>
+  </section>
+
+  <!-- 17 · ROADMAP -->
+  <section class="slide">
+    <div class="kicker"><span class="n">16</span> &nbsp;What's next</div>
+    <h2>From one clinic <span class="accent">to a fleet of them</span></h2>
+    <div class="cols three" style="margin-top:24px;">
+      <div class="card compact">
+        <h3>Real bare-metal onboarding</h3>
+        <p>MAAS + iPXE netboot, so a box arrives from a partner and joins without a technician on site.</p>
+      </div>
+      <div class="card compact">
+        <h3>A GPU node in the demo</h3>
+        <p>L4 quota is the current blocker; the path is already built and served on Cloud Run.</p>
+      </div>
+      <div class="card compact">
+        <h3>Learned baselines</h3>
+        <p>Edge anomaly detection replacing static thresholds — the operator learns each site's normal.</p>
+      </div>
+      <div class="card compact">
+        <h3>Federated eval exchange</h3>
+        <p>Evals and weights travel between entities; records don't. The plural-ecosystem mechanism, productised.</p>
+      </div>
+      <div class="card compact">
+        <h3>Compliance mapping</h3>
+        <p>GDPR, EU AI Act, Korea PIPA, India DPDP posture mapped onto the C0/C1/C2 boundary.</p>
+      </div>
+      <div class="card compact">
+        <h3>Hardware partner channel</h3>
+        <p>The box is commodity. The operator is the product. Partners sell metal; we run it.</p>
+      </div>
+    </div>
+    <div class="big-line" style="font-size:22px;">The long tail does not need a data centre. <span class="mark">It needs one box, one afternoon, and someone else on call.</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">17</span></div>
+  </section>
+
+  <!-- 18 · CLOSE -->
+  <section class="slide title">
+    <div class="brand">Termini &nbsp;·&nbsp; AI-Infra</div>
+    <h1 style="font-size:70px;">He built this alone.<br><span class="accent">Nobody should have to.</span></h1>
+    <div class="sub" style="margin-top:26px;">Bare hardware in. A governed AI fleet out. Your data stays where it is — and somebody else is on call at 3am.</div>
+    <div class="tagline-hero" style="margin-top:30px;">“Your hardware. Your data. Our operations.”</div>
+    <div class="close-actions">
+      <span class="meta-chip">Live demo</span>
+      <span class="meta-chip">Architecture</span>
+      <span class="meta-chip">Questions</span>
+    </div>
+  </section>
+
+</div>
+
+<div class="ui-hint">← → to navigate · F fullscreen · S show all</div>
+
+<script>
+  (function () {
+    var deck = document.getElementById('deck');
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    var i = 0;
+    function fit() {
+      var s = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+      deck.style.transform = 'scale(' + s + ')';
+      deck.style.left = ((window.innerWidth - 1280 * s) / 2) + 'px';
+      deck.style.top = ((window.innerHeight - 720 * s) / 2) + 'px';
+    }
+    function show(n) {
+      i = Math.max(0, Math.min(slides.length - 1, n));
+      slides.forEach(function (el, idx) { el.style.display = idx === i ? 'flex' : 'none'; });
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { show(i + 1); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { show(i - 1); e.preventDefault(); }
+      else if (e.key === 'Home') { show(0); }
+      else if (e.key === 'End') { show(slides.length - 1); }
+      else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+      else if (e.key === 's' || e.key === 'S') { slides.forEach(function (el) { el.style.display = 'flex'; }); deck.style.transform = 'none'; deck.style.left = '0'; deck.style.top = '0'; document.documentElement.style.overflow = 'auto'; }
+    });
+    fit();
+    var m = location.search.match(/slide=(\d+)/);
+    show(m ? Math.max(0, parseInt(m[1], 10) - 1) : 0);
+  })();
+</script>
+</body>
+</html>
