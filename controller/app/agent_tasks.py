@@ -213,27 +213,42 @@ def _json(raw: Any, default: Any) -> Any:
 
 
 # ------------------------------------------------------------------------ resolve
-def resolve_agent(conn, cfg, project_id: str, vm_id: str, *,
-                  executor_factory: Callable[[Any, dict], Any] | None = None
-                  ) -> tuple[dict | None, str | None, list[str]]:
-    """Which node holds this agent instance? Returns `(node, reason, known_vm_ids)`.
+def agent_id_for_name(instance_name: str) -> str:
+    """The telemetry `vm_id` (node-telemetry.md §4.6) for an LXD instance name.
 
-    `vm_id` **is** the LXD instance name (`controller-api.md` §5: "`vm_ids` are the
-    LXD instance names of the created workloads"), so the authoritative answer is
-    the node whose LXD actually knows the instance. The live-allocation record is
-    consulted first because it is free and covers everything the controller
-    materialised; when it does not mention the id, each registered node's LXD is
-    asked — an instance that was launched by hand, migrated, or materialised by an
-    earlier controller process is still addressable, which is what makes
-    "a client can give an agent a task" true rather than "…only to agents this
-    process launched".
+    One-way and deterministic, shared with the node daemon and the guardrail
+    (`app/operator/vmids.py`), so a client that was shown `lxd_instances[].vm_id`
+    can address exactly that agent without the instance name crossing the wire.
+    """
+    from .operator import vmids
 
-    Returns a reason string on failure: `unknown_vm` (no node has it) or
+    return vmids.vm_id_for_instance(instance_name)
+
+
+def resolve_agent_target(conn, cfg, project_id: str, vm_id: str, *,
+                         executor_factory: Callable[[Any, dict], Any] | None = None
+                         ) -> tuple[dict | None, str | None, str | None, list[str]]:
+    """Resolve an agent identifier to `(node, instance_name, reason, known_names)`.
+
+    The identifier a caller may hold comes from one of two places and BOTH are
+    accepted here, because the two contracts name different things:
+
+      * `controller-api.md` §5/§4.9: `vm_ids` returned by apply are the LXD
+        instance names the controller materialised (`termini-<plan>-<i>-<slot>`);
+      * `node-telemetry.md` §4.6: what a client actually SEES per instance is the
+        derived `vm_id`, `sha256("termini-vm-id:" + name)` in Crockford base32 —
+        a one-way id, deliberately not the name.
+
+    The Agents panel only ever has the second. If this resolver accepted only
+    names, "give this agent a task" would 404 for every agent the client can
+    see — the exact gap this card closes. Matching therefore tries the literal
+    identifier first (cheap, covers the apply-time name and the day-2/adopted
+    instance) and then the derived id against each live instance name.
+
+    Returns a reason on failure: `unknown_vm` (no node has it) or
     `node_unreachable` (the owning node's LXD cannot be reached, so its state —
     including the instance's existence — cannot be established).
     """
-    import json as _json
-
     from .operator import target as op_target
 
     factory = executor_factory or op_target.executor_for_node
@@ -243,14 +258,24 @@ def resolve_agent(conn, cfg, project_id: str, vm_id: str, *,
         ids = row.get("vm_ids") or []
         if not isinstance(ids, list):
             continue
-        known.extend(str(i) for i in ids)
-        if vm_id in ids:
-            node_id = row["node_id"]
-            break
+        names = [str(i) for i in ids]
+        known.extend(names)
+        for name in names:
+            if name == vm_id:
+                node_id, resolved = row["node_id"], name
+                break
+            if agent_id_for_name(name) == vm_id:
+                node_id, resolved = row["node_id"], name
+                break
+        else:
+            continue
+        break
+    else:
+        node_id, resolved = None, None
     if node_id:
         node = store.get_node(conn, node_id)
         if node is not None:
-            return node, None, known
+            return node, resolved, None, known
 
     for node in store.list_nodes(conn, project_id):
         if node.get("synthetic"):
@@ -262,15 +287,31 @@ def resolve_agent(conn, cfg, project_id: str, vm_id: str, *,
             ok, live = False, []
         if not ok:
             continue
-        known.extend(str(n) for n in live)
-        if vm_id in live:
-            return node, None, sorted(set(known))
+        names = [str(n) for n in live]
+        known.extend(names)
+        for name in names:
+            if name == vm_id or agent_id_for_name(name) == vm_id:
+                return node, name, None, sorted(set(known))
 
     # Nothing claimed it. Distinguish "the node that should have it is down" from
     # "no such agent", because the operator's next action differs.
-    if any(vm_id == k for k in known):
-        return None, "node_unreachable", sorted(set(known))
-    return None, "unknown_vm", sorted(set(known))
+    known_sorted = sorted(set(known))
+    if vm_id in known_sorted or any(agent_id_for_name(k) == vm_id for k in known_sorted):
+        return None, None, "node_unreachable", known_sorted
+    return None, None, "unknown_vm", known_sorted
+
+
+def resolve_agent(conn, cfg, project_id: str, vm_id: str, *,
+                  executor_factory: Callable[[Any, dict], Any] | None = None
+                  ) -> tuple[dict | None, str | None, list[str]]:
+    """Which node holds this agent instance? Returns `(node, reason, known_vm_ids)`.
+
+    Backwards-compatible wrapper over :func:`resolve_agent_target` (which also
+    accepts the telemetry-form derived id and returns the LXD instance name).
+    """
+    node, _name, reason, known = resolve_agent_target(
+        conn, cfg, project_id, vm_id, executor_factory=executor_factory)
+    return node, reason, known
 
 
 # ----------------------------------------------------------------------- dispatch
@@ -330,14 +371,22 @@ def _call_agent_surface(cfg, node, vm_id: str, *, method: str, path: str,
     return status, body, outer.get("retry_after")
 
 
-def submit_to_agent(cfg, node, task: dict) -> dict:
-    """Hand one recorded task to the agent. Raises AgentTaskError if refused."""
+def submit_to_agent(cfg, node, task: dict, *,
+                    instance_name: str | None = None) -> dict:
+    """Hand one recorded task to the agent. Raises AgentTaskError if refused.
+
+    `instance_name` is the LXD instance to exec into, resolved by
+    `resolve_agent_target`; `task["vm_id"]` may be either that name or the
+    telemetry-form derived id the client was shown (node-telemetry.md §4.6), so
+    the two must not be confused at the transport.
+    """
     payload = {"prompt": task["prompt"], "actor": task["actor"],
                "max_tokens": task["max_tokens"]}
     if task["model_preference"]:
         payload["model_preference"] = task["model_preference"]
     status, body, retry_after = _call_agent_surface(
-        cfg, node, task["vm_id"], method="POST", path="/v1/tasks", payload=payload)
+        cfg, node, instance_name or task["vm_id"], method="POST", path="/v1/tasks",
+        payload=payload)
     if status >= 400:
         err = (body or {}).get("error") or {}
         # Preserve the agent's own refusal semantics where they are actionable: a
@@ -360,8 +409,10 @@ def submit_to_agent(cfg, node, task: dict) -> dict:
     return body
 
 
-def read_agent_task(cfg, node, vm_id: str, agent_task_id: str) -> tuple[int, dict]:
-    status, body, _ = _call_agent_surface(cfg, node, vm_id, method="GET",
+def read_agent_task(cfg, node, vm_id: str, agent_task_id: str, *,
+                    instance_name: str | None = None) -> tuple[int, dict]:
+    status, body, _ = _call_agent_surface(cfg, node, instance_name or vm_id,
+                                         method="GET",
                                          path=f"/v1/tasks/{agent_task_id}")
     return status, body
 
@@ -370,6 +421,7 @@ def read_agent_task(cfg, node, vm_id: str, agent_task_id: str) -> tuple[int, dic
 def poll_until_terminal(cfg, project_id: str, task_id: str, vm_id: str, node_id: str,
                         logs=None, *, timeout_s: float = DEFAULT_TASK_TIMEOUT_S,
                         interval_s: float = DEFAULT_POLL_INTERVAL_S,
+                        instance_name: str | None = None,
                         sleep: Callable[[float], None] = time.sleep) -> None:
     """Follow one dispatched task to `done`/`error` and record the outcome.
 
@@ -396,7 +448,8 @@ def poll_until_terminal(cfg, project_id: str, task_id: str, vm_id: str, node_id:
                     return
                 try:
                     status, body = read_agent_task(cfg, node, vm_id,
-                                                   task["agent_task_id"] or "")
+                                                   task["agent_task_id"] or "",
+                                                   instance_name=instance_name)
                 except AgentTaskError as exc:
                     update_task(conn, task_id, polls=task["polls"] + 1,
                                 last_error=str(exc))

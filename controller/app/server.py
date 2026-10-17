@@ -52,6 +52,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from . import db, errors, governance, health, inventory, registration, role, store, validate, ws as wsmod
 from . import agent_tasks as agent_tasks_mod
+from . import agent_actions as agent_actions_mod
 from . import assistant as assistant_mod
 from . import commands as cmd_mod
 from . import demo_faults as demo_faults_mod
@@ -332,6 +333,11 @@ class ControllerHandler(BaseHTTPRequestHandler):
         if (method == "GET" and len(segs) == 7 and segs[:2] == ["v1", "projects"]
                 and segs[3] == "agents" and segs[5] == "tasks"):
             return self._agent_task_get(conn, segs[2], segs[4], segs[6])
+        # Per-agent operations (t_44a2b87b, controller-api.md §4.11): the same
+        # command/audit envelope as node actions, executed against one instance.
+        if (method == "POST" and len(segs) == 7 and segs[:2] == ["v1", "projects"]
+                and segs[3] == "agents" and segs[5] == "actions"):
+            return self._agent_action(conn, segs[2], segs[4], segs[6])
         if method == "POST" and len(segs) == 4 and segs[:2] == ["v1", "projects"] and segs[3] == "intents":
             return self._intents(conn, segs[2])
         if method == "POST" and len(segs) == 5 and segs[:2] == ["v1", "projects"] and segs[3] == "vms" and segs[4] == "apply":
@@ -785,7 +791,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
             raise errors.err(422, "INVALID_ARGUMENT", "actor must be a string",
                              [{"field": "actor", "reason": "not_a_string"}])
 
-        node, reason, known = agent_tasks_mod.resolve_agent(
+        node, instance_name, reason, known = agent_tasks_mod.resolve_agent_target(
             conn, self.server.cfg, project_id, vm_id)
         if node is None:
             if reason == "node_unreachable":
@@ -798,7 +804,9 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 404, "AGENT_NOT_FOUND",
                 f"no agent {vm_id} on this project's nodes",
                 [{"field": "vm_id", "reason": "unknown",
-                  "known_vm_ids": known[:20]}])
+                  "known_vm_ids": known[:20],
+                  "known_agent_ids": [agent_tasks_mod.agent_id_for_name(n)
+                                      for n in known[:20]]}])
 
         sample = store.latest_sample(conn, node["id"])
         node_status, _ = health.node_status_health(node, sample, time.time())
@@ -823,7 +831,8 @@ class ControllerHandler(BaseHTTPRequestHandler):
         conn.commit()
 
         try:
-            submitted = agent_tasks_mod.submit_to_agent(self.server.cfg, node, task)
+            submitted = agent_tasks_mod.submit_to_agent(
+                self.server.cfg, node, task, instance_name=instance_name)
         except agent_tasks_mod.AgentTaskError as exc:
             agent_tasks_mod.fail_task(
                 conn, project_id, task["task_id"], code=exc.code,
@@ -852,6 +861,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
             target=agent_tasks_mod.poll_until_terminal,
             args=(self.server.cfg, project_id, task["task_id"], vm_id, node["id"],
                   self.server.operator_logs),
+            kwargs={"instance_name": instance_name},
             name=f"task-poll-{task['task_id'][-6:]}", daemon=True).start()
         return 202, agent_tasks_mod.get_task(conn, task["task_id"], project_id) or {}
 
@@ -879,6 +889,22 @@ class ControllerHandler(BaseHTTPRequestHandler):
             raise errors.invalid_argument("limit must be an integer")
         tasks = agent_tasks_mod.list_tasks(conn, project_id, vm_id=vm_id, limit=limit_i)
         return 200, {"vm_id": vm_id, "tasks": tasks, "count": len(tasks)}
+
+    def _agent_action(self, conn, project_id: str, vm_id: str,
+                      action: str) -> tuple[int, dict]:
+        """POST /v1/projects/{pid}/agents/{vm_id}/actions/{start|stop|restart}.
+
+        Contract: `controller-api.md` §4.11. The human-issued command, its state
+        transitions and its operator-log line are the SAME shape a node
+        Restart / Drain produces (`commands.issue_command`); `agent_actions`
+        documents why the execution is synchronous. `vm_id` accepts either the
+        LXD instance name from apply or the telemetry-derived id the client sees.
+        """
+        self._require_project(conn, project_id)
+        self._read_body()  # no fields today; a body is accepted and ignored
+        return agent_actions_mod.perform_action(
+            conn, self.server.cfg, project_id, vm_id, action,
+            self.server.operator_logs)
 
     def _remediation_decision(self, conn, project_id: str, command_id: str, decision: str) -> tuple[int, dict]:
         self._require_project(conn, project_id)

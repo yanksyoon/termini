@@ -5,8 +5,8 @@ The command types are the frozen ``commandAllowlist()`` set — the AI operator 
 select among these only; free-form shell is never executed. Each type carries an
 ``approval`` policy (dashboard.md §4.4, frozen):
 
-    auto       vm.resize, vm.migrate, vm.start, vm.stop, ssh.inject_key,
-               agent.dispatch_task, agent.cancel_task
+    auto       vm.resize, vm.migrate, vm.start, vm.stop, vm.restart,
+               ssh.inject_key, agent.dispatch_task, agent.cancel_task
     required   vm.destroy, node.drain, node.reboot
 
 Human-issued commands (the dashboard intervention controls) are pre-authorized
@@ -23,7 +23,7 @@ from typing import Any
 from . import errors, store, ulid
 
 COMMAND_ALLOWLIST = {
-    "vm.resize", "vm.migrate", "vm.stop", "vm.start", "vm.destroy",
+    "vm.resize", "vm.migrate", "vm.stop", "vm.start", "vm.restart", "vm.destroy",
     "node.drain", "node.reboot",
     "agent.dispatch_task", "agent.cancel_task",
 }
@@ -34,6 +34,7 @@ APPROVAL_POLICY = {
     "vm.migrate": "auto",
     "vm.start": "auto",
     "vm.stop": "auto",
+    "vm.restart": "auto",
     "vm.destroy": "required",
     "node.drain": "required",
     "node.reboot": "required",

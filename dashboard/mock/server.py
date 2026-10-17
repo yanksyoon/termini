@@ -695,7 +695,15 @@ def main(argv=None) -> int:
     ap.add_argument("--project", default=fx.PROJECT_ID)
     ap.add_argument("--token", default=fx.PROJECT_TOKEN)
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument(
+        "--agents", choices=("some", "none", "absent"), default="some",
+        help="what the mock nodes report in lxd_instances[] (node-telemetry §4.6): "
+             "'some' = demo agents, 'none' = every node reports an empty array "
+             "(the Agents panel's empty state), 'absent' = every node omits the "
+             "field (inventory not reported)")
     args = ap.parse_args(argv)
+
+    fx.AGENTS = args.agents
 
     random.seed(args.seed)
     world = World(args.project, args.token)

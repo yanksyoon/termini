@@ -112,6 +112,7 @@ function buildShell() {
   const layout = document.querySelector("main.layout");
   const bannerHost = document.getElementById("banner-host");
   const overviewPanel = document.querySelector(".panel-overview");
+  const agentsPanel = document.querySelector(".panel-agents");
   const decisionsPanel = document.querySelector(".panel-decisions");
   const metricsPanel = document.querySelector(".panel-metrics");
   const controlsPanel = document.querySelector(".panel-controls");
@@ -172,7 +173,7 @@ function buildShell() {
   const fleetDetail = el(
     "div",
     { class: "hig-detail-pane", id: "hig-node-detail", role: "region", "aria-labelledby": "hig-node-title" },
-    [ui.nodeTitle, ui.nodeStatus, ui.nodeRest, ui.nodeStore, metricsPanel, controlsPanel],
+    [ui.nodeTitle, ui.nodeStatus, ui.nodeRest, ui.nodeStore, metricsPanel, agentsPanel, controlsPanel],
   );
 
   const fleetSplit = el("div", { class: "hig-split" }, [fleetPane, fleetDetail]);
