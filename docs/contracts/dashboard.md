@@ -270,9 +270,12 @@ application/customer logs are C2 and are **never** surfaced
 
 ### 2.2 Transport — SSE (primary) and WS (mirror)
 
-**Primary: Server-Sent Events.** `GET /v1/projects/{project_id}/logs?token=<project_token>`
-(`text/event-stream`; the token is a query param because `EventSource` cannot set
-an `Authorization` header). Each event:
+**Primary: Server-Sent Events.** `GET /v1/projects/{project_id}/logs`
+(`text/event-stream`). The credential travels in the `Authorization: Bearer
+<project_token>` header — the dashboard consumes the stream with `fetch`, not
+`EventSource`, precisely so it can set that header (a credential in the URL is
+forbidden, `t_5649d117`). `?token=<project_token>` remains accepted as a
+fallback for curl/CLI clients. Each event:
 
 ```
 event: log

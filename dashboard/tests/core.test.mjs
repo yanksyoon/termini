@@ -63,7 +63,7 @@ import {
   TRACE_STEP_DETAIL_MAX_CHARS,
   TRACE_REPLY_MAX_CHARS,
 } from "../js/core/decisions.js";
-import { FIRST_CURSOR } from "../js/stream.js";
+import { FIRST_CURSOR, LogStream } from "../js/stream.js";
 
 /* --------------------------------------------------------------- format */
 
@@ -630,6 +630,17 @@ test("stream: a cold start asks for the retained tail (§2.3 out-of-buffer curso
   const url = apiUrl({ apiBase: "https://c/v1" }, "/projects/P/logs", { since: FIRST_CURSOR });
   assert.match(url, /since=0{26}/);
   assert.ok(!url.includes("token"), "the stream URL carries no credential (header only)");
+});
+
+test("stream: the SSE request headers carry the credential, not a CORS-triggering Cache-Control", () => {
+  // `fetch(..., { cache: "no-store" })` already requests no-cache behaviour and
+  // sends no `Cache-Control` request header; a header here would force a CORS
+  // preflight on a header the controller must separately allow (t_385f28b0).
+  const h = new LogStream({ token: "cred" })._headers();
+  assert.equal(h.Authorization, "Bearer cred");
+  assert.equal(h.Accept, "text/event-stream");
+  assert.equal(h["X-Termini-Version"], "1");
+  assert.ok(!("Cache-Control" in h), "no Cache-Control request header");
 });
 
 /* --------------------------------------------------------------- decisions */

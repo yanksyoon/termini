@@ -108,7 +108,10 @@ export class LogStream {
   }
 
   _headers() {
-    const h = { Accept: "text/event-stream", "Cache-Control": "no-cache", "X-Termini-Version": "1" };
+    // `fetch(..., { cache: "no-store" })` already sets no-cache behaviour and
+    // sends no `Cache-Control` request header, so a header here would only
+    // trigger a CORS preflight the controller must separately allow.
+    const h = { Accept: "text/event-stream", "X-Termini-Version": "1" };
     // The credential travels here — never in `url()`.
     if (this.cfg.token) h.Authorization = `Bearer ${this.cfg.token}`;
     return h;
