@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS demo_faults (
     injection_id     TEXT PRIMARY KEY,               -- ULID
     project_id       TEXT NOT NULL REFERENCES projects(id),
     node_id          TEXT NOT NULL REFERENCES nodes(id),
-    scenario         TEXT NOT NULL CHECK (scenario IN ('oom', 'disk-degrade', 'disk-fail', 'latency')),
+    scenario         TEXT NOT NULL CHECK (scenario IN ('oom', 'disk-fail')),
     rule_id          TEXT NOT NULL,                  -- frozen rule the scenario drives
     target           TEXT NOT NULL CHECK (target IN ('real', 'synthetic')),  -- node provenance
     state            TEXT NOT NULL CHECK (state IN ('active', 'recovering', 'cleared', 'expired')),

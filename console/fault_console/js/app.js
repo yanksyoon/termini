@@ -33,9 +33,7 @@
 
   const SCENARIOS = [
     ["oom", "oom — RAM past the OOM threshold (oom-guard-01)"],
-    ["disk-degrade", "disk-degrade — free disk to the floor + write latency (disk-degrade-01)"],
     ["disk-fail", "disk-fail — disk remounted read-only (disk-fail-01)"],
-    ["latency", "latency — network latency above threshold (latency-01)"],
   ];
 
   let state = { apiBase: "", projectId: "", token: "", nodes: [], timer: null };

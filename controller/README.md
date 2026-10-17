@@ -249,7 +249,7 @@ harness can exercise persisted triggers from a cold operator process.
 
 ```bash
 make verify           # core acceptance: register→role, telemetry, 422-on-malformed
-make verify-operator  # operator loop vs the chaos harness (oom/disk-degrade/disk-fail/latency/healthy)
+make verify-operator  # operator loop vs the chaos harness (oom/disk-fail/healthy)
 python3 -m unittest discover -s tests   # unit + integration (core + dashboard surfaces)
 ```
 

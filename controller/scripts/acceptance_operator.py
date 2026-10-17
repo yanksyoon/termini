@@ -7,11 +7,9 @@ Drives the chaos harness (chaos/run.py) against the *production* operator loop
   1. oom           sustained OOM telemetry -> the trigger fires -> an action is
                    chosen from the command allowlist -> a real LXD REST command
                    reaches the stub, within one polling cycle.
-  2. disk-degrade  sustained disk-degradation series fires its trigger; an
-                   allowlisted action is chosen and audited.
-  3. latency       sustained net-latency series fires its trigger; an allowlisted
-                   action is chosen and audited.
-  4. healthy       no trigger fires and no command is issued (false-positive guard).
+  2. disk-fail     read-only remount fires disk-fail-01; an allowlisted action is
+                   chosen and audited.
+  3. healthy       no trigger fires and no command is issued (false-positive guard).
 
 The assertion is on the INVARIANT, not the mechanism: a trigger fired, an action was
 chosen from the allowlist, and it was audited with its provenance. Which decider chose
@@ -49,7 +47,7 @@ OPERATOR_CMD = (
     " --duration 40 --audit-out {audit_out} --state-file {state_file}"
 )
 
-SCENARIOS = ["oom", "disk-degrade", "disk-fail", "latency", "healthy"]
+SCENARIOS = ["oom", "disk-fail", "healthy"]
 
 
 def _read_jsonl(path: str) -> list[dict]:
