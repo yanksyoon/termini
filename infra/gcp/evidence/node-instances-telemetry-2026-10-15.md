@@ -182,14 +182,13 @@ The failure branch is what makes a green run evidence; it is pinned in
 
 | # | Acceptance | Status |
 |---|---|---|
-| a | a sample from a real node listing every running instance, matching `lxc list` | **BLOCKED** — proven against a real LXD on the verification host (§3), needs the terminated fleet for the node-a sample (§5) |
-| b | `services[]` populated on a real node | **BLOCKED** — same; proven offline (§3) |
-| c | with a fault injected, a model decision resolves to a REAL instance | **BLOCKED** for the live run; the guardrail resolution + fault-window carry-through are proven offline (§3.1) |
-| d | evidence file + PR + commit/pr/merge_sha | this file + the card's PR |
+| a | a sample from a real node listing every running instance, matching `lxc list` | **PASS on the live fleet** — §6.1 (node-a: 4/4 running instances, vm_id + state + resources) |
+| b | `services[]` populated on a real node | **PASS on the live fleet** — §6.1 (3 services) and §6.2 (4, incl. `llama-cpp`) |
+| c | with a fault injected, a model decision resolves to a REAL instance | **PASS for target resolution** — §6.3: the injected `oom` fires the rule and the guard resolves `NNB92…` → `demo-workload`, a real RUNNING instance; LXD `PUT …/state` → `ok`. The decision is `decision_source=fallback` because G9 rejects the model's explanation (§6.4, separate defect, follow-up card) |
+| d | evidence file + PR + commit/pr/merge_sha | this file + the card's PR (see the card for the sha) |
 
-Everything that does not need the fleet is verified and landed; the live half of
-(a)/(b)/(c) needs an approved window because the operator's cost guard stopped the
-fleet (no GCP compute may be started by a worker).
+The offline half (§3) was verified first; the live half needed the operator's
+approved window and was run on 2026-10-17 (§6).
 
 ## 5. The live window: exact commands (cheap, ~3 minutes)
 
@@ -235,3 +234,169 @@ curl -sS -X POST "$CONTROLLER/v1/projects/$PROJECT_ID/demo/faults" \
 `verify-node-instances.py` is the gate: it exits non-zero unless the controller's
 stored sample lists exactly the node's running instances (with state and
 resources) *and* `services[]`.
+
+---
+
+## 6. Live acceptance on the standing fleet (2026-10-17, operator-approved window)
+
+Fleet at the time of the run (verified with `gcloud compute instances list`):
+`termini-controller` (34.93.190.64, project `01J0DEM0WARM000000000000AB`),
+`termini-node-a`, `termini-node-c` RUNNING; `termini-node-b` TERMINATED (the CPU
+quota is fully consumed by the running three). Nothing was started, stopped or
+recreated by this card; the only writes were the two fault injections through the
+operator's own console API, both cleared (§6.3).
+
+Both nodes run daemon md5 `ddc07bd1887d39b7447d928eb32c933a` = commit `7252a0f`
+(#184, the revision the demo refresh installed). That is one merge behind
+`origin/main` (`1592fff`, #190); `git diff 7252a0f origin/main --
+infra/bootstrap/node/termini-bootstrap.py` touches **only** the additive
+`§4.12–§4.14` groups (`disk_facts` inode/io, `net_facts` error counters,
+`process_facts`, `pressure`/transport scalars, per-instance cgroup counters). The
+`lxd_instances[]` collection and the `services[]` emission this card owns are
+byte-identical to `main`, and the samples below are the controller's **stored**
+samples (ingested and validated), not what the daemon claims it sent.
+
+### 6.1 (a) + (b): node-a, every RUNNING instance with vm_id/state/resources
+
+`sudo lxc list -c nst` and the gate on `termini-node-a`, same SSH session
+(2026-10-17T02:45:46Z):
+
+```
+ddc07bd1887d39b7447d928eb32c933a  /usr/local/bin/termini-bootstrap
+--- lxc list ---
++--------------------------------------+---------+-----------+
+|                 NAME                 |  STATE  |   TYPE    |
++--------------------------------------+---------+-----------+
+| demo-workload                        | RUNNING | CONTAINER |
+| termini-01m4wjhwqr3b8pcav2tvqbgg-0-0 | RUNNING | CONTAINER |
+| termini-01m4wjhwqr3b8pcav2tvqbgg-0-1 | RUNNING | CONTAINER |
+| termini-01m537g26sm8qgkmztn8stbt-0-0 | STOPPED | CONTAINER |
+| termini-01m537km0trb189a6e1gz546-0-0 | RUNNING | CONTAINER |
++--------------------------------------+---------+-----------+
+--- gate ---
+node_id=01M4TGD31WXH97JAA5S6A4R10D  controller=http://10.10.0.2:8080  daemon=/usr/local/bin/termini-bootstrap
+
+`lxc list` running instances -> derived vm_id (the controller resolves with these):
+   7NM4JV8BSD1P8KYBYP8B7BT7CY  termini-01m4wjhwqr3b8pcav2tvqbgg-0-0
+   J2DFSZ2VRKD2EVF2ZAJFCE2H8E  termini-01m537km0trb189a6e1gz546-0-0
+   NNB9287WRHGFDPEZ995TKCXDNW  demo-workload
+   VW4XZD24288MCXGT4557CDYFF9  termini-01m4wjhwqr3b8pcav2tvqbgg-0-1
+
+stored sample seq=26402 ts=2026-10-17T02:45:46Z
+   lxd_instances = [{"vm_id": "NNB9287WRHGFDPEZ995TKCXDNW", "state": "running", "ram_used_bytes": 110718976, "ram_limit_bytes": 8319729664, "disk_used_bytes": 0, "cpu_util_pct": 89.04}, {"vm_id": "7NM4JV8BSD1P8KYBYP8B7BT7CY", "state": "running", "ram_used_bytes": 98885632, "ram_limit_bytes": 1073741824, "disk_used_bytes": 0, "cpu_util_pct": 0.06}, {"vm_id": "VW4XZD24288MCXGT4557CDYFF9", "state": "running", "ram_used_bytes": 103026688, "ram_limit_bytes": 1073741824, "disk_used_bytes": 0, "cpu_util_pct": 0.07}, {"vm_id": "J2DFSZ2VRKD2EVF2ZAJFCE2H8E", "state": "running", "ram_used_bytes": 98414592, "ram_limit_bytes": 1073741824, "disk_used_bytes": 0, "cpu_util_pct": 0.03}]
+   services      = [{"name": "termini-bootstrap", "status": "running", "state_age_sec": 20452, "restart_count": 0, "last_exit_code": 0, "journal_errors": 0, "journal_warnings": 394}, {"name": "lxd", "status": "running", "state_age_sec": 20450, "restart_count": 0, "last_exit_code": 0, "journal_errors": 0, "journal_warnings": 0}, {"name": "sshd", "status": "running", "state_age_sec": 20449, "restart_count": 0, "last_exit_code": 0, "journal_errors": 0, "journal_warnings": 0}]
+
+PASS: the controller's stored sample lists every running instance on this node (with vm_id/state/resources) and its services.
+gate_exit=0
+```
+
+Reading: the four `RUNNING` rows on the node are exactly the four entries in the
+stored sample, each keyed by the derived `vm_id`, with state and resources; the
+one `STOPPED` instance (`…g26sm8…`) is correctly absent; no instance name appears
+in the sample (the name → id mapping stays on the node, per C0/§4.6).
+
+### 6.2 node-c: services populated (`llama-cpp` included), no workloads
+
+```
+--- lxc list ---
++------+-------+------+
+| NAME | STATE | TYPE |
++------+-------+------+
+--- gate ---
+node_id=01M4ZQ7Q2J80ATY3K32PY3PPJH  controller=http://10.10.0.2:8080  daemon=/usr/local/bin/termini-bootstrap
+
+`lxc list` running instances -> derived vm_id (the controller resolves with these):
+
+stored sample seq=11611 ts=2026-10-17T02:46:24Z
+   lxd_instances = []
+   services      = [{"name": "termini-bootstrap", "status": "running", "state_age_sec": 20494, "restart_count": 0, "last_exit_code": 0, "journal_errors": 0, "journal_warnings": 412}, {"name": "lxd", "status": "running", "state_age_sec": 20482, "restart_count": 0, "last_exit_code": 0, "journal_errors": 0, "journal_warnings": 0}, {"name": "sshd", "status": "running", "state_age_sec": 20477, "restart_count": 0, "last_exit_code": 0, "journal_errors": 0, "journal_warnings": 0}, {"name": "llama-cpp", "status": "running", "state_age_sec": 20494, "restart_count": 0, "last_exit_code": 0, "journal_errors": 0, "journal_warnings": 0}]
+
+PASS: the controller's stored sample lists every running instance on this node (with vm_id/state/resources) and its services.
+gate_exit=0
+```
+
+`lxd_instances = []` is the honest "node reported, runs nothing" (the array is
+only *absent* when LXD cannot be read — §2 omission rules), and the readiness
+list is the node's own: `llama-cpp` appears here because the unit is present on
+node-c, and would be omitted on a node that does not host it.
+
+### 6.3 (c): an injected fault, and the guard resolving to a REAL instance
+
+`POST /v1/projects/{p}/demo/faults {"node_id":"01M4TGD31WXH97JAA5S6A4R10D",
+"scenario":"oom","target":"real","duration_s":90}` → `201`, injection
+`01M53VZ29EQJPBQ28SRYP5ZP78`. The injected series ramps host RAM to 97 % of
+`ram_total_bytes` and keeps the nested `lxd_instances[]` consistent; the rule
+fired at 02:45:00.539Z (detection latency 2.53 s):
+
+```
+=== DECISION 01M53VZATZ66D8N78EESBC3PFK  2026-10-17T02:45:02.721Z fallback schema_violation
+    rule=oom-guard-01 action_kind=instance.restart
+    action_params = {"force": true, "timeout_s": 30, "instance_name": "demo-workload", "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW"}
+    incident      = [{"action_kind": "instance.restart", "target": "demo-workload"}]
+
+--- guard resolution detail ---
+action_params.instance_name = 'demo-workload'
+action_params._vm_id        = 'NNB9287WRHGFDPEZ995TKCXDNW'
+   threshold_fired      ok        rule oom-guard-01 fired
+   evidence_window      ok        evidence window captured
+        seq 26370..26389 (20 samples) C0 fields: cpu_core_count, cpu_util_pct, disk, kernel_version, load_avg_1m, lxd_cluster_role, lxd_instances, net, os_name, os_version, processes, ram_total_bytes, ram_used_bytes, seq, services, swap_used_bytes, ts, uptime_sec
+   prompt_built         ok        prompt rendered (C0 assertion ok)
+   model_call           ok        model answered
+   reply_received       rejected  model reply received
+   gates                ok        G7 rationale
+   gates                rejected  G9 incident record
+        rule=G9 field=explanation decision=reject reason=schema_violation (C2 signature in explanation: : phone-number signature)
+   action_decided       fallback  fallback to deterministic action
+        decided_by=fallback reason=schema_violation action_kind=instance.restart rejecting_gate=G9
+   executed             ok        action executed: ok
+   audit_recorded       ok        audit row written
+
+--- audit row (remediation_audits) ---
+action_kind    instance.restart
+result         ok
+detail         operation Success: /1.0/operations/3f8d18a4-b223-4780-b9b6-d015f01867c9; action=restart; state Running -> Running
+lxd_method     PUT
+lxd_path       /1.0/instances/demo-workload/state
+lxd_body       {"action": "restart", "force": true, "timeout": 30}
+lxd_endpoint   https://10.10.0.11:8443
+executed_at    2026-10-17T02:45:02.721Z
+```
+
+`NNB9287WRHGFDPEZ995TKCXDNW` is one of the four vm_ids the node reported in §6.1
+and hashes from `demo-workload` — a real RUNNING instance on that node — so the
+G5 resolution succeeded against real inventory and the executor's LXD call hit the
+real instance (`state Running -> Running`, no `404`, no invented name). `lxc list`
+on node-a at 02:47 shows `demo-workload` RUNNING again after the restart.
+
+The same path reproduced an hour-earlier run (`01M53V93RXX4KJSZHKRDH3J64P`,
+02:33:05Z: `oom-guard-01: instance.restart demo-workload -> ok`).
+
+### 6.4 Finding (out of this card's scope, follow-up raised): G9 rejects the model's explanation
+
+Both live decisions are `decision_source=fallback` with `fallback_reason=schema_violation`:
+the model answered, G7 accepted the rationale, and then **G9 rejected the incident
+explanation for a "phone-number signature"**. `governance.scan_c2` treats *any*
+bare 10–15 digit run as a phone number (`controller/app/governance.py:25`,
+`_PHONE = (?<!\d)\+?[0-9]{10,15}(?!\d)`), while the prompt renders the evidence
+window with **raw integers** (`termini/decision/prompt.py::compact_json`) and a
+real node's window is full of them — host `ram_used_bytes` ≈ 4 119 142 400,
+`ram_limit_bytes` 8 319 729 664, `disk.total_bytes` 61 285 326 848, and now the
+per-instance `ram_used_bytes`/`ram_limit_bytes` of `lxd_instances[]`. A model that
+quotes a metric while explaining itself is therefore rejected, and on a real node
+the operator never gets a model-sourced decision (the deterministic playbook still
+acts, which is what §6.3 shows).
+
+This is not a defect in the telemetry: the values are exactly what the contract
+requires and the controller's own `safe_int_display` groups them for controller-
+generated text. It is a redactor/prompt-rendering mismatch on the operator side,
+raised as a follow-up card (see the card's completion metadata).
+
+### 6.5 What this run did NOT do
+
+* It did not deploy `origin/main`'s daemon over `7252a0f`: the two revisions are
+  identical for this card's code path (§6 preamble) and a service restart on a
+  live node is not something this card needs to prove its field is emitted.
+* It did not rebake the node image. The image bake still ships whatever commit it
+  is built from; the field is in the daemon, and a rebake carries it (§2).
+* It started/stopped no GCP compute and created no address or disk. The demo's
+  `demo-workload` was left RUNNING on node-a (verified 02:47Z).
