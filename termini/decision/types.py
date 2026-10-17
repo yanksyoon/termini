@@ -255,8 +255,12 @@ class DecisionInput:
 
     Every field is C0 (``governance.md`` §7.2): it is derivable from the health
     event plus validated telemetry state, so it may appear in the (on-prem)
-    model prompt. The adapter serializes this verbatim as compact JSON — no
-    transformation, no C1/C2 content.
+    model prompt. The adapter serializes this as compact JSON with one
+    presentation-only change: integers >= 10^9 are rendered thousands-grouped
+    (``4119142400`` -> ``"4,119,142,400"``, see
+    :func:`termini.decision.prompt.compact_json`) so a model that quotes a
+    metric does not emit a bare 10-15 digit run. The payload values themselves
+    are never transformed and carry no C1/C2 content.
     """
 
     request_id: str

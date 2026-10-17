@@ -176,9 +176,57 @@ def render_user(decision_input: Union[DecisionInput, Dict[str, Any]]) -> str:
     )
 
 
+# Integers at or above this magnitude are rendered with thousands separators so
+# the model sees (and can quote) a real byte count without emitting a bare
+# 10-15 digit run. The controller's C2 scan treats any bare 10-15 digit run as a
+# phone number (`controller/app/governance.py::_PHONE`), so a model that quotes
+# `ram_used_bytes: 4119142400` verbatim from the evidence window is rejected for
+# "phoning the evidence" — the live failure behind t_220a468a. The controller's
+# own text avoids this with `safe_int_display` (thousands grouping); the model is
+# now given the same shape in the prompt instead of a raw run.
+_INT_GROUP_THRESHOLD = 1_000_000_000
+
+
+def _group_large_ints(value: Any) -> Any:
+    """Recursively render integers >= 10^9 as thousands-grouped strings.
+
+    Only the *rendered* prompt changes: the payload values are untouched (the
+    controller's C0 class assertion runs on the raw ``DecisionInput`` dict, never
+    on this string). A genuine phone number in the model's *output* is still a
+    bare digit run and is still caught by ``_PHONE`` — a grouped metric
+    (``4,119,142,400``) is not.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        if abs(value) >= _INT_GROUP_THRESHOLD:
+            return f"{value:,}"
+        return value
+    if isinstance(value, float):
+        # Integral floats of byte magnitude (a metric that arrived as JSON float)
+        # are grouped the same way; non-integral floats (percentages, PSI) are
+        # small and left as numbers.
+        if value.is_integer() and abs(value) >= _INT_GROUP_THRESHOLD:
+            return f"{int(value):,}"
+        return value
+    if isinstance(value, dict):
+        return {key: _group_large_ints(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_group_large_ints(item) for item in value]
+    return value
+
+
 def compact_json(payload: Any) -> str:
-    """Serialize a payload as compact JSON (no whitespace), key order preserved."""
-    return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    """Serialize a payload as compact JSON (no whitespace), key order preserved.
+
+    Integers >= 10^9 are rendered thousands-grouped (``4119142400`` ->
+    ``"4,119,142,400"``) so a model that quotes a metric while explaining itself
+    quotes the grouped form — C2-safe under the controller's G9 scan. The payload
+    itself is not modified; only this rendered string is affected.
+    """
+    return json.dumps(
+        _group_large_ints(payload), separators=(",", ":"), ensure_ascii=False
+    )
 
 
 # Few-shot examples: one canonical OOM restart (the §3/§4 demo case) and one
