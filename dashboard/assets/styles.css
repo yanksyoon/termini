@@ -219,8 +219,10 @@ textarea { width: 100%; resize: vertical; }
 .charts-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
 @media (min-width: 1500px) { .charts-grid { grid-template-columns: 1fr 1fr; } }
 .chart-card { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 10px 10px 8px; }
-.chart-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-.chart-title h3 { font-size: .92rem; }
+/* t_214ec609: a card title wraps instead of clipping — the chips (`raw sample`,
+   `rank N`, `derived`) drop to their own line when the name needs the width. */
+.chart-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.chart-title h3 { font-size: .92rem; flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; }
 .chart-unit { color: var(--muted); font-size: .78rem; }
 .chart-canvas { width: 100%; height: 150px; display: block; }
 .chart-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; font-size: .78rem; color: var(--fg-dim); }
@@ -512,17 +514,42 @@ details.panel > summary.panel-head h2 { margin: 0; font-size: 1rem; }
 .chart-chip.raw { color: var(--fg-dim); }
 .chart-basis { font-size: .74rem; color: var(--muted); }
 .sample-card .chart-title { border-bottom: 1px solid var(--line-2); padding-bottom: 4px; }
+/* t_214ec609: a raw-sample row is a FACT (label -> value + unit), and its
+   provenance goes underneath it. The card grid is `auto-fit minmax(260px,1fr)`
+   (hig.css), so a card is 260-380px wide — the old five fixed tracks
+   (84+96+30+24 = 234px of chrome) left ~12px for the name, and
+   `text-overflow: ellipsis` hid it. Nothing here clips: the name track has an
+   8ch floor and wraps, the value is a right-aligned tabular column, and the
+   `where` (disk 0 / net 0 / instance <id>) and the flags word each get their
+   own full-width line when they are present (an empty one contributes no
+   height). Contract labels stay spelled out — they are never shortened. */
 .sample-table { display: flex; flex-direction: column; margin-top: 4px; }
 .sample-row {
-  display: grid; grid-template-columns: 84px minmax(0, 1fr) 96px 30px minmax(0, 1fr);
-  align-items: baseline; gap: 6px; font-size: .8rem; padding: 2px 0;
+  display: grid;
+  grid-template-columns: minmax(8ch, 1fr) max-content minmax(3.6ch, max-content);
+  grid-template-areas:
+    "label value unit"
+    "where where where"
+    "flags flags flags";
+  align-items: baseline;
+  column-gap: 8px;
+  row-gap: 0;
+  font-size: .8rem;
+  padding: 3px 0;
   border-bottom: 1px dashed rgba(255,255,255,.05);
 }
-.sample-row .sr-where { color: var(--muted); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; }
-.sample-row .sr-label { color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; }
-.sample-row .sr-value { text-align: right; font-family: ui-monospace, monospace; }
-.sample-row .sr-unit { color: var(--muted); font-size: .72rem; }
-.sample-row .sr-flags { color: var(--muted); font-size: .7rem; overflow: hidden; text-overflow: ellipsis; }
+.sample-row .sr-label { grid-area: label; color: var(--fg-dim); overflow-wrap: break-word; }
+.sample-row .sr-value {
+  grid-area: value; text-align: right; justify-self: end; white-space: nowrap;
+  font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums;
+}
+/* fixed-width unit column so every row's number ends on the same x */
+.sample-row .sr-unit {
+  grid-area: unit; color: var(--muted); font-size: .72rem;
+  min-width: 3.6ch; text-align: right; white-space: nowrap;
+}
+.sample-row .sr-where { grid-area: where; color: var(--muted); font-size: .72rem; overflow-wrap: anywhere; }
+.sample-row .sr-flags { grid-area: flags; color: var(--muted); font-size: .7rem; overflow-wrap: break-word; }
 .sample-note { font-size: .8rem; padding: 8px 0; }
 .sr-value.nr, .sample-note.nr { color: #ffb4a2; font-style: italic; }
 .badge.synthetic { color: #e3c6ff; border-color: #6b3f8f; }
