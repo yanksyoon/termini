@@ -804,6 +804,19 @@ of the client-facing dashboard: the route is not linked from the dashboard's
 navigation, and a request that presents a `node_token` (or no token at all) is
 refused. A client must not be able to inject a fault.
 
+**Who acted — `X-Termini-Actor`.** The project token is shared by every worker and by
+the operator console, so the token cannot say *who* cleared an injection. Every
+mutating call on this surface may therefore carry an `X-Termini-Actor: <id>` header —
+A card id (`t_c37aa0dc`), a tool name (`tool:demo-fault-clear-telemetry`) or `human` for
+the console. The value is written to `demo_faults.cleared_by` and into the operator-log
+line, and it is the *only* way a peer's action can be told apart from an operator
+action. A caller that sends no header is recorded as
+`unattributed_project_token` (message: "cleared by an un-attributed project-token
+caller") — never as `human`, because on 2026-10-17 exactly that default made a peer
+worker's clear-all look like an operator clear and invalidated a live acceptance
+(kanban t_9c1362f6). The header must be 1..64 chars of `[A-Za-z0-9_.:@-]`; anything
+else is `422 INVALID_ARGUMENT` and **nothing is cleared**.
+
 **Why the route exists.** Fault injection used to be `console/seed_demo.py`: a CLI
 that registers two synthetic nodes and oscillates their telemetry. There was no way
 to trigger a *specific* fault, no way to target a chosen node, and no way to clear a
@@ -912,8 +925,9 @@ Returns every injection this project has run, newest first:
 ### DELETE /v1/projects/{project_id}/demo/faults/{injection_id}
 
 Clear one injection. `project_token` auth. Optional `?reason=<≤200 chars>`
-(default `cleared_by_operator`). Response `200 OK` with the injection view, whose
-`state` is now `recovering`:
+(default `cleared_by_operator`) and optional `X-Termini-Actor` header (see above;
+absent → `cleared_by: "unattributed_project_token"`). Response `200 OK` with the
+injection view, whose `state` is now `recovering`:
 
 ```json
 { "injection_id": "01M4349RQ3BM21NNW2A68CT3SQ", "state": "recovering",
@@ -933,10 +947,11 @@ refuses on state.
 ### POST /v1/projects/{project_id}/demo/faults/clear
 
 `project_token` auth. Clear every open injection, or just one node's. Body
-`{"node_id": "<id>", "reason": "<text>"}` (both optional) → `200`
-`{"cleared": [<injection view>…], "count": 2}`. This is the clear path for an
-environment whose reverse proxy drops `DELETE` (both are in the contract and both
-run the same recovery burst).
+`{"node_id": "<id>", "reason": "<text>"}` (both optional), plus the same optional
+`X-Termini-Actor` header → `200` `{"cleared": [<injection view>…], "count": 2}`. This is
+the clear path for an environment whose reverse proxy drops `DELETE` (both are in the
+contract and both run the same recovery burst). Every injection it closes carries the
+same `cleared_by`, so a peer's sweep is visible as a peer's, not as two operator clears.
 
 ### Refusals (both `409 CONFLICT`)
 
@@ -965,21 +980,32 @@ An injection may never outlive its TTL silently:
   `clear_reason: "ttl_expired"`);
 - an injection left `active`/`recovering` by a **previous controller process** is
   swept at boot (`state: expired`, `cleared_by: "controller_restart"`) and logged —
-  the driver that owned it is gone, so reporting it as live would be a lie.
+  the driver that owned it is gone, so reporting it as live would be a lie. The
+  log line and `clear_reason` name **who restarted the controller**, from the deploy
+  tool's `DEPLOY_ACTOR` (written next to `DEPLOYED_COMMIT` by
+  `infra/gcp/tools/deploy-termini-tree.sh --actor <card>`):
+  `fault injection … expired: controller restarted by t_77f26781 (deploy 56843b6deadb at
+  2026-10-17T19:30:45Z) while oom was active — no samples are being written for it`.
+  With no `DEPLOY_ACTOR` file the line says `restarted by an un-attributed process` —
+  it never claims the operator did it (kanban t_9c1362f6).
 
 Both are also events on the operator log (§7.2), which is where the client
 dashboard shows them.
 
 ### Operator log (client-visible provenance)
 
-Every transition is appended to the project's operator log with `actor: "human"`, so
-the client dashboard's live AI-operator panel shows the injection the way
-`dashboard.md` §2.1 renders human-actor lines:
+Every transition is appended to the project's operator log, so the client
+dashboard's live AI-operator panel shows the injection the way `dashboard.md` §2.1
+renders human-actor lines. The actor is the caller's `X-Termini-Actor` (`human` reads
+in the sentence as "operator"); a header-less caller reads as "an un-attributed
+project-token caller", which is what a worker's clear used to be mislabelled as:
 
 ```
 fault injected by operator: node termini-node-a scenario=oom rule=oom-guard-01
   target=real ttl=30s (injection …, node telemetry superseded while active)
 node telemetry superseded by active fault injection … (warn, once per injection)
+fault cleared by t_9c1362f6: node termini-node-a scenario=oom rule=oom-guard-01 —
+  restoring the healthy series, 3 sample(s) to re-arm (injection …)
 fault cleared by operator: node termini-node-a scenario=oom rule=oom-guard-01 —
   restoring the healthy series, 3 sample(s) to re-arm (injection …)
 fault cleared: node termini-node-a rule oom-guard-01 back below threshold after 3
@@ -993,6 +1019,7 @@ fault TTL expired after 30s — auto-clearing: … (injection …)
 |---|---|---|
 | `TERMINI_DEMO_FAULT_GUARD_S` | `60` | settle window during which a remediation for the same `(node, rule)` is treated as still in flight (the `409` above) |
 | `TERMINI_DEMO_FAULTS` | `on` | `off` disables the surface entirely (the endpoints then answer `503 INTERNAL` instead of pretending to inject) |
+| `TERMINI_DEPLOY_ACTOR_PATH` | `/opt/termini/DEPLOY_ACTOR` | where the deploy tool records **who** deployed the running tree (`{actor, ref, commit, deployed_at}`); read at boot so the stale-injection sweep names the actor instead of "the operator" |
 
 Additive contract notes (§1.2): the `DELETE` verb is now part of the controller's
 CORS `Access-Control-Allow-Methods`, and the four routes above are added to §4.

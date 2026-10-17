@@ -13,6 +13,7 @@ here; application/customer logs are C2 and never enter this store
 from __future__ import annotations
 
 import datetime
+import re
 from collections import deque
 from typing import Any
 
@@ -20,6 +21,13 @@ from . import store, ulid
 
 VALID_SEVERITIES = ("debug", "info", "warn", "error")
 VALID_ACTORS = ("ai_operator", "human")
+# An explicit actor id (kanban t_9c1362f6): the project token is shared, so a fault
+# clear by a peer worker must be able to say WHICH worker it was in the durable log.
+# Ids look like `t_c37aa0dc` or `tool:demo-fault-clear-telemetry` (§4.7
+# `X-Termini-Actor`). Anything that is neither a known enum value nor an id is
+# recorded as `unattributed` — never as `ai_operator`, which would blame the loop.
+ACTOR_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,63}$")
+UNATTRIBUTED_ACTOR = "unattributed"
 MAX_MESSAGE_CHARS = 1000  # dashboard.md §2.1
 
 
@@ -52,7 +60,7 @@ class OperatorLogs:
         if severity not in VALID_SEVERITIES:
             severity = "info"
         if actor not in VALID_ACTORS:
-            actor = "ai_operator"
+            actor = actor if ACTOR_ID_RE.match(actor or "") else UNATTRIBUTED_ACTOR
         message = (message or "")[:MAX_MESSAGE_CHARS]
 
         log = {

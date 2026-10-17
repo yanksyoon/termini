@@ -309,6 +309,28 @@ TEAM_SSH_PUBKEY_FILE=~/.ssh/team.pub ENROLLMENT_TOKEN=... \
   ./provision.sh --render-only --render-out /tmp/cloud-init
 ```
 
+## Live fleet — one window at a time
+
+The standing fleet is shared by every `infra` worker, and a peer's clear-all or
+redeploy silently invalidates a live acceptance run (kanban `t_9c1362f6`). Claim the
+fleet before you inject, deploy or restart, and release it afterwards:
+
+```bash
+infra/gcp/tools/live-window.sh install     # once per VM: /usr/local/bin/termini-live-window
+infra/gcp/tools/live-window.sh take --owner t_9c1362f6 --ttl 45m \
+  --purpose "t_9c1362f6: live proof of the window lease"
+infra/gcp/tools/live-window.sh status      # holder, purpose, expiry
+infra/gcp/tools/deploy-termini-tree.sh --actor t_9c1362f6 --ref <sha>  # refuses outside your window
+infra/gcp/tools/live-window.sh release --owner t_9c1362f6
+```
+
+The lease is a file on the controller VM (`/var/lib/termini/live-window/`), so it
+survives controller restarts and is readable while the controller is down. A second
+owner is **refused** (exit 3) with the holder's id, purpose and expiry. There is no
+`--force`; a human decides, on the board. The full convention is in `.hermes.md`
+("The live fleet — one window at a time") and the audit attribution rules are in
+`docs/contracts/controller-api.md` §4.7 (`X-Termini-Actor`, `DEPLOY_ACTOR`).
+
 ## Verification (acceptance)
 
 ```bash

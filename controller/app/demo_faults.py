@@ -71,6 +71,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import threading
 import time
 
@@ -80,6 +81,25 @@ from .operator import detect, triggers
 from .operator import store as opstore
 
 log = logging.getLogger("termini.demo_faults")
+
+# --------------------------------------------------------------------------- #
+# Attribution (kanban t_9c1362f6). Every caller of this surface presents the SAME
+# project token, so the token cannot say who acted — on 2026-10-17 a peer worker's
+# clear-all was recorded as `cleared_by=human` ("the operator") and silently
+# invalidated another worker's live acceptance. The caller must therefore declare
+# itself in `X-Termini-Actor`; when it does not, the row says so instead of
+# inventing an operator: `unattributed_project_token`.
+UNATTRIBUTED_ACTOR = "unattributed_project_token"
+ACTOR_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,63}$")
+
+
+def actor_label(actor: str) -> str:
+    """The actor as it reads in an operator-log sentence."""
+    if actor == "human":
+        return "operator"
+    if actor == UNATTRIBUTED_ACTOR:
+        return "an un-attributed project-token caller (no X-Termini-Actor header)"
+    return actor
 
 # --------------------------------------------------------------------------- #
 # Scenarios — the two demo faults the operator may inject. `disk-degrade` and
@@ -452,8 +472,18 @@ class DemoFaultInjector(threading.Thread):
         Called INLINE from `app/main` before the server serves, so the first request
         after a restart already sees the truth; `run()` calls it again for a driver
         started without that (a no-op — nothing is open by then).
+
+        The sweep names WHO restarted the controller (from the deploy tool's
+        `DEPLOY_ACTOR`, written next to `DEPLOYED_COMMIT`), because a peer's redeploy
+        killing your injection must not read as an operator action — kanban
+        t_9c1362f6. No file → `unattributed`, never "human".
         """
         swept = 0
+        actor, commit, deployed_at = self._deploy_actor()
+        restarted_by = f"controller restarted by {actor_label(actor)}"
+        if commit:
+            restarted_by += f" (deploy {str(commit)[:12]}"
+            restarted_by += f" at {deployed_at})" if deployed_at else ")"
         try:
             with db.session(self.cfg.db_path) as conn:
                 rows = list_open_faults(conn, self.project_id)
@@ -461,20 +491,49 @@ class DemoFaultInjector(threading.Thread):
                     update_fault(
                         conn, row["injection_id"], state="expired", cleared_at=_now_iso(),
                         cleared_by="controller_restart",
-                        clear_reason="controller restart — the driver that owned this injection is gone",
+                        clear_reason=f"{restarted_by} — the driver that owned this "
+                                     f"injection is gone",
                     )
                     self._emit_log(
                         conn, row["node_id"],
-                        f"fault injection {row['injection_id']} expired: controller restarted while "
-                        f"{row['scenario']} was {row['state']} — no samples are being written for it",
+                        f"fault injection {row['injection_id']} expired: {restarted_by} "
+                        f"while {row['scenario']} was {row['state']} — no samples are "
+                        f"being written for it",
                         severity="warn",
+                        actor=actor,
                     )
                     swept += 1
                 if rows:
-                    log.warning("swept %d stale demo fault injection(s) at boot", len(rows))
+                    log.warning("swept %d stale demo fault injection(s) at boot (%s)",
+                                len(rows), restarted_by)
         except Exception:  # noqa: BLE001 — boot must not die because of the driver
             log.exception("could not sweep stale demo fault injections")
         return swept
+
+    def _deploy_actor(self) -> tuple[str, str | None, str | None]:
+        """(actor, commit, deployed_at) from the deploy tool's `DEPLOY_ACTOR` file.
+
+        Deliberately tolerant: a missing, unreadable or malformed file is reported as
+        `unattributed` rather than guessed at — the audit line must never claim a
+        person did something a worker did.
+        """
+        path = getattr(self.cfg, "deploy_actor_path", "") or ""
+        if not path:
+            return UNATTRIBUTED_ACTOR, None, None
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                info = json.load(fh)
+        except (OSError, ValueError):
+            return UNATTRIBUTED_ACTOR, None, None
+        if not isinstance(info, dict):
+            return UNATTRIBUTED_ACTOR, None, None
+        actor = str(info.get("actor") or "").strip()
+        if not ACTOR_RE.match(actor):
+            actor = UNATTRIBUTED_ACTOR
+        commit = info.get("commit") if isinstance(info.get("commit"), str) else None
+        deployed_at = (info.get("deployed_at")
+                       if isinstance(info.get("deployed_at"), str) else None)
+        return actor, commit, deployed_at
 
     # ------------------------------------------------------------------ tick
     def tick(self, *, now_epoch: float | None = None) -> list[dict]:
@@ -637,7 +696,8 @@ class DemoFaultInjector(threading.Thread):
         )
 
     # ------------------------------------------------------------ console API
-    def start_injection(self, conn, project_id: str, body: dict) -> dict:
+    def start_injection(self, conn, project_id: str, body: dict, *,
+                        actor: str = UNATTRIBUTED_ACTOR) -> dict:
         """Start an injection. Raises `errors.ApiError` on any refusal."""
         if project_id != self.project_id:
             raise errors.permission_denied("project_id does not match token scope")
@@ -743,16 +803,17 @@ class DemoFaultInjector(threading.Thread):
         # the line says who did it and that node telemetry is superseded.
         self._emit_log(
             conn, node_id,
-            f"fault injected by operator: node {node.get('registration_id') or node_id} "
+            f"fault injected by {actor_label(actor)}: node "
+            f"{node.get('registration_id') or node_id} "
             f"scenario={scenario} rule={rule_id} target={target} ttl={duration:.0f}s "
             f"(injection {injection_id}; node telemetry superseded while active)",
-            actor="human",
+            actor=actor,
         )
         fresh = get_fault(conn, injection_id)
         return self.view(fresh, node, thresholds=self.resolve_thresholds(conn))
 
     def clear(self, conn, project_id: str, injection_id: str, *,
-              reason: str = "cleared_by_operator", actor: str = "human") -> dict:
+              reason: str = "cleared_by_operator", actor: str = UNATTRIBUTED_ACTOR) -> dict:
         """Clear one injection. Idempotent; never refuses on state (rule 2)."""
         if project_id != self.project_id:
             raise errors.permission_denied("project_id does not match token scope")
@@ -769,7 +830,8 @@ class DemoFaultInjector(threading.Thread):
         return self.view(get_fault(conn, injection_id), node, thresholds=thresholds)
 
     def clear_all(self, conn, project_id: str, *, node_id: str | None = None,
-                  reason: str = "cleared_by_operator", actor: str = "human") -> dict:
+                  reason: str = "cleared_by_operator",
+                  actor: str = UNATTRIBUTED_ACTOR) -> dict:
         if project_id != self.project_id:
             raise errors.permission_denied("project_id does not match token scope")
         cleared = []
@@ -792,7 +854,8 @@ class DemoFaultInjector(threading.Thread):
         name = (node or {}).get("registration_id") or row["node_id"]
         self._emit_log(
             conn, row["node_id"],
-            f"fault cleared by operator: node {name} scenario={row['scenario']} "
+            f"fault cleared by {actor_label(actor)}: node {name} "
+            f"scenario={row['scenario']} "
             f"rule={row['rule_id']} — restoring the healthy series, {n} sample(s) "
             f"to re-arm (injection {row['injection_id']})",
             actor=actor,

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -45,6 +46,10 @@ import urllib.request
 DEFAULT_BASE = "http://127.0.0.1:8080"
 DEFAULT_PID = "01J0DEM0WARM000000000000AB"
 DEFAULT_DB = "/data/controller.db"
+# Who this tool says it is in `X-Termini-Actor` (kanban t_9c1362f6) — see
+# demo-fault-clear-telemetry.py for why the header exists.
+DEFAULT_ACTOR = "tool:solvable-faults-live"
+ACTOR = DEFAULT_ACTOR
 
 
 # --------------------------------------------------------------------- plumbing
@@ -53,7 +58,8 @@ def call(base: str, project: str, token: str, method: str, path: str,
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
         base.rstrip("/") + path, data=data, method=method,
-        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json",
+                 "X-Termini-Actor": ACTOR},
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -179,6 +185,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--project", default=DEFAULT_PID)
     p.add_argument("--token", default="demo-project-token")
     p.add_argument("--db", default=DEFAULT_DB)
+    p.add_argument("--actor", default=os.environ.get("TERMINI_ACTOR", DEFAULT_ACTOR),
+                   help="value for X-Termini-Actor (default: %(default)s)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     i = sub.add_parser("inject", help="inject a demo fault on a real node and wait for the loop")
@@ -187,10 +195,14 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--target", default="real", choices=("real", "synthetic"))
     i.add_argument("--duration", type=float, default=60.0)
     i.add_argument("--wait", type=float, default=150.0)
+    i.add_argument("--actor", dest="actor", default=argparse.SUPPRESS,
+                   help=argparse.SUPPRESS)
     i.set_defaults(func=do_inject)
 
     c = sub.add_parser("clear", help="clear an injection and let the series recover")
     c.add_argument("--injection", required=True)
+    c.add_argument("--actor", dest="actor", default=argparse.SUPPRESS,
+                   help=argparse.SUPPRESS)
     c.set_defaults(func=do_clear)
 
     s = sub.add_parser("status", help="print the rows the loop produced")
@@ -199,6 +211,8 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(func=do_status)
 
     args = p.parse_args(argv)
+    global ACTOR
+    ACTOR = args.actor
     return args.func(args)
 
 

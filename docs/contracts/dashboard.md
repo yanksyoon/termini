@@ -261,7 +261,7 @@ application/customer logs are C2 and are **never** surfaced
 | `ts` | RFC3339 (ms) | emit time |
 | `node_id` | string (ULID) \| null | null for project-level messages |
 | `severity` | enum | `debug \| info \| warn \| error` |
-| `actor` | enum | `ai_operator \| human` |
+| `actor` | string | `ai_operator`, `human`, or an explicit actor id (`t_c37aa0dc`, `tool:…`, from `X-Termini-Actor`); a line whose actor cannot be determined reads `unattributed` (never `ai_operator`) |
 | `message` | string | bounded, redacted (≤ 1000 chars, C0/C1 only) |
 | `remediation` | object \| null | null when no remediation is attached |
 
