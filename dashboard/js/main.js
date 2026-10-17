@@ -21,6 +21,8 @@ import { ok as toastOk, err as toastErr, warn as toastWarn, toast } from "./ui/t
 import { formatError } from "./ui/errors.js";
 import { OfflineBackend, OfflineStream } from "./offline.js";
 import { MyNodePanel } from "./ui/mynode.js";
+import { AgentsPanel } from "./ui/agents.js";
+import { agentGroups, agentsSummary, inferenceLabel, taskView, vmIdForName } from "./core/agents.js";
 import { registrationView, healthSummary } from "./core/client-node.js";
 import { ChatPanel } from "./ui/chat.js";
 import { seedContext } from "./core/assistant.js";
@@ -37,6 +39,8 @@ const NODE_KEY = "termini.dashboard.node";
 const dom = {
   pillNodes: $("#pill-nodes"),
   pillNodesText: $("#pill-nodes-text"),
+  pillAgents: $("#pill-agents"),
+  pillAgentsText: $("#pill-agents-text"),
   pillBackend: $("#pill-backend"),
   pillBackendText: $("#pill-backend-text"),
   pillStream: $("#pill-stream"),
@@ -100,6 +104,11 @@ const dom = {
   mynodeToken: $("#mynode-node-token"),
   mynodeConnect: $("#btn-mynode-connect"),
   mynodeForget: $("#btn-mynode-forget"),
+  agentsGroups: $("#agents-groups"),
+  agentsEmpty: $("#agents-empty"),
+  agentsInference: $("#agents-inference"),
+  agentsStatus: $("#agents-status"),
+  agentsRefreshBtn: $("#btn-agents-refresh"),
   chatLauncher: $("#btn-chat"),
   chatPanel: $("#chat-panel"),
   chatClose: $("#btn-chat-close"),
@@ -130,6 +139,15 @@ const state = {
   pending: new Map(),
   decisionsReady: false,
   lastAudits: [],
+  // Agents panel (t_44a2b87b): the rows this tab stopped (telemetry reports only
+  // RUNNING instances), the last task per agent, the plan outcome waiting to be
+  // reported by a node, and the last answer's provenance for the honest label.
+  retainedAgents: new Map(),
+  agentTasks: new Map(),
+  expectedAgents: [],
+  agentPollSeq: new Map(),
+  lastProvenance: null,
+  lastModel: null,
 };
 
 let cfg = resolveConfig(readInputs());
@@ -207,6 +225,27 @@ const controls = new ControlsPanel(
     onApprove: (commandId) => decideRemediation(commandId, "approve"),
     onDeny: (commandId) => decideRemediation(commandId, "deny"),
     onAskAi: (ctx) => askAi(ctx),
+  },
+);
+
+const agentsPanel = new AgentsPanel(
+  {
+    groups: dom.agentsGroups,
+    empty: dom.agentsEmpty,
+    inference: dom.agentsInference,
+    status: dom.agentsStatus,
+    refreshBtn: dom.agentsRefreshBtn,
+  },
+  {
+    onAction: (vmId, action, agent) => agentAction(vmId, action, agent),
+    onTask: (vmId, prompt) => giveAgentTask(vmId, prompt),
+    onRefresh: () => refreshAgents({ force: true }),
+    onDeployIntent: () => {
+      if (!dom.intentPrompt) return;
+      dom.intentPrompt.scrollIntoView({ behavior: "smooth", block: "center" });
+      dom.intentPrompt.focus();
+      toast("info", "Deploy an agent", "Describe the agents you want, Validate intent, then Apply plan — the rows appear here.", 8000);
+    },
   },
 );
 
@@ -454,9 +493,225 @@ async function refreshNodes() {
     decisionsPanel.setNodes(nodes);
     syncNodeSelectors();
     updatePills();
+    await refreshAgents();
     dom.overviewUpdated.textContent = `updated ${new Date().toLocaleTimeString("en-GB", { hour12: false })}`;
   } catch (e) {
     handleBackendError(e);
+  }
+}
+
+/* ---------------------------------------------------------------- agents */
+
+/**
+ * The Agents panel's whole data path: each node's latest telemetry Sample
+ * (`metrics_latest`, dashboard.md §1.2) is the ONLY inventory — one row per
+ * `lxd_instances[]` entry (node-telemetry.md §4.6). Nothing here fabricates an
+ * instance; a node that cannot report its inventory renders as unknown.
+ */
+async function refreshAgents({ force = false } = {}) {
+  if (missingConfig() || !state.nodes.length) {
+    agentsPanel.render();
+    return;
+  }
+  const nodes = state.nodes.filter((n) => !n.synthetic);
+  await Promise.all(
+    nodes.map(async (n) => {
+      try {
+        const detail = await backend.api.getNode(n.node_id);
+        const sample = detail && detail.metrics_latest ? detail.metrics_latest : null;
+        if (sample) state.samples.set(n.node_id, sample);
+      } catch {
+        /* keep the last known sample: it is the last fact the node reported */
+      }
+    }),
+  );
+  renderAgents();
+}
+
+function renderAgents() {
+  const view = agentGroups({
+    nodes: state.nodes,
+    samples: state.samples,
+    retained: state.retainedAgents,
+    now: Date.now(),
+  });
+
+  // A row telemetry now reports (again) supersedes the retained "stopped by you".
+  for (const agent of view.agents) {
+    if (!agent.retained) state.retainedAgents.delete(agent.vmId);
+  }
+
+  // A just-applied plan's instances: drop the placeholder once reported.
+  if (state.expectedAgents.length) {
+    const seen = new Set(view.agents.map((a) => a.vmId));
+    const remaining = state.expectedAgents.filter((r) => !(r.vmId && seen.has(r.vmId)));
+    if (remaining.length !== state.expectedAgents.length) {
+      state.expectedAgents = remaining;
+      agentsPanel.setExpected(remaining);
+    }
+  }
+
+  agentsPanel.setInference(inferenceLabel(state.lastProvenance, state.lastModel));
+  agentsPanel.render(view, state.agentTasks);
+
+  const summary = agentsSummary(view);
+  setPill(dom.pillAgents, dom.pillAgentsText, summary.kind, summary.text);
+  if (dom.agentsStatus) {
+    dom.agentsStatus.textContent = `updated ${new Date().toLocaleTimeString("en-GB", { hour12: false })}`;
+  }
+}
+
+/**
+ * Start / stop / restart one agent (controller-api.md §4.10). Human-issued and
+ * audited exactly like a node Restart: the controller writes the command row and
+ * the operator-log line, and the result says what LXD actually answered.
+ */
+async function agentAction(vmId, action, agent) {
+  if (typeof backend.api.agentAction !== "function") {
+    toastErr("No agent action API on this backend", "The offline demo has no agent operations; use the live controller.");
+    return;
+  }
+  const label = (agent && agent.label) || vmId;
+  const verb = action === "restart" ? "Restart" : action === "stop" ? "Stop" : "Start";
+  if (action !== "start") {
+    const confirmed = await confirmDialog({
+      title: `${verb} agent ${label}?`,
+      message:
+        action === "stop"
+          ? "The controller stops the instance and confirms the state. A stopped agent is no longer reported by telemetry (only RUNNING instances are), so its row stays here labelled “stopped by you”."
+          : "The controller restarts the instance and confirms it is RUNNING again. The restart is recorded as a human-issued command.",
+      confirmLabel: `${verb} agent`,
+      danger: action === "stop",
+    });
+    if (!confirmed) return;
+  }
+  agentsPanel.setBusy(vmId, action);
+  try {
+    const res = await backend.api.agentAction(vmId, action);
+    const ok = res && res.state === "succeeded";
+    const msg = `${res && res.type ? res.type : action} · ${res && res.state ? res.state : "?"} · command ${res && res.command_id ? res.command_id.slice(0, 10) + "…" : "—"}`;
+    if (ok) toastOk(`${verb} issued`, `${label}: ${msg}`);
+    else toastWarn(`${verb} did not take effect`, `${label}: ${msg} — ${res && res.result ? res.result.detail : "see the operator log"}`);
+    if (ok && action === "stop") {
+      state.retainedAgents.set(vmId, { ...agent, state: "stopped", retained: true, retainedAt: Date.now() });
+    }
+    if (ok && (action === "start" || action === "restart")) {
+      state.retainedAgents.delete(vmId);
+    }
+    await refreshAgents({ force: true });
+  } catch (e) {
+    toastErr(`${verb} failed`, `${label}: ${formatError(e)}`);
+    await refreshAgents({ force: true });
+  } finally {
+    agentsPanel.setBusy(vmId, null);
+  }
+}
+
+/**
+ * Give one agent a task (controller-api.md §4.9) and follow it to a terminal
+ * state. The answer and the endpoint's own provenance label are rendered with
+ * the agent identified, so "which agent produced which answer" is never implied.
+ */
+async function giveAgentTask(vmId, prompt) {
+  if (typeof backend.api.submitAgentTask !== "function") {
+    toastErr("No agent task API on this backend", "This demo backend has no agent surface; use the live controller.");
+    agentsPanel.setBusy(vmId, null);
+    return;
+  }
+  try {
+    const task = await backend.api.submitAgentTask(vmId, { prompt });
+    state.agentTasks.set(vmId, taskView(task));
+    agentsPanel.setBusy(vmId, null);
+    renderAgents();
+    toastOk("Task accepted", `agent ${vmId.slice(0, 8)}… · task ${task && task.task_id ? task.task_id.slice(0, 10) + "…" : "?"} · ${task && task.state ? task.state : "queued"}`);
+    pollAgentTask(vmId, task.task_id);
+  } catch (e) {
+    const view = taskView({ state: "error", error_code: e.code || "ERROR", error_message: formatError(e), task_id: null });
+    state.agentTasks.set(vmId, view);
+    agentsPanel.setBusy(vmId, null);
+    renderAgents();
+    toastErr("Task not accepted", `agent ${vmId.slice(0, 8)}…: ${formatError(e)}`);
+  }
+}
+
+async function pollAgentTask(vmId, taskId) {
+  if (!taskId) return;
+  const seq = (state.agentPollSeq.get(vmId) || 0) + 1;
+  state.agentPollSeq.set(vmId, seq);
+  const deadline = Date.now() + 300_000; // controller deadline is 300 s (§4.9)
+  let last = state.agentTasks.get(vmId);
+  while (Date.now() < deadline && state.agentPollSeq.get(vmId) === seq) {
+    await sleep(1500);
+    let task;
+    try {
+      task = await backend.api.getAgentTask(vmId, taskId);
+    } catch (e) {
+      // One failed poll is not a failed task; keep the last known state and try
+      // again. A 404 means the record is not ours to read — say so and stop.
+      if (e && (e.status === 404 || e.status === 403)) {
+        state.agentTasks.set(vmId, taskView({ state: "error", error_code: e.code || "NOT_FOUND", error_message: "the task record is not readable with this credential", task_id: taskId }));
+        renderAgents();
+        return;
+      }
+      continue;
+    }
+    const view = taskView(task);
+    if (!view) return;
+    const changed =
+      !last ||
+      last.state !== view.state ||
+      last.answer !== view.answer ||
+      last.errorCode !== view.errorCode;
+    last = view;
+    state.agentTasks.set(vmId, view);
+    if (changed) {
+      // The panel-level honesty label follows the most recent real answer.
+      if (view.provenance) {
+        state.lastProvenance = view.provenance;
+        state.lastModel = view.model;
+      }
+      renderAgents();
+    }
+    if (view.terminal) {
+      if (view.state === "done") {
+        toastOk("Answer from your agent", `${vmId.slice(0, 8)}… · ${view.model || "model"} · ${view.durationMs !== null ? view.durationMs + " ms" : "done"}`);
+      } else {
+        toastErr("Agent task failed", `${vmId.slice(0, 8)}… · ${view.errorCode || "ERROR"}: ${view.errorMessage || ""}`);
+      }
+      return;
+    }
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * After `Apply plan`: turn the controller's returned instance NAMES into the
+ * telemetry ids they will be reported as (the §4.6 hash rule), show them as
+ * "provisioning" rows, and poll until the node's own telemetry lists them.
+ * This is what makes the plan's outcome land in the panel instead of a toast.
+ */
+async function expectAgentsFromJob(job) {
+  const rows = [];
+  for (const alloc of (job && job.allocations) || []) {
+    for (const name of alloc.vm_ids || []) {
+      let id = null;
+      try {
+        id = await vmIdForName(name);
+      } catch {
+        /* insecure context: the row still names the instance and the node */
+      }
+      rows.push({ nodeId: alloc.node_id, name, vmId: id, state: "provisioning" });
+    }
+  }
+  if (!rows.length) return;
+  state.expectedAgents = rows;
+  agentsPanel.setExpected(rows);
+  agentsPanel.render();
+  for (const delay of [1500, 4000, 9000, 16000]) {
+    setTimeout(() => refreshAgents({ force: true }), delay);
   }
 }
 
@@ -1051,6 +1306,10 @@ async function applyPlan(planId) {
     const job = await backend.api.applyPlan(planId);
     controls.applyResult(job);
     toastOk("Plan applied", `job ${job && job.job_id ? job.job_id : "?"} · ${(job && job.vm_ids ? job.vm_ids.length : 0)} vm(s)`);
+    // The plan's outcome must land in the Agents panel, not only in a toast:
+    // its instances are shown as provisioning rows until the node reports them.
+    await expectAgentsFromJob(job);
+    await refreshAgents({ force: true });
   } catch (e) {
     controls.intentResult("", formatError(e), false);
     toastErr("Apply failed", formatError(e));
@@ -1211,6 +1470,7 @@ function bindUi() {
       refreshNodes();
       refreshMetrics();
       refreshClientNode();
+      refreshAgents({ force: true });
     }
   });
 }
@@ -1235,6 +1495,8 @@ function init() {
   bindUi();
   startClock();
   controls.setTarget(null);
+  agentsPanel.setInference(inferenceLabel(null, null));
+  agentsPanel.render();
   state.window = cfg.windows[cfg.defaultWindow] ? cfg.defaultWindow : Object.keys(cfg.windows)[0];
   buildWindowButtons();
   dom.allMetrics.checked = state.includeAll;

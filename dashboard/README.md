@@ -71,6 +71,19 @@ deployment injects it server-side. It is *never* read from the query string, and
 | Drain | `POST /projects/{pid}/nodes/{nid}/actions/drain` | dashboard §4.2 |
 | Scale intent | `POST /projects/{pid}/intents` → `POST /projects/{pid}/vms/apply` | dashboard §4.3 |
 | Approve / deny AI remediation | `POST /projects/{pid}/remediations/{cid}/approve\|deny` | dashboard §4.4 |
+| Agents (the client's own instances) | `GET /projects/{pid}/nodes/{nid}` → `metrics_latest.lxd_instances[]` (the only inventory) | dashboard §4.6, node-telemetry §4.6 |
+| Agent actions | `POST /projects/{pid}/agents/{vm_id}/actions/{start,stop,restart}` | dashboard §4.5, controller-api §4.11 |
+| Agent tasks | `POST`/`GET /projects/{pid}/agents/{vm_id}/tasks[/{task_id}]` | controller-api §4.9 |
+
+The **Agents** panel shows one row per instance the nodes report in telemetry
+`lxd_instances[]`, grouped by node, with the client's own id
+(`vm_id`, a one-way hash — the instance name is not on the wire). It can
+start/stop/restart an agent (human-audited commands, same envelope as node
+Restart/Drain) and give one agent a task, rendering the answer with the
+endpoint's own `provenance` label. Fields the telemetry contract does not carry
+(instance name, IP, image alias, vCPU count) render as **"not reported"**; a node
+that omits `lxd_instances` renders as "inventory not reported", never as "no
+agents"; an agent you stop stays visible, labelled "stopped by you".
 
 Every state-changing POST carries an `Idempotency-Key` (contract §1.5) and renders
 the standard error envelope (contract §3) with its `code`/`message`/`request_id`.

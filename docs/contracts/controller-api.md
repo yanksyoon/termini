@@ -1181,6 +1181,71 @@ did not answer, or returned an unusable reply — **never** a fabricated answer)
 
 ---
 
+### 4.11 Agent operations (client → one agent) — card `t_44a2b87b`
+
+The Agents panel in the client dashboard lists the instances its nodes report in
+telemetry (`node-telemetry.md` §4.6 `lxd_instances[]`) and exposes the three
+lifecycle actions a client needs on its own agents. They are issued through the
+**same human-command envelope as node Restart / Drain** (`§6`
+`commandAllowlist()`, a `commands` row, one content-free operator-log line with
+`actor: human`) and executed by the controller against the owning node's LXD REST
+API, waiting for the operation and confirming the resulting state.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `POST` | `/v1/projects/{project_id}/agents/{vm_id}/actions/start` | command type `vm.start` |
+| `POST` | `/v1/projects/{project_id}/agents/{vm_id}/actions/stop` | command type `vm.stop` |
+| `POST` | `/v1/projects/{project_id}/agents/{vm_id}/actions/restart` | command type `vm.restart` |
+
+`project_token`. No body fields today. `vm_id` accepts **either** identifier the
+two contracts define:
+
+- the LXD instance name returned by `POST /vms/apply` (`§5`, e.g.
+  `termini-01m4wjhwqr3b8pcav2tvqbgg-0-0`), or
+- the telemetry `vm_id` (`node-telemetry.md` §4.6): 26 Crockford characters of
+  `sha256("termini-vm-id:" + name)`. This is the identifier a client actually
+  sees, and the one the dashboard uses. The controller hashes the live inventory
+  it reads from the node to resolve it; the instance name never has to cross the
+  wire.
+
+Response `202`, whether or not LXD accepted the operation — the attempt is issued
+and audited either way:
+
+```json
+{
+  "command_id": "01M55H4Q6Z0Y8R7T5V3W2X1S9K",
+  "type": "vm.restart",
+  "state": "succeeded",            // succeeded | failed
+  "issued_by": "human",
+  "agent_id": "7NM4JV8BSD1P8KYBYP8B7BT7CY",
+  "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+  "action": "restart",
+  "result": {"result": "ok", "detail": "operation Success: …; state Running -> Running",
+             "action": "restart", "latency_ms": 1180},
+  "completed_at": "2026-10-17T18:04:00Z"
+}
+```
+
+`state: "failed"` carries `result.result: "error"` and the LXD detail; it is not
+a 5xx, because the command *was* issued and is in the record. The command row's
+`result_json` holds the same `result` object. `restart` on a stopped instance
+starts it (a restart cannot bring a stopped instance up), and every action
+confirms the resulting state before reporting success — an ineffective action is
+`failed`, never `succeeded`.
+
+**Errors** (§3 envelope): `404 AGENT_NOT_FOUND` (with
+`details[0].known_agent_ids` — the telemetry ids, and `known_vm_ids` — instance
+names), `503 NODE_OFFLINE`, `503 NODE_UNREACHABLE`. A body is accepted and
+ignored; an unknown action is `404`.
+
+**Contract note (population semantics).** Telemetry reports only RUNNING
+instances (§4.6), so a client-stopped agent disappears from `lxd_instances[]`.
+The dashboard keeps the row it acted on, labelled "stopped by you", rather than
+letting it vanish; "list every stopped instance" would require changing §4.6
+population semantics and is deliberately out of scope here.
+
+---
+
 ## 5. Guardrail & Clamp Validator
 
 The deterministic choke point between "DeepSeek/Gemini recommends" and "LXD
@@ -1379,9 +1444,11 @@ Command envelope (the queued-command store, `controller/app/commands.py`):
 ```
 
 The broader `commandAllowlist()` set (`vm.resize`, `vm.migrate`, `vm.stop`, `vm.start`,
-`vm.destroy`, `agent.dispatch_task`, `agent.cancel_task`) is **declared in
-`controller/app/commands.py` but not wired to any execution path in the demo** — marked
-future/day-2. `vm.launch` is **not** in the allowlist and there is no launch path —
+`vm.restart`, `vm.destroy`, `agent.dispatch_task`, `agent.cancel_task`) is **declared in
+`controller/app/commands.py`**. Two of those verbs are now wired to execution paths:
+`agent.dispatch_task` (the agent task API, §4.9) and `vm.start` / `vm.stop` /
+`vm.restart` (the per-agent actions, §4.11). The rest stay future/day-2. `vm.launch` is
+**not** in the allowlist and there is no launch path —
 apply-plan materialisation instead drives the resolved node's LXD REST API directly
 from the controller (`_apply_plan` creates the instances and returns their ids). The retired `ssh.inject_key` verb is removed
 everywhere; user SSH access is the controller-held CA signing short-lived certs,

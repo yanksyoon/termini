@@ -499,16 +499,19 @@ appear on the decision surface like any other action. The assistant does not
 repeal this gate for operator-initiated remediations.
 
 **Frozen approval policy** (the `commandAllowlist()` set in
-`controller/app/commands.py`; the `vm.*`/`agent.*` verbs are declared but not wired
-to any execution path in the demo — future/day-2):
+`controller/app/commands.py`; `agent.dispatch_task` and `vm.start`/`vm.stop`/
+`vm.restart` are wired — the agent task API §4.9 and the per-agent actions §4.5 —
+the rest are future/day-2):
 
 | command type | approval |
 |--------------|----------|
-| `vm.resize`, `vm.migrate`, `vm.start`, `vm.stop` (future) | `auto` |
+| `vm.resize`, `vm.migrate` (future) | `auto` |
+| `vm.start`, `vm.stop`, `vm.restart` (agent actions, §4.5) | `auto` |
 | `vm.destroy` (future) | `required` |
 | `node.drain` | `required` |
 | `node.reboot` | `required` |
-| `agent.dispatch_task`, `agent.cancel_task` (future) | `auto` |
+| `agent.dispatch_task` (task API, controller-api §4.9) | `auto` |
+| `agent.cancel_task` (future) | `auto` |
 
 **Approval is keyed to the action, not to a fixed rule → action table.**
 
@@ -573,6 +576,49 @@ These constraints govern operator/playbook-initiated remediations. An
 assistant-initiated command (`issued_by: assistant`, §4.10) never enters
 `pending_approval` — it is queued on guardrail admission — so `approve`/`deny`
 and the 300 s auto-deny do not apply to it.
+
+### 4.5 Agent actions — start / stop / restart (card `t_44a2b87b`)
+
+The Agents panel acts on one agent instance. Routes and semantics are frozen in
+`controller-api.md` §4.11:
+
+```
+POST /v1/projects/{project_id}/agents/{vm_id}/actions/start
+POST /v1/projects/{project_id}/agents/{vm_id}/actions/stop
+POST /v1/projects/{project_id}/agents/{vm_id}/actions/restart
+```
+
+Each is a human-issued command in the **same envelope as §4.1/§4.2**
+(`command_id`, `type`, `state`, `issued_by: "human"`, one operator-log line), with
+one difference the client can rely on: the controller executes the LXD state
+change and **confirms the resulting state** before answering, so the response's
+`state` is `succeeded` or `failed` rather than a bare `queued`. `vm_id` accepts
+the telemetry id the panel displays (node-telemetry §4.6) or the instance name
+from apply.
+
+`404 AGENT_NOT_FOUND` / `503 NODE_OFFLINE` / `503 NODE_UNREACHABLE` per §3.
+
+### 4.6 Agents panel data source (card `t_44a2b87b`)
+
+There is **no second inventory**. The panel renders one row per
+`lxd_instances[]` entry of each node's latest telemetry Sample, read through
+`GET /v1/projects/{project_id}/nodes/{node_id}` → `metrics_latest`
+(`dashboard.md` §1.2, `node-telemetry.md` §4.6). Consequences the UI must not
+paper over:
+
+- `vm_id` is the controller-issued one-way id (26 Crockford chars), not the
+  instance name; the instance name, IP and image alias are NOT on the wire, so
+  the panel renders them as "not reported" and never guesses.
+- the array is **omitted** when a node cannot read its own LXD: that renders as
+  "inventory not reported", never as "no agents". An empty array is a real
+  report of zero running instances.
+- only RUNNING instances are reported, so a client-stopped agent disappears from
+  telemetry. The panel keeps the row it stopped, labelled "stopped by you".
+
+The task affordance uses `POST/GET .../agents/{vm_id}/tasks`
+(`controller-api.md` §4.9) and renders the answer with the agent id and the
+endpoint's `provenance` (backend/answered_by/egress) — a forwarded managed model
+is labelled as forwarded, never as local GPU inference.
 
 ---
 

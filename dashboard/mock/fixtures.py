@@ -13,6 +13,7 @@ Stdlib only. No network.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import random
 import time
@@ -193,6 +194,56 @@ HARDWARE = {
 
 SERVICE_ALLOWLIST = ("termini-bootstrap", "lxd", "sshd", "llama-cpp")
 
+# Agent inventory for the demo (§4.6 `lxd_instances[]`). The real rule is
+#   vm_id = 26 Crockford chars of sha256("termini-vm-id:" + name)
+# (app/operator/vmids.py); the ids below are computed by the same rule so the
+# mock cannot disagree with the controller about what an agent id looks like.
+# `AGENTS` selects the edge state a screenshot run wants:
+#   "some"   two agents on node-a, node-b omits the field (cannot read LXD),
+#            node-c reports an empty array (zero running, definitely)
+#   "none"   every node reports an empty array -> the panel's empty state
+#   "absent" every node omits the field -> "inventory not reported" everywhere
+AGENTS = "some"
+
+_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def agent_id(name: str) -> str:
+    digest = hashlib.sha256(("termini-vm-id:" + name).encode("utf-8")).digest()
+    value = int.from_bytes(digest[:17], "big") >> 6
+    out = []
+    for _ in range(26):
+        out.append(_CROCKFORD[value & 0x1F])
+        value >>= 5
+    return "".join(reversed(out))
+
+
+def _instances(node: dict):
+    """The §4.6 inventory a node reports for this demo mode."""
+    if AGENTS == "absent":
+        return None
+    if AGENTS == "none":
+        return []
+    if node["registration_id"] == "termini-node-b":
+        return None                      # node cannot read its own LXD: OMITTED
+    if node["registration_id"] == "termini-node-c":
+        return []                        # inference host runs no agents
+    names = ["termini-01m4wjhwqr3b8pcav2tvqbgg-0-0",
+             "termini-01m4wjhwqr3b8pcav2tvqbgg-0-1"]
+    return [
+        {
+            "vm_id": agent_id(name),
+            "state": "running",
+            "cpu_util_pct": round(4.2 + i * 3.1, 1),
+            "ram_used_bytes": int((0.42 + i * 0.11) * 1024 ** 3),
+            "ram_limit_bytes": 1073741824,
+            "disk_used_bytes": 0,
+            "restart_count": i,
+        }
+        for i, name in enumerate(names)
+    ]
+
+
 
 def _wave(seed: float, t: float, lo: float, hi: float) -> float:
     v = math.sin(t / 9.0 + seed) * 0.5 + math.sin(t / 2.3 + seed * 2.3) * 0.5
@@ -258,16 +309,6 @@ def sample(node: dict, t_sec: float, seq: int, uptime_sec: int | None = None) ->
             if gpu_node
             else []
         ),
-        "lxd_instances": [
-            {
-                "vm_id": "01H4KZ9Q2R3T5V7W9X1Y3Z5E4H",
-                "state": "running",
-                "cpu_util_pct": 12.0,
-                "ram_used_bytes": 3328599654,
-                "ram_limit_bytes": 4294967296,
-                "disk_used_bytes": 2362232012,
-            }
-        ],
         "services": [
             {"name": "termini-bootstrap", "status": "running"},
             {"name": "lxd", "status": "running"},
@@ -275,6 +316,13 @@ def sample(node: dict, t_sec: float, seq: int, uptime_sec: int | None = None) ->
         ]
         + ([{"name": "llama-cpp", "status": "running"}] if gpu_node else []),
     }
+    instances = _instances(node)
+    if instances is None:
+        # §4.6: the field is OMITTED, not emptied, when the node cannot read its
+        # own LXD — "did not report" and "reports nothing" are different facts.
+        out.pop("lxd_instances", None)
+    else:
+        out["lxd_instances"] = instances
     if gpu_node:
         out["inference"] = {
             "server_up": True,

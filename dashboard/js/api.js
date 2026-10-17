@@ -157,6 +157,52 @@ export class ApiClient {
     return this._request("POST", `/projects/${this._project()}/vms/apply`, { body: { plan_id: planId }, idempotent: true });
   }
 
+  /* --------------------------------------------------------------- agents */
+
+  /**
+   * Start / stop / restart one agent (controller-api.md §4.10). `vmId` is the
+   * identifier the panel was given — the telemetry `vm_id` — and the controller
+   * resolves it to the LXD instance on the owning node. Human-issued, so it is
+   * audited exactly like a node action (a command row + an operator-log line).
+   */
+  agentAction(vmId, action) {
+    return this._request(
+      "POST",
+      `/projects/${this._project()}/agents/${encodeURIComponent(vmId)}/actions/${encodeURIComponent(action)}`,
+      { body: {}, idempotent: true },
+    );
+  }
+
+  /**
+   * Give one agent a task (controller-api.md §4.9). The controller proxies it
+   * to the instance's loopback surface through the owning node, so the client
+   * never needs a route to the VM and never holds instance credentials.
+   */
+  submitAgentTask(vmId, { prompt, maxTokens = 256, actor = "human" } = {}) {
+    const body = { prompt, actor };
+    if (maxTokens) body.max_tokens = maxTokens;
+    return this._request(
+      "POST",
+      `/projects/${this._project()}/agents/${encodeURIComponent(vmId)}/tasks`,
+      { body, idempotent: true },
+    );
+  }
+
+  getAgentTask(vmId, taskId) {
+    return this._request(
+      "GET",
+      `/projects/${this._project()}/agents/${encodeURIComponent(vmId)}/tasks/${encodeURIComponent(taskId)}`,
+    );
+  }
+
+  listAgentTasks(vmId, limit = 10) {
+    return this._request(
+      "GET",
+      `/projects/${this._project()}/agents/${encodeURIComponent(vmId)}/tasks`,
+      { query: { limit } },
+    );
+  }
+
   approveRemediation(commandId, note) {
     const body = note ? { note } : {};
     return this._request("POST", `/projects/${this._project()}/remediations/${encodeURIComponent(commandId)}/approve`, {

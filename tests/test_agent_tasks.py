@@ -599,6 +599,35 @@ class ResolveAgentTest(_Base):
         self.assertEqual(reason, "unknown_vm")
 
 
+class TelemetryIdTaskTest(_Base):
+    """The client only ever sees `lxd_instances[].vm_id` (a one-way hash).
+
+    `POST .../agents/{vm_id}/tasks` must therefore address the instance by that
+    id, while the proxy execs into the real instance name. Without this the
+    Agents panel could list an agent and still 404 when you give it a task.
+    """
+
+    def test_submit_with_the_derived_telemetry_id_dispatches_by_instance_name(self):
+        derived = agent_tasks.agent_id_for_name(VM)
+        self.assertNotEqual(derived, VM)
+        st, task = self._call(
+            "POST", f"/v1/projects/{PROJECT_ID}/agents/{derived}/tasks",
+            {"prompt": "Reply with exactly: pong", "actor": "human:operator"})
+        self.assertEqual(st, 202, task)
+        self.assertEqual(task["vm_id"], derived)
+
+        deadline = time.time() + 15.0
+        while time.time() < deadline:
+            st_get, got = self._get_task(task["task_id"], vm=derived)
+            if st_get == 200 and got["state"] in ("done", "error"):
+                break
+            time.sleep(0.2)
+        self.assertEqual(got["state"], "done", got)
+        self.assertEqual(got["answer"], "pong")
+        # The exec really ran inside the instance NAME, never a hash path.
+        self.assertTrue(self.lxd.exec_requests(VM), self.lxd.requests)
+
+
 class StoreTest(_Base):
     def test_orphans_are_failed_not_left_looking_slow(self):
         with db.session(self.db_path) as conn:

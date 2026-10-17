@@ -35,6 +35,7 @@
     </div>
     <div class="topbar-right">
       <span class="pill" id="pill-nodes" title="registered nodes"><span class="dot dot-muted"></span><span id="pill-nodes-text">nodes —</span></span>
+      <span class="pill" id="pill-agents" title="agent instances your nodes report"><span class="dot dot-muted"></span><span id="pill-agents-text">agents —</span></span>
       <span class="pill" id="pill-backend" title="controller connectivity"><span class="dot dot-muted"></span><span id="pill-backend-text">backend —</span></span>
       <span class="pill" id="pill-stream" title="AI log stream"><span class="dot dot-muted"></span><span id="pill-stream-text">stream —</span></span>
       <span class="clock" id="clock" title="local time">--:--:--</span>
@@ -99,6 +100,26 @@
         </div>
       </div>
       <div id="overview" class="overview-grid" aria-live="polite"></div>
+    </section>
+
+    <section class="panel panel-agents" aria-labelledby="h-agents" id="agents-panel">
+      <div class="panel-head">
+        <h2 id="h-agents">Agents</h2>
+        <div class="panel-tools">
+          <span class="agent-inference" id="agents-inference">inference: not yet reported</span>
+          <span class="muted" id="agents-status">—</span>
+          <button class="btn btn-ghost" id="btn-agents-refresh" type="button" title="Re-read every node's latest sample">Refresh</button>
+        </div>
+      </div>
+      <p class="muted small agents-note">
+        One row per instance the nodes actually report in telemetry <code>lxd_instances[]</code> — the
+        id shown is the controller-issued <code>vm_id</code> (a one-way hash; the instance name is not
+        on the wire, §4.6). Fields that contract does not carry are labelled "not reported", not guessed.
+        Actions are human-issued commands, audited exactly like a node Restart/Drain; a task goes to that
+        agent only and its answer carries the endpoint's own provenance label.
+      </p>
+      <div id="agents-empty" class="agents-empty" hidden></div>
+      <div id="agents-groups" class="agents-groups" aria-live="polite"></div>
     </section>
 
     <section class="panel panel-decisions" aria-labelledby="h-decisions">
