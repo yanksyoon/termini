@@ -1315,6 +1315,51 @@ def mint_lxd_trust_token(name: str = "termini-controller",
     return token
 
 
+def install_lxd_trust(cfg: dict, identity: dict, *, timeout: float = 30.0) -> bool:
+    """Hand the controller a one-time LXD cert-add trust token for THIS node.
+
+    Why this exists: LXD authorises per CLIENT CERTIFICATE. The node token
+    authenticates the node TO the controller; it grants the controller no
+    authority OVER this node's LXD. Until the controller's client certificate is
+    in this node's trust store every operator call answers `403 Forbidden` — the
+    state a node booted from the pre-baked image was left in (measured
+    2026-10-17): registration succeeded, telemetry streamed, and the first
+    remediation was refused, with the vm_id -> instance-name resolution unable to
+    even list instances.
+
+    The token is minted HERE because only this host can mint one (`lxc config
+    trust add`), then pushed to `POST /v1/nodes/{id}/lxd-trust` with the node's
+    own token. Failures are logged and swallowed: day-2 is the controller's
+    problem to repair, and it must never stop telemetry.
+    """
+    node_id = identity.get("node_id")
+    node_token = identity.get("node_token")
+    if not node_id or not node_token:
+        return False
+    api = ensure_lxd_api(cfg)
+    if not api.get("ok"):
+        log("LXD_TRUST skipped: own LXD API is not listening "
+            f"({api.get('detail')})")
+        return False
+    token = mint_lxd_trust_token("termini-controller")
+    if not token:
+        log("LXD_TRUST skipped: could not mint a trust token")
+        return False
+    url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/lxd-trust"
+    body = {"lxd": {"endpoint": api["endpoint"]}, "trust_token": token}
+    try:
+        status, resp = http_json("POST", url, body=body, token=node_token, timeout=timeout)
+    except Exception as e:  # noqa: BLE001 - trust must never break telemetry
+        log(f"LXD_TRUST not installed: {e}")
+        return False
+    if status == 200 and isinstance(resp, dict) and resp.get("trusted"):
+        log(f"LXD_TRUST installed at {resp.get('endpoint') or api['endpoint']} "
+            f"({resp.get('detail')})")
+        return True
+    log(f"LXD_TRUST not installed: HTTP {status} {str(resp)[:200]}")
+    return False
+
+
 def cmd_mint_trust_token(argv: list[str]) -> int:
     name = "termini-controller"
     out = _TRUST_TOKEN_PATH
@@ -2499,6 +2544,10 @@ def run(cfg: dict) -> int:
 
     node_id = identity["node_id"]
     node_token = identity["node_token"]
+    # Day-0 must leave a node the operator can ACT on, not merely one that is
+    # enrolled: install the controller's client certificate into this node's LXD
+    # trust store (contract §5/§6.3) before the telemetry loop starts.
+    install_lxd_trust(cfg, identity)
     url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/telemetry"
     hb_url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/heartbeat"
     hb_interval = heartbeat_interval_s(cfg)

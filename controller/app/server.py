@@ -21,6 +21,7 @@ and dashboard.md §1–§4):
     POST /v1/projects/{pid}/assistant/ask        (project_token)    -> 200
     POST /v1/nodes/{nid}/telemetry                (node_token)       -> 202
     GET  /v1/nodes/{nid}/telemetry/recent         (node_token)       -> 200
+    POST /v1/nodes/{nid}/lxd-trust                 (node_token)       -> 200
     GET  /v1/telemetry/recent?node=&limit=        (project_token)    -> 200
     POST /v1/operator/lease                       (project_token)    -> 200
     POST /v1/projects/{pid}/demo/faults           (project_token)    -> 201   operator-only
@@ -50,7 +51,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from . import db, errors, governance, health, inventory, registration, role, store, validate, ws as wsmod
+from . import db, errors, governance, health, inventory, lxdtrust, registration, role, store, validate, ws as wsmod
 from . import agent_tasks as agent_tasks_mod
 from . import agent_actions as agent_actions_mod
 from . import assistant as assistant_mod
@@ -175,6 +176,23 @@ class ControllerServer(ThreadingHTTPServer):
         if sample and now_epoch - last >= 1.0:
             self._last_telemetry_at[node_id] = now_epoch
             self.broker.publish("node.telemetry", sample, project_id)
+
+
+def _endpoint_key(raw: str) -> tuple[str, str, int]:
+    """Canonical (scheme, host, port) for comparing two LXD endpoints.
+
+    `registration._lxd_endpoint` accepts both `host:port` and
+    `scheme://host:port`, so the trust route must not treat the two spellings of
+    the SAME listener as different nodes.
+    """
+    value = (raw or "").strip()
+    if "://" not in value:
+        value = "https://" + value
+    parts = urlsplit(value)
+    scheme = (parts.scheme or "https").lower()
+    host = (parts.hostname or "").lower()
+    port = parts.port or (443 if scheme == "https" else 80)
+    return scheme, host, port
 
 
 class ControllerHandler(BaseHTTPRequestHandler):
@@ -381,6 +399,9 @@ class ControllerHandler(BaseHTTPRequestHandler):
         if (method == "GET" and len(segs) == 5 and segs[:2] == ["v1", "nodes"]
                 and segs[3] == "telemetry" and segs[4] == "recent"):
             return self._node_recent(conn, segs[2])
+        if (method == "POST" and len(segs) == 4 and segs[:2] == ["v1", "nodes"]
+                and segs[3] == "lxd-trust"):
+            return self._node_lxd_trust(conn, segs[2])
         if method == "GET" and segs[:2] == ["v1", "telemetry"] and segs[2:] == ["recent"]:
             return self._recent(conn)
         if method == "GET" and segs[:2] == ["v1", "operator"] and len(segs) == 3:
@@ -1843,6 +1864,90 @@ class ControllerHandler(BaseHTTPRequestHandler):
         self._require_node(conn, node_id)
         limit = self._limit_param()
         return 200, {"node_id": node_id, "samples": store.recent_samples(conn, node_id, limit)}
+
+    def _node_lxd_trust(self, conn, node_id: str) -> tuple[int, dict]:
+        """POST /v1/nodes/{nid}/lxd-trust — the node hands over a one-time
+        certificate-add trust token so the controller's CLIENT certificate lands
+        in that node's LXD trust store.
+
+        Why this route exists (measured 2026-10-17): LXD authorises per client
+        certificate, and trust was installed only at CONTROLLER STARTUP for a
+        static list (`TERMINI_LXD_TRUST_NODES` + a shared token). A node that
+        enrolled afterwards was authenticated TO the controller and streaming
+        telemetry, while the controller was not authorised BY the node: the
+        operator's first remediation on a node booted from the pre-baked image
+        answered `HTTP 403 Forbidden`, and because the vm_id -> instance-name
+        resolution needs `GET /1.0/instances`, the model's choice could not even
+        be resolved to a real name. Day-0 has to leave a node the operator can
+        ACT on, so the token is pushed by the node at registration instead of
+        hoping an operator restart sweeps it in.
+
+        Trust boundary: node token, own node only (`_require_node`); the endpoint
+        must match the host:port the node reported, so a compromised node cannot
+        point the controller's trust installation at somebody else's LXD; the
+        token itself is single-use and is consumed by LXD at the node.
+        """
+        node = self._require_node(conn, node_id)
+        body = self._read_body()
+        endpoint = registration.endpoint_from_heartbeat(body)
+        if not endpoint:
+            raise errors.invalid_argument(
+                "endpoint is required (send `lxd.endpoint` or `lxd_endpoint`)",
+                [{"field": "lxd_endpoint", "reason": "missing"}],
+            )
+        token = body.get("trust_token") or body.get("token")
+        if not isinstance(token, str) or not token.strip():
+            raise errors.invalid_argument(
+                "trust_token is required (the node's one-time LXD cert-add token)",
+                [{"field": "trust_token", "reason": "missing"}],
+            )
+        # The endpoint must be the node's own address. A node that reports a
+        # different host:port here than the one it registered with is refused:
+        # otherwise "install my trust token" becomes "install it over there".
+        reported = node.get("lxd_endpoint")
+        if reported and _endpoint_key(reported) != _endpoint_key(endpoint):
+            raise errors.permission_denied(
+                f"endpoint {endpoint} does not match the registered endpoint {reported}",
+            )
+
+        cfg = self.server.cfg
+        identity = lxdtrust.resolve_identity(
+            explicit_cert=cfg.lxd_client_cert,
+            explicit_key=cfg.lxd_client_key,
+            client_dir=cfg.lxd_client_dir,
+            common_name=cfg.lxd_trust_name,
+            provision=False,
+        )
+        if identity is None or not identity.available:
+            raise errors.err(
+                503, "UNAVAILABLE",
+                "the controller has no LXD client identity on disk; trust cannot be installed",
+            )
+        result = lxdtrust.ensure_trusted(
+            endpoint, identity, token.strip(),
+            name=cfg.lxd_trust_name, server_ca=cfg.lxd_server_ca,
+            timeout_s=cfg.lxd_request_timeout_s,
+        )
+        logs = getattr(self.server, "operator_logs", None)
+        if logs is not None:
+            logs.append(
+                conn, self.server.project["id"],
+                severity="info" if result.ok else "warning",
+                actor="node",
+                message=(f"LXD trust for {node['registration_id']} at {endpoint}: "
+                         f"{result.status} — {result.detail}"),
+                remediation={"endpoint": endpoint, "trusted": bool(result.ok),
+                             "status": result.status},
+            )
+        log.info("node %s LXD trust at %s: %s — %s",
+                 node_id, endpoint, result.status, result.detail)
+        return 200, {
+            "node_id": node_id,
+            "endpoint": endpoint,
+            "trusted": bool(result.ok),
+            "status": result.status,
+            "detail": result.detail,
+        }
 
     def _recent(self, conn) -> tuple[int, dict]:
         q = self._query()
