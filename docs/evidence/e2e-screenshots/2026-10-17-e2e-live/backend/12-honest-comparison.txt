@@ -1,0 +1,28 @@
+Script started on 2026-10-17 20:52:03+00:00 [COMMAND="timeout 540 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/12-honest-comparison.sh'" <not executed on terminal>]
+step 12 — CPU/Gemma vs forwarded, same prompt   (2026-10-17T20:52:03Z)
+
+== FORWARDED path — alias gemma via the proxy on :8080 (managed model, external egress)
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="curl -sS -X POST http://127.0.0.1:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"A node reports disk write latency 120ms and rising. Reply with one JSON object: {\"action_kind\":\"...\",\"confidence\":0.0}. No other text."}],"max_tokens":48,"temperature":0}' -w '\n--- forwarded: http=%{http_code} total_s=%{time_total}\n'"
+{"id": "chatcmpl-01M55T5QDTJFT7J4Z6QM245G7D", "object": "chat.completion", "created": 1792270327, "model": "gemma", "choices": [{"index": 0, "message": {"role": "assistant", "content": "{\"action_kind\": \"escalate\", \"confidence\": 0.9}"}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 37, "completion_tokens": 17, "total_tokens": 54}, "timings": {"prompt_n": 37, "prompt_ms": 0.0, "predicted_n": 17, "predicted_ms": 1112.36, "predicted_per_token_ms": 65.433, "predicted_per_second": 15.283, "wall_ms": 1112.36}, "termini_backend": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "model": "gemini-2.5-flash", "alias": "gemma", "egress": "external", "destination": "aiplatform.googleapis.com", "forwarded": true, "note": "answered by a forwarded managed model, not by local weights on this node and not by an accelerator on this node"}}
+--- forwarded: http=200 total_s=1.115786
+
+== CPU path — the same prompt straight to llama.cpp on 127.0.0.1:8081 (no GPU on this box)
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="curl -sS -X POST http://127.0.0.1:8081/v1/chat/completions -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"A node reports disk write latency 120ms and rising. Reply with one JSON object: {\"action_kind\":\"...\",\"confidence\":0.0}. No other text."}],"max_tokens":48,"temperature":0}' -w '\n--- local-cpu: http=%{http_code} total_s=%{time_total}\n'"
+{"choices":[{"finish_reason":"stop","index":0,"message":{"role":"assistant","content":"```json\n{\"action_kind\":\"monitor\",\"confidence\":0.8}\n```\n"}}],"created":1792270333,"model":"gemma","system_fingerprint":"b1-7fe450e19","object":"chat.completion","usage":{"completion_tokens":20,"prompt_tokens":46,"total_tokens":66,"prompt_tokens_details":{"cached_tokens":0}},"id":"chatcmpl-ub6kB0efWpIGyiB3vnZgdIhVtiX9COJv","timings":{"cache_n":0,"prompt_n":46,"prompt_ms":2498.845,"prompt_per_token_ms":54.322717391304344,"prompt_per_second":18.408504729184884,"predicted_n":20,"predicted_ms":1749.38,"predicted_per_token_ms":92.07263157894738,"predicted_per_second":10.860990751008927}}
+--- local-cpu: http=200 total_s=4.283214
+
+== the proxy's record of the forwarded side (backend label, destination, latency)
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="sudo journalctl -u termini-inference-proxy --since '-3 min' --no-pager | grep inference_request | tail -2"
+Oct 17 20:52:07 termini-node-c.asia-south1-a.c.termini-510609.internal termini-inference-proxy[709]: {"ts":"2026-10-17T20:52:07Z","event":"inference_request","severity":"info","service":"termini-inference-proxy","backend":"gemini-proxy","model":"gemini-2.5-flash","alias":"gemma","answered_by":"forwarded-managed-model","egress":"external","destination":"aiplatform.googleapis.com","path":"/v1/chat/completions","stream":false,"status":200,"request_id":"req-01M55T5PB0ZTD93W3Z7BP2JASM","latency_ms":1112.36,"forwarded":true,"prompt_tokens":37,"completion_tokens":17,"requested_max_tokens":48,"requested_temperature":0.0,"finish_reason":"stop"}
+
+READ THIS WITH THE LABEL: the local path above is Gemma on CPU (no GPU present on
+node-c); the forwarded path is a MANAGED MODEL (gemini-2.5-flash at
+aiplatform.googleapis.com) standing in for a GPU node. The forwarded side is not
+local inference and nothing here claims GPU compute.
+
+For the REAL operator decision prompt (20 telemetry samples, 12,748 prompt tokens):
+  CPU Gemma path      : 402.1 s   (infra/cloudrun/evidence/node-c-gemma-decision-latency-2026-10-13.md)
+  forwarded path      : ~1-3 s    (step 07/08 decision_trace model_call latency_ms, this run)
+The ~400x gap is the reason the demo forwards instead of running weights on CPU.
+
+Script done on 2026-10-17 20:52:16+00:00 [COMMAND_EXIT_CODE="0"]

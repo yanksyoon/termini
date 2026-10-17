@@ -1,0 +1,37 @@
+Script started on 2026-10-17 20:37:08+00:00 [COMMAND="timeout 300 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/07-forwarded-call-vertex.sh'" <not executed on terminal>]
+step 07 — the forwarded call to Vertex AI   (2026-10-17T20:37:08Z)
+
+== the proxy's own record of the last forwarded requests (destination, latency, answered_by)
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="sudo journalctl -u termini-inference-proxy --since '-15 min' --no-pager | grep inference_request | tail -3"
+Oct 17 20:35:52 termini-node-c.asia-south1-a.c.termini-510609.internal termini-inference-proxy[709]: {"ts":"2026-10-17T20:35:52Z","event":"inference_request","severity":"info","service":"termini-inference-proxy","backend":"gemini-proxy","model":"gemini-2.5-flash","alias":"gemma","answered_by":"forwarded-managed-model","egress":"external","destination":"aiplatform.googleapis.com","path":"/v1/chat/completions","stream":false,"status":200,"request_id":"req-01M55S7YMJEESXKXC0M7ZQYEK3","latency_ms":1156.8,"forwarded":true,"prompt_tokens":28,"completion_tokens":30,"requested_max_tokens":64,"requested_temperature":0.0,"finish_reason":"stop"}
+Oct 17 20:37:00 termini-node-c.asia-south1-a.c.termini-510609.internal termini-inference-proxy[709]: {"ts":"2026-10-17T20:37:00Z","event":"inference_request","severity":"info","service":"termini-inference-proxy","backend":"gemini-proxy","model":"gemini-2.5-flash","alias":"gemma","answered_by":"forwarded-managed-model","egress":"external","destination":"aiplatform.googleapis.com","path":"/v1/chat/completions","stream":false,"status":200,"request_id":"req-01M55SA1BAAGAARPPMG5YYH1G7","latency_ms":897.52,"forwarded":true,"prompt_tokens":28,"completion_tokens":31,"requested_max_tokens":64,"requested_temperature":0.0,"finish_reason":"stop"}
+
+== the destination resolved, and the outbound TLS connection on the wire
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="getent hosts aiplatform.googleapis.com; echo; sudo ss -tnp state established '( dport = :443 )' | head -8"
+2404:6800:4000:1006::5f aiplatform.googleapis.com
+2404:6800:4000:1010::5f aiplatform.googleapis.com
+2404:6800:4000:1027::5f aiplatform.googleapis.com
+2404:6800:4000:1015::5f aiplatform.googleapis.com
+
+Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
+
+== credential source: the metadata server, not a key file
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="echo '--- metadata token endpoint (token itself NOT printed):'; curl -sS -o /tmp/mt.json -w 'http=%{http_code} bytes=%{size_download}\n' -H 'Metadata-Flavor: Google' 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token'; grep -o '"expires_in":[0-9]*' /tmp/mt.json; echo '--- key files on this node:'; sudo ls -l /etc/termini/*.json 2>&1; echo '--- GOOGLE_APPLICATION_CREDENTIALS in the unit:'; grep -c GOOGLE_APPLICATION_CREDENTIALS /etc/systemd/system/termini-inference-proxy.service 2>/dev/null || true"
+--- metadata token endpoint (token itself NOT printed):
+http=200 bytes=1083
+"expires_in":2978
+--- key files on this node:
+ls: cannot access '/etc/termini/*.json': No such file or directory
+--- GOOGLE_APPLICATION_CREDENTIALS in the unit:
+0
+
+== the baseline this is measured against (CPU Gemma, same decision prompt)
+/home/ubuntu/.worktrees/t_2191eca4/docs/infra/cloudrun/evidence/node-c-gemma-decision-latency-2026-10-13.md:
+grep: /home/ubuntu/.worktrees/t_2191eca4/docs/infra/cloudrun/evidence/node-c-gemma-decision-latency-2026-10-13.md: No such file or directory
+
+The 402.1 s figure is the CPU Gemma path answering the REAL 20-sample decision
+prompt (12,748 prompt tokens). The forwarded calls above are the same decision
+prompt shape answered by gemini-2.5-flash at aiplatform.googleapis.com; step 12
+puts a same-prompt measurement of both paths side by side.
+
+Script done on 2026-10-17 20:37:17+00:00 [COMMAND_EXIT_CODE="0"]

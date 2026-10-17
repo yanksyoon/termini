@@ -1,0 +1,68 @@
+Script started on 2026-10-17 20:18:55+00:00 [COMMAND="timeout 300 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/03-fleet-view.sh'" <not executed on terminal>]
+step 03 — the controller's fleet view   (2026-10-17T20:18:55Z)
+
+== GET /v1/projects/01J0DEM0WARM000000000000AB/nodes — both nodes, as the controller sees them
+$ curl -sS -X GET https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/nodes -H "Authorization: Bearer demo-project-token"
+{
+  "nodes": [
+    {
+      "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+      "role": "compute",
+      "synthetic": false,
+      "status": "online",
+      "last_seen_at": "2026-10-17T20:18:54Z",
+      "uptime_sec": 13612,
+      "hardware": {
+        "cpu_model": "Intel(R) Xeon(R) CPU @ 2.80GHz",
+        "cores": 2,
+        "gpus": []
+      },
+      "capacity": {
+        "cpu_free": 3,
+        "ram_free_gb": 4
+      },
+      "services": [
+        "termini-bootstrap",
+        "lxd",
+        "sshd"
+      ],
+      "degraded_reasons": []
+    },
+    {
+      "node_id": "01M4ZQ7Q2J80ATY3K32PY3PPJH",
+      "role": "compute",
+      "synthetic": false,
+      "status": "online",
+      "last_seen_at": "2026-10-17T20:18:55Z",
+      "uptime_sec": 83654,
+      "hardware": {
+        "cpu_model": "Intel(R) Xeon(R) CPU @ 2.20GHz",
+        "cores": 8,
+        "gpus": []
+      },
+      "capacity": {
+        "cpu_free": 16,
+        "ram_free_gb": 29
+      },
+      "services": [
+        "termini-bootstrap",
+        "lxd",
+        "sshd",
+        "llama-cpp"
+      ],
+      "degraded_reasons": []
+    }
+  ]
+}
+
+== role as REPORTED (the honest state of the pivot, not the card's expectation)
+01M4TGD31WXH97JAA5S6A4R10D  role=compute  synthetic=false  status=online  last_seen=2026-10-17T20:18:54Z
+01M4ZQ7Q2J80ATY3K32PY3PPJH  role=compute  synthetic=false  status=online  last_seen=2026-10-17T20:18:55Z
+
+Both standing nodes report role=compute: the frozen role rule assigns
+role=inference only to a node reporting a GPU with >= 12 GiB VRAM, and this
+fleet is CPU-only after the managed-model pivot. Node-c still SERVES inference —
+as the host_service that fronts 10.10.0.13:8080 (step 05), not as an
+inference-role node. Recorded as a finding against this card's step 03 wording.
+
+Script done on 2026-10-17 20:18:57+00:00 [COMMAND_EXIT_CODE="0"]

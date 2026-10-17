@@ -1,0 +1,57 @@
+Script started on 2026-10-17 20:50:53+00:00 [COMMAND="timeout 540 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/11-pause-and-billing.sh'" <not executed on terminal>]
+step 11 — pause and the money   (2026-10-17T20:50:53Z)
+STATUS: NOT CAPTURED — the termination, the 000 from the controller URL, and a
+        zero-usage billing view are deferred to an approved teardown. Fleet is UP
+        and shared; see the header of this snippet.
+
+== what is running right now (the compute being paid for)
+$ /home/ubuntu/google-cloud-sdk/bin/gcloud compute instances list
+NAME                ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP   STATUS
+termini-controller  asia-south1-a  e2-standard-2               10.10.0.2    34.93.190.64  RUNNING
+termini-node-a      asia-south1-a  e2-standard-2               10.10.0.11                 RUNNING
+termini-node-b      asia-south1-a  n2-standard-2               10.10.0.12                 TERMINATED
+termini-node-c      asia-south1-a  e2-standard-8               10.10.0.13                 RUNNING
+
+== what keeps billing after a terminate — persistent disks (they do not stop billing)
+$ /home/ubuntu/google-cloud-sdk/bin/gcloud compute disks list --format=table(name,sizeGb,status,users)
+NAME                SIZE_GB  STATUS  USERS
+termini-controller  30       READY   ['https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-controller']
+termini-node-a      60       READY   ['https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-node-a']
+termini-node-b      60       READY   ['https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-node-b']
+termini-node-c      60       READY   ['https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-node-c']
+
+== …and reserved static addresses (an address reserved but unattached bills at the idle rate)
+$ /home/ubuntu/google-cloud-sdk/bin/gcloud compute addresses list
+NAME                   ADDRESS/RANGE  TYPE      PURPOSE       NETWORK  REGION       SUBNET            STATUS
+termini-controller-ip  34.93.190.64   EXTERNAL                         asia-south1                    IN_USE
+termini-node-a-ip      10.10.0.11     INTERNAL  GCE_ENDPOINT           asia-south1  termini-underlay  IN_USE
+termini-node-b-ip      10.10.0.12     INTERNAL  GCE_ENDPOINT           asia-south1  termini-underlay  IN_USE
+termini-node-c-ip      10.10.0.13     INTERNAL  GCE_ENDPOINT           asia-south1  termini-underlay  IN_USE
+
+== …and the project images (storage), which no terminate touches
+$ /home/ubuntu/google-cloud-sdk/bin/gcloud compute images list --no-standard-images --format=table(name,family,status,diskSizeGb,creationTimestamp)
+NAME               FAMILY           STATUS  DISK_SIZE_GB  CREATION_TIMESTAMP
+termini-node-os-5  termini-node-os  READY   20            2026-10-12T12:31:10.175-07:00
+
+== quota view — the same CPUS / GPU-usage check the teardown verification uses
+$ gcloud compute regions describe asia-south1 --format=json | jq '.quotas[] | select(.metric=="CPUS" or .metric=="NVIDIA_L4_GPUS" or .metric=="CPUS_ALL_REGIONS") | {metric,limit,usage}'
+{
+  "metric": "CPUS",
+  "limit": 32.0,
+  "usage": 12.0
+}
+{
+  "metric": "NVIDIA_L4_GPUS",
+  "limit": 0.0,
+  "usage": 0.0
+}
+
+== the public URL today (it answers while the fleet is up; after teardown it must answer 000)
+$ curl -sS -o /dev/null -w 'GET https://34-93-190-64.sslip.io/ -> HTTP %{http_code} (%{time_total}s)\n' https://34-93-190-64.sslip.io/
+GET https://34-93-190-64.sslip.io/ -> HTTP 404 (0.422532s)
+
+NOT CAPTURED: instances TERMINATED + controller URL 000 + zero compute usage.
+To finish this step in an approved window:  bash tools/verify-pause-and-billing.sh
+(it stops nothing; it verifies the pause and prints every line that still bills).
+
+Script done on 2026-10-17 20:52:02+00:00 [COMMAND_EXIT_CODE="0"]

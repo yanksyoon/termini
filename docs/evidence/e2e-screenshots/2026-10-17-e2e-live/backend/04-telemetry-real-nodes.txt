@@ -1,0 +1,49 @@
+Script started on 2026-10-17 20:36:31+00:00 [COMMAND="timeout 300 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/04-telemetry-real-nodes.sh'" <not executed on terminal>]
+step 04 — telemetry from the real nodes   (2026-10-17T20:36:31Z)
+NOTE: the seeder (synthetic nodes 01M4NZK46…/01M4NZK474…) is still running because a
+      concurrent client capture uses it. Real rows are separated below by node id and
+      cross-checked against the machines' own uname/hostname.
+
+
+== what the two standing nodes say about themselves (from the machine, over ssh)
+$ gcloud compute ssh termini-node-a --zone=asia-south1-a --tunnel-through-iap --command="uname -r; hostname; nproc"
+7.0.0-1011-gcp
+termini-node-a.asia-south1-a.c.termini-510609.internal
+2
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="uname -r; hostname; nproc"
+7.0.0-1014-gcp
+termini-node-c.asia-south1-a.c.termini-510609.internal
+8
+
+== the last samples the controller holds, per node (GET /v1/telemetry/recent?limit=4)
+$ curl -sS -X GET https://34-93-190-64.sslip.io/v1/telemetry/recent?limit=4 -H "Authorization: Bearer demo-project-token"
+01M4NZK46WXG5ZEFAGAAV5JRXM  seq=1792267938  ts=2026-10-17T20:36:38.000Z  host=07d1d9b633ec7976  kernel=6.8.0-142-generic  cores=16  gpu=0  oom_kills=0  lxd_instances=1
+01M4NZK46WXG5ZEFAGAAV5JRXM  seq=1792267937  ts=2026-10-17T20:36:37.000Z  host=07d1d9b633ec7976  kernel=6.8.0-142-generic  cores=16  gpu=0  oom_kills=0  lxd_instances=1
+01M4NZK46WXG5ZEFAGAAV5JRXM  seq=1792267936  ts=2026-10-17T20:36:36.000Z  host=07d1d9b633ec7976  kernel=6.8.0-142-generic  cores=16  gpu=0  oom_kills=0  lxd_instances=1
+01M4NZK46WXG5ZEFAGAAV5JRXM  seq=1792267935  ts=2026-10-17T20:36:35.000Z  host=07d1d9b633ec7976  kernel=6.8.0-142-generic  cores=16  gpu=0  oom_kills=0  lxd_instances=1
+01M4NZK474BVARFBXYQBMVA8GV  seq=1792267936  ts=2026-10-17T20:36:37.000Z  host=061bf633d3ad535a  kernel=6.8.0-142-generic  cores=16  gpu=1  oom_kills=10621  lxd_instances=1
+01M4NZK474BVARFBXYQBMVA8GV  seq=1792267935  ts=2026-10-17T20:36:36.000Z  host=061bf633d3ad535a  kernel=6.8.0-142-generic  cores=16  gpu=1  oom_kills=10621  lxd_instances=1
+01M4NZK474BVARFBXYQBMVA8GV  seq=1792267934  ts=2026-10-17T20:36:35.000Z  host=061bf633d3ad535a  kernel=6.8.0-142-generic  cores=16  gpu=1  oom_kills=10620  lxd_instances=1
+01M4NZK474BVARFBXYQBMVA8GV  seq=1792267933  ts=2026-10-17T20:36:34.000Z  host=061bf633d3ad535a  kernel=6.8.0-142-generic  cores=16  gpu=1  oom_kills=10620  lxd_instances=1
+01M4TGD31WXH97JAA5S6A4R10D  seq=37577  ts=2026-10-17T20:36:33Z  host=66570ff05a207404  kernel=7.0.0-1011-gcp  cores=2  gpu=0  oom_kills=null  lxd_instances=6
+01M4TGD31WXH97JAA5S6A4R10D  seq=37576  ts=2026-10-17T20:36:29Z  host=66570ff05a207404  kernel=7.0.0-1011-gcp  cores=2  gpu=0  oom_kills=null  lxd_instances=6
+01M4TGD31WXH97JAA5S6A4R10D  seq=37575  ts=2026-10-17T20:36:26Z  host=66570ff05a207404  kernel=7.0.0-1011-gcp  cores=2  gpu=0  oom_kills=null  lxd_instances=5
+01M4TGD31WXH97JAA5S6A4R10D  seq=37574  ts=2026-10-17T20:36:22Z  host=66570ff05a207404  kernel=7.0.0-1011-gcp  cores=2  gpu=0  oom_kills=null  lxd_instances=5
+01M4ZQ7Q2J80ATY3K32PY3PPJH  seq=31283  ts=2026-10-17T20:36:34Z  host=092cd5e29db96478  kernel=7.0.0-1014-gcp  cores=8  gpu=0  oom_kills=null  lxd_instances=0
+01M4ZQ7Q2J80ATY3K32PY3PPJH  seq=31282  ts=2026-10-17T20:36:31Z  host=092cd5e29db96478  kernel=7.0.0-1014-gcp  cores=8  gpu=0  oom_kills=null  lxd_instances=0
+01M4ZQ7Q2J80ATY3K32PY3PPJH  seq=31281  ts=2026-10-17T20:36:28Z  host=092cd5e29db96478  kernel=7.0.0-1014-gcp  cores=8  gpu=0  oom_kills=null  lxd_instances=0
+01M4ZQ7Q2J80ATY3K32PY3PPJH  seq=31280  ts=2026-10-17T20:36:24Z  host=092cd5e29db96478  kernel=7.0.0-1014-gcp  cores=8  gpu=0  oom_kills=null  lxd_instances=0
+
+== streaming cadence of the two REAL nodes (seconds between consecutive samples)
+01M4TGD31WXH97JAA5S6A4R10D  samples=4  newest=2026-10-17T20:36:33Z  oldest=2026-10-17T20:36:22Z  spacing_s=4
+01M4ZQ7Q2J80ATY3K32PY3PPJH  samples=4  newest=2026-10-17T20:36:34Z  oldest=2026-10-17T20:36:24Z  spacing_s=3
+
+== the same query restricted to the real node ids — their sequences are the node's own
+01M4TGD31WXH97JAA5S6A4R10D
+01M4ZQ7Q2J80ATY3K32PY3PPJH
+
+== for contrast: the seeder's synthetic rows (fixed 16 cores, CI-host kernel, fabricated GPU)
+01M4NZK46WXG5ZEFAGAAV5JRXM  host=07d1d9b633ec7976  kernel=6.8.0-142-generic  cores=16  gpu=  ram_total=68719476736
+01M4NZK474BVARFBXYQBMVA8GV  host=061bf633d3ad535a  kernel=6.8.0-142-generic  cores=16  gpu=NVIDIA L4  ram_total=68719476736
+
+Script done on 2026-10-17 20:36:38+00:00 [COMMAND_EXIT_CODE="0"]

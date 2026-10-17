@@ -1,0 +1,115 @@
+Script started on 2026-10-17 21:04:28+00:00 [COMMAND="timeout 540 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/09-apply-plan-lxd.sh'" <not executed on terminal>]
+step 09 — apply a plan: LXD materialises a real instance   (2026-10-17T21:04:28Z)
+
+== accept a plan from plain English (the intent extractor runs on node-c's managed model)
+$ curl -sS -X POST https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/intents -H "Authorization: Bearer demo-project-token" -H "Content-Type: application/json" -d {"prompt":"deploy 1 worker agent for coding"}
+--- raw response body:
+{"plan_id": "01M55TWMV9B79ZYNYXEZH48HH7", "request_id": "01M55TWMVA5DXXM6JDR6R7FDV3", "project_id": "01J0DEM0WARM000000000000AB", "outcome": "accepted", "created_at": "2026-10-17T21:04:38Z", "allocations": [{"index": 0, "status": "accepted", "resolved": {"type": "agent_vm", "count": 1, "vcpus": 1, "ram_gb": 1, "disk_gb": 8, "passthrough_gpu": false, "target_node": "auto"}, "guardrail": {"clamped_fields": [], "reject_reasons": []}, "node_id": "01M4TGD31WXH97JAA5S6A4R10D", "realized_as": "vm", "vm_ids": []}], "audit": {"actor": "human", "guardrail": "termini.intent.clamp_validate"}}
+--- projection:
+{
+  "plan_id": "01M55TWMV9B79ZYNYXEZH48HH7",
+  "state": null,
+  "allocations": [
+    {
+      "index": 0,
+      "kind": null,
+      "target_node_id": null,
+      "cpu_cores": null,
+      "ram_gb": null,
+      "realized_as": "vm"
+    }
+  ],
+  "guardrails": []
+}
+plan_id=01M55TWMV9B79ZYNYXEZH48HH7
+
+== apply it — the controller drives node-a's LXD REST API and returns a TERMINAL state
+$ curl -sS -X POST https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/vms/apply -H "Authorization: Bearer demo-project-token" -H "Content-Type: application/json" -d {"plan_id":"01M55TWMV9B79ZYNYXEZH48HH7"}
+{
+  "job_id": "01M55TWN7PZ50M60JXPBQENTN2",
+  "plan_id": "01M55TWMV9B79ZYNYXEZH48HH7",
+  "state": "ready",
+  "vm_ids": [
+    "termini-01m55twmv9b79zynyxezh48h-0-0"
+  ],
+  "allocations": [
+    {
+      "index": 0,
+      "status": "ready",
+      "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+      "realized_as": "vm",
+      "vm_ids": [
+        "termini-01m55twmv9b79zynyxezh48h-0-0"
+      ],
+      "created": 1,
+      "already_applied": 0
+    }
+  ]
+}
+vm_ids=termini-01m55twmv9b79zynyxezh48h-0-0
+
+== the node's OWN lxc list — the same instance names, RUNNING
+$ gcloud compute ssh termini-node-a --zone=asia-south1-a --tunnel-through-iap --command="sudo lxc list --format csv -c ns4 | grep -i 'termini-01m55twmv9b79zynyxezh48h-0-0'; echo '--- other instances on node-a (untouched by this apply):'; sudo lxc list --format csv -c ns4 | grep -iv 'termini-01m55twmv9b79zynyxezh48h-0-0' | head -10"
+termini-01m55twmv9b79zynyxezh48h-0-0,RUNNING,
+--- other instances on node-a (untouched by this apply):
+demo-workload,RUNNING,
+termini-01m4wjhwqr3b8pcav2tvqbgg-0-0,RUNNING,10.174.247.141 (eth0)
+termini-01m4wjhwqr3b8pcav2tvqbgg-0-1,RUNNING,10.174.247.215 (eth0)
+termini-01m55dz5fzksstj3fkf91n5hae-0-0,RUNNING,10.174.247.102 (eth0)
+termini-01m55jewvas5whw0qjnckpvj-0-0,RUNNING,10.174.247.184 (eth0)
+termini-01m537g26sm8qgkmztn8stbt-0-0,STOPPED,
+termini-01m537km0trb189a6e1gz546-0-0,RUNNING,10.174.247.138 (eth0)
+
+== the instance's own limits and image (lxc info on node-a)
+$ gcloud compute ssh termini-node-a --zone=asia-south1-a --tunnel-through-iap --command="sudo lxc info 'termini-01m55twmv9b79zynyxezh48h-0-0' | head -30"
+Name: termini-01m55twmv9b79zynyxezh48h-0-0
+Status: RUNNING
+Type: container
+Architecture: x86_64
+PID: 351131
+Created: 2026/10/17 21:04 UTC
+Last Used: 2026/10/17 21:05 UTC
+
+Resources:
+  Processes: 10
+  Disk usage:
+    root: 0B
+  Disk total:
+    root: 0B
+  CPU usage:
+    CPU usage (in seconds): 5
+  Memory usage:
+    Memory (current): 80.31MiB
+  Network usage:
+    eth0:
+      Type: broadcast
+      State: UP
+      Host interface: veth893c767a
+      MAC address: 00:16:3e:a3:99:75
+      MTU: 1500
+      Bytes received: 1.08kB
+      Bytes sent: 766B
+      Packets received: 12
+      Packets sent: 9
+      IP addresses:
+
+== the controller's capacity accounting moved with the create
+$ curl -sS -X GET https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/nodes/01M4TGD31WXH97JAA5S6A4R10D -H "Authorization: Bearer demo-project-token"
+{
+  "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+  "capacity": {
+    "cpu_cores": 2,
+    "ram_gb": 7,
+    "disk_gb": 57,
+    "disk_known": true,
+    "gpu_free": 0,
+    "cpu_allocated": 3,
+    "ram_allocated_gb": 3,
+    "disk_allocated_gb": 24,
+    "cpu_free": 1,
+    "ram_free_gb": 2,
+    "disk_free_gb": 28
+  }
+}
+
+Script done on 2026-10-17 21:05:52+00:00 [COMMAND_EXIT_CODE="0"]

@@ -1,0 +1,56 @@
+Script started on 2026-10-17 20:36:39+00:00 [COMMAND="timeout 300 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/05-inference-service-node-c.sh'" <not executed on terminal>]
+step 05 — the inference service on node C   (2026-10-17T20:36:39Z)
+
+== the unit that serves :8080
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="sudo systemctl status termini-inference-proxy --no-pager -l | head -14"
+● termini-inference-proxy.service - Termini inference proxy (Node C :8080) — drop-in front door for the frozen inference contract
+     Loaded: loaded (/etc/systemd/system/termini-inference-proxy.service; enabled; preset: enabled)
+     Active: active (running) since Fri 2026-10-16 21:04:52 UTC; 23h ago
+       Docs: file:/opt/termini/inference/proxy.py
+   Main PID: 709 (python3)
+      Tasks: 1 (limit: 35470)
+     Memory: 16.1M (peak: 17.0M)
+        CPU: 59.187s
+     CGroup: /system.slice/termini-inference-proxy.service
+             └─709 /usr/bin/python3 /opt/termini/inference/proxy.py
+
+Oct 17 17:45:00 termini-node-c.asia-south1-a.c.termini-510609.internal termini-inference-proxy[709]: {"ts":"2026-10-17T17:45:00Z","event":"inference_request","severity":"info","service":"termini-inference-proxy","backend":"gemini-proxy","model":"gemini-2.5-flash","alias":"gemma","answered_by":"forwarded-managed-model","egress":"external","destination":"aiplatform.googleapis.com","path":"/v1/chat/completions","stream":false,"status":200,"request_id":"01M55FEWBZ0R59ADM7SN7QGMGF","latency_ms":7027.22,"forwarded":true,"prompt_tokens":14,"completion_tokens":557,"requested_max_tokens":900,"requested_temperature":0.2,"finish_reason":"stop"}
+Oct 17 17:45:00 termini-node-c.asia-south1-a.c.termini-510609.internal termini-inference-proxy[709]: {"ts":"2026-10-17T17:45:00Z","event":"inference_request","severity":"info","service":"termini-inference-proxy","backend":"gemini-proxy","model":"gemini-2.5-flash","alias":"gemma","answered_by":"forwarded-managed-model","egress":"external","destination":"aiplatform.googleapis.com","path":"/v1/chat/completions","stream":false,"status":200,"request_id":"01M55FEWDHAS2N7GH4CSA2EPKA","latency_ms":7176.53,"forwarded":true,"prompt_tokens":14,"completion_tokens":597,"requested_max_tokens":900,"requested_temperature":0.2,"finish_reason":"stop"}
+Oct 17 17:46:50 termini-node-c.asia-south1-a.c.termini-510609.internal termini-inference-proxy[709]: {"ts":"2026-10-17T17:46:50Z","event":"inference_request","severity":"info","service":"termini-inference-proxy","backend":"gemini-proxy","model":"gemini-2.5-flash","alias":"gemma","answered_by":"forwarded-managed-model","egress":"external","destination":"aiplatform.googleapis.com","path":"/v1/chat/completions","stream":false,"status":200,"request_id":"01M55FJEF3DMP8NX8AQ78VS1VH","latency_ms":619.12,"forwarded":true,"prompt_tokens":5,"completion_tokens":1,"requested_max_tokens":16,"requested_temperature":0.2,"finish_reason":"stop"}
+
+== what it is configured as (Environment=) and that it is listening
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="systemctl show -p ActiveState -p SubState -p MainPID -p Environment termini-inference-proxy; echo; sudo ss -ltnp | grep -E ':8080|:8081'"
+MainPID=709
+Environment=
+ActiveState=active
+SubState=running
+
+LISTEN 0      512                   127.0.0.1:8081      0.0.0.0:*    users:(("llama-server",pid=708,fd=3))                  
+LISTEN 0      5                       0.0.0.0:8080      0.0.0.0:*    users:(("python3",pid=709,fd=5))                       
+
+== /health — the backend it reports
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="curl -sS -i http://127.0.0.1:8080/health | head -20"
+HTTP/1.1 200 OK
+Server: termini-inference-proxy/1.0 Python/3.12.3
+Date: Sat, 17 Oct 2026 20:36:48 GMT
+Content-Type: application/json
+Content-Length: 451
+X-Termini-Backend: gemini-proxy
+X-Termini-Answered-By: forwarded-managed-model
+X-Termini-Model: gemma
+X-Termini-Model-Id: gemini-2.5-flash
+X-Termini-Egress: external
+X-Termini-Residency: resident
+X-Termini-External-Destination: aiplatform.googleapis.com
+X-Termini-Request-Id: req-01M55S9PCD20Q81D7FYN2BHM6R
+
+{"status": "ok", "model": "gemma", "backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "egress": "external", "served_model": "gemini-2.5-flash", "local_path": {"available": true, "upstream": "http://127.0.0.1:8081", "switch": "TERMINI_INFERENCE_BACKEND=local"}, "destination": "aiplatform.googleapis.com", "note": "forwarded managed model: requests are answered by gemini-2.5-flash at aiplatform.googleapis.com, not by local weights"}
+== /v1/models — the alias the dashboard and the fleet's peers use
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="curl -sS http://127.0.0.1:8080/v1/models"
+{"object": "list", "data": [{"id": "gemma", "object": "model", "created": 1792269411, "owned_by": "termini"}], "termini_backend": {"backend": "gemini-proxy", "answered_by": "forwarded-managed-model", "served_model": "gemini-2.5-flash", "egress": "external", "destination": "aiplatform.googleapis.com"}}
+== there is no GPU on this node — the forwarded path is the whole point of the pivot
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command="ls -l /dev/nvidia* 2>&1 | head -3; command -v nvidia-smi || echo 'nvidia-smi absent: no local GPU'"
+ls: cannot access '/dev/nvidia*': No such file or directory
+nvidia-smi absent: no local GPU
+
+Script done on 2026-10-17 20:36:56+00:00 [COMMAND_EXIT_CODE="0"]

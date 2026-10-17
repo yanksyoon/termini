@@ -1,0 +1,57 @@
+Script started on 2026-10-17 20:12:43+00:00 [COMMAND="timeout 300 bash '/home/ubuntu/.worktrees/t_2191eca4/docs/evidence/e2e-screenshots/2026-10-17-e2e-live/tools/steps/02-boot-registration.sh'" <not executed on terminal>]
+step 02 — boot to registration   (2026-10-17T20:12:44Z)
+
+== node-a
+$ gcloud compute ssh termini-node-a --zone=asia-south1-a --tunnel-through-iap --command=echo\ \'---\ every\ REGISTERED\ line\ the\ journal\ holds\ \(all\ boots\)\'\;\ sudo\ journalctl\ -u\ termini-bootstrap\ --no-pager\ \|\ grep\ REGISTERED\ \|\ tail\ -4\;\ echo\;\ echo\ \'---\ REGISTERED\ lines\ in\ THIS\ boot\ \(0\ =\ persisted\ identity\ reused\)\'\;\ sudo\ journalctl\ -u\ termini-bootstrap\ -b\ --no-pager\ \|\ grep\ -c\ REGISTERED\;\ echo\;\ echo\ \'---\ the\ daemon\ that\ produced\ it\'\;\ systemctl\ show\ -p\ ActiveState\ -p\ SubState\ -p\ ExecMainStartTimestamp\ termini-bootstrap\;\ echo\;\ echo\ \'---\ this\ machine\ booted\'\;\ uptime\ -s\;\ uptime
+--- every REGISTERED line the journal holds (all boots)
+Oct 13 11:29:44 termini-node-a.asia-south1-a.c.termini-510609.internal termini-bootstrap[1829]: 2026-10-13T11:29:44Z [termini-bootstrap] REGISTERED node_id=01M4TGD31WXH97JAA5S6A4R10D role=compute register_ms=37 boot_to_registered_ms=176120
+
+--- REGISTERED lines in THIS boot (0 = persisted identity reused)
+0
+
+--- the daemon that produced it
+ExecMainStartTimestamp=Sat 2026-10-17 16:32:11 UTC
+ActiveState=active
+SubState=running
+
+--- this machine booted
+2026-10-17 16:31:59
+ 20:15:33 up  3:43,  2 users,  load average: 0.40, 1.74, 2.10
+
+== node-c
+$ gcloud compute ssh termini-node-c --zone=asia-south1-a --tunnel-through-iap --command=echo\ \'---\ every\ REGISTERED\ line\ the\ journal\ holds\ \(all\ boots\)\'\;\ sudo\ journalctl\ -u\ termini-bootstrap\ --no-pager\ \|\ grep\ REGISTERED\ \|\ tail\ -4\;\ echo\;\ echo\ \'---\ REGISTERED\ lines\ in\ THIS\ boot\ \(0\ =\ persisted\ identity\ reused\)\'\;\ sudo\ journalctl\ -u\ termini-bootstrap\ -b\ --no-pager\ \|\ grep\ -c\ REGISTERED\;\ echo\;\ echo\ \'---\ the\ daemon\ that\ produced\ it\'\;\ systemctl\ show\ -p\ ActiveState\ -p\ SubState\ -p\ ExecMainStartTimestamp\ termini-bootstrap\;\ echo\;\ echo\ \'---\ this\ machine\ booted\'\;\ uptime\ -s\;\ uptime
+--- every REGISTERED line the journal holds (all boots)
+Oct 15 12:05:20 node-c termini-bootstrap[775]: 2026-10-15T12:05:20Z [termini-bootstrap] REGISTERED node_id=01M4ZQ7Q2J80ATY3K32PY3PPJH role=compute register_ms=102 boot_to_registered_ms=16160
+
+--- REGISTERED lines in THIS boot (0 = persisted identity reused)
+0
+
+--- the daemon that produced it
+ExecMainStartTimestamp=Fri 2026-10-16 21:04:52 UTC
+ActiveState=active
+SubState=running
+
+--- this machine booted
+2026-10-16 21:04:39
+ 20:16:33 up 23:11,  4 users,  load average: 0.18, 0.07, 0.03
+
+== the controller's view of liveness (last_seen_at heartbeat, not a cached row)
+$ curl -sS -X GET https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/nodes -H "Authorization: Bearer demo-project-token"
+{
+  "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+  "role": "compute",
+  "synthetic": false,
+  "status": "online",
+  "last_seen_at": "2026-10-17T20:16:33Z",
+  "uptime_sec": 13471
+}
+{
+  "node_id": "01M4ZQ7Q2J80ATY3K32PY3PPJH",
+  "role": "compute",
+  "synthetic": false,
+  "status": "online",
+  "last_seen_at": "2026-10-17T20:16:32Z",
+  "uptime_sec": 83510
+}
+
+Script done on 2026-10-17 20:16:34+00:00 [COMMAND_EXIT_CODE="0"]
