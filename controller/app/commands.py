@@ -11,7 +11,10 @@ select among these only; free-form shell is never executed. Each type carries an
 
 Human-issued commands (the dashboard intervention controls) are pre-authorized
 and go straight to ``queued``; AI-operator-issued ``required`` commands land in
-``pending_approval`` until a human approves/denies them.
+``pending_approval`` until a human approves/denies them. Assistant-issued
+commands (``issued_by: assistant``, t_bfd2c2f7) also go straight to ``queued``:
+the assistant's authority is guardrail admission, not a human decision (owner
+decision D1) — the operator approval gate is unchanged.
 """
 from __future__ import annotations
 
@@ -52,8 +55,15 @@ def approval_for(command_type: str) -> str:
 
 
 def initial_state(command_type: str, issued_by: str) -> str:
-    """Human-issued commands skip approval; AI commands honor the policy."""
-    if issued_by == "human":
+    """Human- and assistant-issued commands skip approval; AI commands honor the policy.
+
+    Assistant-initiated commands (owner decision D1, t_bfd2c2f7) carry
+    ``issued_by: assistant`` and execute without the ``pending_approval`` gate —
+    the assistant's authority is the guardrail admission, not a human decision.
+    The operator/playbook ``pending_approval -> approve/deny`` flow is unchanged
+    for ``ai_operator``-issued commands.
+    """
+    if issued_by in ("human", "assistant"):
         return QUEUED
     return PENDING if approval_for(command_type) == "required" else QUEUED
 
@@ -76,7 +86,7 @@ def issue_command(
             f"unknown command type {command_type!r}",
             [{"field": "type", "reason": "not_in_command_allowlist"}],
         )
-    if issued_by not in ("ai_operator", "human", "system"):
+    if issued_by not in ("ai_operator", "human", "system", "assistant"):
         issued_by = "human"
 
     state = initial_state(command_type, issued_by)
@@ -99,7 +109,7 @@ def issue_command(
         conn, project_id,
         node_id=node_id,
         severity="info",
-        actor=issued_by if issued_by in ("ai_operator", "human") else "ai_operator",
+        actor=issued_by if issued_by in ("ai_operator", "human", "assistant") else "ai_operator",
         message=f"{command_type} issued" + (f" on node {node_id}" if node_id else ""),
         remediation=remediation,
     )

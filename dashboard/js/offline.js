@@ -439,6 +439,42 @@ export class OfflineBackend {
   async denyRemediation(commandId) {
     return { command_id: commandId, state: "denied", denied_by: "human", denied_at: new Date().toISOString() };
   }
+
+  /**
+   * Contract-shaped assistant responder (t_bfd2c2f7, controller-api.md §4.10).
+   * Answers with citations from the offline fixtures and no controller, so
+   * `?offline=1` demos the assistant surface without a live token — a feature
+   * that only works against a live controller would break the projector demo.
+   * No execution is fabricated: `executed` and `proposed_actions` stay empty
+   * (the offline double has no guarded executor to run against).
+   */
+  async assistantAsk({ messages, context } = {}) {
+    const kind = context && context.kind ? context.kind : "none";
+    const id = context && context.id ? context.id : null;
+    let citations = [];
+    let answer = "I can't ground that against the offline fixtures.";
+    if (kind === "node" || kind === "metric") {
+      const node = NODES.find((n) => n.node_id === id) || NODES[0];
+      answer = `${node.registration_id} is ${node.role === "inference" ? "degraded" : "online"} in the offline demo (GPU pressure on the inference node).`;
+      citations = [{ kind, id: node.node_id, label: node.registration_id }];
+    } else if (kind === "none") {
+      answer = `Three nodes are present: ${NODES.map((n) => n.registration_id).join(", ")}.`;
+    } else if (id) {
+      answer = `Offline demo: ${kind} ${id} is a fixture with no live controller behind it.`;
+      citations = [{ kind, id, label: `${kind} ${id}` }];
+    }
+    return {
+      answer,
+      citations,
+      executed: [],
+      proposed_actions: [],
+      model: "offline",
+      decided_by: "assistant",
+      elapsed_ms: 8,
+      truncated: false,
+      errors: [],
+    };
+  }
 }
 
 export class OfflineStream {

@@ -116,6 +116,14 @@ The terminal panel (xterm.js WebSocket + SSH string) is a separate card
    selector, a scale-intent form (prompt → reviewed plan with clamps as warnings
    and rejects as errors → apply), and approve/deny of pending AI remediation.
 
+The inline Approve/Deny surface is for **operator-initiated** `pending_approval`
+remediations. The assistant endpoint (`POST /v1/projects/{pid}/assistant/ask`,
+`controller-api.md` §4.10) is a separate card (frontend) that consumes a
+different contract: an assistant-initiated action executes on guardrail
+admission — never entering `pending_approval` — and is recorded with
+`initiated_by: assistant` so it appears on the decision surface, not in this
+approval list.
+
 ### Empty / loading / error behaviour
 
 * Loading → skeleton cards; no data → explicit empty states ("No nodes

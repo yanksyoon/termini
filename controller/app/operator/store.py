@@ -53,7 +53,10 @@ def insert_decision(conn, decision_id: str, event, action, now_iso: str,
                     *, source: str = "deterministic", confidence: float | None = None,
                     fallback_reason: str | None = None,
                     incident: dict | None = None,
-                    trace=None) -> None:
+                    trace=None,
+                    initiated_by: str = "operator",
+                    conversation_id: str | None = None,
+                    message_id: str | None = None) -> None:
     # `incident` is the §4.2 incident record (or None in deterministic mode, §8.1).
     # Written in the SAME statement as the decision, so a record can never exist
     # without its decision and the row is atomic. `incident_generated` ∈
@@ -76,8 +79,8 @@ def insert_decision(conn, decision_id: str, event, action, now_iso: str,
         " action_kind, action_params, reason, decision_source, confidence,"
         " fallback_reason, decided_at, incident_title, incident_explanation,"
         " incident_evidence, incident_actions, incident_generated,"
-        " decision_trace, trace_version)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " decision_trace, trace_version, initiated_by, conversation_id, message_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             decision_id, event.event_id, event.node_id, event.rule_id,
             action.playbook, action.kind, json.dumps(action.params), action.reason,
@@ -85,6 +88,7 @@ def insert_decision(conn, decision_id: str, event, action, now_iso: str,
             incident_title, incident_explanation,
             incident_evidence, incident_actions, incident_generated,
             decision_trace, trace_version,
+            initiated_by, conversation_id, message_id,
         ),
     )
 
@@ -109,20 +113,25 @@ def append_decision_trace(conn, decision_id: str, trace) -> None:
 
 def insert_audit(conn, audit_id: str, decision_id: str, event, action,
                  result, idempotency_key: str, now_iso: str, dry_run: bool,
-                 *, lxd_endpoint: str = "") -> None:
+                 *, lxd_endpoint: str = "",
+                 initiated_by: str = "operator",
+                 conversation_id: str | None = None,
+                 message_id: str | None = None) -> None:
     # `result` is an operator.executor.ExecResult; duck-typed here to avoid a
     # store->executor import cycle. `lxd_endpoint` is the executor's base URL, so
     # the row proves which endpoint (stub vs a real node) the call reached.
     conn.execute(
         "INSERT INTO remediation_audits (id, decision_id, event_id, node_id,"
         " rule_id, action_kind, result, detail, lxd_method, lxd_path, lxd_body,"
-        " idempotency_key, dry_run, executed_at, lxd_endpoint)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " idempotency_key, dry_run, executed_at, lxd_endpoint,"
+        " initiated_by, conversation_id, message_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             audit_id, decision_id, event.event_id, event.node_id, event.rule_id,
             action.kind, result.result, (result.detail or "")[:1000], result.method,
             result.path, (result.body or "")[:1000], idempotency_key,
             1 if dry_run else 0, now_iso, lxd_endpoint or "",
+            initiated_by, conversation_id, message_id,
         ),
     )
 
