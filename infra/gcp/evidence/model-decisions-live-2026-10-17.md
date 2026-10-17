@@ -8,20 +8,21 @@ re-check 21:16:37Z).
 **Deployed tree:** `9430db15d1a362a2c160fe5657714c091f0974d8` (branch
 `wt/t_77f26781-model-decision-robust` on top of merged `main` `0d995f1`), read back
 from `/opt/termini/DEPLOYED_COMMIT` after the deploy at 20:52:21Z — the tree the
-acceptance run above executed on. It was redeployed from branch commit
-`4a982b00ac841994c513da3633c706c0f0beef17` at 21:17:55Z; between the two,
-`git diff 9430db1..4a982b0 --stat` touches only `infra/gcp/evidence/` (this doc and the
-three driver/evidence tools), and the five runtime files this card changes hash
-identically to the commit:
+acceptance run above executed on. As `main` advanced the controller was redeployed from
+the branch twice more (`4a982b0` at 21:17:55Z, `b1b314b` at 21:26:07Z after rebasing
+onto `39c4a95`); the only runtime diff between those and the acceptance commit is
+`main`'s own merged change to `decision.py` (t_7bd69aaa). The live tree now reads back:
 
 ```
-$ sha256sum /opt/termini/controller/app/operator/decision.py …      # on the controller
-70c466d9…  controller/app/operator/decision.py
+$ cat /opt/termini/DEPLOYED_COMMIT
+b1b314b45c8751d40268f72c7d73d8aac189ee02
+$ sha256sum /opt/termini/controller/app/operator/decision.py …           # on the controller
+09175e2d…  controller/app/operator/decision.py
 929382ea…  controller/app/operator/external_call.py
 e97978b8…  termini/decision/adapter.py
 29abcf72…  termini/decision/config.py
 6bf6d504…  termini/decision/types.py
-$ for f in …; do git show HEAD:$f | sha256sum; done                  # same values
+$ for f in …; do git show HEAD:$f | sha256sum; done                       # same five values
 ```
 **Node:** `termini-node-a` / `01M4TGD31WXH97JAA5S6A4R10D`, `lxd_endpoint=https://10.10.0.11:8443`.
 **Model surface:** `https://…` loopback provider proxy `:8085` → `gemini-2.5-flash`
@@ -336,4 +337,9 @@ sudo journalctl -u termini-controller --since "-6min" | grep "fell back (reason=
   consecutive live fires now decide on the model.
 * After the redeploy from `4a982b0` (21:17:55Z), one more fire decided on the model —
   `01M55VPTRHFGTM03XHXBPRRS9D` at 21:18:53.613Z, confidence 0.9, completion 371 tokens,
-  `finish=stop` — so the tree that is live now is the tree that was measured.
+  `finish=stop`.
+* The tree that is live now (`b1b314b`, after rebasing onto `39c4a95`) was exercised
+  again: `01M55W9J9JM89YDT8P79NTRRCE` at 21:29:06.808Z, `decision_source=model`,
+  confidence 0.95, `finish=stop`, **515 completion tokens** — a reply that the old
+  `512` budget would have cut. That is the card's failure mode, one token past the
+  boundary, decided by the model and executed.
