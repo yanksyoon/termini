@@ -354,8 +354,12 @@ What Termini does **not** claim (the honest guardrails from
   guaranteed is the **safety envelope**, not the specific choice.
 - No VM launch from natural language — the allocation path ends at a validated,
   clamped plan.
-- No hotplug resize or node drain/migration — the operator restarts the runaway
-  workload on OOM and stops the heaviest workload on disk failure.
+- No hotplug resize or node drain/migration in the **operator loop** — the
+  operator restarts the runaway workload on OOM and stops the heaviest workload
+  on disk failure. Node drain remains a *human- or assistant-initiated* action
+  (the dashboard's drain control, or the assistant endpoint
+  `controller-api.md` §4.10 on guardrail admission) — it is not an operator-loop
+  action.
 - No long-lived or shared SSH credentials — a controller-held SSH CA signs
   short-lived (≤8 h), principal-bound certificates.
 - No on-node redactor that drops C2 fields — the gate is controller-side, and a

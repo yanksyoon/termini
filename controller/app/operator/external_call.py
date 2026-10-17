@@ -369,12 +369,20 @@ def external_model_call(
     request_id: str = "",
     audit_sink: Optional[Callable[[Dict[str, Any]], None]] = None,
     egress: Optional[Dict[str, Any]] = None,
+    class_assertion: Optional[Callable[[Any], List[str]]] = None,
 ):
     """Assert, audit-before, call, audit-after — the §9.3 ``externalModelCall()``.
 
     ``payload`` is the request object (a :class:`DecisionInput` or its ``dict``
     form) whose fields are substituted into the prompt. ``send`` performs the
     actual transport and is called **only** when the assertion passes.
+
+    ``class_assertion`` overrides the default decision-payload class check
+    (``assert_allowed_classes``). The assistant surface (t_bfd2c2f7) passes its
+    own assertion so a different frozen payload shape — free-text ``messages``
+    plus C0-only context records — is validated by the SAME wrapper rather than a
+    parallel one; the template-version, audit-before/after and egress-labelling
+    machinery is shared unchanged.
 
     ``egress`` is the endpoint's own identity (see :mod:`app.operator.egress`):
     what it says it is, and where a forwarded call leaves for. It is recorded on
@@ -391,6 +399,7 @@ def external_model_call(
     """
     expected = template_version_expected or template_version()
     actual = template_version_actual or expected
+    _assert_classes = class_assertion or assert_allowed_classes
 
     if isinstance(payload, dict):
         payload_dict = payload
@@ -404,7 +413,7 @@ def external_model_call(
         violations.append(
             f"template version {actual!r} != frozen {expected!r} (governance §7.2)"
         )
-    violations.extend(assert_allowed_classes(payload_dict))
+    violations.extend(_assert_classes(payload_dict))
 
     digest = _sha256(payload_dict) if isinstance(payload_dict, (dict, list)) else ""
     n_fields = _count_fields(payload_dict)
