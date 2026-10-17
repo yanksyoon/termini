@@ -614,6 +614,28 @@ class ExecTransportTest(unittest.TestCase):
         self.assertEqual(self.lxd.exec_requests("c1")[0][2]["record-output"], True)
         self.assertEqual(self.lxd.exec_requests("c1")[0][2]["wait-for-websocket"], False)
 
+    def test_json_stdout_is_not_mistaken_for_an_envelope(self):
+        """The in-VM client answers JSON, so the recorded stdout is JSON too.
+
+        `/1.0/instances/{name}/logs/<file>` is a FILE DOWNLOAD: the body is the
+        output verbatim, not a `{"metadata": ...}` object. Parsing it as an object
+        returned `metadata=None` for every real exec — the live defect where the
+        task API answered 503 "no task surface" while the task had actually run.
+        """
+        payload = '{"status": 202, "body": "{}"}'
+        self.lxd.exec_handler = lambda argv: (0, payload, "")
+        r = self.exe.exec_instance("c1", ["python3"], timeout_s=5.0)
+        self.assertEqual(r.result, "ok", r.detail)
+        self.assertEqual(r.detail, payload)
+
+    def test_proxy_envelope_around_the_log_file_is_unwrapped(self):
+        """A proxy in front of LXD may wrap the file; that shape still works."""
+        self.lxd.log_envelope = True
+        self.lxd.exec_handler = lambda argv: (0, "wrapped\n", "")
+        r = self.exe.exec_instance("c1", ["echo"], timeout_s=5.0)
+        self.assertEqual(r.result, "ok", r.detail)
+        self.assertEqual(r.detail, "wrapped\n")
+
     def test_nonzero_exit_is_an_error_with_stderr(self):
         self.lxd.exec_handler = lambda argv: (3, "", "boom\n")
         r = self.exe.exec_instance("c1", ["false"], timeout_s=5.0)

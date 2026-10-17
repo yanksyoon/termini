@@ -84,6 +84,8 @@ class StubLxd:
         # returns (returncode, stdout, stderr).
         self.exec_handler = None           # Callable[[list[str]], tuple[int, str, str]]
         self.exec_fail = False             # force the exec POST to 500
+        self.log_envelope = False          # serve /logs/<file> wrapped in a sync
+                                           # envelope (a proxy might; real LXD does NOT)
         self.exec_operations: dict[str, dict] = {}   # op path -> recorded output
         self._op_seq = 0
         self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
@@ -174,6 +176,15 @@ class StubLxd:
                 body = json.dumps(obj).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _send_text(self, status: int, text: str):
+                # How LXD answers `/logs/<file>`: the file's bytes, text/plain.
+                body = (text or "").encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -271,14 +282,21 @@ class StubLxd:
                                                   "status_code": 200,
                                                   "err": stub.operation_error}})
                 elif "/logs/" in self.path:
-                    # Recorded exec output, served as LXD serves it (the log file's
-                    # metadata carries the text).
+                    # Recorded exec output, served as LXD serves it: `/logs/<file>`
+                    # is a FILE DOWNLOAD — the body is the recorded bytes, plain
+                    # text, not a `{"metadata": ...}` object envelope. (The envelope
+                    # shape here was a stub fiction; it hid a real defect where every
+                    # record-output read came back empty on a live node. Set
+                    # `log_envelope = True` to model a proxy that wraps the file.)
                     for op in stub.exec_operations.values():
                         for stream, path in op["output"].items():
                             if path == self.path:
                                 text = op["stdout"] if stream == "1" else op["stderr"]
-                                self._send(200, {"type": "sync", "status_code": 200,
-                                                 "metadata": text})
+                                if stub.log_envelope:
+                                    self._send(200, {"type": "sync", "status_code": 200,
+                                                     "metadata": text})
+                                else:
+                                    self._send_text(200, text)
                                 return
                     self._send(404, {"type": "error", "error_code": 404,
                                      "error": "no such log file"})
