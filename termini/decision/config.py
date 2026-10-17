@@ -33,7 +33,14 @@ DEFAULT_BASE_URL = "http://10.10.0.13:8080"
 DEFAULT_MODEL = "gemma"
 DEFAULT_TIMEOUT_S = 30.0
 DEFAULT_TEMPERATURE = 0.0
-DEFAULT_MAX_TOKENS = 512
+# The decision response carries the §4.2 incident record (title + explanation +
+# up to 12 evidence entries + up to 8 action entries). With the F01 leak
+# signature the evidence window is dense, and a model that faithfully quotes the
+# fields it used produces a reply longer than 512 tokens — which truncated the
+# JSON mid-array and turned a correct `instance.restart` into a schema_violation
+# fallback (t_979fa31b). 1024 leaves headroom; override with
+# TERMINI_INFERENCE_MAX_TOKENS when a longer record is needed.
+DEFAULT_MAX_TOKENS = 1024
 
 
 @dataclass(frozen=True)
@@ -73,5 +80,5 @@ class DecisionModelConfig:
             token=env.get("TERMINI_INFERENCE_TOKEN", ""),
             timeout_s=float(env.get("TERMINI_INFERENCE_TIMEOUT_S", str(DEFAULT_TIMEOUT_S))),
             temperature=DEFAULT_TEMPERATURE,
-            max_tokens=DEFAULT_MAX_TOKENS,
+            max_tokens=int(env.get("TERMINI_INFERENCE_MAX_TOKENS", str(DEFAULT_MAX_TOKENS))),
         )
