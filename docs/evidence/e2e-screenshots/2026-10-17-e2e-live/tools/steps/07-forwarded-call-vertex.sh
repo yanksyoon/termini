@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: (node-c) journalctl -u termini-inference-proxy | grep inference_request ; ss -tnp dport 443 ; getent hosts aiplatform.googleapis.com ; metadata-server token probe
 # Step 07 — the forwarded call itself: where the request actually goes, where the
 # credential comes from (the metadata server, not a key file), and what it costs in

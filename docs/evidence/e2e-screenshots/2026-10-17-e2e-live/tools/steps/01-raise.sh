@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: gcloud compute instances list; gcloud compute disks list --format=table(name,sizeGb,status,sourceImage); gcloud compute instances describe termini-node-a|termini-node-c
 # Step 01 — the raise: node-a and node-c are real GCE instances booted from the baked termini-node-os image.
 #

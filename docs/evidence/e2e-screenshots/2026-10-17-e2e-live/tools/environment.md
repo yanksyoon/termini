@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | run-id | `2026-10-17-e2e-live` (shared with the client half, `INDEX-client.md`) |
-| UTC window | `2026-10-17T19:56Z` → (see `tools/capture-log.tsv` for each step's exact start) |
+| UTC window | `2026-10-17T19:56Z` → `2026-10-17T21:04Z` (the last capture is step 09's successful re-run; `tools/capture-log.tsv` has each step's exact start) |
 | capture host | the shared build host, `/home/ubuntu/.worktrees/t_2191eca4` (branch `wt/t_2191eca4-e2e-backend-captures`, from `origin/main`) |
 | deployment under test | `a89f8521254c1f2b1af25f24d91d4bbc12194873` — `/opt/termini/DEPLOYED_COMMIT` on `termini-controller`, deployed 2026-10-17T19:35Z |
 | proof the tree is that commit | `sha256(/opt/termini/controller/app/server.py)` = `58db4820…b2d1`, identical to `git show origin/main:controller/app/server.py` at `a89f852` |
@@ -25,6 +25,13 @@
   train of truth; the PNG is the readable form.
 * Re-run: `bash tools/capture-backend-live.sh` (all steps) or `... 03 04` (selected steps).
   Step 08 writes the decision id into `/tmp/termini-e2e-backend/state.env`, which step 10 reads.
+* **Step 09 was re-captured at 21:04Z.** Its 20:38Z and 20:52Z captures are real `422` refusals
+  (node-a had `cpu_free=0` from a concurrent card's applied plan). Once that plan was released the
+  step was re-run unchanged and passed: plan accepted → `state=ready` → the instance
+  `termini-01m55twmv9b79zynyxezh48h-0-0` RUNNING in the node's own `lxc list`. That instance was
+  released and deleted again at 21:06Z (`POST /vms/release` → `deleted: [...]`), so the fleet was
+  left as found and capacity came back exactly. Every attempt stays in `tools/capture-log.tsv`;
+  the index row is the last, successful one.
 
 ## What this run did NOT do, and why
 

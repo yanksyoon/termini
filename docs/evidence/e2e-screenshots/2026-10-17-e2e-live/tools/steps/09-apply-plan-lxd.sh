@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: POST /intents {"prompt":"deploy 1 worker agent for coding"} ; POST /vms/apply {"plan_id":...} ; gcloud compute ssh termini-node-a --command="lxc list; lxc info <vm>"
 # Step 09 — apply a plan and watch LXD do real work: the controller creates an LXD
 # instance on node-a and the node's own `lxc list` shows it RUNNING with the same
@@ -25,7 +26,9 @@ printf 'VM_IDS=%s\n' "$VM_IDS" >>"$STATE"
 
 note "the node's OWN lxc list — the same instance names, RUNNING"
 FIRST_VM="$(printf '%s' "$VM_IDS" | awk '{print $1}')"
-on_node termini-node-a "sudo lxc list --format csv -c ns4 | grep '${PLAN_ID}'; echo '--- other instances on node-a (untouched by this apply):'; sudo lxc list --format csv -c ns4 | grep -v '${PLAN_ID}' | head -10"
+# Match the instance name the controller returned (the ULID is truncated to 24
+# chars in the name, so grepping the full plan id would never match).
+on_node termini-node-a "sudo lxc list --format csv -c ns4 | grep -i '${FIRST_VM}'; echo '--- other instances on node-a (untouched by this apply):'; sudo lxc list --format csv -c ns4 | grep -iv '${FIRST_VM}' | head -10"
 
 note "the instance's own limits and image (lxc info on node-a)"
 on_node termini-node-a "sudo lxc info '${FIRST_VM}' | head -30"

@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: gcloud compute instances list ; gcloud compute disks list ; gcloud compute addresses list ; gcloud compute regions describe asia-south1 (quotas)
 # Step 11 — pause and the money. NOT CAPTURED AS THE CARD ASKS, and here is why:
 #

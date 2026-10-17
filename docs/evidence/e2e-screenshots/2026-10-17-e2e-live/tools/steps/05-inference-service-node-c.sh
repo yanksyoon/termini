@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: gcloud compute ssh termini-node-c --command="systemctl status termini-inference-proxy; systemctl show -p Environment; curl :8080/health; curl :8080/v1/models; ls /dev/nvidia*"
 # Step 05 — the inference service on node C: it is up, it advertises the alias `gemma`,
 # and it says in-band which backend answered (forwarded managed model — not local

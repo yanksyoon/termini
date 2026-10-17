@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: (node-c) curl :8080/v1/chat/completions (forwarded) vs curl :8081/v1/chat/completions (local CPU Gemma) — same prompt, both timed
 # Step 12 — the honest comparison: the SAME prompt answered by the CPU/Gemma path and
 # by the forwarded path, side by side, with both latencies and the explicit label.

@@ -27,8 +27,8 @@ NOTES = {
         "`gcloud compute ssh termini-node-c --command=\"journalctl -u termini-inference-proxy | grep inference_request; getent hosts aiplatform.googleapis.com; ss -tnp state established '( dport = :443 )'; curl metadata token endpoint\"`"),
  "08": ("the operator deciding on a REAL node: an OOM fault injected on node-a (injection id in the transcript) produces a decision with `decision_source=model`, `confidence=0.95`, `decided_at` after the injection, and the trace's `model_call` naming `endpoint=external`, `answered_by=forwarded-managed-model`, `latency_ms`, `request_id`. The controller's `externalModelCall before/after` lines carry `external_destination=aiplatform.googleapis.com` and `payload_sha256` for the same request id.",
         "`POST /v1/projects/<pid>/demo/faults {scenario:oom,node_id:<node-a>,target:real}`; poll `GET /v1/operator/decisions`; `journalctl -u termini-controller | grep externalModelCall`"),
- "09": ("**CAPTURED FAILING (finding):** the accepted-plan step could not be completed — node-a had `cpu_free=0` (4 vCPU held by a concurrent card's applied plan) so the controller refused the intent with `422 GUARDRAIL_REJECTED / exceeds_node_cpu_ceiling`. Raw refusal is in the transcript. The apply→LXD materialisation path is already proven on this same fleet by `t_d7e0bf4e` / `t_ece9d14f`; this run's own LXD evidence is step 10, which shows the instance those plans created being remediated on the node. **NOT CAPTURED: a fresh apply creating an instance in this window.**",
-        "`POST /v1/projects/<pid>/intents {\"prompt\":\"deploy 1 worker agent for coding\"}` (then `POST /vms/apply` — not reached)"),
+ "09": ("an accepted plan applied on a REAL node, end to end: `POST /intents` accepted with clean guardrails (`node_id=node-a`), `POST /vms/apply` returns a terminal `state=ready` with `created=1` and the vm id `termini-01m55twmv9b79zynyxezh48h-0-0`; node-a's OWN `lxc list` shows that exact instance RUNNING (`lxc info`: Status RUNNING, container, PID, Created 2026/10/17 21:04 UTC) and the controller's capacity accounting moved with the create. The earlier attempts of this step are real refusals at `cpu_free=0` (finding 1); this is the successful re-run after that capacity was released, and the instance was released again afterwards.",
+        "`POST /v1/projects/<pid>/intents {\"prompt\":\"deploy 1 worker agent for coding\"}`; `POST /vms/apply {plan_id}`; `gcloud compute ssh termini-node-a --command=\"lxc list; lxc info <vm>\"`; `GET /nodes/<node-a>`"),
  "10": ("a remediation against real LXD, with the audit row that records it: `PUT /1.0/instances/<vm>/state` (`{\"action\":\"restart\",\"force\":true,\"timeout\":30}`), `result=ok`, `lxd_endpoint=https://10.10.0.11:8443`, the LXD operation URL, and `state Running -> Running`; the node's own `lxc list`/`lxc info` shows the same instance RUNNING with `Last Used` at the remediation minute, and the controller log shows `remediation_latency`. The injected fault is then cleared (healthy baseline written back).",
         "`GET /v1/operator/audits?node=<node-a>` + `gcloud compute ssh termini-node-a --command=\"lxc list <vm>; lxc info <vm>\"` + `DELETE /demo/faults/<iid>`"),
  "11": ("**PARTIAL — NOT CAPTURED as written:** the termination, the controller URL returning `000`, and a zero-usage billing view are deferred to an approved teardown (fleet is shared with the client capture; the owner's 2026-10-17 decision keeps the demo running; the card's cost guard forbids start/stop). What IS captured is the discipline t_9232df6d asks for: the fleet, the persistent disks, the reserved static address, the images and the CPUS/GPU quota rows — i.e. the lines that keep billing after a terminate. `tools/verify-pause-and-billing.sh` finishes the step in an approved window.",
@@ -64,11 +64,12 @@ out.append("Card: `t_2191eca4` (infra). Run-id: `2026-10-17-e2e-live` (the clien
 out.append("Environment, deployment commit and the exact list of what this run did NOT do: `tools/environment.md`.\n")
 out.append("**Convention:** each step is a PNG rendered from its raw transcript sidecar (`.txt`). The transcript is the train "
            "of truth — the PNG is the readable form, rendered by `tools/render-terminal-png.sh` with lines wrapped for display only. "
-           "Nothing is retyped or retaken: a step that failed is captured failing (step 09). The only transformation applied to a "
+           "Nothing is retyped or retaken to make a step look better: a step that failed is kept in `tools/capture-log.tsv` as a failing capture "
+           "(step 09 failed twice and passed on the third attempt — finding 1). The only transformation applied to a "
            "transcript is stripping the PTY's CR.\n")
 out.append("\n| deployment | `a89f8521254c1f2b1af25f24d91d4bbc12194873` (`/opt/termini/DEPLOYED_COMMIT`; `server.py` sha256 matches `origin/main`) |")
 out.append("|---|---|")
-out.append("| UTC window | %s → %s |" % (by_step[min(by_step)]["captured_at_utc"], by_step[max(by_step)]["captured_at_utc"]))
+out.append("| UTC window | %s → %s |" % (min(r["captured_at_utc"] for r in rows), max(r["captured_at_utc"] for r in rows)))
 out.append("| fleet | controller + node-a + node-c RUNNING, node-b TERMINATED |")
 out.append("| re-run | `bash tools/capture-backend-live.sh` (all) or `… 03 04` (selected) |")
 out.append("| pre-commit | passed on the committed paths (no keys, no `.env`, no runtime state) |")
@@ -87,10 +88,17 @@ for step in sorted(by_step):
         step, slug, status, proves, r["png"], png_sha, txt_sha, r["captured_at_utc"], cmd, r["transcript"]))
 
 out.append("\n## Findings and NOT CAPTURED (stated, not smoothed over)\n")
-out.append("1. **Step 09 captured failing.** node-a was at `cpu_free=0` (4 vCPU committed by a concurrent card's applied plan) "
-           "when this step ran, so the headline-style intent was refused `422 GUARDRAIL_REJECTED / exceeds_node_cpu_ceiling`. "
-           "The raw refusal is the transcript. A fresh apply→LXD materialisation is NOT in this pack; it is proven on this same "
-           "fleet by `t_d7e0bf4e` (PR #202) and `t_ece9d14f` (PR #199), and step 10 shows real LXD work on a plan-created instance.")
+out.append("1. **Step 09 failed twice before it passed, and all three attempts are in the log.** The 20:38Z and 20:52Z captures are real "
+           "refusals: node-a had `cpu_free=0` (4 vCPU committed by a concurrent card's applied plan) and the controller answered "
+           "`422 GUARDRAIL_REJECTED / exceeds_node_cpu_ceiling` — the raw refusal is those transcripts. The same step was re-captured at "
+           "21:04Z once that capacity was released and it PASSED: plan accepted → `state=ready` → `termini-01m55twmv9b79zynyxezh48h-0-0` "
+           "RUNNING in the node's own `lxc list`. The instance was released again at 21:06Z (`POST /vms/release` → `deleted: "
+           "[termini-01m55twmv9b79zynyxezh48h-0-0]`) so the fleet was left as found; capacity came back exactly. `tools/capture-log.tsv` "
+           "keeps every attempt; this index's row is the last, successful one.")
+out.append("1b. **Two defects in this pack's own tooling were found and fixed while re-running step 09** (they are why CI on this PR is green): "
+           "the step grepped `lxc list` for the plan ULID and printed nothing, because instance names truncate the ULID to 24 characters — "
+           "it now greps the vm id the controller returned; and `lib.sh` carried two unused variables that failed the repo's "
+           "`shellcheck -S warning` gate, which had made the first CI run red.")
 out.append("2. **Step 11 is partial by necessity.** No instance was terminated and the public URL was not taken dark: the fleet is shared "
            "with the concurrently-running client capture (`t_270d09b9`), the owner decided on 2026-10-17 13:12Z to keep the demo up "
            "(`t_f3e25715`), and this card's cost guard forbids start/stop. The residual-bill lines are captured; "

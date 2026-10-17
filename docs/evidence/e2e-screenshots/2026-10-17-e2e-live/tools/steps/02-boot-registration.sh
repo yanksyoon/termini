@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: gcloud compute ssh termini-node-a|termini-node-c --command="journalctl -u termini-bootstrap | grep REGISTERED; systemctl show; uptime -s"
 # Step 02 — boot to registration, straight from the bootstrap daemon's own journal.
 #

@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: curl -sS -H "Authorization: Bearer <project-token>" https://34-93-190-64.sslip.io/v1/projects/<pid>/nodes
 # Step 03 — the controller's own view of the fleet (the API the dashboard consumes).
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"

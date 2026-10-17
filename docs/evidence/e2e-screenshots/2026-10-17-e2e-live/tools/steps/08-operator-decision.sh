@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: POST /demo/faults (oom, node-a) ; poll GET /operator/decisions ; journalctl -u termini-controller | grep externalModelCall
 # Step 08 — the operator deciding: a REAL node breaches a frozen threshold, and the
 # decision that comes back is decision_source=model. The transcript shows the breach,

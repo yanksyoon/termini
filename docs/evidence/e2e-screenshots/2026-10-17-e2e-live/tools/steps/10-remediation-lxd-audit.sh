@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: GET /operator/audits?node=node-a ; gcloud compute ssh termini-node-a --command="lxc info <target>" ; DELETE /demo/faults/<iid>
 # Step 10 — the remediation against real LXD: the PUT the controller issued
 # (/1.0/instances/<id>/state), the instance's real state change on the node, and the

@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: (node-a) curl -X POST http://10.10.0.13:8080/v1/chat/completions ; (node-c) journalctl -u termini-inference-proxy
 # Step 06 — a real inference request as a PEER: node-a calls node-c's inference front
 # door over the underlay, and node-c logs the request arriving and the answer leaving.

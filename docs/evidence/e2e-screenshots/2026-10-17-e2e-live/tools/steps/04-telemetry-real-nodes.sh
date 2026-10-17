@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # CMD: curl .../v1/telemetry/recent?limit=4 ; gcloud compute ssh termini-node-a|termini-node-c --command="uname -r; hostname; nproc"
 # Step 04 — telemetry from the REAL nodes, matched against the machines themselves.
 #
