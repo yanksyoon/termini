@@ -252,6 +252,16 @@ Role assignment: a node reporting ≥ 1 GPU with `vram_bytes >= 12884901888`
 `inference` role to the single node C in the demo (first GPU node wins; later GPU
 nodes are `compute` unless project config raises the limit).
 
+**This rule is unchanged and stays GPU-gated.** A node that only *serves* the
+agent-facing inference front door over a managed-model proxy (CPU-only node C
+after the D9 pivot) still registers `compute`. The `inference_vm` allocation class
+resolves to it anyway via the **service-host** path in §5.2 step 3, which is a
+resolution rule, not a role assignment: role keeps meaning "this machine has a
+usable GPU", so no dashboard, audit row or plan may read `compute` as "not the
+inference host", or `inference` as "exists" on a fleet that has no GPU. See
+`infra-decisions.md` D9 — Amendment (2026-10-17, `t_d7e0bf4e`).
+
+
 #### POST /v1/nodes/{node_id}/reconnect
 
 Idempotent re-enrollment after reboot or client-cert reissue (`node-bootstrap.md`
@@ -1093,15 +1103,31 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
    `disk_gb` → type floor (agent 8, inference 64), `passthrough_gpu` → false.
    Record `decision: defaulted`.
 3. **Reference-class resolution** (`inference_vm` only): `inference_vm` is a
-   reference to the always-on Node C host service, not a launchable VM. Its
-   `target_node` must resolve to the `inference` node (Node C in the demo) — an
-   explicit `target_node` that is not the inference node, or an `auto` that cannot
-   resolve to one (no inference node registered), → `REJECT`
-   (`invalid_target_node_type`). The plan records `realized_as: "host_service"`
-   and `vm_ids: []`; no VM is created and no GPU is allocated. Provenance applies
-   here too (§5.2 step 5): while any real node is registered, `auto` resolves
-   `inference_vm` only to a **real** inference node — a seeder-fabricated row is not
-   the host inference service.
+   reference to the always-on host inference service, not a launchable VM. Its
+   `target_node` resolves in this order:
+   1. a real node the frozen role rule assigned `inference` (§4.1: reports a GPU
+      with `vram_bytes >= 12 GiB`) — the GPU path, unchanged;
+   2. **else the node that serves the agent-facing inference front door**: the
+      real registered node whose reachable address (its own LXD endpoint, else
+      its registration source address) is the host of the agent-facing inference
+      address the controller dials (`TERMINI_INFERENCE_BASE_URL`, e.g.
+      `10.10.0.13:8080` → node-c), or of an operator-named host
+      (`TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS`, the same list step 5 uses). This
+      node registers `compute`, because role stays GPU-gated: after the
+      CPU/proxy pivot (`infra-decisions.md` D9) the fleet has no GPU, and this
+      path is what keeps the reference class resolvable there. It is the
+      **service-host** path, not a role change — §4.1 is untouched.
+   3. no match at all (no `inference`-role node **and** no node serving the
+      front-door address, or no front-door address configured) → `REJECT`
+      (`invalid_target_node_type`), with a `detail` naming both ways to satisfy
+      the reference and what was actually looked for.
+
+   The plan records `realized_as: "host_service"` and `vm_ids: []` for either
+   match; no VM is created, no GPU is allocated and no capacity is committed.
+   Provenance applies here too (§5.2 step 5): while any real node is registered,
+   resolution considers **real** nodes only — a seeder-fabricated row is not the
+   host inference service and is never chosen, even when its address matches.
+
 4. **Per-field range clamp**: clamp each numeric field into its type range
    (table above). Record `decision: clamped` with `from`/`to`. Below-min and
    above-max both clamp to the nearest bound; never reject a pure range overflow.
@@ -1176,7 +1202,7 @@ demo. Absolute caps (never exceedable, encoded in the schema): `vcpus ≤ 128`,
 | Unknown field, wrong type, missing required | REJECT (400)         |
 | Enum value out of set                       | REJECT (400)         |
 | `passthrough_gpu: true` on any class        | REJECT (400) `gpu_passthrough_not_in_demo` |
-| `inference_vm` targeting a non-inference node | REJECT (422) `invalid_target_node_type` |
+| `inference_vm` targeting neither an `inference`-role node nor the node serving the agent-facing inference front door | REJECT (422) `invalid_target_node_type` |
 | `labels` exceeding bounds (count/keys/value)| REJECT (400) `INVALID_ARGUMENT` |
 | Numeric below min or above absolute max     | CLAMP to bound       |
 | RAM exceeds free node RAM                   | CLAMP, then REJECT if < min |
