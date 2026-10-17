@@ -213,7 +213,8 @@ class FaultEndpointsTest(unittest.TestCase):
         return body["tokens"][0]
 
     @classmethod
-    def _new_node(cls, hostname: str | None = None, *, synthetic: bool = False) -> dict:
+    def _new_node(cls, hostname: str | None = None, *, synthetic: bool = False,
+                  seed_seq: int = 100) -> dict:
         cls._seq += 1
         host = hostname or f"test-node-{cls._seq:02d}"
         body = {
@@ -228,7 +229,7 @@ class FaultEndpointsTest(unittest.TestCase):
                        token=cls._mint_bootstrap())
         assert st in (200, 201), (st, reg)
         reg["synthetic"] = synthetic
-        cls._telemetry(reg, 100)
+        cls._telemetry(reg, seed_seq)
         return reg
 
     @classmethod
@@ -416,6 +417,87 @@ class FaultEndpointsTest(unittest.TestCase):
         st, again = self._clear(injection_id)
         self.assertEqual(st, 200)
         self.assertEqual(again["status"], "already_cleared")
+
+    def test_a_clear_resumes_the_nodes_own_series_on_its_next_sample(self):
+        """t_c37aa0dc: an injection's 1 Hz `seq` range must not starve the node.
+
+        Measured on the live fleet before this fix: after a 60 s injection the
+        node's own ~0.3 Hz counter was tens of seqs behind the injector's head, so
+        its next samples were accepted (`202`) and dropped — 2 m 19 s of missing
+        node telemetry. The injected series now lives in its own provenance channel
+        (`source='demo_fault'`), so the node's very next sample is stored even
+        though its `seq` is far below the injected head.
+        """
+        node = self._new_node(seed_seq=1)      # the node's own head is seq 1
+        st, inj = self._inject(node_id=node["node_id"], scenario="oom", duration_s=60)
+        self.assertEqual(st, 201, inj)
+
+        # Wait until the injector has written a head well above the node's counter.
+        injected_n = 0
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            rows = self._rows(
+                "SELECT COUNT(*) AS n FROM telemetry_samples"
+                " WHERE node_id = ? AND source = 'demo_fault'", (node["node_id"],))
+            injected_n = int(rows[0]["n"])
+            if injected_n >= 6:
+                break
+            time.sleep(0.5)
+        self.assertGreaterEqual(injected_n, 6, "the injector never wrote its series")
+
+        # While the injection holds the node's series the node's own samples are
+        # superseded; on the node its counter still advances (it is only the storage
+        # that skips them).
+        for seq in (2, 3, 4):
+            st, resp = self._telemetry(node, seq)
+            self.assertEqual(st, 202, resp)
+            self.assertEqual(resp["accepted"], 0, resp)
+
+        st, cleared = self._clear(inj["injection_id"])
+        self.assertEqual(st, 200, cleared)
+        # The node's samples are superseded until the recovery burst closes the
+        # injection; wait for the FACT (several driver ticks at 1 Hz).
+        row = {}
+        for _ in range(30):
+            rows = self._rows("SELECT state FROM demo_faults WHERE injection_id = ?",
+                              (inj["injection_id"],))
+            row = rows[0] if rows else {}
+            if row.get("state") == "cleared":
+                break
+            time.sleep(0.5)
+        self.assertEqual(row.get("state"), "cleared", row)
+
+        # THE ASSERTION: the node's next sample — seq 5, below the injected head —
+        # is stored, and it is the node's real number, not the injector's baseline.
+        st, resp = self._telemetry(node, 5)
+        self.assertEqual(st, 202, resp)
+        self.assertEqual(resp["accepted"], 1,
+                         "the node's own sample was dropped after the clear")
+        stored = self._rows(
+            "SELECT source, seq, ts, payload_json FROM telemetry_samples"
+            " WHERE node_id = ? ORDER BY id DESC LIMIT 1", (node["node_id"],))
+        self.assertEqual(stored[0]["source"], "node")
+        self.assertEqual(stored[0]["seq"], 5)
+        self.assertAlmostEqual(
+            json.loads(stored[0]["payload_json"])["ram_used_bytes"] / (8 * GiB) * 100,
+            62.0, places=3)
+
+        # Both provenances are in the stored series and remain distinguishable.
+        per_source = self._rows(
+            "SELECT source, seq FROM telemetry_samples WHERE node_id = ?"
+            " ORDER BY source, seq", (node["node_id"],))
+        node_seqs = [r["seq"] for r in per_source if r["source"] == "node"]
+        fault_seqs = [r["seq"] for r in per_source if r["source"] == "demo_fault"]
+        self.assertEqual(node_seqs, [1, 5], per_source)   # 2,3,4 were superseded
+        self.assertGreaterEqual(len(fault_seqs), 6, per_source)
+        self.assertEqual(fault_seqs, sorted(fault_seqs), per_source)
+        # …and the injected head really did reach the seq the node then sent (5):
+        # with one shared namespace that is exactly the sample the old store dropped.
+        self.assertGreaterEqual(fault_seqs[-1], 5, per_source)
+
+        # The dashboard/rules read the node's own latest number again.
+        points = self._metrics(node["node_id"])
+        self.assertAlmostEqual(points[-1]["v"] / (8 * GiB) * 100, 62.0, places=3)
 
     def test_second_injection_for_the_same_rule_is_refused(self):
         st, inj = self._inject(scenario="oom", duration_s=120)

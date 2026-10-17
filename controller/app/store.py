@@ -272,11 +272,32 @@ def insert_batch(conn, batch: dict, node_id: str, accepted: int, rejected: int, 
     )
 
 
-def insert_samples(conn, node_id: str, call_id: str, samples: list[dict]) -> tuple[int, int]:
-    """Insert samples, dropping out-of-order/duplicate seq. Returns (inserted, dropped)."""
+# Telemetry provenance channels (`telemetry_samples.source`). A node's own agent
+# writes to NODE_SOURCE; the operator's demo fault console writes its injected
+# series to DEMO_FAULT_SOURCE. They share the table and the read paths (charts,
+# rules, operator loop) but each has its OWN `seq` namespace, so a 1 Hz injected
+# series can never occupy a `seq` the node has not sent yet — see
+# `insert_samples` and migration 0021.
+NODE_SOURCE = "node"
+DEMO_FAULT_SOURCE = "demo_fault"
+
+
+def insert_samples(conn, node_id: str, call_id: str, samples: list[dict],
+                   *, source: str = NODE_SOURCE) -> tuple[int, int]:
+    """Insert samples, dropping out-of-order/duplicate seq. Returns (inserted, dropped).
+
+    `seq` is compared against the highest stored `seq` for the SAME
+    (node, source) channel only. The head is per channel on purpose: the demo
+    fault console writes at 1 Hz while the node's agent reports at ~0.3 Hz from
+    its own counter, so a shared head meant the injector's seq range silently
+    swallowed the node's real samples for minutes after a clear (t_c37aa0dc —
+    measured 2 m 19 s on node-c). With separate channels the node's own stream
+    resumes on its very next sample.
+    """
     row = conn.execute(
-        "SELECT COALESCE(MAX(seq), -1) AS last_seq FROM telemetry_samples WHERE node_id = ?",
-        (node_id,),
+        "SELECT COALESCE(MAX(seq), -1) AS last_seq FROM telemetry_samples"
+        " WHERE node_id = ? AND source = ?",
+        (node_id, source),
     ).fetchone()
     last_seq = row["last_seq"]
     inserted = 0
@@ -287,14 +308,29 @@ def insert_samples(conn, node_id: str, call_id: str, samples: list[dict]) -> tup
             dropped += 1
             continue
         ts_epoch = _ts_epoch(s["ts"])
-        conn.execute(
-            "INSERT OR IGNORE INTO telemetry_samples (call_id, node_id, seq, ts, ts_epoch, payload_json)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (call_id, node_id, seq, s["ts"], ts_epoch, json.dumps(s)),
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO telemetry_samples"
+            " (call_id, node_id, source, seq, ts, ts_epoch, payload_json)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (call_id, node_id, source, seq, s["ts"], ts_epoch, json.dumps(s)),
         )
+        if cur.rowcount <= 0:  # a duplicate inside the same channel/batch
+            dropped += 1
+            continue
         inserted += 1
         last_seq = seq
     return inserted, dropped
+
+
+def max_seq(conn, node_id: str, source: str = NODE_SOURCE) -> int:
+    """Highest `seq` stored for one (node, source) channel; -1 when empty."""
+    row = conn.execute(
+        "SELECT COALESCE(MAX(seq), -1) AS last_seq FROM telemetry_samples"
+        " WHERE node_id = ? AND source = ?",
+        (node_id, source),
+    ).fetchone()
+    return int(row["last_seq"])
+
 
 
 def _ts_epoch(ts: str) -> float:
