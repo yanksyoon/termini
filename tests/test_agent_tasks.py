@@ -190,10 +190,13 @@ def _agent_exec_handler(mount: AgentMount):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return 0, json.dumps({"status": resp.status,
-                                      "body": resp.read().decode()}), ""
+                                      "body": resp.read().decode(),
+                                      "retry_after": resp.headers.get("Retry-After")}), ""
         except urllib.error.HTTPError as exc:
             return 0, json.dumps({"status": exc.code,
-                                  "body": exc.read().decode()}), ""
+                                  "body": exc.read().decode(),
+                                  "retry_after": (exc.headers.get("Retry-After")
+                                                  if exc.headers else None)}), ""
         except Exception as exc:  # noqa: BLE001 — the client's own failure shape
             return 0, json.dumps({"status": 0, "body": json.dumps(
                 {"error": f"{type(exc).__name__}: {exc}"})}), ""
@@ -274,6 +277,20 @@ class _Base(unittest.TestCase):
 
     def _post_task(self, body, vm=VM):
         return self._call("POST", f"/v1/projects/{PROJECT_ID}/agents/{vm}/tasks", body)
+
+    def _post_task_with_headers(self, body, vm=VM):
+        """POST a task and return (status, body, response headers)."""
+        url = f"http://127.0.0.1:{self.port}/v1/projects/{PROJECT_ID}/agents/{vm}/tasks"
+        data = json.dumps(body).encode()
+        req = urllib.request.Request(
+            url, data=data, method="POST",
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer " + PROJECT_TOKEN})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return r.status, json.loads(r.read() or b"{}"), dict(r.headers)
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read() or b"{}"), dict(e.headers)
 
     def _get_task(self, task_id, vm=VM):
         return self._call("GET", f"/v1/projects/{PROJECT_ID}/agents/{vm}/tasks/{task_id}")
@@ -361,10 +378,13 @@ class AgentTaskRouteTest(_Base):
         self.mount.service._client = FakeInference(release=release)
         st, first = self._post_task({"prompt": "slow"})
         self.assertEqual(st, 202, first)
-        st, body = self._post_task({"prompt": "second"})
+        st, body, headers = self._post_task_with_headers({"prompt": "second"})
         self.assertEqual(st, 429, body)
         self.assertEqual(body["error"]["code"], "TASK_BOUND_EXCEEDED")
         self.assertTrue(body["error"]["details"][0]["reason"])
+        # §5.6/§4.9 promise `Retry-After` on the bound refusal; the agent sends
+        # it and the proxy must not swallow it.
+        self.assertEqual(headers.get("Retry-After"), "5", headers)
         release.set()
         self._wait(first["task_id"])
         # ... and the refusal is on the record, not just in the response.
@@ -377,6 +397,8 @@ class AgentTaskRouteTest(_Base):
         self.assertEqual(st, 400, body)
         self.assertEqual(body["error"]["code"], "MODEL_NOT_ALLOWED")
         self.assertIn("allowed_models", json.dumps(body))
+        # The refusal names the field the caller got wrong, not `vm_id`.
+        self.assertEqual(body["error"]["details"][0]["field"], "model_preference")
 
     def test_unreachable_model_endpoint_is_a_distinct_error(self):
         self.mount.service._client = FakeInference(behaviour="unreachable")
@@ -613,6 +635,28 @@ class ExecTransportTest(unittest.TestCase):
         self.assertEqual(r.detail, "hello from inside\n")
         self.assertEqual(self.lxd.exec_requests("c1")[0][2]["record-output"], True)
         self.assertEqual(self.lxd.exec_requests("c1")[0][2]["wait-for-websocket"], False)
+
+    def test_json_stdout_is_not_mistaken_for_an_envelope(self):
+        """The in-VM client answers JSON, so the recorded stdout is JSON too.
+
+        `/1.0/instances/{name}/logs/<file>` is a FILE DOWNLOAD: the body is the
+        output verbatim, not a `{"metadata": ...}` object. Parsing it as an object
+        returned `metadata=None` for every real exec — the live defect where the
+        task API answered 503 "no task surface" while the task had actually run.
+        """
+        payload = '{"status": 202, "body": "{}"}'
+        self.lxd.exec_handler = lambda argv: (0, payload, "")
+        r = self.exe.exec_instance("c1", ["python3"], timeout_s=5.0)
+        self.assertEqual(r.result, "ok", r.detail)
+        self.assertEqual(r.detail, payload)
+
+    def test_proxy_envelope_around_the_log_file_is_unwrapped(self):
+        """A proxy in front of LXD may wrap the file; that shape still works."""
+        self.lxd.log_envelope = True
+        self.lxd.exec_handler = lambda argv: (0, "wrapped\n", "")
+        r = self.exe.exec_instance("c1", ["echo"], timeout_s=5.0)
+        self.assertEqual(r.result, "ok", r.detail)
+        self.assertEqual(r.detail, "wrapped\n")
 
     def test_nonzero_exit_is_an_error_with_stderr(self):
         self.lxd.exec_handler = lambda argv: (3, "", "boom\n")

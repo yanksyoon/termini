@@ -232,6 +232,33 @@ class LxdExecutor:
             r.detail = f"non-JSON response from {path}: {r.detail[:200]}"
             return r, None
 
+    def _read_log_text(self, path: str) -> tuple[ExecResult, str]:
+        """Read one recorded output file.
+
+        `GET /1.0/instances/{name}/logs/<file>` is a **file download**: LXD
+        answers with the recorded bytes as plain text, NOT with the
+        `{"metadata": "..."}` envelope the object endpoints use. Parsing it as
+        JSON is what made every `record-output` read come back empty on a real
+        node (the task API then reported "no task surface" while the task had
+        actually run). So: take the body verbatim, and only unwrap it when it is
+        unambiguously a sync envelope (a proxy in front of LXD may add one).
+        """
+        r = self._request("GET", path)
+        if r.result != "ok":
+            return r, ""
+        raw = r.detail or ""
+        try:
+            body = json.loads(raw)
+        except json.JSONDecodeError:
+            return r, raw
+        if (isinstance(body, dict) and "metadata" in body
+                and ("type" in body or "status_code" in body)):
+            meta = body.get("metadata")
+            if isinstance(meta, str):
+                return r, meta
+            return r, "" if meta is None else json.dumps(meta)
+        return r, raw
+
     # ------------------------------------------------------------- operations
     def _instance_state(self, name: str) -> str:
         """The instance's current LXD state ("Running"/"Stopped"/"Frozen"/...).
@@ -608,10 +635,9 @@ class LxdExecutor:
                 rc = inner.get("return")
                 stdout = stderr = ""
                 for stream, log_path in (outputs or {}).items():
-                    lr, lmeta = self._read_json(str(log_path))
-                    text = ""
-                    if lr.result == "ok" and isinstance(lmeta, dict):
-                        text = str(lmeta.get("metadata") or "")
+                    lr, text = self._read_log_text(str(log_path))
+                    if lr.result != "ok":
+                        text = ""
                     if str(stream) == "1":
                         stdout = text
                     else:
