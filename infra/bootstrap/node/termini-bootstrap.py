@@ -47,6 +47,7 @@ import platform
 import random
 import re
 import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -1343,6 +1344,232 @@ def cmd_mint_trust_token(argv: list[str]) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------- own LXD API listener
+# The controller executes an operator action by dialling THIS node's LXD REST API
+# (`PUT /1.0/instances/<name>/state`, controller-api.md §4.2). A node whose
+# listener is missing can only ever fail a remediation — measured on
+# termini-node-a on 2026-10-17: `core.https_address` was EMPTY, nothing listened on
+# :8443, and 183 of the last 200 operator executions read
+# `URLError: <urlopen error [Errno 111] Connection refused>`. The listener is
+# therefore a PRECONDITION of registration, not an assumption:
+#
+#   * `core.https_address` is baked into the node image
+#     (image/pipeline/provision/10-node-os.sh) AND re-asserted here on every boot,
+#     because a value that lives only in the daemon's own database is lost with it
+#     (node-a's was empty after its 12:38Z crash);
+#   * the endpoint is advertised ONLY once something answers on it, so the
+#     controller never records a dead endpoint (machine.lxd.endpoint, §5.2);
+#   * if it cannot be brought up, registration FAILS with the distinct kind
+#     `lxd_api_unreachable` / state `LXD_API_UNAVAILABLE` and the unit never
+#     reports READY — a node that cannot be remediated must not look healthy.
+LXD_API_PATH = "/1.0"
+LXD_API_PROBE_TIMEOUT_S = float(os.environ.get("TERMINI_LXD_API_PROBE_TIMEOUT_S", "3") or 3)
+# Bounded wait for LXD to bind the listener after the config write / unit start.
+LXD_API_READY_WAIT_S = float(os.environ.get("TERMINI_LXD_API_READY_WAIT_S", "45") or 45)
+LXD_API_READY_POLL_S = float(os.environ.get("TERMINI_LXD_API_READY_POLL_S", "3") or 3)
+# A HEARTBEAT may repair a lost listener at most once per window: a node whose LXD
+# is down must not spend every beat on a bounded 45 s repair attempt.
+LXD_API_REPAIR_INTERVAL_S = float(os.environ.get("TERMINI_LXD_API_REPAIR_INTERVAL_S", "300") or 300)
+# monotonic of the last repair attempt (0.0 = none yet, so the first is immediate).
+_LXD_API_LAST_REPAIR = 0.0
+
+# The state a node parks in when its own LXD cannot be brought up. Distinct from
+# REGISTRATION_FAILED: the enrollment credential is fine, the node is not usable.
+LXD_API_FAILED_STATE = "LXD_API_UNAVAILABLE"
+
+
+def lxd_port(cfg: dict) -> int:
+    """The LXD REST port this node serves (`lxd_port`, §13; 8443 by default)."""
+    raw = cfg.get("lxd_port", 8443)
+    try:
+        port = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return 8443
+    return port if 1 <= port <= 65535 else 8443
+
+
+def own_lxd_endpoint(cfg: dict) -> str:
+    """This node's own LXD endpoint as `host:port` — the address the controller dials.
+
+    The host is the node's primary IPv4 (the underlay address the controller sees
+    the node at), never `127.0.0.1`: a loopback endpoint is unreachable from the
+    controller and would silently re-create the global-fallback defect.
+    """
+    return f"{primary_ipv4()}:{lxd_port(cfg)}"
+
+
+def split_endpoint(endpoint: str) -> tuple[str, int]:
+    """`host:port` -> (host, port). Raises ValueError on anything else."""
+    host, _, port = str(endpoint).rpartition(":")
+    if not host or not port:
+        raise ValueError(f"not a host:port endpoint: {endpoint!r}")
+    return host, int(port)
+
+
+def probe_lxd_api(host: str, port: int,
+                  timeout: float = LXD_API_PROBE_TIMEOUT_S) -> tuple[bool, str]:
+    """True when something answers HTTP(S) on `host:port`; `(ok, detail)`.
+
+    ANY HTTP status proves a listener — LXD answers `200` (untrusted view) or
+    `403` (a listener that refuses this peer); a refused/timed-out connection
+    proves nothing is there. TLS verification is deliberately OFF: LXD serves its
+    own self-signed certificate and this probe asserts a *listener*, not an
+    identity. Trust is the controller's mTLS client certificate in this node's
+    trust store (controller/app/lxdtrust.py) — this probe never adds trust.
+    """
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    conn = None
+    try:
+        conn = http.client.HTTPSConnection(host, port, timeout=timeout, context=ctx)
+        conn.request("GET", LXD_API_PATH)
+        resp = conn.getresponse()
+        resp.read(2048)
+        return True, f"HTTP {resp.status}"
+    except (OSError, ssl.SSLError, http.client.HTTPException) as e:
+        return False, f"{type(e).__name__}: {e}"
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+
+def _lxd_socket_request(method: str, path: str, body: dict | None = None,
+                        timeout: float | None = None) -> tuple[int, object, str]:
+    """One LXD REST call over the daemon's unix socket -> (status, payload, where).
+
+    `status == 0` means no socket answered; `where` then says why. This is the
+    same transport `_lxd_instances_over_socket` uses, and it needs no privilege —
+    which matters because this unit runs with `NoNewPrivileges=true` and the `lxc`
+    CLI cannot exec there (measured on termini-node-a, 2026-10-15).
+    """
+    timeout = LXD_INVENTORY_TIMEOUT_S if timeout is None else timeout
+    payload = json.dumps(body).encode() if body is not None else None
+    headers = {"Content-Type": "application/json"} if payload else {}
+    last = "no LXD unix socket found"
+    for sock_path in LXD_UNIX_SOCKETS:
+        if not os.path.exists(sock_path):
+            continue
+        conn = None
+        try:
+            conn = _LxdUnixConnection(sock_path, timeout=timeout)
+            conn.request(method, path, body=payload, headers=headers)
+            resp = conn.getresponse()
+            raw = resp.read()
+            status = resp.status
+        except (OSError, http.client.HTTPException) as e:
+            last = f"{sock_path}: {type(e).__name__}: {e}"
+            continue
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+        try:
+            parsed = json.loads(raw or b"{}")
+        except json.JSONDecodeError:
+            parsed = None
+        return status, parsed, sock_path
+    return 0, None, last
+
+
+def start_lxd_daemon() -> None:
+    """Ask systemd to start LXD (best effort, bounded).
+
+    Only a *start*: a daemon that is crash-looping is not helped by a restart
+    loop from this unit, and the caller's bounded wait reports the truth either
+    way. Both unit names are tried because the snap and a distro package install
+    under different names.
+    """
+    for unit in ("snap.lxd.daemon.service", "lxd.service"):
+        try:
+            subprocess.run(["systemctl", "start", unit], capture_output=True,
+                           text=True, timeout=30, check=False)
+        except (OSError, subprocess.SubprocessError):
+            continue
+
+
+def ensure_lxd_api(cfg: dict) -> dict:
+    """Bring this node's own LXD REST listener up and prove it answers.
+
+    Returns `{"ok", "endpoint", "repaired", "detail"}`. `repaired` records
+    whether a repair was attempted (so the log distinguishes "was already fine"
+    from "we fixed it" from "we tried and it is still dead").
+
+    Repair path, in order, each bounded:
+      1. probe the node's own `host:port`;
+      2. write `core.https_address` through the daemon's unix socket
+         (`PUT /1.0` — the same write `lxc config set` performs, applied live);
+      3. when no socket answers, ask systemd to start LXD;
+      4. re-probe until LXD_API_READY_WAIT_S expires.
+    """
+    global _LXD_API_LAST_REPAIR
+    endpoint = own_lxd_endpoint(cfg)
+    try:
+        host, port = split_endpoint(endpoint)
+    except ValueError as e:
+        return {"ok": False, "endpoint": endpoint, "repaired": False, "detail": str(e)}
+
+    ok, detail = probe_lxd_api(host, port)
+    if ok:
+        return {"ok": True, "endpoint": endpoint, "repaired": False, "detail": detail}
+
+    _LXD_API_LAST_REPAIR = time.monotonic()
+    # `:port` (all interfaces) is the value the image bakes and the value the
+    # node contract's underlay firewall expects; the reachable address is the
+    # node's primary IPv4, which is what gets advertised as the endpoint.
+    wanted = {"config": {"core.https_address": f":{port}"}}
+    status, _payload, where = _lxd_socket_request("PUT", LXD_API_PATH, wanted)
+    if status == 0:
+        log(f"lxd api repair: daemon socket unreachable ({where}); starting the unit")
+        start_lxd_daemon()
+    else:
+        log(f"lxd api repair: PUT {LXD_API_PATH} core.https_address=:{port} -> HTTP {status}")
+
+    deadline = time.monotonic() + LXD_API_READY_WAIT_S
+    retried_write = status != 0
+    while time.monotonic() < deadline:
+        ok, detail = probe_lxd_api(host, port)
+        if ok:
+            log(f"lxd api up on {endpoint} ({detail}) after repair")
+            return {"ok": True, "endpoint": endpoint, "repaired": True, "detail": detail}
+        if not retried_write:
+            # The socket was dead on the first attempt (LXD not running yet): once
+            # the unit has had a moment, re-issue the config write so the listener
+            # comes up with the baked value rather than an empty one.
+            status2, _p2, where2 = _lxd_socket_request("PUT", LXD_API_PATH, wanted)
+            if status2:
+                log(f"lxd api repair: retried PUT -> HTTP {status2} ({where2})")
+                retried_write = True
+        time.sleep(LXD_API_READY_POLL_S)
+    return {"ok": False, "endpoint": endpoint, "repaired": True, "detail": detail}
+
+
+def lxd_api_report(cfg: dict) -> dict:
+    """Current listener state for the heartbeat, repairing at most once per window.
+
+    Returns `{"listening", "endpoint", "detail"}`. A heartbeat must stay cheap
+    while LXD is down, so the bounded repair runs only when the last attempt is
+    older than LXD_API_REPAIR_INTERVAL_S.
+    """
+    endpoint = own_lxd_endpoint(cfg)
+    try:
+        host, port = split_endpoint(endpoint)
+    except ValueError as e:
+        return {"listening": False, "endpoint": endpoint, "detail": str(e)}
+    ok, detail = probe_lxd_api(host, port)
+    if ok:
+        return {"listening": True, "endpoint": endpoint, "detail": detail}
+    if (time.monotonic() - _LXD_API_LAST_REPAIR) >= LXD_API_REPAIR_INTERVAL_S:
+        res = ensure_lxd_api(cfg)
+        return {"listening": res["ok"], "endpoint": endpoint, "detail": res["detail"]}
+    return {"listening": False, "endpoint": endpoint, "detail": detail}
+
+
 # --------------------------------------------------------------------------- registration failure policy
 # Bounded, classified registration retry policy (node-bootstrap.md §9).
 #
@@ -1367,6 +1594,11 @@ DEFAULT_REGISTER_TIMEOUT_S = 5.0
 TERMINAL_KINDS = frozenset({
     "auth", "schema", "unsupported", "conflict", "malformed",
     "unreachable", "unreachable_dns", "unreachable_refused", "unreachable_timeout",
+    # The node's own LXD API is not listening and could not be repaired. Terminal
+    # because retrying registration cannot create a listener — but it parks in the
+    # DISTINCT state `LXD_API_UNAVAILABLE`, not REGISTRATION_FAILED: the enrollment
+    # credential is fine, the machine is not remediable.
+    "lxd_api_unreachable",
 })
 
 # 0 = hold the terminal state forever (production); tests set a bound.
@@ -1476,9 +1708,19 @@ def registration_disk_facts() -> list:
     return [disk]
 
 
-def registration_body(cfg: dict, node_name: str) -> dict:
+def registration_body(cfg: dict, node_name: str, lxd_endpoint: str | None = None) -> dict:
+    """The §5.2 registration document.
+
+    `lxd_endpoint` is included ONLY when the caller has *proved* this node's own
+    LXD API answers on it (`ensure_lxd_api`). Advertising an unverified endpoint
+    is worse than omitting it: the controller would store it and dial a dead
+    address for every later remediation instead of using its documented fallback.
+    """
     ip = primary_ipv4()
     ifname = cfg.get("iface", "eth0")
+    lxd: dict = {"version": "5.21.8", "snap_revision": "40958"}
+    if lxd_endpoint:
+        lxd["endpoint"] = lxd_endpoint
     return {
         "schema_version": "1.0",
         "machine": {
@@ -1486,11 +1728,7 @@ def registration_body(cfg: dict, node_name: str) -> dict:
             "hostname": node_name,
             "image_version": cfg.get("image_version", "2026.10.0"),
             "os": {"name": "ubuntu", "version": "24.04"},
-            "lxd": {"version": "5.21.8", "snap_revision": "40958",
-                    # The node's own LXD REST address. The controller cannot place a
-                    # VM without it (a single global URL cannot name one node among a
-                    # fleet); an older node omits it and the controller falls back.
-                    "endpoint": f"{ip}:{cfg.get('lxd_port', 8443)}"},
+            "lxd": lxd,
             "cpu": cpu_facts(),
             "memory": {"total_bytes": mem_total_bytes()},
             "disks": registration_disk_facts(),
@@ -1521,8 +1759,19 @@ def host_ssh_keys(cfg: dict) -> list:
 
 
 def register(cfg: dict, node_name: str, token: str) -> dict:
+    # Fail closed on a node nobody can remediate. The check is this node's own
+    # listener — the same socket/port the controller will PUT to — and it runs
+    # before the enrollment token is spent, so a node that cannot be remediated
+    # never becomes a registered node the operator loop will try to act on.
+    api = ensure_lxd_api(cfg)
+    if not api["ok"]:
+        raise RegistrationError(
+            "lxd_api_unreachable", None,
+            f"own LXD API is not listening on {api['endpoint']} "
+            f"(repair_attempted={str(api['repaired']).lower()}): {api['detail']}",
+        )
     url = cfg["controller_url"].rstrip("/") + "/v1/nodes/register"
-    body = registration_body(cfg, node_name)
+    body = registration_body(cfg, node_name, lxd_endpoint=api["endpoint"])
     timeout = float(cfg.get("register_timeout_s", DEFAULT_REGISTER_TIMEOUT_S))
     try:
         status, resp = http_json("POST", url, body=body, token=token, timeout=timeout)
@@ -1688,7 +1937,15 @@ LXD_INVENTORY_TIMEOUT_S = float(os.environ.get("TERMINI_LXD_INVENTORY_TIMEOUT_S"
 # /run. The REST API over this socket answers the same
 # `GET /1.0/instances?recursion=2` view `lxc list` renders, and it needs no
 # privilege escalation — which is the whole point (see `_lxd_instances_over_socket`).
-LXD_UNIX_SOCKETS = (
+#
+# `TERMINI_LXD_UNIX_SOCKETS` overrides the list (colon-separated). It exists for one
+# reason: tests that exercise this daemon must never reach a REAL LXD on the machine
+# running them. A test run on a developer host once wrote `core.https_address`
+# through that host's socket, which is a side effect no test may have; pointing the
+# list at a path that does not exist makes such a write impossible.
+LXD_UNIX_SOCKETS: tuple[str, ...] = tuple(
+    p for p in os.environ.get("TERMINI_LXD_UNIX_SOCKETS", "").split(":") if p.strip()
+) or (
     "/var/snap/lxd/common/lxd/unix.socket",
     "/var/lib/lxd/unix.socket",
     "/run/lxd/unix.socket",
@@ -2087,13 +2344,20 @@ def terminal_hold() -> None:
 
 
 def _park_registration_failed(err: RegistrationError, attempts: int) -> None:
-    """Enter the terminal REGISTRATION_FAILED state and hold it (§9 row 2)."""
-    set_state(state="REGISTRATION_FAILED", last_error=str(err),
+    """Enter the terminal failure state and hold it (§9 row 2).
+
+    A node whose own LXD API cannot be brought up parks in the DISTINCT state
+    `LXD_API_UNAVAILABLE`: the enrollment credential is fine, the machine simply
+    cannot be remediated, and an operator has to look at LXD rather than at the
+    token. Every other terminal kind keeps the documented `REGISTRATION_FAILED`.
+    """
+    state = LXD_API_FAILED_STATE if err.kind == "lxd_api_unreachable" else "REGISTRATION_FAILED"
+    set_state(state=state, last_error=str(err),
               failure_kind=err.kind, registration_attempts=attempts, terminal=True)
-    log(f"REGISTRATION_FAILED (terminal, kind={err.kind}, attempts={attempts}): {err}")
+    log(f"{state} (terminal, kind={err.kind}, attempts={attempts}): {err}")
     log("no auto-retry: operator must re-provision (fresh token / fix config) "
         "and restart termini-bootstrap")
-    sd_notify(f"STATUS=REGISTRATION_FAILED kind={err.kind}")  # never READY
+    sd_notify(f"STATUS={state} kind={err.kind}")  # never READY
     terminal_hold()
 
 
@@ -2144,6 +2408,57 @@ def register_with_retries(cfg: dict, node_name: str, token: str) -> dict | None:
             delay = min(cap, delay * 2)
 
 
+def heartbeat_interval_s(cfg: dict) -> float:
+    """Seconds between heartbeats (`heartbeat_interval_s`, §13; 15 s by default).
+
+    The controller's registration response advertises its own value; this node
+    runs the standard REST fallback, so the config value is what it uses. 5 s is
+    the floor — a beat every second would be telemetry by another name.
+    """
+    try:
+        value = float(str(cfg.get("heartbeat_interval_s", 15)).strip())
+    except (TypeError, ValueError):
+        value = 15.0
+    return max(5.0, value)
+
+
+def heartbeat_body(cfg: dict) -> dict:
+    """Heartbeat payload: this node's own LXD endpoint, when it is listening.
+
+    `lxd_endpoint` is emitted ONLY for a listener that answered just now, so the
+    controller re-learns a node's address when it changes (a rebuilt node, a new
+    DHCP lease) and never records an endpoint nothing listens on. `lxd_api` is
+    always emitted: "listening: false" is a fact the controller can log, whereas
+    omitting the object would look like an old node with nothing to say.
+    """
+    report = lxd_api_report(cfg)
+    body: dict = {"lxd_api": {"listening": bool(report["listening"]),
+                              "endpoint": report["endpoint"]}}
+    if report["listening"]:
+        body["lxd_endpoint"] = report["endpoint"]
+    else:
+        body["lxd_api"]["detail"] = report.get("detail") or ""
+    return body
+
+
+def send_heartbeat(cfg: dict, url: str, node_token: str) -> None:
+    """POST one heartbeat. Failure is logged, never fatal: telemetry is the
+    primary signal and a missed beat is recorded by the controller as staleness."""
+    try:
+        body = heartbeat_body(cfg)
+        status, resp = http_json("POST", url, body=body, token=node_token,
+                                 timeout=float(cfg.get("register_timeout_s",
+                                                       DEFAULT_REGISTER_TIMEOUT_S)))
+    except Exception as e:  # noqa: BLE001 — a heartbeat must never stop the daemon
+        log(f"heartbeat failed: {e}")
+        return
+    if status not in (200, 204):
+        log(f"heartbeat HTTP {status}: {resp}")
+    elif not body["lxd_api"]["listening"]:
+        log(f"heartbeat: own LXD API NOT listening on {body['lxd_api']['endpoint']} "
+            f"({body['lxd_api'].get('detail', '')}); endpoint not advertised")
+
+
 def run(cfg: dict) -> int:
     os.makedirs(SPOOL_DIR, exist_ok=True)
     node_name = cfg.get("node_name") or socket.gethostname()
@@ -2153,6 +2468,21 @@ def run(cfg: dict) -> int:
     identity = read_json(os.path.join(IDENTITY_DIR, "node.json"))
     if identity and identity.get("node_id") and identity.get("node_token"):
         log(f"reconnect: reusing persisted identity node_id={identity['node_id']}")
+        # A reboot is exactly when core.https_address can have been lost with the
+        # daemon's database, so the listener is re-established (and re-proved)
+        # before this unit reports READY. No READY while the node cannot be
+        # remediated: retry here instead of registering (the identity is valid).
+        while True:
+            api = ensure_lxd_api(cfg)
+            if api["ok"]:
+                break
+            set_state(state=LXD_API_FAILED_STATE, node_id=identity["node_id"],
+                      failure_kind="lxd_api_unreachable",
+                      last_error=f"own LXD API not listening on {api['endpoint']}: {api['detail']}")
+            log(f"{LXD_API_FAILED_STATE}: own LXD API not listening on {api['endpoint']} "
+                f"({api['detail']}); not reporting READY")
+            sd_notify(f"STATUS={LXD_API_FAILED_STATE} endpoint={api['endpoint']}")
+            time.sleep(max(5.0, LXD_API_READY_POLL_S * 2))
         set_state(state="ONLINE", node_id=identity["node_id"], role=identity.get("role"),
                   cluster_member=node_name, last_error=None, failure_kind=None, terminal=False)
         notify_ready(identity)          # idempotent reboot path: already enrolled
@@ -2165,15 +2495,21 @@ def run(cfg: dict) -> int:
         set_state(state="REGISTERING")
         identity = register_with_retries(cfg, node_name, token)
         if identity is None:
-            return 1  # terminal REGISTRATION_FAILED: parked, no auto-retry
+            return 1  # terminal failure: parked, no auto-retry
 
     node_id = identity["node_id"]
     node_token = identity["node_token"]
     url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/telemetry"
+    hb_url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/heartbeat"
+    hb_interval = heartbeat_interval_s(cfg)
+    next_beat = 0.0                     # first beat immediately: report the endpoint
     # Resume the sequence across restarts: the controller drops out-of-order seq,
     # so a reset counter would make every post after a restart a silent no-op.
     seq = int((read_json(STATE_PATH) or {}).get("seq") or 0)
     while True:
+        if time.monotonic() >= next_beat:
+            send_heartbeat(cfg, hb_url, node_token)
+            next_beat = time.monotonic() + hb_interval
         seq += 1
         try:
             status, resp = http_json("POST", url, body=telemetry_batch(cfg, node_id, seq), token=node_token)
