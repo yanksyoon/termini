@@ -178,6 +178,27 @@ focus returned.
 | Keyboard-only walkthrough | every destination, arrows, sheet | `audit/keyboard-walkthrough.md`, 5/5 PASS |
 | a11y critical / serious violations | 0 | `audit/a11y-*.json`, 0 in all twelve cases |
 | `cd dashboard && npm test` | green | includes `tests/ui-hig.test.mjs` |
+| Raw-sample rows — `.sr-label`, `.sr-flags`, `.sr-where` in every sample card | 0 clipped, every cell ≥ 40 px, no page horizontal scroll, at 1024 / 1280 / 1440 / 1920 | measured 2026-10-17 (`t_214ec609`): 72 cells per width, **0 clipped**, narrowest label 151 px (1280), widest case 231 px (1440), `scrollWidth == innerWidth` at all four widths, dark and light |
+
+**Raw-sample legibility (`t_214ec609`, measured 2026-10-17).** The audit above measures contrast,
+type scale, chrome count and a11y — it never measured whether a raw-sample row's own text fits
+inside its card, and at laptop widths it did not. `dashboard/assets/styles.css` gave the row five
+fixed tracks (84 + 96 + 30 px plus four 6 px gaps = 234 px of chrome) while
+`hig.css`'s `repeat(auto-fit, minmax(260px, 1fr))` lets a chart card be 260–380 px wide, so the
+`minmax(0, 1fr)` name track collapsed to 12–18 px and `text-overflow: ellipsis` hid it — the
+names rendered as a one-character-per-line smear and `cumulative` as `cumu…`. Re-measured after
+the fix, in a headless Chromium driven over the DevTools Protocol against the local bundle
+(`dashboard/mock/server.py`, `?dest=fleet`, both appearances): at **1024, 1280, 1440 and 1920**
+every `.sr-label`, `.sr-flags` and `.sr-where` satisfied `scrollWidth <= clientWidth + 1` and
+`clientWidth >= 40` (0 clipped cells out of 72 per width), and
+`document.documentElement.scrollWidth <= innerWidth` held at every width. The sweep that finds
+the grid's 260 px floor (900 → 2560 in steps) is also clean, so the row cannot collapse at any
+card width the grid can produce. The checked-in mock fixtures predate
+`docs/contracts/node-telemetry.md` §4.12–§4.14, so they render the "not reported" note instead
+of rows; the rows measured here had those contract fields added to the sample by a
+measurement-only proxy in front of the mock — the dashboard JS/CSS under measurement were the
+checked-in files, unmodified. The deployed page was not re-measured in this pass (no project
+token in the sandbox); the local bundle is byte-identical to the one the orchestrator deploys.
 
 "Chrome controls" means the persistent page furniture — the sidebar, the destination bar, a panel's
 own toolbar and a banner. A row's single menu button, a chart's own "Ask AI", a form field and a
