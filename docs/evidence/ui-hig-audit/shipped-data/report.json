@@ -1,0 +1,1155 @@
+{
+  "viewport": {
+    "w": 1440,
+    "h": 757,
+    "dpr": 1
+  },
+  "docSize": {
+    "scrollHeight": 5556,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "clientHeight": 757
+  },
+  "horizontalOverflow": false,
+  "pageHeightVsViewport": 7.3,
+  "meta": {
+    "lang": "en",
+    "title": "Termini — Operations Dashboard",
+    "viewport": "width=device-width, initial-scale=1",
+    "prefersColorSchemeRulePresent": false
+  },
+  "controls": {
+    "totalInDom": 116,
+    "visible": 102,
+    "byTag": {
+      "button": 91,
+      "input": 4,
+      "div": 2,
+      "summary": 1,
+      "select": 3,
+      "textarea": 1
+    },
+    "perPanel": {
+      "AI operator — incident view": 27,
+      "Manual intervention": 23,
+      "Live AI-operator log": 22,
+      "Node health": 13,
+      "Resource utilization": 11,
+      "Your node": 4,
+      "topbar": 2
+    }
+  },
+  "words": {
+    "total": 1701
+  },
+  "targetSizes": {
+    "count": 102,
+    "under44": 98,
+    "under44Pct": 96.1,
+    "medianHeight": 25,
+    "medianWidth": 63,
+    "minHeight": 13,
+    "smallest": [
+      {
+        "tag": "button",
+        "text": "✦ Ask AI",
+        "w": 87,
+        "h": 35
+      },
+      {
+        "tag": "button",
+        "text": "Settings",
+        "w": 83,
+        "h": 34
+      },
+      {
+        "tag": "button",
+        "text": "Forget",
+        "w": 73,
+        "h": 34
+      },
+      {
+        "tag": "input",
+        "text": "01M4TGD31W…",
+        "w": 548,
+        "h": 30
+      },
+      {
+        "tag": "input",
+        "text": "your node's own credenti",
+        "w": 523,
+        "h": 30
+      },
+      {
+        "tag": "button",
+        "text": "Show my node",
+        "w": 127,
+        "h": 34
+      },
+      {
+        "tag": "button",
+        "text": "Refresh",
+        "w": 82,
+        "h": 34
+      },
+      {
+        "tag": "button",
+        "text": "● Charts",
+        "w": 69,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Ask AI",
+        "w": 56,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Restart",
+        "w": 61,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Drain",
+        "w": 51,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Charts",
+        "w": 58,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Ask AI",
+        "w": 56,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Restart",
+        "w": 61,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Drain",
+        "w": 51,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Charts",
+        "w": 58,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Ask AI",
+        "w": 56,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Restart",
+        "w": 61,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "Drain",
+        "w": 51,
+        "h": 25
+      },
+      {
+        "tag": "button",
+        "text": "all",
+        "w": 36,
+        "h": 23
+      }
+    ]
+  },
+  "typeScale": {
+    "textElements": 758,
+    "minPx": 10.6,
+    "maxPx": 20.8,
+    "medianPx": 12.5,
+    "distinctSizes": [
+      10.6,
+      11.2,
+      11.5,
+      11.8,
+      12.2,
+      12.5,
+      12.8,
+      13.1,
+      13.4,
+      13.6,
+      13.8,
+      14.1,
+      14.4,
+      14.7,
+      15.2,
+      16,
+      16.8,
+      18.4,
+      20,
+      20.8
+    ],
+    "distinctCount": 20,
+    "weights": [
+      "400",
+      "600",
+      "700"
+    ],
+    "below11pxCount": 17
+  },
+  "colors": {
+    "distinctText": 16,
+    "textColors": {
+      "#7d8797": 253,
+      "#e6e9ef": 131,
+      "#a7b0c0": 117,
+      "#ffdca8": 84,
+      "#9fe0ff": 42,
+      "#b6f0c8": 33,
+      "#5ac8fa": 20,
+      "#ffd9a3": 20,
+      "#bfe9ff": 17,
+      "#a9b2c0": 13,
+      "#cbd5e6": 7,
+      "#ff9f0a": 6,
+      "#ffb4a2": 6,
+      "#d7f2ff": 4,
+      "#ffc0bb": 3,
+      "#e3c6ff": 2
+    },
+    "distinctBackgrounds": 9,
+    "backgrounds": {
+      "#161d2b": 23,
+      "#2a2010": 23,
+      "#123a20": 12,
+      "#17527a": 4,
+      "#12283a": 4,
+      "#10283a": 4,
+      "#3a2408": 3,
+      "#241333": 2,
+      "#2a1311": 1
+    }
+  },
+  "semantic": {
+    ".badge.status-online": {
+      "color": "#b6f0c8",
+      "border": "#2f8a4d",
+      "background": "transparent"
+    },
+    ".badge.status-degraded": {
+      "color": "#ffdca8",
+      "border": "#8a6a1f",
+      "background": "transparent"
+    },
+    ".badge.status-offline": null,
+    ".flag.ok": {
+      "color": "#b6f0c8",
+      "border": "#2f8a4d",
+      "background": "transparent"
+    },
+    ".flag.warn": null,
+    ".flag.bad": null,
+    ".dot-ok": {
+      "color": "#a7b0c0",
+      "border": "#a7b0c0",
+      "background": "#30d158"
+    },
+    ".dot-warn": {
+      "color": "#a7b0c0",
+      "border": "#a7b0c0",
+      "background": "#ff9f0a"
+    },
+    ".dot-err": null,
+    ".badge.sev-info": {
+      "color": "#9fe0ff",
+      "border": "#26678f",
+      "background": "transparent"
+    },
+    ".badge.sev-warn": {
+      "color": "#ffdca8",
+      "border": "#8a6a1f",
+      "background": "transparent"
+    },
+    ".badge.sev-error": null,
+    ".btn-warn": {
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010"
+    },
+    ".btn-ok": {
+      "color": "#b6f0c8",
+      "border": "#2f8a4d",
+      "background": "#123a20"
+    },
+    ".btn-primary": {
+      "color": "#e6e9ef",
+      "border": "#2b83c0",
+      "background": "#17527a"
+    },
+    ".result.ok": null,
+    ".result.bad": null,
+    ".incident-card.inc-model": {
+      "color": "#e6e9ef",
+      "border": "#2f3a4f",
+      "background": "#0b1220"
+    },
+    ".incident-card.inc-fallback": {
+      "color": "#e6e9ef",
+      "border": "#2f3a4f",
+      "background": "#1a1710"
+    },
+    ".incident-card.inc-bug": null
+  },
+  "contrast": {
+    "method": "WCAG 2.x relative luminance on getComputedStyle; transparent backgrounds resolved to nearest painted ancestor (gradients sampled at first colour stop)",
+    "body": {
+      "fg": "#e6e9ef",
+      "bg": "#0b0e14",
+      "ratio": 15.9
+    },
+    "badges": [
+      {
+        "selector": ".badge.status-online",
+        "text": "online",
+        "fg": "#b6f0c8",
+        "bg": "#161d2b",
+        "ratio": 13.1
+      },
+      {
+        "selector": ".badge.status-degraded",
+        "text": "degraded",
+        "fg": "#ffdca8",
+        "bg": "#161d2b",
+        "ratio": 12.9
+      },
+      {
+        "selector": ".badge.sev-info",
+        "text": "info",
+        "fg": "#9fe0ff",
+        "bg": "#090d15",
+        "ratio": 13.5
+      },
+      {
+        "selector": ".badge.sev-warn",
+        "text": "stream",
+        "fg": "#ffdca8",
+        "bg": "#101725",
+        "ratio": 13.7
+      },
+      {
+        "selector": ".badge.src-model",
+        "text": "AI MODEL 0.90",
+        "fg": "#9fe0ff",
+        "bg": "#10283a",
+        "ratio": 10.5
+      },
+      {
+        "selector": ".badge.src-fallback",
+        "text": "FALLBACK",
+        "fg": "#ffdca8",
+        "bg": "#2a2010",
+        "ratio": 12.2
+      },
+      {
+        "selector": ".badge.src-det",
+        "text": "DETERMINISTIC",
+        "fg": "#e3c6ff",
+        "bg": "#241333",
+        "ratio": 11.3
+      },
+      {
+        "selector": ".badge.inc-model",
+        "text": "AI-GENERATED INCIDENT",
+        "fg": "#9fe0ff",
+        "bg": "#10283a",
+        "ratio": 10.5
+      },
+      {
+        "selector": ".badge.inc-fallback",
+        "text": "CONTROLLER-GENERATED · M",
+        "fg": "#ffdca8",
+        "bg": "#2a2010",
+        "ratio": 12.2
+      },
+      {
+        "selector": ".badge.exec-ok",
+        "text": "ok · 10.10.0.11:8443",
+        "fg": "#b6f0c8",
+        "bg": "#161d2b",
+        "ratio": 13.1
+      },
+      {
+        "selector": ".badge.exec-err",
+        "text": "error · 10.10.0.11:8443",
+        "fg": "#ffc0bb",
+        "bg": "#1a1710",
+        "ratio": 11.5
+      },
+      {
+        "selector": ".rem-status.pending_approval",
+        "text": "node.drain · pending_app",
+        "fg": "#ffdca8",
+        "bg": "#090d15",
+        "ratio": 14.9
+      },
+      {
+        "selector": ".flag.ok",
+        "text": "disk ok",
+        "fg": "#b6f0c8",
+        "bg": "#161d2b",
+        "ratio": 13.1
+      },
+      {
+        "selector": ".pill",
+        "text": "nodes 3 · 2 degraded",
+        "fg": "#a7b0c0",
+        "bg": "#161d2b",
+        "ratio": 7.7
+      },
+      {
+        "selector": ".chip",
+        "text": "all",
+        "fg": "#d7f2ff",
+        "bg": "#12283a",
+        "ratio": 13
+      },
+      {
+        "selector": ".chip.on",
+        "text": "all",
+        "fg": "#d7f2ff",
+        "bg": "#12283a",
+        "ratio": 13
+      },
+      {
+        "selector": ".btn",
+        "text": "Web terminal",
+        "fg": "#e6e9ef",
+        "bg": "#0b0e14",
+        "ratio": 15.9
+      },
+      {
+        "selector": ".btn-warn",
+        "text": "Restart",
+        "fg": "#ffd9a3",
+        "bg": "#2a2010",
+        "ratio": 12
+      },
+      {
+        "selector": ".btn-ok",
+        "text": "Approve",
+        "fg": "#b6f0c8",
+        "bg": "#123a20",
+        "ratio": 9.9
+      },
+      {
+        "selector": ".btn-primary",
+        "text": "Show my node",
+        "fg": "#e6e9ef",
+        "bg": "#17527a",
+        "ratio": 6.8
+      }
+    ],
+    "badgesBelow3": [],
+    "badgesBelow45": []
+  },
+  "destructive": [
+    {
+      "text": "Forget",
+      "cls": "btn btn-ghost",
+      "color": "#e6e9ef",
+      "border": "#2f3a4f",
+      "background": "transparent",
+      "siblings": []
+    },
+    {
+      "text": "Restart",
+      "cls": "btn btn-sm btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "● Charts",
+        "Ask AI",
+        "Restart",
+        "Drain"
+      ]
+    },
+    {
+      "text": "Drain",
+      "cls": "btn btn-sm btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "● Charts",
+        "Ask AI",
+        "Restart",
+        "Drain"
+      ]
+    },
+    {
+      "text": "Restart",
+      "cls": "btn btn-sm btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Charts",
+        "Ask AI",
+        "Restart",
+        "Drain"
+      ]
+    },
+    {
+      "text": "Drain",
+      "cls": "btn btn-sm btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Charts",
+        "Ask AI",
+        "Restart",
+        "Drain"
+      ]
+    },
+    {
+      "text": "Restart",
+      "cls": "btn btn-sm btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Charts",
+        "Ask AI",
+        "Restart",
+        "Drain"
+      ]
+    },
+    {
+      "text": "Drain",
+      "cls": "btn btn-sm btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Charts",
+        "Ask AI",
+        "Restart",
+        "Drain"
+      ]
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": []
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": []
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": []
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": []
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": []
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": []
+    },
+    {
+      "text": "Restart node",
+      "cls": "btn btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Restart node",
+        "Drain node"
+      ]
+    },
+    {
+      "text": "Drain node",
+      "cls": "btn btn-warn",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Restart node",
+        "Drain node"
+      ]
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn btn-sm",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Approve",
+        "Deny",
+        "Ask AI"
+      ]
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn btn-sm",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Approve",
+        "Deny",
+        "Ask AI"
+      ]
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn btn-sm",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Approve",
+        "Deny",
+        "Ask AI"
+      ]
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn btn-sm",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Approve",
+        "Deny",
+        "Ask AI"
+      ]
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn btn-sm",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Approve",
+        "Deny",
+        "Ask AI"
+      ]
+    },
+    {
+      "text": "Deny",
+      "cls": "btn btn-warn btn-sm",
+      "color": "#ffd9a3",
+      "border": "#6a4a12",
+      "background": "#2a2010",
+      "siblings": [
+        "Approve",
+        "Deny",
+        "Ask AI"
+      ]
+    }
+  ],
+  "states": {
+    "emptyTexts": [],
+    "skeletons": 0,
+    "banner": null,
+    "degradedBadges": 2,
+    "offlineBadges": 0,
+    "offlineCards": 0,
+    "nodeCards": 3,
+    "decisionRows": 4,
+    "incidentCards": 3,
+    "logRows": 65,
+    "chartCanvases": 4
+  },
+  "focusCss": {
+    "anyFocusVisibleRule": false,
+    "selector": null
+  },
+  "url": "http://127.0.0.1:8099/",
+  "label": "shipped-data",
+  "scheme": {
+    "dark": {
+      "bodyBg": "rgb(11, 14, 20)",
+      "bodyFg": "rgb(230, 233, 239)",
+      "rootColorScheme": "normal",
+      "styleColorScheme": null,
+      "darkMatches": false,
+      "lightMatches": true,
+      "prefersSchemePresent": false
+    },
+    "light": {
+      "bodyBg": "rgb(11, 14, 20)",
+      "bodyFg": "rgb(230, 233, 239)",
+      "darkMatches": false,
+      "lightMatches": true
+    }
+  },
+  "screenshots": {
+    "dark": "/home/ubuntu/.worktrees/t_7094134f/audit/shipped-data/screenshot-dark.png",
+    "light": "/home/ubuntu/.worktrees/t_7094134f/audit/shipped-data/screenshot-light.png"
+  },
+  "respondsToScheme": false,
+  "lightVariantPresent": false,
+  "keyboard": {
+    "tab": {
+      "uniqueTargets": 34,
+      "lostFocusEvents": 0,
+      "invisibleFocusEvents": 0,
+      "sequence": [
+        {
+          "step": 0,
+          "tag": "button",
+          "id": "btn-chat",
+          "cls": "btn btn-ghost chat-launcher",
+          "text": "✦ Ask AI",
+          "w": 87,
+          "h": 35,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 1,
+          "tag": "button",
+          "id": "btn-settings",
+          "cls": "btn btn-ghost",
+          "text": "Settings",
+          "w": 83,
+          "h": 34,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 2,
+          "tag": "button",
+          "id": "btn-mynode-forget",
+          "cls": "btn btn-ghost",
+          "text": "Forget",
+          "w": 73,
+          "h": 34,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 3,
+          "tag": "input",
+          "id": "mynode-node-id",
+          "cls": "",
+          "text": "",
+          "w": 548,
+          "h": 30,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 4,
+          "tag": "input",
+          "id": "mynode-node-token",
+          "cls": "",
+          "text": "",
+          "w": 523,
+          "h": 30,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 5,
+          "tag": "button",
+          "id": "btn-mynode-connect",
+          "cls": "btn btn-primary",
+          "text": "Show my node",
+          "w": 127,
+          "h": 34,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 6,
+          "tag": "button",
+          "id": "btn-refresh",
+          "cls": "btn btn-ghost",
+          "text": "Refresh",
+          "w": 82,
+          "h": 34,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 7,
+          "tag": "button",
+          "id": null,
+          "cls": "btn btn-sm",
+          "text": "● Charts",
+          "w": 69,
+          "h": 25,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 8,
+          "tag": "button",
+          "id": null,
+          "cls": "btn btn-sm btn-ask",
+          "text": "Ask AI",
+          "w": 56,
+          "h": 25,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 9,
+          "tag": "button",
+          "id": null,
+          "cls": "btn btn-sm btn-warn",
+          "text": "Restart",
+          "w": 61,
+          "h": 25,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 10,
+          "tag": "button",
+          "id": null,
+          "cls": "btn btn-sm btn-warn",
+          "text": "Drain",
+          "w": 51,
+          "h": 25,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 11,
+          "tag": "button",
+          "id": null,
+          "cls": "btn btn-sm",
+          "text": "Charts",
+          "w": 58,
+          "h": 25,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 19,
+          "tag": "button",
+          "id": null,
+          "cls": "chip on",
+          "text": "all",
+          "w": 36,
+          "h": 23,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 20,
+          "tag": "button",
+          "id": null,
+          "cls": "chip ",
+          "text": "AI model",
+          "w": 73,
+          "h": 23,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 21,
+          "tag": "button",
+          "id": null,
+          "cls": "chip ",
+          "text": "fallback",
+          "w": 70,
+          "h": 23,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 22,
+          "tag": "button",
+          "id": null,
+          "cls": "chip ",
+          "text": "deterministic",
+          "w": 96,
+          "h": 23,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 23,
+          "tag": "div",
+          "id": "decision-viewport",
+          "cls": "decision-viewport",
+          "text": "Waiting for operator decisions…\n",
+          "w": 1366,
+          "h": 700,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 24,
+          "tag": "button",
+          "id": null,
+          "cls": "linklike",
+          "text": "01M55AQC52…000C",
+          "w": 134,
+          "h": 18,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 25,
+          "tag": "button",
+          "id": null,
+          "cls": "linklike",
+          "text": "telemetry sample",
+          "w": 113,
+          "h": 18,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 26,
+          "tag": "button",
+          "id": null,
+          "cls": "linklike",
+          "text": "show on chart",
+          "w": 90,
+          "h": 18,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 29,
+          "tag": "button",
+          "id": null,
+          "cls": "linklike",
+          "text": "Ask AI about this audit row",
+          "w": 168,
+          "h": 17,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 30,
+          "tag": "button",
+          "id": null,
+          "cls": "linklike",
+          "text": "01M55AV1B2…0009",
+          "w": 131,
+          "h": 18,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 36,
+          "tag": "button",
+          "id": null,
+          "cls": "linklike",
+          "text": "01M55AYPH2…0006",
+          "w": 130,
+          "h": 18,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 42,
+          "tag": "button",
+          "id": null,
+          "cls": "linklike",
+          "text": "01M55B2BQ2…0003",
+          "w": 133,
+          "h": 18,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 46,
+          "tag": "summary",
+          "id": "log-summary",
+          "cls": "panel-head log-summary",
+          "text": "Live AI-operator log\n        sec",
+          "w": 775,
+          "h": 58,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 47,
+          "tag": "select",
+          "id": "chart-node",
+          "cls": "",
+          "text": "termini-node-atermini-node-bterm",
+          "w": 145,
+          "h": 32,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 48,
+          "tag": "button",
+          "id": null,
+          "cls": "chip ",
+          "text": "5m",
+          "w": 40,
+          "h": 23,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 49,
+          "tag": "button",
+          "id": null,
+          "cls": "chip on",
+          "text": "15m",
+          "w": 47,
+          "h": 23,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 50,
+          "tag": "button",
+          "id": null,
+          "cls": "chip ",
+          "text": "1h",
+          "w": 36,
+          "h": 23,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 51,
+          "tag": "button",
+          "id": null,
+          "cls": "chip ",
+          "text": "6h",
+          "w": 36,
+          "h": 23,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 52,
+          "tag": "input",
+          "id": "include-synthetic",
+          "cls": "",
+          "text": "",
+          "w": 13,
+          "h": 13,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 53,
+          "tag": "input",
+          "id": "all-metrics",
+          "cls": "",
+          "text": "",
+          "w": 13,
+          "h": 13,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 58,
+          "tag": "button",
+          "id": "btn-reboot",
+          "cls": "btn btn-warn",
+          "text": "Restart node",
+          "w": 114,
+          "h": 34,
+          "visible": true,
+          "outline": "auto/1px"
+        },
+        {
+          "step": 59,
+          "tag": "button",
+          "id": "btn-drain",
+          "cls": "btn btn-warn",
+          "text": "Drain node",
+          "w": 102,
+          "h": 34,
+          "visible": true,
+          "outline": "auto/1px"
+        }
+      ]
+    },
+    "arrowNav": {
+      "before": {
+        "tag": "div",
+        "id": "decision-viewport",
+        "cls": "decision-viewport",
+        "text": "Waiting for operator decisions…\n",
+        "w": 1366,
+        "h": 700,
+        "visible": true,
+        "outline": "auto/1px"
+      },
+      "after": {
+        "tag": "div",
+        "id": "decision-viewport",
+        "cls": "decision-viewport",
+        "text": "Waiting for operator decisions…\n",
+        "w": 1366,
+        "h": 700,
+        "visible": true,
+        "outline": "auto/1px"
+      },
+      "movedFocus": false,
+      "note": "no keydown handler for ArrowDown/ArrowUp exists in the shipped bundle (grep), so the list is a plain tabbable scroll region"
+    },
+    "escape": {
+      "opened": true,
+      "closedByEscape": true
+    }
+  },
+  "accessibility": {
+    "method": "Accessibility.getFullAXTree (the accessibility tree, not markup)",
+    "totalNodes": 1631,
+    "interactiveWithoutName": 33,
+    "focusableWithoutName": 0,
+    "focusableNamelessList": []
+  }
+}
