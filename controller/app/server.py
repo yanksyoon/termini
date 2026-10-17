@@ -198,7 +198,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
                          "Authorization, Content-Type, Idempotency-Key, X-Termini-Version, Last-Event-ID, Cache-Control")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 
-    def _send_json(self, status: int, obj) -> None:
+    def _send_json(self, status: int, obj, headers: dict | None = None) -> None:
         if status == 204:
             self.send_response(204)
             self._cors_headers()
@@ -211,12 +211,15 @@ class ControllerHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self._cors_headers()
         self.send_header("X-Termini-Version", "1")
+        for k, v in (headers or {}).items():
+            self.send_header(k, str(v))
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def _send_error(self, e: errors.ApiError) -> None:
-        self._send_json(e.status, errors.envelope(e.code, e.message, e.details))
+        self._send_json(e.status, errors.envelope(e.code, e.message, e.details),
+                        headers=getattr(e, "headers", None))
 
     def _send_bytes(self, status: int, content_type: str, data: bytes) -> None:
         """Raw-body response (the static client-install artifacts, not JSON)."""
@@ -812,7 +815,9 @@ class ControllerHandler(BaseHTTPRequestHandler):
             conn.commit()
             details = [{"field": exc.param or "vm_id",
                         "reason": exc.actionable or str(exc)}]
-            raise errors.err(exc.status, exc.code, str(exc), details)
+            headers = ({"Retry-After": str(exc.retry_after)}
+                       if getattr(exc, "retry_after", None) else None)
+            raise errors.err(exc.status, exc.code, str(exc), details, headers)
 
         state = submitted.get("state")
         if state not in (agent_tasks_mod.QUEUED, agent_tasks_mod.RUNNING):

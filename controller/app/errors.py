@@ -35,16 +35,21 @@ class ApiError(Exception):
         code: str,
         message: str,
         details: list[dict[str, Any]] | None = None,
+        headers: dict[str, str] | None = None,
     ):
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
         self.details = details or []
+        # Extra response headers a route must set with its error (e.g.
+        # `Retry-After` on a 429 the agent refused). Never used for the body.
+        self.headers = headers or {}
 
 
-def err(status: int, code: str, message: str, details: list[dict[str, Any]] | None = None) -> ApiError:
-    return ApiError(status, code, message, details)
+def err(status: int, code: str, message: str, details: list[dict[str, Any]] | None = None,
+        headers: dict[str, str] | None = None) -> ApiError:
+    return ApiError(status, code, message, details, headers)
 
 
 def invalid_argument(message: str, details: list[dict[str, Any]] | None = None) -> ApiError:

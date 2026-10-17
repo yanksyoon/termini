@@ -73,9 +73,11 @@ req = urllib.request.Request(url, data=data, method=method,
                              headers={"Content-Type": "application/json"})
 try:
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        print(json.dumps({"status": r.status, "body": r.read().decode("utf-8", "replace")}))
+        print(json.dumps({"status": r.status, "body": r.read().decode("utf-8", "replace"),
+                          "retry_after": r.headers.get("Retry-After")}))
 except urllib.error.HTTPError as e:
-    print(json.dumps({"status": e.code, "body": e.read().decode("utf-8", "replace")}))
+    print(json.dumps({"status": e.code, "body": e.read().decode("utf-8", "replace"),
+                      "retry_after": (e.headers.get("Retry-After") if e.headers else None)}))
 except Exception as e:                                  # connect refused / timeout / bad json
     print(json.dumps({"status": 0, "body": json.dumps(
         {"error": type(e).__name__ + ": " + str(e)})}))
@@ -86,12 +88,16 @@ class AgentTaskError(RuntimeError):
     """Raised when a task cannot even be handed over (mapped to an API error)."""
 
     def __init__(self, code: str, message: str, *, status: int = 400,
-                 actionable: str | None = None, param: str | None = None):
+                 actionable: str | None = None, param: str | None = None,
+                 retry_after: str | int | None = None):
         super().__init__(message)
         self.code = code
         self.status = status
         self.actionable = actionable
         self.param = param
+        # `Retry-After` the agent answered with, forwarded unchanged so an
+        # over-bound client is told WHEN to retry instead of guessing (§5.6).
+        self.retry_after = retry_after
 
 
 # --------------------------------------------------------------------------- store
@@ -269,8 +275,12 @@ def resolve_agent(conn, cfg, project_id: str, vm_id: str, *,
 
 # ----------------------------------------------------------------------- dispatch
 def _call_agent_surface(cfg, node, vm_id: str, *, method: str, path: str,
-                        payload: dict | None = None) -> tuple[int, dict]:
-    """One request against the agent's loopback surface, through the node's LXD."""
+                        payload: dict | None = None) -> tuple[int, dict, str | None]:
+    """One request against the agent's loopback surface, through the node's LXD.
+
+    Returns `(status, body, retry_after)` — the last is the agent's own
+    `Retry-After` header, carried out so a caller can forward it unchanged.
+    """
     from .operator import target as op_target
 
     executor = op_target.executor_for_node(cfg, node)
@@ -317,7 +327,7 @@ def _call_agent_surface(cfg, node, vm_id: str, *, method: str, path: str,
         body = json.loads(outer.get("body") or "{}")
     except json.JSONDecodeError:
         body = {"raw": outer.get("body")}
-    return status, body
+    return status, body, outer.get("retry_after")
 
 
 def submit_to_agent(cfg, node, task: dict) -> dict:
@@ -326,8 +336,8 @@ def submit_to_agent(cfg, node, task: dict) -> dict:
                "max_tokens": task["max_tokens"]}
     if task["model_preference"]:
         payload["model_preference"] = task["model_preference"]
-    status, body = _call_agent_surface(cfg, node, task["vm_id"], method="POST",
-                                       path="/v1/tasks", payload=payload)
+    status, body, retry_after = _call_agent_surface(
+        cfg, node, task["vm_id"], method="POST", path="/v1/tasks", payload=payload)
     if status >= 400:
         err = (body or {}).get("error") or {}
         # Preserve the agent's own refusal semantics where they are actionable: a
@@ -339,13 +349,21 @@ def submit_to_agent(cfg, node, task: dict) -> dict:
             str(err.get("message") or f"agent refused the task (HTTP {status})"),
             status=mapped,
             actionable=err.get("actionable"),
+            # The agent names the offending field (`model_preference` for a
+            # refused alias, `prompt` for an oversize body); carry it through so
+            # `details[0].field` is not always `vm_id` for a request-shape error.
+            param=err.get("param"),
+            # §5.6 promises `Retry-After` on the bound refusal; the agent sends
+            # it, so it must survive the proxy rather than dying here.
+            retry_after=retry_after,
         )
     return body
 
 
 def read_agent_task(cfg, node, vm_id: str, agent_task_id: str) -> tuple[int, dict]:
-    return _call_agent_surface(cfg, node, vm_id, method="GET",
-                               path=f"/v1/tasks/{agent_task_id}")
+    status, body, _ = _call_agent_surface(cfg, node, vm_id, method="GET",
+                                         path=f"/v1/tasks/{agent_task_id}")
+    return status, body
 
 
 # ------------------------------------------------------------------------- poller
