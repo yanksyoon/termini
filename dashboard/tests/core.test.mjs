@@ -35,6 +35,7 @@ import {
   CONTROLLER_METRICS,
   SERIES_SOURCE,
   SAMPLE_SOURCE,
+  RESOLVER_METRICS,
 } from "../js/core/series.js";
 import { normalizeLine, appendLines, SEVERITIES, severityVisible, isControlLine } from "../js/core/logs.js";
 import { resolveConfig, apiUrl, DEFAULTS } from "../js/core/config.js";
@@ -265,7 +266,34 @@ test("series: the ?metrics= query never names a sample metric (a 400 would blank
       assert.ok(!sampleNames.includes(n), `${n} must never be requested from /metrics`);
     }
   }
-  assert.equal(requestedMetrics(true).length, 18); // the 18 names the panel actually charts
+  // 18 names the panel actually charts, plus `ram_total_bytes` — requested as
+  // the oom-guard-01 threshold DENOMINATOR (see RESOLVER_METRICS). Requesting it
+  // is what lets `thresholdMarker()` resolve ">= 95% of ram_total_bytes".
+  assert.equal(requestedMetrics(true).length, 19);
+  assert.equal(new Set(requestedMetrics(true)).size, 19); // de-duplicated
+});
+
+test("series: the threshold denominators ride in every ?metrics= request (t_497c24fa)", () => {
+  // The bug: `ram_total_bytes` was in no chart group, so it was never requested,
+  // so the payload never carried it, so `thresholdMarker()` returned null and the
+  // rule's dashed threshold line could not be drawn for oom-guard-01.
+  for (const includeAll of [false, true]) {
+    const asked = requestedMetrics(includeAll);
+    for (const m of RESOLVER_METRICS) {
+      assert.ok(CONTROLLER_METRICS.includes(m), `${m} is not a controller metric`);
+      assert.ok(asked.includes(m), `${m} must be requested (includeAll=${includeAll})`);
+    }
+  }
+  // A resolver name is a denominator, never a card: no group may chart it, and
+  // its presence in the payload must not add a group of its own.
+  assert.equal(CHART_GROUPS.filter((g) => g.metrics.includes("ram_total_bytes")).length, 0);
+  const payload = {
+    series: [
+      { name: "ram_used_bytes", unit: "bytes", points: [{ t: "2026-10-17T00:00:00Z", v: 1073741824 }] },
+      { name: "ram_total_bytes", unit: "bytes", points: [{ t: "2026-10-17T00:00:00Z", v: 4294967296 }] },
+    ],
+  };
+  assert.deepEqual(buildCharts(payload).map((c) => c.id), ["mem"]);
 });
 
 test("series: buildCharts scales bytes to GiB and skips empty series", () => {
@@ -857,6 +885,83 @@ test("decisions: chart annotations are per node and scaled by their group", () =
   // a group without the annotated metric gets no marks
   const cpu = groups.find((g) => g.id === "cpu");
   assert.equal((cpu && cpu.markers.length) || 0, 0);
+});
+
+test("decisions: 95% of ram_total_bytes resolves to the line the chart draws", () => {
+  // The exact case from t_497c24fa: 64 GiB total -> 0.95 * 68719476736.
+  const rel = thresholdMarker(
+    { metric: "ram_used_bytes", threshold: ">= 95% of ram_total_bytes" },
+    { ram_total_bytes: { points: [{ v: 68719476736 }] } },
+  );
+  assert.ok(rel, "the percentage-of-total form resolves");
+  assert.equal(Math.round(rel.value), 65283502899); // 65283502899.2 bytes
+  assert.equal(rel.basis, "95% of ram_total_bytes");
+  assert.equal(rel.op, ">=");
+  // no denominator -> no line (the row still shows the threshold text)
+  assert.equal(
+    thresholdMarker({ metric: "ram_used_bytes", threshold: ">= 95% of ram_total_bytes" }, {}),
+    null,
+  );
+});
+
+test("decisions: what the panel REQUESTS is enough to draw oom-guard-01's line (t_497c24fa)", () => {
+  // End to end over the real seam: requestedMetrics() -> `/metrics` payload ->
+  // buildDecisionRows -> annotationsForNode -> buildCharts -> caption. The bug
+  // lived in the first arrow: `ram_total_bytes` was never requested, so the
+  // denominator never arrived and the dashed line could not be drawn.
+  const asked = new Set(requestedMetrics(false));
+  const total = 68719476736;
+  const payload = {
+    series: [
+      { name: "ram_used_bytes", unit: "bytes", points: [{ t: "2026-10-17T00:00:00Z", v: Math.round(total * 0.97) }] },
+      { name: "ram_total_bytes", unit: "bytes", points: [{ t: "2026-10-17T00:00:00Z", v: total }] },
+    ].filter((s) => asked.has(s.name)),
+  };
+  // Both names must survive the filter — that IS the fix.
+  assert.deepEqual(payload.series.map((s) => s.name), ["ram_used_bytes", "ram_total_bytes"]);
+
+  const byMetric = {};
+  for (const s of payload.series) byMetric[s.name] = s;
+  const rows = buildDecisionRows({
+    decisions: [DECISION], events: [EVENT], audits: [AUDIT], seriesByNode: { N1: byMetric },
+  });
+  assert.ok(rows[0].threshold, "the threshold resolves from the requested payload");
+  assert.equal(rows[0].threshold.basis, "95% of ram_total_bytes");
+
+  const ann = annotationsForNode(rows, "N1");
+  assert.equal(ann[0].threshold.label, "oom-guard-01: 95% of ram_total_bytes");
+
+  const mem = buildCharts(payload, { annotations: ann }).find((g) => g.id === "mem");
+  assert.ok(mem, "memory group present");
+  assert.equal(mem.thresholds.length, 1);
+  // the dashed line the chart draws, and the caption fragment metrics.js renders
+  assert.equal(mem.thresholds[0].label, "oom-guard-01: 95% of ram_total_bytes");
+  assert.equal(Math.round(mem.thresholds[0].value), 61); // 60.8 GiB of the 64 GiB total
+  assert.equal(`threshold: ${mem.thresholds.map((t) => t.label).join(" · ")}`,
+    "threshold: oom-guard-01: 95% of ram_total_bytes");
+  assert.equal(mem.fault, true);
+});
+
+test("decisions: a rule that fires twice crosses one line, and it is drawn once", () => {
+  // Same rule, same resolved threshold, two firings in the window: the panel
+  // must draw one dashed line and one caption fragment, not a stacked duplicate.
+  const base = {
+    series: [{ name: "ram_used_bytes", unit: "bytes", points: [{ t: "2026-10-17T00:00:00Z", v: 68719476736 }] }],
+  };
+  const ann = [
+    { metric: "ram_used_bytes", t: Date.parse("2026-10-17T00:05:00Z"), kind: "model",
+      label: "oom-guard-01 → instance.restart", threshold: { value: 65283502899.2, label: "oom-guard-01: 95% of ram_total_bytes" } },
+    { metric: "ram_used_bytes", t: Date.parse("2026-10-17T00:10:00Z"), kind: "model",
+      label: "oom-guard-01 → instance.restart", threshold: { value: 65283502899.2, label: "oom-guard-01: 95% of ram_total_bytes" } },
+  ];
+  const mem = buildCharts(base, { annotations: ann }).find((g) => g.id === "mem");
+  assert.equal(mem.markers.length, 2); // both firings stay visible
+  assert.equal(mem.thresholds.length, 1); // one line, one label
+  // a genuinely different threshold is still kept — this is a de-dupe, not a cap
+  const two = buildCharts(base, {
+    annotations: [...ann, { metric: "ram_used_bytes", t: Date.parse("2026-10-17T00:12:00Z"), threshold: { value: 64424509440, label: "other-rule-01: 90% of ram_total_bytes" } }],
+  }).find((g) => g.id === "mem");
+  assert.equal(two.thresholds.length, 2);
 });
 
 /* --------------------------------------------- incident card (§4.2 / §8.1) */

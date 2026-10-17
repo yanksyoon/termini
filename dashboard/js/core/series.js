@@ -241,6 +241,26 @@ const DERIVED_FROM = {
 /** Resolution windows are bucket means (dashboard.md §1.4) — an aggregate. */
 const BUCKET_LABEL = { "5s": "5 s", "1m": "1 min", "5m": "5 min" };
 
+/**
+ * Names a threshold needs as a DENOMINATOR, charted by no group.
+ *
+ * `oom-guard-01` fires on `ram_used_bytes` with a threshold of
+ * ">= 95% of ram_total_bytes". `thresholdMarker()` (core/decisions.js) resolves
+ * that percentage from the node's own `/metrics` payload, so the denominator has
+ * to travel with the request — otherwise the series is absent, the threshold is
+ * null, and the dashed line (plus the `threshold: …` caption) can never be
+ * drawn. Requesting the extra name is cheap and harmless: no chart group carries
+ * it, so `buildCharts()` simply ignores it.
+ *
+ * Every entry MUST be a §1.4 controller metric — a sample-sourced name here
+ * would make the controller reject the whole request (HTTP 400).
+ */
+export const RESOLVER_METRICS = [
+  "ram_total_bytes", // oom-guard-01: ">= 95% of ram_total_bytes"
+  "disk_total_bytes", // disk-degrade-01 percentage-of-total forms
+  "gpu_vram_total_bytes", // gpu rules expressed as a share of VRAM
+];
+
 /** Names the panel may put in the `?metrics=` query. NEVER a sample metric. */
 export function requestedMetrics(includeAll = false) {
   const groups = includeAll ? CHART_GROUPS : CHART_GROUPS.filter((g) => g.primary);
@@ -248,6 +268,11 @@ export function requestedMetrics(includeAll = false) {
   for (const g of groups) {
     if (g.source !== SERIES_SOURCE) continue;
     for (const m of g.metrics) names.add(m);
+  }
+  // Threshold denominators, keyed by the rules' own vocabulary. Guarded against
+  // the frozen allowlist because one bad name fails the entire request.
+  for (const m of RESOLVER_METRICS) {
+    if (CONTROLLER_METRICS.includes(m)) names.add(m);
   }
   return Array.from(names);
 }
@@ -312,16 +337,22 @@ export function buildCharts(payload, { includeAll = false, annotations = [] } = 
     const groupScale = scaleForUnit(g.unit);
     const markers = [];
     const thresholds = [];
+    const seenThresholds = new Set();
     for (const a of annotations || []) {
       if (!a || !g.metrics.includes(a.metric)) continue;
       if (Number.isFinite(a.t)) {
         markers.push({ t: a.t, kind: a.kind || "det", label: a.label || a.metric });
       }
       if (a.threshold && Number.isFinite(a.threshold.value)) {
-        thresholds.push({
-          value: Number(a.threshold.value) / groupScale.divisor,
-          label: a.threshold.label || `threshold ${a.threshold.basis || ""}`.trim(),
-        });
+        const label = a.threshold.label || `threshold ${a.threshold.basis || ""}`.trim();
+        const value = Number(a.threshold.value) / groupScale.divisor;
+        // The same rule firing twice in one window crosses the SAME line: draw
+        // it once (the markers still show both firings) instead of stacking an
+        // identical label on top of itself.
+        const key = `${value}|${label}`;
+        if (seenThresholds.has(key)) continue;
+        seenThresholds.add(key);
+        thresholds.push({ value, label });
       }
     }
     if (series.length === 0 && markers.length === 0) continue;
