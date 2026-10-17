@@ -191,6 +191,15 @@ class _Auth401Handler(BaseHTTPRequestHandler):
 
 
 class TestRegisterAgainstRealHTTP(_Base):
+    def setUp(self):
+        super().setUp()
+        # This test is about HTTP status classification, not about the node's own
+        # LXD listener: stub the precondition so the real repair path (which talks
+        # to a local unix socket) never runs. The listener itself is covered by
+        # tests/test_bootstrap_lxd_api.py.
+        self.mod.ensure_lxd_api = lambda cfg: {
+            "ok": True, "endpoint": "127.0.0.1:8443", "repaired": False, "detail": "HTTP 200"}
+
     def test_register_maps_real_401(self):
         srv = HTTPServer(("127.0.0.1", 0), _Auth401Handler)
         t = threading.Thread(target=srv.serve_forever, daemon=True)

@@ -60,6 +60,25 @@ def _endpoint_from(d: dict, *, nested: str, ctx: str) -> str | None:
     return _lxd_endpoint(flat, f"{ctx}.lxd_endpoint")
 
 
+def endpoint_from_heartbeat(body: Any) -> str | None:
+    """The node-reported LXD endpoint on a heartbeat body, or None.
+
+    Registration is one-shot, so a node whose listener came up later — or whose
+    underlay address changed — would keep a stale endpoint (or none at all) for
+    the rest of its life, and every remediation for it would fall back to the
+    single global `TERMINI_LXD_BASE_URL` (the defect: every node's action dialled
+    node-a). The heartbeat is the recurring report: same field, same validation as
+    registration (`lxd.endpoint` nested, or the flat `lxd_endpoint`).
+
+    A present-but-malformed value is a 422, exactly as at registration: silently
+    dropping it would fall the node back to the global URL, which is worse than
+    failing loudly.
+    """
+    if not isinstance(body, dict):
+        return None
+    return _endpoint_from(body, nested="lxd", ctx="heartbeat")
+
+
 
 def _require_str(d: dict, key: str, ctx: str, optional: bool = False) -> str | None:
     v = d.get(key)

@@ -70,6 +70,7 @@ The daemon publishes its state locally (`termini status`) and in telemetry.
 - **ONLINE** = registered, in the cluster (or intentionally standalone by controller instruction), telemetry flowing, host healthy.
 - **DEGRADED** = reachable and reporting, but one or more capabilities are unavailable (e.g. not joined, GPU down, disk degraded). **A degraded node must still report telemetry** — this is what lets the AI operator remediate it.
 - **REGISTRATION_FAILED** = a terminal enrollment problem requiring operator action — a bad/consumed/expired token (401/403), a malformed registration (400/422), an unsupported schema (426), or a controller that is unreachable after the bounded boot retries (row 1). It is **not** retried indefinitely (see §9). The daemon parks in this state (no auto-retry) and records `failure_kind` in `state.json`; `systemd` never sees `READY`.
+- **LXD_API_UNAVAILABLE** = the machine is enrolled in principle but **cannot be remediated**: its own LXD REST API does not answer on the node's own `host:port` and could not be brought up (`failure_kind = lxd_api_unreachable`, §9 row 14). Distinct from `REGISTRATION_FAILED` on purpose — the credential is fine, the hypervisor is not, so an operator looks at LXD. The daemon parks here (no auto-retry, no `READY`) and the enrollment token is **not** spent: no registration request is made.
 
 ---
 
@@ -227,9 +228,18 @@ Step 1 uses the enrollment token because the node has no cert yet. TLS certifica
 
 `machine.lxd.endpoint` is the node's **own LXD REST address** (`host:port`, or a
 full `scheme://host:port`). The controller needs it to place agent VMs on the
-right node — a single controller-wide URL cannot name one node among a fleet
-(`infra-decisions.md` D2). It is optional: an older node that omits it still
-registers, and the controller falls back to its global `TERMINI_LXD_BASE_URL`.
+right node and to execute an operator action — a single controller-wide URL cannot
+name one node among a fleet (`infra-decisions.md` D2). **A node advertises it only
+after proving something answers on it** (`GET /1.0` over HTTPS on its own primary
+IPv4), and `POST /v1/nodes/register` **fails closed** when that listener cannot be
+brought up: the daemon re-asserts `core.https_address` through its own unix socket,
+waits a bounded window, and if the API is still dead it never sends the request —
+it parks in `LXD_API_UNAVAILABLE` (§2, §9 row 14) and does not spend the enrollment
+token. It is still *optional* on the wire (an older node that omits it registers and
+the controller falls back to its global `TERMINI_LXD_BASE_URL`), but a node that
+reports one always reports a live one. A node that comes up later, or whose address
+changes, re-reports it on the heartbeat (§8), so the controller's per-node endpoint
+never has to fall back for a node that has one.
 
 `machine.disks[].size_bytes` is the **measured** size of the device. Report the
 real value, or OMIT the field when it cannot be measured: the controller then
@@ -503,6 +513,7 @@ Guiding rules: **registration and join failures must never leave a node unreacha
 | 11 | Disk degraded / read-only | SMART + mount probe | Report disk health; controller decides evacuation (Scenario B). | `ONLINE`/`DEGRADED` |
 | 12 | Daemon crash loop | systemd start-rate limit | Unit enters `failed`; last state persists in `/var/lib/termini/state.json` for the operator. | `failed` (systemd) |
 | 13 | Reboot after successful enrollment | boot | Idempotent reconnect using persisted identity (§10). | `ONLINE` |
+| 14 | **Own LXD API not listening** (`core.https_address` empty, daemon crashed, listener drifted away) | `GET /1.0` on the node's own `host:port` fails | Re-assert `core.https_address` over the daemon's unix socket (start the unit when the socket is dead) and re-probe for a bounded window. If it still does not answer: **do not register** (the enrollment token is not spent), do not report `READY`, park terminal with `failure_kind = lxd_api_unreachable`. On a rebooted node the same check gates `READY` before reconnect. | `LXD_API_UNAVAILABLE` |
 
 **Bounded retries, and what "terminal" means (implemented in
 `infra/bootstrap/node/termini-bootstrap.py`).** Rows 1 (boot), 2 and 5.4's
@@ -602,7 +613,9 @@ spool_dir: /var/lib/termini/telemetry
 register_timeout_s: 5                                 # per-attempt HTTP timeout (fail fast)
 registration_max_retries: 3                           # bounded retries before terminal REGISTRATION_FAILED
 registration_backoff_base_s: 1                        # first backoff
-registration_backoff_cap_s: 60                        # backoff ceiling (transient failures)
+registration_backoff_cap_s: 60                         # backoff ceiling (transient failures)
+heartbeat_interval_s: 15                               # REST heartbeat cadence; each beat re-reports
+                                                       # machine.lxd.endpoint when the listener answers
 ```
 
 Runtime state is kept at `/var/lib/termini/state.json` (state, node_id, last error, cluster reason, last controller contact).

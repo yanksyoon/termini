@@ -6,6 +6,13 @@ Documentation=file:/opt/termini/README.md
 # cloud-init has written the per-node config (docs/contracts/node-bootstrap.md §3.2).
 Wants=network-online.target
 After=network-online.target
+# The node's own LXD REST API is the endpoint the controller executes operator
+# actions against, so it is ordered before registration. Ordered, NOT Requisite:
+# the daemon repairs/verifies the listener itself (`ensure_lxd_api`) and fails
+# closed with the distinct state LXD_API_UNAVAILABLE when it cannot, so a slow or
+# distro-packaged LXD must not leave the unit stuck in "dependency failed".
+Wants=snap.lxd.daemon.service
+After=snap.lxd.daemon.service lxd.service
 # First-boot offline preflight ordering. The image pipeline installs
 # termini-firstboot-preflight.service (image/pipeline) and orders it Before= this
 # unit (see that unit's [Unit] section); this After= keeps the relationship

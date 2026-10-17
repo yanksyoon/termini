@@ -542,8 +542,25 @@ class ControllerHandler(BaseHTTPRequestHandler):
 
     def _heartbeat(self, conn, node_id: str) -> tuple[int, dict]:
         node = self._require_node(conn, node_id)
+        # A heartbeat may carry the node's own LXD endpoint (`lxd.endpoint` nested
+        # or the flat `lxd_endpoint`, node-bootstrap.md §5.2/§13). Registration is
+        # one-shot: this is how a node whose listener came up later — or whose
+        # address changed — keeps the controller's per-node endpoint current, so
+        # the executor never falls back to the global URL for a node that has one.
+        # An empty body is the old heartbeat and stays valid.
+        body = self._read_body()
+        endpoint = registration.endpoint_from_heartbeat(body)
+        lxd_api = body.get("lxd_api") if isinstance(body.get("lxd_api"), dict) else {}
         now = store.now_iso()
         conn.execute("UPDATE nodes SET last_seen_at = ? WHERE id = ?", (now, node_id))
+        if endpoint and endpoint != node.get("lxd_endpoint"):
+            store.set_node_lxd_endpoint(conn, node_id, endpoint)
+            log.info("node %s reports its own LXD endpoint: %s (was %s)",
+                     node_id, endpoint, node.get("lxd_endpoint"))
+        if lxd_api.get("listening") is False:
+            log.warning("node %s reports its LXD API is NOT listening on %s (%s): "
+                        "remediations for it will fail",
+                        node_id, lxd_api.get("endpoint"), lxd_api.get("detail") or "no detail")
         pending = conn.execute(
             "SELECT COUNT(*) AS n FROM commands WHERE node_id = ? AND state = 'queued'", (node_id,)
         ).fetchone()["n"]

@@ -199,6 +199,18 @@ def get_node(conn, node_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def set_node_lxd_endpoint(conn, node_id: str, endpoint: str) -> None:
+    """Record the LXD endpoint a node reported on a heartbeat.
+
+    Unlike the registration path this does NOT use COALESCE semantics: the node
+    only reports an endpoint while it is listening, so a reported value is the
+    current truth and must replace the stored one (a rebuilt node with a new
+    address would otherwise keep the old endpoint forever). Callers only pass a
+    validated, verified value (`registration.endpoint_from_heartbeat`).
+    """
+    conn.execute("UPDATE nodes SET lxd_endpoint = ? WHERE id = ?", (endpoint, node_id))
+
+
 def get_node_by_token_hash(conn, token_hash: str) -> dict | None:
     row = conn.execute("SELECT * FROM nodes WHERE node_token_hash = ?", (token_hash,)).fetchone()
     return dict(row) if row else None
