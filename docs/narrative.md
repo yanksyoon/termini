@@ -93,3 +93,46 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
   that was slower still — 156 s / 12 min — and whose 8,973-token request did not even fit the
   shipped context.)
 - We do **not** hide the `inference` role assignment. Node C runs the model CPU-only, but the demo harness reports a synthetic 24 GiB VRAM footprint from config (`gpu_bytes` → `gpu_vram_bytes`) so the real role rule (≥12 GiB VRAM → `inference`) is exercised end-to-end. The synthetic report drives role selection only; it does not claim a physical GPU is present on the build host.
+
+---
+
+## 7. Deck v2 — the story-led arc, its sources, and what is thesis
+
+`deck/v2/termini-deck-v2.pdf` replaces the v1 framing (*AI is stuck at the on-prem
+gate*) with a story-led arc that starts from one clinic and ends at the architecture.
+Three classes of statement must not be confused when this deck is edited.
+
+### 7.1 External sources (cited on the slide that uses them)
+
+| Source | What the deck uses it for | How to read it |
+|---|---|---|
+| “A neighbourhood dental clinic's AX transformation”, arca.live `b/aihomelab/185810092` (13 Oct 2026; 330k+ views) | The whole Act 1 story: 12 DGX Spark-class boxes wired in rings of four, 2× Mac mini M5 Pro + an M4 mini, 3 virtualisation servers, 6 UPS, a self-built PBX, first token in 0.1 s, insurance-claim reconciliation, the monthly three-model diagnosis, the human grading screen, accountant/SaaS cancelled, marketing at zero, and the line “cheaper than the salary of a bad hire” | **One public forum post.** It is cited as a case, never as a market size. Its figures are the author's own report, not audited |
+| MIT NANDA, *The GenAI Divide: State of AI in Business 2025* (Jul 2025) | 95% of enterprise GenAI pilots with no measurable P&L impact; $30–40B of spend; ~5% reaching production | **Preliminary and not peer-reviewed**; the 95% has been publicly contested. The deck labels it “preliminary, contested” and uses it as directional, not as a verdict |
+| McKinsey, *The State of AI 2025* | 88% of organisations using AI in at least one function; 6% high performers | Survey of self-reported use; the deck quotes the two figures, not an ROI claim |
+
+### 7.2 Thesis (labelled as a thesis on slide 7, argued and conceded on slide 9)
+
+- Intelligence should be **plural**: one model per entity, over its own data, beats one
+  model over everyone's data — because value scales with context and context cannot be
+  uploaded.
+- Centralisation correlates failure (same weights → same blind spots), so a population of
+  sovereign models behaves like a portfolio; disagreement between them is a usable signal.
+- Learning (evals, weights, lessons) can travel between entities even when records cannot.
+- The counterargument — *isn't local just worse?* — is stated in the deck and answered
+  there, including the concession that generic work should stay on the cloud.
+
+None of §7.2 is measured. The dentist's three-model jury, eval loop and private corpus
+(slide 8) are the only evidence offered for it, and they are one clinic's practice.
+
+### 7.3 Measured claims (unchanged from v1)
+
+Slides 13 and 15 reuse the v1 measurements and their sources: `register_ms=150`, the
+128 vCPU → 8 clamp, the C2 `422` rejection, the model-decided remediation with its audit
+row, the 1.8 s warm / 402 s local diagnosis timings, and the live GCP + Firebase
+deployment (`SUBMISSION.md` §3–§4).
+
+**Hard constraint on future edits:** the deck's data claim is scoped on slide 15 to
+C0 / C1 / C2, and that slide discloses the one external call (the operator's diagnosis on
+Vertex AI, C0-only, audited as `egress=external`, with `backend=local` as the
+one-variable fallback). Do **not** restore an absolute “nothing leaves” claim anywhere in
+the deck, and do not delete slide 15 without moving its content.
