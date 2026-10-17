@@ -174,13 +174,30 @@ def wait_for_settle(node: str, rule_id: str, db_path: str, settle_s: float,
     return False
 
 
+def stale_injections(base: str, project: str, token: str, node: str) -> list:
+    """Injections the console still lists as active on `node` (a killed run's)."""
+    status, resp = call(base, project, token, "GET",
+                        "/v1/projects/%s/demo/faults" % project)
+    if status != 200 or not isinstance(resp, dict):
+        return []
+    return [f for f in resp.get("faults") or []
+            if f.get("node_id") == node and f.get("state") == "active"]
+
+
 def do_run(args) -> int:
     rule_id = SCENARIO_RULES.get(args.scenario, "oom-guard-01")
     print("=== run: node=%s scenario=%s cycles=%d at %s ==="
           % (args.node, args.scenario, args.cycles, utcnow()))
+    leftovers = stale_injections(args.base, args.project, args.token, args.node)
+    for f in leftovers:
+        print("  clearing a leftover injection from an earlier run: %s (%s, active)"
+              % (f.get("injection_id"), f.get("scenario")))
+        call(args.base, args.project, args.token, "POST",
+             "/v1/projects/%s/demo/faults/clear" % args.project,
+             {"injection_id": f.get("injection_id")})
     results = []
     for cycle in range(1, args.cycles + 1):
-        if cycle > 1:
+        if cycle > 1 or leftovers:
             settled = wait_for_settle(args.node, rule_id, args.db, args.settle,
                                       args.settle_wait)
             print("  console settle window: %s (>=%.0f s since the last audit)"
@@ -193,10 +210,20 @@ def do_run(args) -> int:
                              "target": args.target, "duration_s": args.duration})
         if status == 409:
             # The console's in-flight guard can outlive its settle window (a
-            # fired event with no audit yet). Wait it out once and retry: an
-            # injection refusal is not a decision outcome and must not be
-            # reported as one.
-            print("  HTTP 409 (remediation in flight) — waiting for settle, retrying once")
+            # fired event with no audit yet), and a leftover injection from a
+            # killed run blocks a new one outright. Neither is a decision
+            # outcome, so wait/clear and retry once instead of stopping.
+            details = (resp.get("error") or {}).get("details") or []
+            by_field = {d.get("field"): d.get("reason") for d in details
+                        if isinstance(d, dict)}
+            if by_field.get("node_id") == "fault_already_active":
+                injection_id = by_field.get("injection_id")
+                print("  HTTP 409 (a leftover injection is still active: %s) — clearing it"
+                      % injection_id)
+                call(args.base, args.project, args.token, "POST",
+                     "/v1/projects/%s/demo/faults/clear" % args.project,
+                     {"injection_id": injection_id})
+            print("  HTTP 409 — waiting for settle, retrying once")
             wait_for_settle(args.node, rule_id, args.db, args.settle, args.settle_wait)
             started = utcnow()
             status, resp = call(args.base, args.project, args.token, "POST",
