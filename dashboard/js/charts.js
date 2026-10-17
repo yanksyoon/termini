@@ -25,20 +25,33 @@ export class TimeSeriesChart {
     this.ctx = canvas.getContext("2d");
     this.group = null;
     this.hover = null;
+    // Selected point (t_ms) — set by a click, and the thing "Ask AI" attaches:
+    // a selected point is a specific claim about a specific sample, so the panel
+    // must be able to name it rather than attach "the chart".
+    this.selected = null;
+    this.onSelect = null;
     this.pad = { l: 56, r: 12, t: 12, b: 24 };
     this._onMove = (e) => this._pointer(e, true);
     this._onLeave = () => {
       this.hover = null;
       this.draw();
     };
+    this._onClick = (e) => this._click(e);
     canvas.addEventListener("mousemove", this._onMove);
     canvas.addEventListener("mouseleave", this._onLeave);
     canvas.addEventListener("touchmove", this._onMove, { passive: true });
     canvas.addEventListener("touchend", this._onLeave);
+    canvas.addEventListener("click", this._onClick);
   }
 
   setData(group) {
     this.group = group;
+    // A selection that no longer exists in the new window is dropped rather
+    // than left pointing at a sample the chart is no longer showing.
+    const bounds = this._bounds();
+    if (this.selected && bounds && (this.selected < bounds.tMin || this.selected > bounds.tMax)) {
+      this.selected = null;
+    }
     this.draw();
   }
 
@@ -47,6 +60,7 @@ export class TimeSeriesChart {
     this.canvas.removeEventListener("mouseleave", this._onLeave);
     this.canvas.removeEventListener("touchmove", this._onMove);
     this.canvas.removeEventListener("touchend", this._onLeave);
+    this.canvas.removeEventListener("click", this._onClick);
   }
 
   get colorOf() {
@@ -186,6 +200,28 @@ export class TimeSeriesChart {
       const rows = g.series.map((s, si) => ({ color: this.colorOf(si), label: s.label, value: nearest(s.points, tt) }));
       drawTooltip(ctx, hx, t, l + plotW, rows, g.unit);
     }
+
+    // selected point: the sample "Ask AI" will attach. Drawn under the hover
+    // crosshair so both can be visible at once.
+    if (this.selected) {
+      const sx = Math.min(Math.max(xOf(this.selected), l), l + plotW);
+      ctx.save();
+      ctx.strokeStyle = "rgba(90,200,250,0.9)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(sx, t);
+      ctx.lineTo(sx, t + plotH);
+      ctx.stroke();
+      for (const [si, s] of g.series.entries()) {
+        const p = nearestPoint(s.points, this.selected);
+        if (!p) continue;
+        ctx.fillStyle = this.colorOf(si);
+        ctx.beginPath();
+        ctx.arc(xOf(p.t), yOf(p.v), 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
     // thresholds: the line the telemetry crossed (drawn under the series)
     for (const th of g.thresholds || []) {
       if (!Number.isFinite(th.value)) continue;
@@ -248,10 +284,44 @@ export class TimeSeriesChart {
     this.hover = active ? { x } : null;
     this.draw();
   }
+
+  /**
+   * A click selects the nearest time in the plotted window (a real sample, not
+   * a pixel), then hands the selection to the panel so the "Ask AI" affordance
+   * can attach that point.
+   */
+  _click(e) {
+    const bounds = this._bounds();
+    if (!bounds) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const x = (e && e.clientX !== undefined ? e.clientX : 0) - rect.left;
+    const { l, r } = this.pad;
+    const plotW = Math.max(1, (this.canvas.clientWidth || 320) - l - r);
+    const ratio = Math.min(1, Math.max(0, (x - l) / plotW));
+    this.selected = Math.round(bounds.tMin + ratio * (bounds.tMax - bounds.tMin));
+    this.draw();
+    if (this.onSelect) this.onSelect({ t: this.selected, group: this.group });
+  }
+
+  /** The selected point's value per series, for the ask affordance's label. */
+  selectedValues() {
+    if (!this.selected || !this.group) return [];
+    return (this.group.series || [])
+      .map((s) => {
+        const p = nearestPoint(s.points, this.selected);
+        return p ? { name: s.name, label: s.label, t: p.t, v: p.v } : null;
+      })
+      .filter(Boolean);
+  }
 }
 
 function nearest(points, tt) {
-  if (!points.length) return null;
+  const p = nearestPoint(points, tt);
+  return p ? p.v : null;
+}
+
+function nearestPoint(points, tt) {
+  if (!points || !points.length) return null;
   let best = points[0];
   let bestD = Math.abs(best.t - tt);
   for (const p of points) {
@@ -261,7 +331,7 @@ function nearest(points, tt) {
       bestD = d;
     }
   }
-  return best.v;
+  return best;
 }
 
 /** Truncate a chart label so a long rationale never bleeds across the plot. */

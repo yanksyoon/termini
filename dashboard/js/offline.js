@@ -441,38 +441,112 @@ export class OfflineBackend {
   }
 
   /**
-   * Contract-shaped assistant responder (t_bfd2c2f7, controller-api.md §4.10).
+   * Contract-shaped assistant responder (t_bfd2c2f7, controller-api.md §4.10),
+   * wired to the dashboard chat panel (t_d1aa35c8).
+   *
    * Answers with citations from the offline fixtures and no controller, so
    * `?offline=1` demos the assistant surface without a live token — a feature
    * that only works against a live controller would break the projector demo.
+   * Every field the contract promises is present, and the response is marked
+   * `fixture: true` so the panel can label it: an offline answer is fixture
+   * data, never passed off as a model answer.
+   *
    * No execution is fabricated: `executed` and `proposed_actions` stay empty
-   * (the offline double has no guarded executor to run against).
+   * (the offline double has no guarded executor to run against), and a question
+   * that asks for one says so in `errors[]` rather than inventing a command_id.
    */
   async assistantAsk({ messages, context } = {}) {
-    const kind = context && context.kind ? context.kind : "none";
-    const id = context && context.id ? context.id : null;
+    const kind = (context && context.kind) || "none";
+    const id = (context && context.id) || null;
+    const question = Array.isArray(messages)
+      ? (messages.filter((m) => m && m.role === "user").pop() || {}).content || ""
+      : "";
+    const fixtures = this.operatorFixtures();
+    const byDecision = fixtures.find((r) => r.decision.id === id);
+    const byEvent = fixtures.find((r) => r.event.id === id);
+    const byAudit = fixtures.find((r) => r.audit.id === id);
+    const node = NODES.find((n) => n.node_id === id) || null;
+
+    let answer = "The offline fixtures do not carry that record, so I can't ground an answer in it.";
     let citations = [];
-    let answer = "I can't ground that against the offline fixtures.";
+    let errors = [];
+
     if (kind === "node" || kind === "metric") {
-      const node = NODES.find((n) => n.node_id === id) || NODES[0];
-      answer = `${node.registration_id} is ${node.role === "inference" ? "degraded" : "online"} in the offline demo (GPU pressure on the inference node).`;
-      citations = [{ kind, id: node.node_id, label: node.registration_id }];
+      const n = node || NODES[0];
+      const degraded = n.role === "inference";
+      answer =
+        `${n.registration_id} (${n.role}) is ${degraded ? "degraded — GPU pressure on the inference node" : "online"} ` +
+        `in the offline fixture fleet. Latest fixture sample: cpu ${round1(this._sample(n, Date.now()).cpu_util_pct)}%, ` +
+        `ram ${round1(ramUsedPct(Date.now(), this._seed(n.role), n.node_id.endsWith("B1E") ? 40 : 0))}% of total.`;
+      citations = [{ kind, id: n.node_id, label: n.registration_id }];
+    } else if (kind === "decision" && byDecision) {
+      const d = byDecision.decision;
+      answer =
+        `Decision ${d.id} on ${d.rule_id}: ${d.action_kind} (${d.decision_source}` +
+        `${d.fallback_reason ? `, fallback ${d.fallback_reason}` : ""}). ` +
+        `${d.reason} The fixture audit row records result "${byDecision.audit.result}".`;
+      citations = [
+        { kind: "decision", id: d.id, label: `${d.rule_id} → ${d.action_kind}` },
+        { kind: "node", id: d.node_id, label: d.node_id },
+        { kind: "audit", id: byDecision.audit.id, label: `audit ${byDecision.audit.result}` },
+      ];
+    } else if (kind === "incident" && byEvent) {
+      const e = byEvent.event;
+      answer =
+        `Incident ${e.id} on ${e.node_id}: rule ${e.rule_id} fired with ${e.metric} = ${e.value} ` +
+        `against "${e.threshold}". The fixture decision that answered it was ` +
+        `${byEvent.decision.action_kind} (${byEvent.decision.decision_source}).`;
+      citations = [
+        { kind: "incident", id: e.id, label: `${e.rule_id} on ${e.metric}` },
+        { kind: "decision", id: byEvent.decision.id, label: `${e.rule_id} → ${byEvent.decision.action_kind}` },
+      ];
+    } else if (kind === "audit" && byAudit) {
+      const a = byAudit.audit;
+      answer =
+        `Audit ${a.id}: ${a.action_kind} on ${a.node_id} returned "${a.result}" ` +
+        `(${a.detail}). It belongs to decision ${a.decision_id} for rule ${a.rule_id}.`;
+      citations = [
+        { kind: "audit", id: a.id, label: `${a.action_kind} · ${a.result}` },
+        { kind: "decision", id: a.decision_id, label: a.rule_id },
+      ];
+    } else if (kind === "remediation") {
+      answer =
+        `The offline fixtures hold no command ${id}. Pending remediations in the demo come from the ` +
+        "log stream, and the fixture assistant has no executor to act on one.";
+      citations = [];
     } else if (kind === "none") {
-      answer = `Three nodes are present: ${NODES.map((n) => n.registration_id).join(", ")}.`;
-    } else if (id) {
-      answer = `Offline demo: ${kind} ${id} is a fixture with no live controller behind it.`;
-      citations = [{ kind, id, label: `${kind} ${id}` }];
+      const model = fixtures.filter((r) => r.decision.decision_source === "model").length;
+      const fb = fixtures.filter((r) => r.decision.decision_source === "fallback").length;
+      answer =
+        `Offline fixture fleet: ${NODES.map((n) => n.registration_id).join(", ")}. ` +
+        `${fixtures.length} decisions are on record (${model} model, ${fb} fallback). ` +
+        "Ask about one of them, or attach a node, decision, incident or audit to ground the question.";
+      citations = NODES.map((n) => ({ kind: "node", id: n.node_id, label: n.registration_id }));
     }
+
+    // A question asking the assistant to DO something cannot be answered by
+    // this double: say that, out loud, instead of inventing an execution.
+    if (/\b(restart|reboot|stop|drain|delete|prune|execute|do it|fix it|apply)\b/i.test(question)) {
+      errors = [
+        {
+          reason: "offline_no_executor",
+          message:
+            "the offline demo has no guarded executor: nothing was run, and no command_id or audit_id exists for this answer",
+        },
+      ];
+    }
+
     return {
       answer,
       citations,
       executed: [],
       proposed_actions: [],
       model: "offline",
+      fixture: true,
       decided_by: "assistant",
-      elapsed_ms: 8,
+      elapsed_ms: 6,
       truncated: false,
-      errors: [],
+      errors,
     };
   }
 }

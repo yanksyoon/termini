@@ -124,6 +124,48 @@ admission — never entering `pending_approval` — and is recorded with
 `initiated_by: assistant` so it appears on the decision surface, not in this
 approval list.
 
+### AI assistant chat (`Ask AI`)
+
+The topbar's **Ask AI** button opens a docked panel (it shifts the page instead
+of covering the incident view on a laptop screen) for grounded questions about
+any incident, node, decision or action Termini took. The panel is reachable from
+every view and keeps a session message history.
+
+* **Seeding an element.** Every element that has records behind it carries its
+  own **Ask AI** affordance: an incident card, a decision row (including its
+  thinking log), a node card in Node health, a chart (and its selected point), a
+  pending remediation, and an audit row. Clicking one attaches that element's
+  structured context — `{kind, id}` from the frozen §4.10 enum — as a removable
+  chip (`incident · oom on the node · decision 01M5…0008`). The id travels as
+  DATA in the request body, never baked into the question prose, and the chip
+  survives follow-up questions until the reader removes it or attaches another
+  element. Suggested follow-ups are per element, not one generic wall.
+* **Citations.** Each citation the controller returns is a button that jumps to
+  the row, node or audit row it names; a citation pointing at a row outside the
+  fetched window says so rather than failing silently.
+* **Honest states.** A pending question renders as a status line with no answer
+  text; a `503 MODEL_UNAVAILABLE` or `422` renders as a typed error carrying the
+  controller's reason (and a Retry) — never a fabricated answer. When the
+  response carries `executed[]`, the panel renders what actually ran with its
+  `command_id` and `audit_id` and an **open audit row** link; an answer that
+  claims an execution without those ids is flagged as an unverified claim, and
+  an execution row missing either id is flagged as unattributed. Actions the
+  model proposed but did not run are labelled **proposed — not executed**.
+* **Offline demo (`?offline=1`).** `js/offline.js` implements the same contract
+  shape from bundled fixtures, so the projector demo shows the chat answering
+  with citations and no controller. Every offline answer is labelled **fixture
+  data — not a model answer, no controller behind it**, and offline questions
+  that ask the assistant to act say there is no executor instead of inventing a
+  `command_id`.
+* The panel does **not** soften the dashboard's honesty surfaces: the
+  degraded-backend banner, absent-not-zero values, trace provenance warnings and
+  synthetic/demo labels all render as before, and a chat that cannot reach the
+  controller is an error state, not the loudest thing on the page.
+
+Evidence for this surface (screenshots plus the live-controller probe) is under
+`dashboard/evidence/screenshots/t_d1aa35c8-*` and
+`dashboard/evidence/t_d1aa35c8-assistant-chat.md`.
+
 ### Empty / loading / error behaviour
 
 * Loading → skeleton cards; no data → explicit empty states ("No nodes

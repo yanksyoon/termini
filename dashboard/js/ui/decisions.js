@@ -463,10 +463,16 @@ export class DecisionsPanel {
             onclick: () => this.handlers.onChart && this.handlers.onChart(r),
           })
         : null,
+      this._askButton(r, "decision", "Ask AI", "ask about this decision"),
       el("span", { class: "decision-id muted", text: `decision ${shortId(r.id, 10, 4)}` }),
     ]);
 
-    return el("li", { class: `decision-row src-${meta.tone}`, dataset: { decisionId: r.id, source: r.source } }, [
+    return el("li", {
+      class: `decision-row src-${meta.tone}`,
+      // `data-event-id` / `data-node-id` give the chat's citations a row to jump
+      // to: an `incident` citation carries the health-event id (§4.10).
+      dataset: { decisionId: r.id, eventId: r.eventId || "", nodeId: r.nodeId || "", source: r.source },
+    }, [
       head,
       this._incidentCard(r),
       // A trace with no incident card to sit in (the model answered but returned
@@ -513,6 +519,7 @@ export class DecisionsPanel {
         ? el("span", { class: "incident-prov incident-prov-null", text: "incident_generated: NULL" })
         : el("span", { class: "incident-prov muted", text: `incident_generated: "${inc.generated}"` }),
       el("span", { class: "muted small incident-prov-note", text: meta.label }),
+      this._askButton(r, "incident", "Ask AI", "ask the assistant about this incident"),
     ]);
 
     const title = el("h3", {
@@ -645,6 +652,12 @@ export class DecisionsPanel {
           )
         : el("div", { class: "muted small", text: "the trace carries no steps" }),
       this._traceReply(r, t),
+      // The thinking log is its own element to ask about: the reader who has
+      // just expanded the ordered steps wants to question THOSE steps, and the
+      // decision id still travels as the attached context's id.
+      this._askButton(r, "decision", "Ask AI about this thinking log", "ask about these ordered steps", {
+        fromTrace: true,
+      }),
     ]);
 
     const alerts = this._traceAlerts(r, t);
@@ -916,7 +929,85 @@ export class DecisionsPanel {
         el("span", { text: ` · audit ${r.auditId ? shortId(r.auditId, 10, 4) : "not in the fetched window"}`, title: r.auditId || "" }),
       ]),
     );
+    if (r.auditId) {
+      // The audit ROW is an element the reader can question: attach `audit` +
+      // the audit id (§4.10 resolves that id to this row), not prose.
+      items.push(
+        el("li", { class: "inc-at" }, [
+          this._askAuditButton(r),
+        ]),
+      );
+    }
     return el("ul", { class: "inc-list inc-executed-list" }, items);
+  }
+
+  /**
+   * "Ask AI" on the rows this panel owns. The seeded context carries the id the
+   * CONTROLLER resolves for that kind (`incident` → health-event id, `decision`
+   * → decision id, `audit` → audit id) plus the decision the row was rendered
+   * from, so the chip can name the decision the reader actually clicked.
+   */
+  _askButton(r, kind, text, title, opts = {}) {
+    if (!this.handlers.onAskAi) return null;
+    return el("button", {
+      type: "button",
+      class: `${opts.fromTrace ? "linklike trace-ask" : "btn btn-sm btn-ask"}`,
+      text,
+      title,
+      dataset: { askAiKind: kind, decisionId: r.id },
+      onclick: () => this._ask(r, kind, opts),
+    });
+  }
+
+  _askAuditButton(r) {
+    if (!this.handlers.onAskAi || !r.auditId) return null;
+    return el("button", {
+      type: "button",
+      class: "linklike",
+      text: "Ask AI about this audit row",
+      title: `audit ${r.auditId}`,
+      dataset: { askAiKind: "audit", auditId: r.auditId },
+      onclick: () => this._ask(r, "audit"),
+    });
+  }
+
+  _ask(r, kind, opts = {}) {
+    const h = this.handlers.onAskAi;
+    if (!h) return;
+    const nodeMeta = { nodeId: r.nodeId || undefined, ruleId: r.ruleId || undefined, decisionId: r.id };
+    if (kind === "incident" && r.eventId) {
+      const title = (r.incident && r.incident.title) || `${r.ruleId} on ${r.nodeId}`;
+      h({
+        kind: "incident",
+        // §4.10 resolves `incident` to a health_events id — the decision that
+        // rendered this card travels as data, never as the resolvable id.
+        id: r.eventId,
+        label: title,
+        summary: `incident · ${title} · decision ${shortId(r.id, 10, 4)}`,
+        meta: { ...nodeMeta, eventId: r.eventId, auditId: r.auditId || undefined, actionKind: r.actionKind },
+      });
+      return;
+    }
+    if (kind === "audit") {
+      h({
+        kind: "audit",
+        id: r.auditId,
+        label: `${r.actionKind || "action"} · ${(r.execution && r.execution.result) || "result unknown"}`,
+        summary: `audit · ${r.actionKind || "action"} on ${r.nodeId} · audit ${shortId(r.auditId, 10, 4)}`,
+        meta: { ...nodeMeta, auditId: r.auditId },
+      });
+      return;
+    }
+    // decision — including the thinking log, which is that decision's own trace.
+    h({
+      kind: "decision",
+      id: r.id,
+      label: `${r.ruleId || "decision"} → ${r.actionKind || "no action"}`,
+      summary: opts.fromTrace
+        ? `decision trace · ${r.ruleId || "decision"} · decision ${shortId(r.id, 10, 4)}`
+        : `decision · ${r.ruleId || "decision"} · ${shortId(r.id, 10, 4)}`,
+      meta: { ...nodeMeta, eventId: r.eventId || undefined, auditId: r.auditId || undefined },
+    });
   }
 
   _resultBadge(r) {

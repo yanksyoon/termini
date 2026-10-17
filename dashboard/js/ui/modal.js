@@ -26,7 +26,7 @@ function shell(title, bodyNodes, confirmLabel, danger) {
  * Used by the decisions panel to show an audit record or the telemetry sample
  * that fired a decision — so a viewer can check the pixels against the API.
  */
-export function detailDialog({ title, subtitle = null, rows = [], json = null, url = null }) {
+export function detailDialog({ title, subtitle = null, rows = [], json = null, url = null, actions = [] }) {
   const dialog = el("dialog", { class: "dialog detail-dialog" });
   const form = el("form", { method: "dialog", class: "dlg-form" });
   form.appendChild(el("h3", { text: title }));
@@ -52,6 +52,25 @@ export function detailDialog({ title, subtitle = null, rows = [], json = null, u
     form.appendChild(el("pre", { class: "json", text: typeof json === "string" ? json : JSON.stringify(json, null, 2) }));
   }
   const row = el("div", { class: "btn-row" });
+  // Extra actions the caller wants next to Close (e.g. "Ask AI about this audit
+  // row"), so the row a reader is looking at can be attached to the chat.
+  for (const a of Array.isArray(actions) ? actions : []) {
+    if (!a || !a.label) continue;
+    const btn = el("button", {
+      class: `btn ${a.primary ? "btn-primary" : ""}`.trim(),
+      type: "button",
+      text: a.label,
+      title: a.title || a.label,
+    });
+    btn.addEventListener("click", () => {
+      try {
+        if (a.onClick) a.onClick();
+      } finally {
+        finish();
+      }
+    });
+    row.appendChild(btn);
+  }
   const copy = el("button", { class: "btn", type: "button", text: "Copy JSON" });
   const close = el("button", { class: "btn btn-primary", type: "button", text: "Close" });
   row.append(copy, close);
