@@ -401,6 +401,51 @@ advertise the address placement should use. The seed's `8443` cluster-admin trus
 cert is distinct from this per-node placement path. Member health is folded into
 node telemetry.
 
+### 6.4 Controller trust on every node (required in the raise path)
+
+The controller owns **one** LXD client identity (`app/lxdtrust.py`, minted once at
+`<db_dir>/lxd-client/` and reused across restarts). Each node authenticates it
+against its **own** trust store (`lxc config trust list`), so the identity must be
+installed on every node the planner may resolve to. The failure signature is
+specific and easy to mistake for reachability:
+
+```
+GET /1.0           -> 200     (the node is up and speaking LXD)
+GET /1.0/instances -> 403     (this controller's certificate is not trusted)
+```
+
+An untrusted node is not a placement failure the guardrail can see: a plan with an
+explicit `target_node` (or `auto` resolving there) is accepted, then **applies to
+`state: failed` with no `vm_id` and releases its capacity**. This was found live on
+node-c (task `t_d31b8e02`): trust had been installed on node-a by hand, so the
+fleet was not uniformly addressable and node-c's 8 vCPU / 29 GiB could not be
+materialised on.
+
+Since a recreated instance replaces its boot disk, its trust store comes back
+**empty** — so the install is part of the **raise** path, not a one-off:
+
+```bash
+infra/gcp/tools/install-lxd-trust.sh --node a --node c     # idempotent; probes first
+infra/gcp/tools/install-lxd-trust.sh --node b              # when node-b is raised again
+```
+
+`tools/raise-standing-fleet.sh --raise` runs this for every node it raises
+(`--no-trust-install` opts out, `--trust-timeout` bounds the wait). The node half
+is the node's own `termini-bootstrap mint-trust-token` (a one-time
+certificate-add trust token written 0600 to `/var/lib/termini/lxd-trust-token`);
+the controller half is `python3 -m app.lxdtrust trust --node … --token …`, which
+consumes it as `password` in `POST /1.0/certificates`. Both halves are idempotent:
+the flow probes `GET /1.0/instances` first and a node that already answers 200 is
+left untouched. The trust entry this produces is named `termini-controller`, and
+its fingerprint equals `python3 -m app.lxdtrust cert`'s `fingerprint=` value on
+the controller — on every node, which is the cheap invariant to check fleet-wide.
+
+**Node B carries the same omission by construction.** It is TERMINATED today (the
+project's `CPUS_ALL_REGIONS` is 12, consumed exactly by controller(2) + node-a(2) +
+node-c(8)), so it has never had the trust installed. When it is raised it must get
+this step too; `install-lxd-trust.sh --node b` already addresses it, which is why
+the step lives in the raise path rather than in a per-node manual note.
+
 ---
 
 ## 7. SSH key injection and host-key pinning
