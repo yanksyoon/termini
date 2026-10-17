@@ -1,0 +1,14 @@
+$ gcloud compute ssh termini-day0 --zone=asia-south1-a --quiet --command="date -u +%H:%M:%SZ; sudo lxc launch agent-vm/2026.10.0 demo-workload 2>&1 | tail -2; date -u +%H:%M:%SZ; sudo lxc list --format=csv -c ns4"
+# captured 2026-10-17T22:59:42Z
+
+External IP address was not found; defaulting to using IAP tunneling.
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+22:59:48Z
+Launching demo-workload
+Error: Instance "demo-workload" already exists
+22:59:50Z
+demo-workload,RUNNING,10.49.240.96 (eth0)

@@ -1,0 +1,9 @@
+$ date -u +%Y-%m-%dT%H:%M:%SZ; gcloud compute instances create termini-day0 --zone=asia-south1-a --machine-type=e2-standard-2 --image-family=termini-node-os --boot-disk-size=20GB --network=termini-vpc --subnet=termini-underlay --private-network-ip=10.10.0.14 --no-address --tags=termini-node --metadata-from-file=user-data=/tmp/day0-cloud-init.yaml --quiet; date -u +%Y-%m-%dT%H:%M:%SZ
+# captured 2026-10-17T22:57:45Z
+
+2026-10-17T22:57:45Z
+WARNING: You have selected a disk size of under [200GB]. This may result in poor I/O performance. For more information, see: https://developers.google.com/compute/docs/disks#performance.
+ERROR: (gcloud.compute.instances.create) Could not fetch resource:
+ - The resource 'projects/termini-510609/zones/asia-south1-a/instances/termini-day0' already exists
+
+2026-10-17T22:57:48Z
