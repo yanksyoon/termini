@@ -781,9 +781,16 @@ class DashboardIntegrationTest(unittest.TestCase):
         http("POST", f"/v1/projects/{self.project_id}/nodes/{self.node_a['node_id']}/actions/reboot",
              {"delay_s": 0}, token="dash-project-token", port=PORT)
         seen = []
-        deadline = time.time() + 4
+        # Poll to a generous deadline rather than trusting a single 2 s socket
+        # timeout: the frames are published by the server's broker pump (0.5 s
+        # poll), and on a loaded CI runner that pump can stall for a few seconds.
+        # A transient socket timeout means "not yet", not "never" — keep waiting.
+        deadline = time.time() + 10
         while time.time() < deadline:
-            msg = ws.recv_message(timeout=2.0)
+            try:
+                msg = ws.recv_message(timeout=2.0)
+            except TimeoutError:
+                continue
             if msg is None:
                 break
             seen.append(msg)
