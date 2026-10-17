@@ -1,0 +1,3 @@
+$ gcloud compute ssh termini-controller --zone=asia-south1-a --quiet --command="sudo journalctl -u termini-controller --no-pager -o short-iso | grep -E 'LXD trust' | tail -5"
+# captured 2026-10-17T22:58:02Z
+
