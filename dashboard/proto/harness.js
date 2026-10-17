@@ -11,14 +11,18 @@
  *   - switching re-mounts the variant so its entrance animations re-run, and R
  *     re-mounts without switching.
  *
- * HOW THE THREE VARIANTS ARE MOUNTED. The dashboard is one dependency-free
+ * HOW THE VARIANTS ARE MOUNTED. The dashboard is one dependency-free
  * static bundle whose modules bind to the ids in the markup at load. Re-creating
  * the markup would boot a second app (second poll timer, second log stream) and
  * would make "no behaviour lost" a story instead of a fact. So the prototype
  * page carries the SAME markup and boots the SAME unmodified modules once, and a
- * variant is a design layer: its stylesheet plus (only where an axis needs it,
- * and here: nowhere) its own additive module. Swap = toggle one stylesheet and
- * one `data-variant` attribute, so every behaviour is present in every variant by
+ * variant is a design layer: its stylesheet plus — only where an axis cannot be
+ * expressed in CSS — its own additive module. Console, Briefing and Instrument
+ * are stylesheets alone. Variant 4 ("Overview") also needs an information
+ * architecture, so its module rearranges the shipped nodes into three
+ * destinations and puts them back on the way out; it is told to do so by the
+ * `proto:variant-change` event fired below. Swap = toggle one stylesheet and one
+ * `data-variant` attribute, so every behaviour is present in every variant by
  * construction. What the owner compares is the design, not the feature set —
  * which is what the brief asked for.
  */
@@ -40,6 +44,13 @@ const VARIANTS = [
     name: "Instrument",
     axis: "personality & motion — light precision, one electric accent, expressive sub-300ms motion",
     short: "light precision + motion",
+  },
+  {
+    id: "hig",
+    name: "Overview",
+    axis:
+      "information architecture & platform convention — three destinations, master–detail records, semantic tokens, light and dark",
+    short: "three destinations, HIG",
   },
 ];
 
@@ -91,6 +102,7 @@ function replay() {
 
 function setActive(i, { replayEntrance = true } = {}) {
   if (i < 0 || i >= VARIANTS.length) return;
+  const previous = VARIANTS[current];
   current = i;
   const v = VARIANTS[i];
 
@@ -123,6 +135,14 @@ function setActive(i, { replayEntrance = true } = {}) {
   history.replaceState(null, "", url);
 
   if (replayEntrance) replay();
+
+  // A variant is a design layer. Three are CSS only; the fourth is an additive
+  // module that rearranges the shipped nodes (three destinations, master-detail)
+  // and must be told when to mount and to put the page back. Announced after the
+  // stylesheet is on, so the module never builds against a half-applied layer.
+  window.dispatchEvent(
+    new CustomEvent("proto:variant-change", { detail: { variant: v.id, previous: previous ? previous.id : null } }),
+  );
 }
 
 items.forEach((el, i) => el.addEventListener("click", () => setActive(i)));

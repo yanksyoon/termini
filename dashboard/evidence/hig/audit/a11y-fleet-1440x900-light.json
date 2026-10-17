@@ -1,0 +1,25 @@
+{
+  "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=fleet",
+  "variant": "hig",
+  "destination": "fleet",
+  "rulesChecked": [
+    "html-has-lang",
+    "document-title",
+    "aria-hidden-body",
+    "duplicate-id-aria",
+    "button-name",
+    "link-name",
+    "select-name",
+    "label",
+    "image-alt",
+    "aria-roles",
+    "aria-required-attr",
+    "aria-required-parent",
+    "aria-required-children",
+    "nested-interactive",
+    "color-contrast"
+  ],
+  "violations": [],
+  "critical": 0,
+  "serious": 0
+}

@@ -1,0 +1,599 @@
+{
+  "browser": "Chrome/145.0.7632.6",
+  "base": "http://127.0.0.1:8110",
+  "cases": [
+    {
+      "destination": "fleet",
+      "size": "1440x900",
+      "appearance": "dark",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=fleet",
+      "screenshot": "shots/01-fleet-1440x900-dark.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 1440,
+        "clientWidth": 1440,
+        "scrollHeight": 900,
+        "clientHeight": 900
+      },
+      "chromeControls": 13,
+      "contentControls": 22,
+      "controls": 33,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 59,
+        "13": 46,
+        "15": 27,
+        "22": 2
+      },
+      "fontWeights": {
+        "400": 86,
+        "600": 48
+      },
+      "textColours": 8,
+      "contrastChecked": 134,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "incidents",
+      "size": "1440x900",
+      "appearance": "dark",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=incidents",
+      "screenshot": "shots/02-incidents-1440x900-dark.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 1440,
+        "clientWidth": 1440,
+        "scrollHeight": 900,
+        "clientHeight": 900
+      },
+      "chromeControls": 9,
+      "contentControls": 16,
+      "controls": 22,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 95,
+        "13": 77,
+        "15": 8,
+        "22": 2
+      },
+      "fontWeights": {
+        "400": 154,
+        "600": 28
+      },
+      "textColours": 7,
+      "contrastChecked": 182,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "settings",
+      "size": "1440x900",
+      "appearance": "dark",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=settings",
+      "screenshot": "shots/03-settings-1440x900-dark.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 1440,
+        "clientWidth": 1440,
+        "scrollHeight": 900,
+        "clientHeight": 900
+      },
+      "chromeControls": 6,
+      "contentControls": 14,
+      "controls": 19,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 13,
+        "13": 14,
+        "15": 16,
+        "22": 1
+      },
+      "fontWeights": {
+        "400": 33,
+        "600": 11
+      },
+      "textColours": 4,
+      "contrastChecked": 44,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "fleet",
+      "size": "1440x900",
+      "appearance": "light",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=fleet",
+      "screenshot": "shots/04-fleet-1440x900-light.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 1440,
+        "clientWidth": 1440,
+        "scrollHeight": 900,
+        "clientHeight": 900
+      },
+      "chromeControls": 13,
+      "contentControls": 22,
+      "controls": 33,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 59,
+        "13": 46,
+        "15": 27,
+        "22": 2
+      },
+      "fontWeights": {
+        "400": 86,
+        "600": 48
+      },
+      "textColours": 8,
+      "contrastChecked": 134,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "incidents",
+      "size": "1440x900",
+      "appearance": "light",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=incidents",
+      "screenshot": "shots/05-incidents-1440x900-light.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 1440,
+        "clientWidth": 1440,
+        "scrollHeight": 900,
+        "clientHeight": 900
+      },
+      "chromeControls": 9,
+      "contentControls": 16,
+      "controls": 22,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 95,
+        "13": 77,
+        "15": 8,
+        "22": 2
+      },
+      "fontWeights": {
+        "400": 154,
+        "600": 28
+      },
+      "textColours": 7,
+      "contrastChecked": 182,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "settings",
+      "size": "1440x900",
+      "appearance": "light",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=settings",
+      "screenshot": "shots/06-settings-1440x900-light.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 1440,
+        "clientWidth": 1440,
+        "scrollHeight": 900,
+        "clientHeight": 900
+      },
+      "chromeControls": 6,
+      "contentControls": 14,
+      "controls": 19,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 13,
+        "13": 14,
+        "15": 16,
+        "22": 1
+      },
+      "fontWeights": {
+        "400": 33,
+        "600": 11
+      },
+      "textColours": 4,
+      "contrastChecked": 44,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "fleet",
+      "size": "390x844",
+      "appearance": "dark",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=fleet",
+      "screenshot": "shots/07-fleet-390x844-dark.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "scrollHeight": 844,
+        "clientHeight": 844
+      },
+      "chromeControls": 6,
+      "contentControls": 6,
+      "controls": 17,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 23,
+        "13": 16,
+        "15": 8
+      },
+      "fontWeights": {
+        "400": 41,
+        "600": 6
+      },
+      "textColours": 5,
+      "contrastChecked": 47,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "incidents",
+      "size": "390x844",
+      "appearance": "dark",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=incidents",
+      "screenshot": "shots/08-incidents-390x844-dark.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "scrollHeight": 844,
+        "clientHeight": 844
+      },
+      "chromeControls": 9,
+      "contentControls": 9,
+      "controls": 15,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 36,
+        "13": 30,
+        "15": 4
+      },
+      "fontWeights": {
+        "400": 48,
+        "600": 22
+      },
+      "textColours": 6,
+      "contrastChecked": 70,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "settings",
+      "size": "390x844",
+      "appearance": "dark",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=settings",
+      "screenshot": "shots/09-settings-390x844-dark.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "scrollHeight": 844,
+        "clientHeight": 844
+      },
+      "chromeControls": 6,
+      "contentControls": 14,
+      "controls": 19,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 13,
+        "13": 16,
+        "15": 13
+      },
+      "fontWeights": {
+        "400": 32,
+        "600": 10
+      },
+      "textColours": 4,
+      "contrastChecked": 42,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "fleet",
+      "size": "390x844",
+      "appearance": "light",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=fleet",
+      "screenshot": "shots/10-fleet-390x844-light.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "scrollHeight": 844,
+        "clientHeight": 844
+      },
+      "chromeControls": 6,
+      "contentControls": 6,
+      "controls": 17,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 23,
+        "13": 16,
+        "15": 8
+      },
+      "fontWeights": {
+        "400": 41,
+        "600": 6
+      },
+      "textColours": 5,
+      "contrastChecked": 47,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "incidents",
+      "size": "390x844",
+      "appearance": "light",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=incidents",
+      "screenshot": "shots/11-incidents-390x844-light.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "scrollHeight": 844,
+        "clientHeight": 844
+      },
+      "chromeControls": 9,
+      "contentControls": 9,
+      "controls": 15,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 36,
+        "13": 30,
+        "15": 4
+      },
+      "fontWeights": {
+        "400": 48,
+        "600": 22
+      },
+      "textColours": 6,
+      "contrastChecked": 70,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    },
+    {
+      "destination": "settings",
+      "size": "390x844",
+      "appearance": "light",
+      "url": "http://127.0.0.1:8110/proto/?v=4&offline=1&dest=settings",
+      "screenshot": "shots/12-settings-390x844-light.png",
+      "horizontalOverflow": false,
+      "doc": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "scrollHeight": 844,
+        "clientHeight": 844
+      },
+      "chromeControls": 6,
+      "contentControls": 14,
+      "controls": 19,
+      "under44": 0,
+      "unlabelledIconOnly": 0,
+      "fieldsUnnamed": 0,
+      "fontSizes": {
+        "11": 13,
+        "13": 16,
+        "15": 13
+      },
+      "fontWeights": {
+        "400": 32,
+        "600": 10
+      },
+      "textColours": 4,
+      "contrastChecked": 42,
+      "contrastBelowTarget": 0,
+      "a11yCritical": 0,
+      "a11ySerious": 0,
+      "a11yRules": 15
+    }
+  ],
+  "a11y": [],
+  "walkthrough": [
+    {
+      "step": 1,
+      "action": "Tab from the address bar to the Incidents destination",
+      "result": {
+        "focusOrder": [
+          {
+            "tag": "BUTTON",
+            "cls": "proto-picker-item",
+            "label": "Console",
+            "role": null
+          },
+          {
+            "tag": "BUTTON",
+            "cls": "proto-picker-item",
+            "label": "Briefing",
+            "role": null
+          },
+          {
+            "tag": "BUTTON",
+            "cls": "proto-picker-item",
+            "label": "Instrument",
+            "role": null
+          },
+          {
+            "tag": "BUTTON",
+            "cls": "proto-picker-item",
+            "label": "Overview",
+            "role": null
+          },
+          {
+            "tag": "BUTTON",
+            "cls": "proto-picker-item proto-picker-replay",
+            "label": "Replay animation (R)",
+            "role": null
+          },
+          {
+            "tag": "BUTTON",
+            "cls": "hig-nav-item hig-on",
+            "label": "Fleet",
+            "role": null
+          },
+          {
+            "tag": "BUTTON",
+            "cls": "hig-nav-item",
+            "label": "Incidents",
+            "role": null
+          }
+        ],
+        "incidentsFocused": true,
+        "tabs": 7
+      },
+      "note": "every stop is a control the operator can reach with Tab alone",
+      "ok": true
+    },
+    {
+      "step": 2,
+      "action": "Enter on the Incidents destination",
+      "result": {
+        "dest": "incidents",
+        "title": "Incidents",
+        "focus": {
+          "tag": "BUTTON",
+          "cls": "hig-nav-item hig-on",
+          "label": "Incidents",
+          "role": null
+        }
+      },
+      "note": "destination reached without a pointer",
+      "ok": true
+    },
+    {
+      "step": 3,
+      "action": "Arrow keys in the incident list",
+      "result": {
+        "focusedListRow": true,
+        "tabsToList": 9,
+        "first": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000020",
+        "down1": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+        "down2": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000080",
+        "up1": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+        "detailBefore": "ai-generated incident\nincident_generated: \"model\"\nAI model\nAsk AI\nDisk write latency on /dev/sda\n\nwrite_latency_ms on /dev/sda reached 120 ms against a 50 ms th",
+        "detailAfterDown1": "",
+        "detailAfterUp1": ""
+      },
+      "note": "selection and the detail pane move together",
+      "ok": true
+    },
+    {
+      "step": 4,
+      "action": "Enter on Operator log, then Escape",
+      "result": {
+        "focusedLogButton": true,
+        "opened": true,
+        "closed": true,
+        "focusReturned": true,
+        "focusAfter": {
+          "tag": "BUTTON",
+          "cls": "hig-btn",
+          "label": "Operator log",
+          "role": null
+        }
+      },
+      "note": "the sheet is a native dialog: Escape dismisses it and focus returns to the control that opened it",
+      "ok": true
+    },
+    {
+      "step": 5,
+      "action": "Enter on the Settings destination",
+      "result": {
+        "dest": "settings",
+        "title": "Settings",
+        "focus": {
+          "tag": "BUTTON",
+          "cls": "hig-seg-item hig-on",
+          "label": "System",
+          "role": null
+        }
+      },
+      "note": "three destinations, three keyboard stops",
+      "ok": true
+    }
+  ],
+  "variantSwitch": {
+    "onHig": {
+      "variant": "hig",
+      "higNodes": 101,
+      "marked": 9,
+      "ids": 110,
+      "nodeCards": 3,
+      "cardButtons": 15,
+      "menus": 6,
+      "decisionRows": 6,
+      "logInSheet": true,
+      "roleOptions": 6
+    },
+    "onConsole": {
+      "variant": "console",
+      "higNodes": 5,
+      "marked": 0,
+      "ids": 83,
+      "nodeCards": 3,
+      "cardButtons": 12,
+      "menus": 0,
+      "decisionRows": 6,
+      "logInSheet": false,
+      "roleOptions": 0
+    },
+    "backOnHig": {
+      "variant": "hig",
+      "higNodes": 106,
+      "marked": 9,
+      "ids": 100,
+      "nodeCards": 3,
+      "cardButtons": 15,
+      "menus": 6,
+      "decisionRows": 6,
+      "logInSheet": true,
+      "roleOptions": 6
+    }
+  },
+  "acceptance": {
+    "cases": true,
+    "keyboardWalkthrough": true,
+    "pass": true
+  }
+}

@@ -1,0 +1,123 @@
+[
+  {
+    "step": 1,
+    "action": "Tab from the address bar to the Incidents destination",
+    "result": {
+      "focusOrder": [
+        {
+          "tag": "BUTTON",
+          "cls": "proto-picker-item",
+          "label": "Console",
+          "role": null
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "proto-picker-item",
+          "label": "Briefing",
+          "role": null
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "proto-picker-item",
+          "label": "Instrument",
+          "role": null
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "proto-picker-item",
+          "label": "Overview",
+          "role": null
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "proto-picker-item proto-picker-replay",
+          "label": "Replay animation (R)",
+          "role": null
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "hig-nav-item hig-on",
+          "label": "Fleet",
+          "role": null
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "hig-nav-item",
+          "label": "Incidents",
+          "role": null
+        }
+      ],
+      "incidentsFocused": true,
+      "tabs": 7
+    },
+    "note": "every stop is a control the operator can reach with Tab alone",
+    "ok": true
+  },
+  {
+    "step": 2,
+    "action": "Enter on the Incidents destination",
+    "result": {
+      "dest": "incidents",
+      "title": "Incidents",
+      "focus": {
+        "tag": "BUTTON",
+        "cls": "hig-nav-item hig-on",
+        "label": "Incidents",
+        "role": null
+      }
+    },
+    "note": "destination reached without a pointer",
+    "ok": true
+  },
+  {
+    "step": 3,
+    "action": "Arrow keys in the incident list",
+    "result": {
+      "focusedListRow": true,
+      "tabsToList": 9,
+      "first": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000020",
+      "down1": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+      "down2": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000080",
+      "up1": "01H4KZ9Q2R3T5V7W9X1Y3Z5A7B9C000050",
+      "detailBefore": "ai-generated incident\nincident_generated: \"model\"\nAI model\nAsk AI\nDisk write latency on /dev/sda\n\nwrite_latency_ms on /dev/sda reached 120 ms against a 50 ms th",
+      "detailAfterDown1": "",
+      "detailAfterUp1": ""
+    },
+    "note": "selection and the detail pane move together",
+    "ok": true
+  },
+  {
+    "step": 4,
+    "action": "Enter on Operator log, then Escape",
+    "result": {
+      "focusedLogButton": true,
+      "opened": true,
+      "closed": true,
+      "focusReturned": true,
+      "focusAfter": {
+        "tag": "BUTTON",
+        "cls": "hig-btn",
+        "label": "Operator log",
+        "role": null
+      }
+    },
+    "note": "the sheet is a native dialog: Escape dismisses it and focus returns to the control that opened it",
+    "ok": true
+  },
+  {
+    "step": 5,
+    "action": "Enter on the Settings destination",
+    "result": {
+      "dest": "settings",
+      "title": "Settings",
+      "focus": {
+        "tag": "BUTTON",
+        "cls": "hig-seg-item hig-on",
+        "label": "System",
+        "role": null
+      }
+    },
+    "note": "three destinations, three keyboard stops",
+    "ok": true
+  }
+]
