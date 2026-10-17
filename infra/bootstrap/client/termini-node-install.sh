@@ -307,7 +307,15 @@ fi
 systemctl daemon-reload
 systemctl enable termini-bootstrap.service >/dev/null 2>&1 \
   || note "could not enable termini-bootstrap.service (continuing)"
-systemctl restart termini-bootstrap.service
+# --no-block on purpose. The unit is Type=notify with TimeoutStartSec=infinity,
+# so a BLOCKING restart returns only once the daemon has sent READY=1 — which it
+# deliberately never does on a terminal enrollment failure (rejected credential,
+# already-used credential, unreachable controller). A blocking restart therefore
+# hung the installer on exactly the three failure paths it exists to report
+# (found on the live verification, task t_7a98a110; fixed here). Readiness is
+# established below, against the controller's acknowledgement, not against
+# systemd's start job.
+systemctl restart --no-block termini-bootstrap.service
 note "termini-bootstrap.service started; waiting up to ${WAIT_SECONDS}s for the controller to acknowledge the registration"
 
 # ------------------------------------------------------------------ 6. confirm

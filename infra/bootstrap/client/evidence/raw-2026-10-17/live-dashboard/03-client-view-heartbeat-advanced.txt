@@ -1,0 +1,10 @@
+frame: 03-client-view-heartbeat-advanced.png
+url: https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB
+endpoint: https://34-93-190-64.sslip.io/v1/nodes/01M4TGD31WXH97JAA5S6A4R10D/telemetry/recent
+sessionStorage keys: ['termini.dashboard.node']
+navigations (performance.getEntriesByType('navigation').length): 1
+
+before (t+0s):  registered · online   last sample 3s ago   HEARTBEAT seq 28276  2026-10-17T04:34:43Z  CPU 0%
+after  (t+8s):  registered · online   last sample 3s ago   HEARTBEAT seq 28279  2026-10-17T04:34:53Z  CPU 100%
+
+=> the panel re-reads the node and re-renders in place; no page load happened.

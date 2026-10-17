@@ -14,7 +14,7 @@ controller's project token. Self-service enrollment (option b) is out of scope.
 | Consolidated | task `t_5ed0e1a3` (branch `wt/t_5ed0e1a3-consolidate`): the harness teardown fix below, the stale rows in this doc, and the one assumption it left open (§5.5) |
 | Harness | `infra/bootstrap/client/verify-client-install.sh` — hermetic: a **real controller process** + the **real node daemon**, loopback, no root, no systemd, no cloud spend; 28 checks (~28 s on a warm host), including the script's own teardown guard |
 | Raw transcript | `harness-run.txt` (verbatim) |
-| Live (GCP) half | **NOT RUN — awaiting an approved live window.** The standing fleet is stopped by the operator's cost decision and the public controller URL currently answers `000`. Recipe: §6; the independent live re-run is task `t_7a98a110` (verifier). |
+| Live half | **RUN on 2026-10-17** on the live fleet (controller + node-a/node-c): the documented one-liner on a fresh machine, the client's own view, the re-run, the three failure paths, the guardrail greps, and the off-host mint refusal — see [`client-install-2026-10-17.md`](client-install-2026-10-17.md) and its `raw-2026-10-17/`. That run also found and fixed a real defect in this flow (`systemctl restart` without `--no-block` hung the installer on every failure path). §6 below is kept as the historical recipe, superseded by that document. |
 
 ## 1. What now exists
 

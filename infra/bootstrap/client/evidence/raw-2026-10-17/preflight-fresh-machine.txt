@@ -1,0 +1,19 @@
+--- /etc/termini ---
+total 28
+drwxr-xr-x   2 root  root  4096 Oct  4 10:42 .
+drwxr-xr-x 107 root  root  4096 Oct 17 03:53 ..
+-rw-r--r--   1 root  root    53 Oct  4 10:42 agent-image
+-rw-r--r--   1 root  root    20 Oct  4 10:42 agent-image.digest
+-rw-r--r--   1 root  root   881 Oct  4 10:42 agent.yaml
+-rw-r--r--   1 root  root   881 Oct  4 10:42 agent.yaml.example
+-rw-------   1 agent agent    0 Oct  4 10:42 inference.token
+-rw-r--r--   1 root  root   186 Oct  4 10:34 runtime.txt
+--- /var/lib/termini ---
+total 16
+drwxr-xr-x  3 root root 4096 Oct  4 10:43 .
+drwxr-xr-x 41 root root 4096 Oct  4 10:42 ..
+-rw-r--r--  1 root root   93 Oct  4 10:43 .baked-offline
+drwxr-xr-x  3 root root 4096 Oct  4 10:42 agent
+--- grep project-token value (expect 0) ---
+--- grep demo-b (expect 0) ---
+clean-state-check-done
