@@ -1,0 +1,13 @@
+External IP address was not found; defaulting to using IAP tunneling.
+WARNING: 
+
+To increase the performance of the tunnel, consider installing NumPy. For instructions,
+please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
+
+2026-10-17T18:24:17Z
+demo-workload,RUNNING,10.174.247.148 (eth0)
+termini-01m4wjhwqr3b8pcav2tvqbgg-0-0,RUNNING,10.174.247.141 (eth0)
+termini-01m4wjhwqr3b8pcav2tvqbgg-0-1,RUNNING,10.174.247.215 (eth0)
+termini-01m55dz5fzksstj3fkf91n5hae-0-0,RUNNING,10.174.247.102 (eth0)
+termini-01m537g26sm8qgkmztn8stbt-0-0,STOPPED,
+termini-01m537km0trb189a6e1gz546-0-0,RUNNING,10.174.247.138 (eth0)
