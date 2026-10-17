@@ -111,7 +111,7 @@ if [ "\$WINDOW_MODE" != "skip" ]; then
       4) echo "[remote] ABORTED (exit 4): no live window is claimed for \$ACTOR." >&2
          echo "[remote]   Take one first:" >&2
          echo "[remote]     infra/gcp/tools/live-window.sh take --owner \$ACTOR --ttl 45m --purpose '...'" >&2
-         echo "[remote]   (\`--no-window\` exists for repo bootstrap only.)" >&2
+         echo "[remote]   (--no-window exists for repo bootstrap only.)" >&2
          exit 4 ;;
       *) echo "[remote] ABORTED (exit 6): live-window check failed rc=\$WRC" >&2; exit 6 ;;
     esac
