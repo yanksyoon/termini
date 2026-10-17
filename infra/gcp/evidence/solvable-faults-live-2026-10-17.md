@@ -233,8 +233,14 @@ raw `HTTP 404` audit row *after* the fix landed:
 signature, and it is **not** explained by the currently deployed tree (which
 contains the fail-closed probe, and whose 18:41/18:44 runs behave correctly); the
 controller process that served 16:32Z started before the current one (18:18:06Z).
-It is flagged as a follow-up (see §4, finding 2) rather than quietly excluded,
-because "the raw 404 cannot recur" is this card's whole claim.
+It was flagged as a follow-up (see §4, finding 2) rather than quietly excluded,
+because "the raw 404 cannot recur" is this card's whole claim. **Resolved by card
+t_2f4b5ffe** (`post-fix-raw-404-2026-10-17.md`): the row was served by the
+post-fix tree `8d7ac5a` itself, through the *unverified-probe* path — node-a's LXD
+could not answer the existence probe at 16:32Z (`instance inventory unreadable`,
+operator 27.56 s behind), the write was issued by design, and LXD answered 404.
+Future rows of that shape now carry `reason=target_unverified` instead of the raw
+LXD body.
 
 ## 4. Findings this run produced (follow-up cards, not fixed here)
 
@@ -252,6 +258,10 @@ because "the raw 404 cannot recur" is this card's whole claim.
    produced: identify the revision/process that served it and whether
    `instance_exists` answered `None` (transport error → proceed by design) while
    the target was an unresolved `vm_id`. The current tree was not it.
+   **Resolved by t_2f4b5ffe** (`post-fix-raw-404-2026-10-17.md`): the process was
+   the 13:14:36Z one running `8d7ac5a` (executor sha256 `06e89cb3…`, guard in its
+   bytecode); the probe answered `None` because node-a's LXD was unreadable at
+   16:32Z. The audit now says `target_unverified`.
 
 ## 5. Reproduce
 
