@@ -98,11 +98,13 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 
 ## 7. Deck v2 — the story-led arc, its sources, and what is thesis
 
-`deck/v2/termini-deck-v2.1.pdf` replaces the v1 framing (*AI is stuck at the on-prem
+`deck/v2/termini-deck-v2.2.pdf` replaces the v1 framing (*AI is stuck at the on-prem
 gate*) with a story-led arc that starts from one clinic and ends at the architecture.
-v2.1 shortens the opening: the title is the product name, the clinic survives only
-as one line in slide 2 (its rule, not its hardware), and every problem slide
-(2, 4, 5, 6) closes with a **How Termini closes it** strip.
+v2.2 removes the last of the fear framing: slide 6 is **data used without
+permission** (not “stolen data”), slide 11 is **lightweight teams, heavy
+infrastructure**, slide 12 is **delegate the operations, not the data**, and the
+closing line is positive (*the doctor built it alone. The next one won't have to.*).
+Every problem slide (2, 4, 5, 6, 9) closes with a **How Termini closes it** strip.
 
 Three classes of statement must not be confused when this deck is edited.
 
@@ -130,6 +132,14 @@ Three classes of statement must not be confused when this deck is edited.
 
 None of §7.2 is measured. The dentist's three-model jury, eval loop and private corpus
 (slide 8) are the only evidence offered for it, and they are one clinic's practice.
+
+Slide 14 names the regimes the architecture produces evidence for (EU AI Act Art.
+10/12/14/15, GDPR Art. 25/32/44–49, ISO/IEC 42001 and 27001, SOC 2 Type II, HIPAA
+§164.312) and states the limit plainly: **the design does not certify anyone**. Each of
+those is an organisational audit over policies and a period of operation. High-risk AI
+Act obligations for Annex III systems apply from **2 December 2027** after the AI
+Omnibus (Reg. (EU) 2026/1744, in force 27 July 2026); Annex I products from 2 August
+2028. Do not shorten that to “AI Act compliant”.
 
 The market evidence that used to sit on the v1 differentiation slide is now folded in
 rather than argued as a competitive matrix: slide 4 carries one line (Datadog delegated
