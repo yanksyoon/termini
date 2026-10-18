@@ -37,6 +37,7 @@ add its client certificate to this node's LXD trust store; see
 """
 from __future__ import annotations
 
+import base64
 import calendar
 import errno
 import hashlib
@@ -1288,6 +1289,87 @@ def extract_trust_token(text: str) -> str | None:
     return max(matches, key=len) if matches else None
 
 
+def _certificate_add_token(meta: dict, name: str) -> str | None:
+    """Encode LXD's `CertificateAddToken` exactly as `lxc config trust add` does.
+
+    LXD answers `POST /1.0/certificates {"token": true}` with the token's fields
+    (`client_name`, `addresses`, `secret`, `expires_at`); the CLI's job is to
+    base64 a compact JSON object of exactly those four keys and print it. Anyone
+    who has seen the CLI's output would recognise this string, and the controller
+    consumes it the same way (`password` on `POST /1.0/certificates`).
+    """
+    if not isinstance(meta, dict):
+        return None
+    secret = meta.get("secret")
+    if not isinstance(secret, str) or not secret:
+        return None
+    token = {
+        "client_name": meta.get("client_name") or name,
+        "addresses": meta.get("addresses") or [],
+        "secret": secret,
+        "expires_at": meta.get("expires_at") or "",
+    }
+    return base64.b64encode(
+        json.dumps(token, separators=(",", ":")).encode("utf-8")).decode("ascii")
+
+
+def mint_trust_token_over_socket(name: str = "termini-controller",
+                                 *, timeout: float | None = None) -> str | None:
+    """Mint a certificate-add trust token over LXD's own unix socket.
+
+    This is the transport that works on a DEPLOYED node. The unit runs with
+    `NoNewPrivileges=true`, so the snap `lxc` CLI — which must change its AppArmor
+    profile for the exec — dies with
+
+        cannot change profile for the next exec call: Operation not permitted
+
+    (measured on a node booted from the pre-baked image, 2026-10-17: the node
+    registered and streamed while its day-2 remediations answered `403 Forbidden`,
+    because the controller was never made trusted). `lxc` fails, the socket does
+    not, and it needs no privilege at all — the same reason the inventory reader
+    uses it. The CLI path stays as a fallback for hosts where it does work.
+    """
+    timeout = LXD_INVENTORY_TIMEOUT_S if timeout is None else timeout
+    last = "no LXD unix socket found"
+    for path in LXD_UNIX_SOCKETS:
+        if not os.path.exists(path):
+            continue
+        conn = None
+        try:
+            conn = _LxdUnixConnection(path, timeout=timeout)
+            body = json.dumps({"type": "client", "name": name, "token": True})
+            conn.request("POST", "/1.0/certificates", body=body,
+                         headers={"Content-Type": "application/json"})
+            resp = conn.getresponse()
+            raw = resp.read()
+            status = resp.status
+        except (OSError, http.client.HTTPException) as e:
+            last = f"{path}: {type(e).__name__}: {e}"
+            continue
+        finally:
+            if conn is not None:
+                conn.close()
+        if status not in (200, 201, 202):
+            last = f"{path}: HTTP {status}: {raw[:200]!r}"
+            continue
+        try:
+            payload = json.loads(raw or b"{}")
+        except ValueError:
+            last = f"{path}: malformed JSON from LXD"
+            continue
+        meta = payload.get("metadata")
+        # An async (202) answer nests the token one level deeper.
+        if isinstance(meta, dict) and "secret" not in meta:
+            if isinstance(meta.get("metadata"), dict):
+                meta = meta["metadata"]
+        token = _certificate_add_token(meta, name)
+        if token:
+            return token
+        last = f"{path}: response carried no secret ({str(payload)[:200]})"
+    log(f"cannot mint LXD trust token over the socket: {last}")
+    return None
+
+
 def mint_lxd_trust_token(name: str = "termini-controller",
                          *, timeout: float = 30.0) -> str | None:
     """Mint a one-time LXD trust token on this node; return it (None on failure).
@@ -1341,9 +1423,15 @@ def install_lxd_trust(cfg: dict, identity: dict, *, timeout: float = 30.0) -> bo
         log("LXD_TRUST skipped: own LXD API is not listening "
             f"({api.get('detail')})")
         return False
-    token = mint_lxd_trust_token("termini-controller")
+    # Socket FIRST: on a deployed node the unit's NoNewPrivileges makes the snap
+    # `lxc` CLI unusable, and a token that cannot be minted silently costs the
+    # node every future remediation (403). The CLI stays as the fallback for
+    # hosts where it does work (dev boxes, containers without the sandbox).
+    token = mint_trust_token_over_socket("termini-controller")
     if not token:
-        log("LXD_TRUST skipped: could not mint a trust token")
+        token = mint_lxd_trust_token("termini-controller")
+    if not token:
+        log("LXD_TRUST skipped: could not mint a trust token (socket and CLI both failed)")
         return False
     url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/lxd-trust"
     body = {"lxd": {"endpoint": api["endpoint"]}, "trust_token": token}
@@ -1356,7 +1444,7 @@ def install_lxd_trust(cfg: dict, identity: dict, *, timeout: float = 30.0) -> bo
         log(f"LXD_TRUST installed at {resp.get('endpoint') or api['endpoint']} "
             f"({resp.get('detail')})")
         return True
-    log(f"LXD_TRUST not installed: HTTP {status} {str(resp)[:200]}")
+    log(f"LXD_TRUST not installed: HTTP {status} {str(resp)[:400]}")
     return False
 
 

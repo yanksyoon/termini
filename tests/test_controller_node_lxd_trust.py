@@ -197,6 +197,19 @@ class NodeLxdTrustAtRegistrationTest(_StubHarness):
         self.assertEqual(body["error"]["code"], "PERMISSION_DENIED")
         self.assertEqual(self._cert_posts(), 0)
 
+    def test_scheme_less_endpoint_is_normalised_to_https(self):
+        # A freshly registered node reports `host:port` with no scheme; a hand-wired
+        # one carries `https://`. Handing the scheme-less form to the executor made
+        # the probe fail with URLError and the install silently never happened
+        # (measured on a node booted from termini-node-os-6, 2026-10-18).
+        bare = self.stub.base_url.replace("https://", "")
+        status, body = self._post_trust(
+            {"lxd": {"endpoint": bare}, "trust_token": TRUST_SECRET})
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body["trusted"], body)
+        self.assertTrue(body["endpoint"].startswith("https://"), body["endpoint"])
+        self.assertEqual(self._cert_posts(), 1)
+
     def test_missing_secret_is_a_422_not_a_silent_noop(self):
         status, body = self._post_trust({"lxd": {"endpoint": self.stub.base_url}})
         self.assertEqual(status, 422)
