@@ -43,7 +43,7 @@ class RenderTest(unittest.TestCase):
         self.assertIn("write_files", doc)
         files = {f["path"]: f for f in doc["write_files"]}
         self.assertIn("/etc/termini/agent.yaml", files)
-        self.assertEqual(files["/etc/termini/agent.yaml"]["permissions"], "0600")
+        self.assertEqual(files["/etc/termini/agent.yaml"]["permissions"], "0644")
         # The service must be enabled AT LAUNCH: the bake leaves it disabled.
         self.assertEqual(doc["runcmd"], [["systemctl", "enable", "--now",
                                           "termini-agent.service"]])

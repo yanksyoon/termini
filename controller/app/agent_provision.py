@@ -7,7 +7,8 @@ cannot know which project, node or instance the image will be launched as (its
 `project_id`/`vm_id`/`node_id` are literal `01J0000…` dummies) and it does not
 enable the service. §4.4 therefore makes the LAUNCH responsible for two things:
 
-  1. writing the instance's own `/etc/termini/agent.yaml` (0600) with the ids
+  1. writing the instance's own `/etc/termini/agent.yaml` (0644: the agent
+     user reads it; the secret is the separate 0600 inference token) with the ids
      that instance actually has, and
   2. `systemctl enable --now termini-agent.service` (the bake leaves it
      disabled, so a bare `lxc launch` boots an instance whose agent never runs).
@@ -25,7 +26,7 @@ Rendered shape (a cloud-config document, YAML):
     write_files:
       - path: /etc/termini/agent.yaml
         owner: root:root
-        permissions: '0600'
+        permissions: '0644'
         content: |
           project_id: 01J…
           vm_id: NNB9287…
@@ -162,7 +163,10 @@ def render_user_data(**kwargs) -> str:
         "write_files:\n"
         "  - path: /etc/termini/agent.yaml\n"
         "    owner: root:root\n"
-        "    permissions: '0600'\n"
+        # 0644, like the bake's copy: the runtime runs as `agent` and must be
+        # able to read it, and it holds no secret (the inference token is the
+        # secret file, 0600 agent:agent, written by the bake).
+        "    permissions: '0644'\n"
         "    content: |\n"
         f"{indented}\n"
         "runcmd:\n"
