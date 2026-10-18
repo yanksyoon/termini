@@ -395,7 +395,8 @@ class BuildPlanUsesTheRealNodeTest(_DbCase):
                              "ram_gb": 4, "disk_gb": 8}])
         fake = _FakeExecutor()
         seen: list[dict] = []
-        cfg = types.SimpleNamespace(lxd_workload_image="agent-vm", lxd_create_timeout_s=5.0)
+        cfg = types.SimpleNamespace(lxd_workload_image="agent-vm", lxd_create_timeout_s=5.0,
+                                    inference_base_url="http://10.10.0.13:8080")
         harness = _ApplyHarness(cfg, {plan["plan_id"]: plan}, _Broker())
         with mock.patch.object(target_mod, "executor_for_node",
                                new=lambda c, n, dry_run=False: (seen.append(n), fake)[1]):
