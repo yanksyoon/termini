@@ -419,6 +419,10 @@ GO/NO-GO; this document does not assert one.
 - [`docs/ui-demo-walkthrough-incidents.md`](docs/ui-demo-walkthrough-incidents.md) —
   per-element walkthrough of the Incidents destination: the decision row, the record
   (incident card, thinking log, breach, executed), and the click that loads it
+- [`docs/demo-clinic-agent.md`](docs/demo-clinic-agent.md) — the business-use-case demo:
+  the clinic's front-desk agent summarises a recorded patient call and the owner grades
+  it live (prompt, synthetic case, tested answers, rubric, and the leading-prompt
+  anti-pattern)
 - [`docs/narrative.md`](docs/narrative.md) — positioning + the three proof points
 - [`docs/spec-answers.md`](docs/spec-answers.md) — judge-facing answers to the
   four open spec questions

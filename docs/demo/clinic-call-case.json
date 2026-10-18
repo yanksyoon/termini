@@ -1,0 +1,49 @@
+{
+  "practice": "Northgate Dental, 4 chairs, NHS + private, 11,400 patients",
+  "call": {
+    "id": "call_2026-10-17_0831",
+    "direction": "inbound",
+    "duration_s": 214,
+    "received": "2026-10-17T08:31:12Z",
+    "line": "front desk (overflow)",
+    "transcript": [
+      {"t": "00:00", "speaker": "receptionist", "text": "Good morning, Northgate Dental, how can I help?"},
+      {"t": "00:04", "speaker": "caller", "text": "Hi, um, it's Helen Marsh, I'm a patient there — spelling M-A-R-S-H, date of birth the fourth of February, nineteen eighty-one."},
+      {"t": "00:15", "speaker": "receptionist", "text": "Thank you. What can we do for you this morning?"},
+      {"t": "00:18", "speaker": "caller", "text": "I chipped a tooth last night, the back one on the top left, and it's, it's really sore this morning. It's not bleeding but it's catching on my tongue and I couldn't really sleep."},
+      {"t": "00:36", "speaker": "receptionist", "text": "Sorry to hear that. Any swelling or fever?"},
+      {"t": "00:41", "speaker": "caller", "text": "My cheek feels a bit puffy on that side, and I was a bit hot in the night, but I haven't taken my temperature."},
+      {"t": "00:52", "speaker": "receptionist", "text": "Okay. Let me look at the diary."},
+      {"t": "00:58", "speaker": "caller", "text": "I can't do Thursdays at all, that's my day with my mum. And I'm flying to Lisbon on the twenty-fourth, so it needs to be before that if it can be."},
+      {"t": "01:14", "speaker": "receptionist", "text": "Understood. We have Tuesday morning or a week on Monday afternoon."},
+      {"t": "01:22", "speaker": "caller", "text": "Tuesday morning's better. Oh — and it's my son as well, Toby, he's due his check-up, he's eleven now. Could you do him at the same time so I only take one morning off?"},
+      {"t": "01:38", "speaker": "receptionist", "text": "I'll make a note. Anything else?"},
+      {"t": "01:43", "speaker": "caller", "text": "Just, will this be covered? I'm on the plan through work, band two I think, and I don't want a surprise bill. And roughly what does it cost if it isn't covered?"},
+      {"t": "01:58", "speaker": "receptionist", "text": "The clinician will go through costs with you at the appointment."},
+      {"t": "02:03", "speaker": "caller", "text": "Fine. Also, penicillin makes me sick — I had it years ago and came out in a rash, I don't know if that's on my file."},
+      {"t": "02:18", "speaker": "receptionist", "text": "I'll flag it. We'll see you Tuesday."},
+      {"t": "02:22", "speaker": "caller", "text": "Thanks, bye."}
+    ]
+  },
+  "patient_record_excerpt": {
+    "name": "Helen Marsh",
+    "dob": "1981-02-04",
+    "last_visit": "2026-03-12",
+    "last_treatment": "UL6 composite restoration, band 2",
+    "allergies": "none recorded",
+    "notes": "Prefers morning appointments. Anxious — allow extra time.",
+    "household": "Toby Marsh (11) — patient, recall due 2026-10"
+  },
+  "diary_window": {
+    "2026-10-20_tuesday_morning": [
+      {"time": "08:30", "chair": 2, "status": "booked", "patient": "A. Okafor"},
+      {"time": "09:00", "chair": 2, "status": "booked", "patient": "R. Patel"},
+      {"time": "09:30", "chair": 2, "status": "free"},
+      {"time": "10:00", "chair": 2, "status": "free"}
+    ],
+    "2026-10-27_monday_afternoon": [
+      {"time": "14:00", "chair": 1, "status": "free"},
+      {"time": "14:30", "chair": 1, "status": "free"}
+    ]
+  }
+}
