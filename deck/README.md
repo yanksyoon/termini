@@ -10,12 +10,13 @@ Manufacturing — Intelligent Operations & Industrial Efficiency).
 
 | Version | Source | PDF | Slides | Story |
 |---|---|---|---|---|
-| **v2.1 (current)** | `v2/index.html` | `v2/termini-deck-v2.1.pdf` | 18 | The constraint → the product → the unclosed ecosystem → the diagnosis → the fear → plural intelligence → Termini → the architecture |
-| v2.0 | — (git history) | `termini-deck-v2.pdf` | 18 | Superseded by v2.1; the story-led first cut |
+| **v2.2 (current)** | `v2/index.html` | `v2/termini-deck-v2.2.pdf` | 18 | The constraint → the product → the unclosed ecosystem → unauthorised use → the feedback loop → the intelligence ladder → Termini → the architecture |
+| v2.1 | — (git history) | `termini-deck-v2.1.pdf` | 18 | Superseded by v2.2; product-led opening |
+| v2.0 | — (git history) | `termini-deck-v2.pdf` | 18 | Superseded; the story-led first cut |
 | v1 | `index.html` | `termini-demo-deck.pdf` | 15 | On-prem gate → delegation → proof points → live demo |
 
-**Submit `v2/termini-deck-v2.1.pdf`.** v2.0 exists only in git history, and v1 is
-kept because it is the deck the earliest submission pack referenced.
+**Submit `v2/termini-deck-v2.2.pdf`.** Earlier versions exist only in git history; v1
+is kept because it is the deck the earliest submission pack referenced.
 
 ## Present
 
@@ -34,7 +35,7 @@ per page, background graphics included). Or headless Chromium:
 ```bash
 chrome --headless=new --disable-gpu --no-sandbox \
   --no-pdf-header-footer \
-  --print-to-pdf=deck/v2/termini-deck-v2.1.pdf deck/v2/index.html
+  --print-to-pdf=deck/v2/termini-deck-v2.2.pdf deck/v2/index.html
 ```
 
 The v2 PDF in this repo was produced over CDP (`Page.printToPDF`,
@@ -45,21 +46,23 @@ exactly instead of falling back to Letter.
 
 1. **Termini** — the title, and nothing else
 2. The constraint — eight industries, the data that cannot leave, the work it would unlock
-3. The product — Bootstrap / Operate / Prove, and *he is the requirements document*
+3. The product — Bootstrap / Operate / Prove, closing on *the clinic is the requirement, Termini is the product*
 4. The ecosystem — a five-node loop with one arc missing: *sovereign AI*
 5. The diagnosis — three gates, with the adoption numbers as the symptom
-6. The fear — stolen data, in three documented cases (Samsung, DeepSeek, Navier–Stokes)
+6. Unauthorised use — data used without permission: Samsung, DeepSeek, Navier–Stokes
 7. The inversion — intelligence should be plural (thesis)
-8. Evidence — the jury, the eval loop, the private corpus
-9. The honest objection — "isn't local just worse?" (counterargument + concession)
-10. Day-0 and day-2 — the operating contract in two workflows
-11. How it lands — SME outcome, hardware-owner licence, model as a knob
-12. Proof — six measurements
-13. Architecture and the boundary — what leaves, exactly
-14. Built on Google AI & Cloud
-15. Roadmap, then the bookend: *he built this alone; nobody should have to*
+8. The feedback loop — memory, jury, corpus; the clinic is one italic line per card
+9. The ladder — L0/L1/L2/L3, right-sized intelligence and the routing between levels
+10. Day-0 — bare node to running agents
+11. Lightweight teams, heavy infrastructure — what a team shouldn't need
+12. Delegate the operations, not the data — the two buyers of one control plane
+13. Proof — six measurements
+14. Architecture — the C0/C1/C2 boundary, the evidence map, the regulations it supports
+15. What leaves, exactly
+16. Built on Google AI & Cloud
+17. Roadmap, then the close: *the doctor built it alone. The next one won't have to.*
 
-Every problem slide (2, 4, 5, 6) ends with a `How Termini closes it` strip, so the
+Every problem slide (2, 4, 5, 6, 9) ends with a `How Termini closes it` strip, so the
 deck never accumulates problems without naming the mechanism that answers them.
 
 Source of truth for every claim: `docs/narrative.md` (§7 records the v2 sources
