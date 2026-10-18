@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Sequence
 
-from .config import AgentConfig, InferenceConfig
+from .config import OPENAI_API_SUFFIX, AgentConfig, InferenceConfig
 from .ulid import new_ulid
 
 log = logging.getLogger("termini_agent.inference")
@@ -91,17 +91,31 @@ class Message:
 class InferenceClient:
     """Thin, contract-aware wrapper over the vendored `openai` SDK."""
 
-    def __init__(self, cfg: AgentConfig):
+    #: The only chat path the front door serves (agent-runtime.md §8.2).
+    REQUEST_PATH = "/v1/chat/completions"
+
+    def __init__(self, cfg: AgentConfig, *, http_client: Any | None = None,
+                 transport: Any | None = None):
         self.cfg = cfg
         self.infer: InferenceConfig = cfg.inference
         token = cfg.inference_token() or "termini-local"
+        # One normalisation point for the whole runtime (`http://h:8080` and
+        # `http://h:8080/v1` both become `.../v1`): the SDK appends
+        # `/chat/completions` to whatever it is given, and the front door serves
+        # nothing outside `/v1/...`.
+        self.base_url = self.infer.api_base_url
+        self.request_path = self.REQUEST_PATH
+        self._transport = transport  # injectable for tests (httpx.MockTransport)
         try:
             from openai import OpenAI  # type: ignore import-not-found
         except ImportError as exc:  # pragma: no cover - only outside the baked image
             raise InferenceError("the `openai` client is not installed") from exc
 
+        kwargs: dict[str, Any] = {}
+        if http_client is not None:
+            kwargs["http_client"] = http_client
         self._client = OpenAI(
-            base_url=self.infer.base_url,
+            base_url=self.base_url,
             api_key=token,
             timeout=self.infer.request_timeout_s,
             max_retries=0,  # retries are governed here, not by the SDK (§5.5)
@@ -109,7 +123,17 @@ class InferenceClient:
                 "X-Termini-Vm-Id": cfg.vm_id,
                 "X-Termini-Project-Id": cfg.project_id,
             },
+            **kwargs,
         )
+        # C0 only (§4.4): the effective path is metadata about the endpoint, never
+        # customer content. Logged once so a base_url/path mismatch is visible in
+        # the journal instead of only in a 404 body at the first token.
+        if self.cfg.telemetry_class == "C0":
+            log.info("inference endpoint resolved", extra={"termini": {
+                "base_url": self.infer.base_url,
+                "api_base_url": self.base_url,
+                "request_path": self.request_path,
+            }})
 
     # -- model routing (§9) ----------------------------------------------------
     def resolve_model(self, preference: str | None) -> str:
@@ -204,12 +228,15 @@ class InferenceClient:
         headers = {"Content-Type": "application/json",
                    "Authorization": f"Bearer {self.cfg.inference_token() or 'termini-local'}",
                    **self.headers(rid)}
-        url = f"{self.infer.base_url.rstrip('/')}/v1/chat/completions"
+        url = self.infer.chat_completions_url()
 
         timeout = httpx.Timeout(self.infer.request_timeout_s,
                                 connect=self.infer.connect_timeout_s)
+        client_kwargs: dict[str, Any] = {"timeout": timeout}
+        if self._transport is not None:
+            client_kwargs["transport"] = self._transport
         try:
-            with httpx.Client(timeout=timeout) as client:
+            with httpx.Client(**client_kwargs) as client:
                 resp = client.post(url, json=payload, headers=headers)
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError) as exc:
             raise InferenceUnreachable(
@@ -251,9 +278,15 @@ class InferenceClient:
         )
 
     def health(self) -> dict:
-        """Probe the router's /health (best-effort; never raises)."""
+        """Probe the router's `/health` (best-effort; never raises).
+
+        `/health` is served at the root, *not* under `/v1` (§8.2), so the probe
+        strips the API suffix from the normalised base URL rather than letting the
+        SDK resolve it relative to `.../v1/` (which would ask for `/v1/health`).
+        """
         try:
-            resp = self._client.get("/health", cast_to=dict)  # type: ignore[attr-defined]
+            root = self.base_url[: -len(OPENAI_API_SUFFIX)]
+            resp = self._client.get(f"{root}/health", cast_to=dict)  # type: ignore[attr-defined]
             return {"reachable": True, "body": resp}
         except Exception as exc:  # noqa: BLE001
             return {"reachable": False, "error": str(exc)}
