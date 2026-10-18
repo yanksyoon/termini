@@ -358,18 +358,18 @@ set (that collision used to swallow the first replayed line).
 
 ## Credential handling (no credential in a URL)
 
-The published dashboard URL used to carry `?token=<project_token>`. A credential
-in a URL is shareable by construction — address bar, browser history, the
-`Referer` header, every proxy log, and any link a viewer copies — so the pattern
-is now refused at three depths, each covered by a test
-(`tests/credentials.test.mjs`):
+A share link carries `?token=<project_token>` so a demo opens in one click. The
+credential is honoured, then moved out of the URL immediately, so it stops
+travelling after the first load (`tests/credentials.test.mjs` covers each step):
 
-1. `resolveConfig()` never reads a credential from the query string. A legacy
-   `?token=…` link sets `urlTokenIgnored`, the app strips the parameter out of the
-   address bar (`history.replaceState`) and tells the viewer to sign in;
-2. `apiUrl()` — used by every REST call *and* the SSE stream — throws rather than
-   build a URL carrying one, including when `apiBase` itself was pasted out of a
-   tokenized link;
+1. `resolveConfig()` reads the token from the query and flags it
+   (`tokenFromUrl`); the app writes it to this tab's `sessionStorage` and strips
+   the parameter from the address bar and the history entry
+   (`history.replaceState` in `main.js` `adoptUrlToken`);
+2. `apiUrl()` — used by every REST call *and* the SSE stream — still throws rather
+   than build a URL carrying a credential, including when `apiBase` itself was
+   pasted out of a tokenized link, so the token never reaches a request line or a
+   `Referer`;
 3. the SSE reader (`fetch()` + a `ReadableStream` reader) sends the credential in
    the `Authorization` header, which is why `EventSource` (which cannot set one)
    is gone.

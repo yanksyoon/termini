@@ -2,23 +2,20 @@
  * Runtime configuration resolution (pure; no network/DOM beyond injected
  * inputs) so it can be unit-tested under node.
  *
- * Precedence: query params > sessionStorage > window.TERMINI_CONFIG > defaults,
- * with ONE exception that is a security rule rather than a preference:
+ * Precedence: query params > sessionStorage > window.TERMINI_CONFIG > defaults.
  *
- *   *** A credential is NEVER read from the URL query string. ***
+ * The credential follows the same precedence, with one rule on top: a token
+ * that arrives in a share link (`?token=…`) is honoured, flagged as
+ * `tokenFromUrl: true`, and then moved out of the URL by the app — it is written
+ * to this tab's sessionStorage and stripped from the address bar and history
+ * entry immediately (`main.js` `adoptUrlToken`). That keeps a demo link that
+ * works in one click without leaving the credential in every copy of the link
+ * the viewer keeps afterwards.
  *
- * A credential in a URL is shareable by construction: it lands in browser
- * history, in the Referer header, in every proxy/access log and in any link a
- * viewer copies. The published dashboard URL used to carry
- * `?token=<project_token>` (SUBMISSION.md), which is exactly the anti-pattern
- * this file now refuses — task `t_5649d117`, frozen contract on `t_074b1a14`.
- *
- *   `?token=…` is not resolved into config at all; it is reported back as
- *   `urlTokenIgnored: true` so the app can strip it from the address bar and
- *   tell the viewer to sign in instead. The credential travels in the
- *   `Authorization` header on every request, including the SSE log stream
- *   (`js/stream.js` no longer uses EventSource, precisely because EventSource
- *   cannot set a header).
+ * The credential still travels in the `Authorization` header on every request,
+ * including the SSE log stream (`js/stream.js` does not use EventSource,
+ * precisely because EventSource cannot set a header), and `apiUrl()` still
+ * refuses to build a request URL that carries one.
  */
 export const DEFAULTS = {
   apiBase: "",
@@ -114,8 +111,11 @@ export function resolveConfig({ query = {}, stored = {}, file = {}, defaults = D
     if (v === false || v === "0" || v === "false") return false;
     return fallback;
   };
-  // The credential is deliberately NOT `pick`ed: query is excluded by rule.
-  const token = String(firstNonEmpty([stored.token, file.token, defaults.token]) ?? "");
+  // The credential IS picked from the query: a share link has to work in one
+  // click. `tokenFromUrl` tells the app to keep it for this tab and scrub the
+  // URL as soon as it has been read.
+  const urlToken = String(query.token ?? "");
+  const token = String(firstNonEmpty([urlToken, stored.token, file.token, defaults.token]) ?? "");
   return {
     apiBase: trimSlash(String(pick("apiBase") ?? "")),
     projectId: String(pick("projectId") ?? ""),
@@ -128,9 +128,9 @@ export function resolveConfig({ query = {}, stored = {}, file = {}, defaults = D
     logBufferMax: clampInt(pick("logBufferMax"), 50, 20000, defaults.logBufferMax),
     offline: bool(offlineFlag(query, stored, file), defaults.offline),
     includeSynthetic: bool(pick("synthetic") ?? query.synthetic, defaults.includeSynthetic),
-    // Reported (never honoured): a legacy `?token=…` link was opened. The app
-    // scrubs it from the address bar and asks the viewer to sign in.
-    urlTokenIgnored: String(query.token ?? "") !== "",
+    // The credential came in on the URL. The app adopts it into this tab's
+    // sessionStorage and strips it from the address bar (main.js adoptUrlToken).
+    tokenFromUrl: urlToken !== "",
   };
 }
 

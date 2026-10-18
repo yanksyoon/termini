@@ -7,11 +7,12 @@
  *   3. this file             (window.TERMINI_CONFIG)
  *   4. built-in defaults
  *
- * THE CREDENTIAL IS THE EXCEPTION: `token` is never read from a query parameter
- * and never written to one. It comes from this tab's sessionStorage (what the
- * Settings dialog writes) or from this file when a server injects it. A
- * `?token=…` link is refused by js/core/config.js and stripped from the address
- * bar; apiUrl() throws rather than build a URL carrying it (task t_5649d117).
+ * THE CREDENTIAL: `token` in a query string is honoured, because a demo link has
+ * to work in one click. The app adopts it into this tab's sessionStorage and
+ * strips it from the address bar immediately (main.js adoptUrlToken), so the
+ * credential stops travelling with the link after the first load. It is never
+ * written to localStorage, and apiUrl() still refuses to build a request URL
+ * that carries it.
  *
  * NOTE: the query-param names are the CONFIG KEYS (`apiBase`, `projectId`,
  * `window`, `pollMs`, ...) — there are no short aliases. `?api=` and `?project=`

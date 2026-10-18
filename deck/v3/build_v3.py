@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Build deck v3 on the AI Builder Cup submission template."""
 import copy
+import os
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
@@ -10,12 +11,13 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
 from pptx.oxml.ns import qn
 from lxml import etree
 
-TPL = "/home/ubuntu/Submission Template _ AI Builder Cup.pptx"
-OUT = "/home/ubuntu/.worktrees/deck-v3/deck/v3/termini-deck-v3.pptx"
-HEADER = "/home/ubuntu/.hermes/cache/scratch/tpl/s3_0_png_8554.png"
-HAIRLINE = "/home/ubuntu/.hermes/cache/scratch/tpl/s1_2_png_209476.png"
-SHOT = "/home/ubuntu/.worktrees/deck-v3/deck/v3/snapshot-incidents.png"
-CLOSING = "/home/ubuntu/.hermes/cache/scratch/tpl/s16_1_png_186669.png"
+HERE = os.path.dirname(os.path.abspath(__file__))
+TPL = os.environ.get("TERMINI_TEMPLATE", os.path.expanduser("~/Submission Template _ AI Builder Cup.pptx"))
+OUT = os.path.join(HERE, "termini-deck-v3.pptx")
+ASSETS = os.path.join(HERE, "assets")
+HEADER = os.path.join(ASSETS, "header-strip.png")
+CLOSING = os.path.join(ASSETS, "closing.png")
+SHOT = os.path.join(HERE, "snapshot-incidents.png")
 
 INK   = RGBColor(0x20, 0x21, 0x24)
 MUTED = RGBColor(0x5F, 0x63, 0x68)
@@ -32,6 +34,30 @@ BODY = "Arial"
 TITLEFONT = "Google Sans Flex Medium"
 
 prs = Presentation(TPL)
+
+def _extract_template_assets(deck):
+    """The header strip and the back cover are the template's own pictures.
+    Pull them out of the template so the build does not depend on a scratch dir."""
+    os.makedirs(ASSETS, exist_ok=True)
+    header = closing = None
+    for slide in deck.slides:
+        for shp in slide.shapes:
+            if shp.shape_type != 13:
+                continue
+            w, h = shp.width / 914400, shp.height / 914400
+            if header is None and abs(w - 10) < 0.1 and abs(h - 0.555) < 0.05:
+                header = shp.image.blob
+            if closing is None and abs(w - 10) < 0.1 and abs(h - 5.625) < 0.05:
+                closing = shp.image.blob
+    for blob, path in ((header, HEADER), (closing, CLOSING)):
+        if blob and not os.path.exists(path):
+            with open(path, "wb") as fh:
+                fh.write(blob)
+    if not (header and closing):
+        raise SystemExit("template is missing the header strip or the back cover")
+
+_extract_template_assets(prs)
+
 BLANK = None
 for L in prs.slide_layouts:
     if L.name == "BLANK":
@@ -589,7 +615,10 @@ for i, (t, d) in enumerate(fut):
 s = new_slide("Provide links to your:", 16)
 head(s, "Links")
 FULL = ("https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1"
-        "&projectId=01J0DEM0WARM000000000000AB&synthetic=1&dest=fleet")
+        "&projectId=01J0DEM0WARM000000000000AB&synthetic=1&dest=fleet&token=demo-project-token")
+L1 = "https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1"
+L2 = "&projectId=01J0DEM0WARM000000000000AB&synthetic=1&dest=fleet"
+L3 = "&token=demo-project-token"
 
 txt(s, 0.29, 1.95, 2.6, 0.3, "GitHub public repository", size=10.5, bold=True)
 box = txt(s, 2.95, 1.95, 6.7, 0.3, "github.com/yanksyoon/termini", size=10, color=BLUE)
@@ -597,21 +626,16 @@ link_runs(box, "https://github.com/yanksyoon/termini")
 
 txt(s, 0.29, 2.5, 2.6, 0.3, "Final product link", size=10.5, bold=True)
 txt(s, 0.29, 2.82, 9.42, 0.25,
-    "opens the full dashboard: fleet, operator log, agents panel, synthetic nodes included",
+    "the full dashboard: fleet, operator log, agents panel, synthetic nodes included",
     size=8, color=MUTED)
-p1 = "https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1"
-p2 = "&projectId=01J0DEM0WARM000000000000AB&synthetic=1&dest=fleet"
-box = txt(s, 2.95, 3.12, 6.7, 0.55, p1 + "\n" + p2, size=8, color=BLUE, spacing=1.35)
+box = txt(s, 2.95, 3.1, 6.7, 0.8, L1 + "\n" + L2 + "\n" + L3, size=8, color=BLUE, spacing=1.35)
 link_runs(box, FULL)
-
-txt(s, 0.29, 3.95, 2.6, 0.3, "Demo sign-in", size=10.5, bold=True)
-txt(s, 2.95, 3.95, 6.7, 0.3, "project token: demo-project-token", size=10, color=INK)
-txt(s, 2.95, 4.24, 6.7, 0.3,
-    "the dashboard refuses a token inside a URL, so the token is printed here; paste it at Settings, then sign in",
+txt(s, 2.95, 4.0, 6.7, 0.3,
+    "the link signs this tab in, then strips the token from the address bar",
     size=8, color=MUTED)
 
-txt(s, 0.29, 4.72, 2.6, 0.3, "Live API", size=10.5, bold=True)
-box = txt(s, 2.95, 4.72, 6.7, 0.3, "34-93-190-64.sslip.io/v1", size=10, color=BLUE)
+txt(s, 0.29, 4.6, 2.6, 0.3, "Live API", size=10.5, bold=True)
+box = txt(s, 2.95, 4.6, 6.7, 0.3, "34-93-190-64.sslip.io/v1", size=10, color=BLUE)
 link_runs(box, "https://34-93-190-64.sslip.io/v1")
 
 # ---------------------------------------------------------------- closing image, rebuilt
