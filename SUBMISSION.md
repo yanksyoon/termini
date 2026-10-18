@@ -56,7 +56,7 @@ Two sides of the same market:
 
 | # | Requirement (competition wording) | Artifact | Status |
 |---|---|---|---|
-| 1 | **Clear proposal** — "a deck/PPT converted into a PDF", stating problem, benefit, feasibility and scalability | [`deck/v2/termini-deck-v2.4.pdf`](deck/v2/termini-deck-v2.4.pdf) (16 slides, 16:9) — source [`deck/v2/index.html`](deck/v2/index.html). v1 kept at [`deck/termini-demo-deck.pdf`](deck/termini-demo-deck.pdf) | ✅ ready |
+| 1 | **Clear proposal** — "a deck/PPT converted into a PDF", stating problem, benefit, feasibility and scalability | [`deck/v3/termini-deck-v3.pptx`](deck/v3/termini-deck-v3.pptx) — **17 slides built on the official AI Builder Cup template**, with a PDF export at [`deck/v3/termini-deck-v3.pdf`](deck/v3/termini-deck-v3.pdf). The narrative source deck is [`deck/v2/index.html`](deck/v2/index.html) / [`deck/v2/termini-deck-v2.4.pdf`](deck/v2/termini-deck-v2.4.pdf); v1 at [`deck/termini-demo-deck.pdf`](deck/termini-demo-deck.pdf) | ✅ ready |
 | 2 | **Functional prototype** — "working prototype using Google Cloud's AI tools & deployed on Cloud Run/GCP/Firebase" | Live on GCP — links in §3, evidence in §4 | ✅ deployed |
 | 3 | **Comprehensive documentation** — "a link to a public YouTube/Vimeo video or public Google Drive link (3 minutes) showcasing your AI creation in action" | [`docs/video-script-3min.md`](docs/video-script-3min.md) — shot-by-shot script | ⚠️ **script ready; the recorded video + public link is a human step — see §5** |
 | 4 | **Category specification** | §1 above | ✅ stated |
@@ -278,12 +278,12 @@ than an honest gap for a judge.
 |---|---|
 | Meaningful use of Gen AI | §4 — the model *decides* the remediation; it is not a chatbot bolted onto a dashboard. Deck slide 14 (Gemini decides, Gemma stays home). |
 | Technical implementation | Live GCP deployment (§3); repo test suite; `docs/architecture.md`; acceptance commands in the README. |
-| Scalability & sustainability | Deck slide 15 (roadmap) and slide 10 (how it lands); Fleet HA/storage path; model-agnostic serving — the product is ops + governance, not the weights. |
+| Scalability & sustainability | Deck slide 15 (future development) and slide 7 (how it lands); Fleet HA/storage path; model-agnostic serving — the product is ops + governance, not the weights. |
 | Problem alignment | §1 and deck slides 2–5 — the clinic's rule, the constraint across eight industries, the unclosed ecosystem and the unauthorised-use cases; operational data → **actions**, not just insights. |
 | Potential impact | §1 "Who benefits". |
-| Originality & differentiation | Deck slides 4–5 — the loop closes only where the data lives, and unauthorised use is documented rather than feared; slide 7 — the intelligence ladder, which answers "isn't local worse?" by routing each task to the right level. |
+| Originality & differentiation | Deck slides 5–7 — the loop closes only where the data lives, unauthorised use is documented, the intelligence ladder routes each task to the right level, and slide 7 states the split (delegate the operations, not the data). |
 | Innovation in Gen AI use | Deck slide 9 — grammar-constrained decoding as the safety mechanism: the model *can't* emit an out-of-policy action, rather than being filtered after the fact; slide 7 puts deterministic, local and frontier models on one ladder. |
-| Usability & accessibility | Deck slide 8 — bare node to running agents with no install and no specialist; browser-first dashboard; SSH access via short-lived certificates, no passwords to manage. |
+| Usability & accessibility | Deck slides 8–9 — features and the bare-node-to-fleet process; no install, no specialist on site; browser-first dashboard; SSH access via short-lived certificates, no passwords to manage. |
 | Experience & integration | One loop spanning bootstrap → telemetry → decision → execution → audit, on one screen. |
 
 ---
@@ -293,7 +293,8 @@ than an honest gap for a judge.
 | Path | What |
 |---|---|
 | [`README.md`](README.md) | Product + deployed-stack overview, quickstart, verification |
-| [`deck/v2/`](deck/v2/index.html) | Proposal deck v2.4 — 16 slides, HTML source + CDP-rendered PDF (`termini-deck-v2.4.pdf`); v1 kept at `deck/index.html` |
+| [`deck/v3/`](deck/v3/README.md) | **Submission deck v3** — 17 slides on the official template (`.pptx` + PDF), with `build_v3.py` to rebuild it |
+| [`deck/v2/`](deck/v2/index.html) | Narrative deck v2.4 — 16 slides, HTML source + CDP-rendered PDF (`termini-deck-v2.4.pdf`); v1 kept at `deck/index.html` |
 | [`docs/architecture.md`](docs/architecture.md) | Frozen architecture, contracts index, R1–R24 answers |
 | [`docs/contracts/governance.md`](docs/contracts/governance.md) | The C0/C1/C2 boundary and the external-model rule |
 | [`docs/contracts/operator-decision.md`](docs/contracts/operator-decision.md) | The decision step's contract |
