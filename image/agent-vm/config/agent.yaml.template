@@ -8,7 +8,7 @@ vm_id: 01J00000000000000000000001
 node_id: 01J00000000000000000000002
 agent_image_version: agent-vm-2026.10.0
 inference:
-  base_url: http://10.10.0.13:8080
+  base_url: http://10.10.0.13:8080/v1
   default_model: gemma
   allowed_models: [gemma]
   token_file: /etc/termini/inference.token

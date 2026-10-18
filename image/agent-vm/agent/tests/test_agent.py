@@ -22,7 +22,7 @@ vm_id: 01J00000000000000000000001
 node_id: 01J00000000000000000000002
 agent_image_version: agent-vm-2026.10.0
 inference:
-  base_url: http://10.10.0.13:8080
+  base_url: http://10.10.0.13:8080/v1
   default_model: gemma
   allowed_models: [gemma]
 broker:
@@ -31,7 +31,7 @@ logging:
   sink: /tmp/agent-test.jsonl
 """
 
-BAD_HOST = GOOD.replace("http://10.10.0.13:8080", "https://api.openai.com/v1")
+BAD_HOST = GOOD.replace("http://10.10.0.13:8080/v1", "https://api.openai.com/v1")
 BAD_MODEL = GOOD.replace("default_model: gemma", "default_model: gpt-4")
 
 
@@ -45,9 +45,24 @@ def _write(text: str) -> Path:
 class TestConfig(unittest.TestCase):
     def test_good_config_loads(self) -> None:
         cfg = load_config(_write(GOOD), dev_override=False)
-        self.assertEqual(cfg.inference.base_url, "http://10.10.0.13:8080")
+        self.assertEqual(cfg.inference.base_url, "http://10.10.0.13:8080/v1")
+        # The wire form is the same for either spelling of the frozen base URL.
+        self.assertEqual(cfg.inference.api_base_url, "http://10.10.0.13:8080/v1")
         self.assertEqual(cfg.inference.default_model, "gemma")
         self.assertIn("gemma", cfg.inference.allowed_models)
+
+    def test_shipped_template_uses_the_v1_base_url(self) -> None:
+        """The baked default must be correct before normalisation ever runs."""
+        template = (Path(__file__).resolve().parents[2] / "config" / "agent.yaml.template")
+        if not template.exists():  # a harness that ships tests without the tree
+            self.skipTest(f"template not present at {template}")
+        d = Path(tempfile.mkdtemp())
+        out = d / "agent.yaml"
+        out.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+        cfg = load_config(out, dev_override=False)
+        self.assertEqual(cfg.inference.base_url, "http://10.10.0.13:8080/v1")
+        self.assertEqual(cfg.inference.chat_completions_url(),
+                         "http://10.10.0.13:8080/v1/chat/completions")
 
     def test_off_prem_host_rejected(self) -> None:
         with self.assertRaises(ConfigError):
@@ -63,6 +78,10 @@ class TestConfig(unittest.TestCase):
 
     def test_validate_url_accepts_onprem(self) -> None:
         validate_inference_url("http://10.10.0.13:8080")
+
+    def test_validate_url_accepts_onprem_with_v1_path(self) -> None:
+        # The shipped form since t_af463463; the port must still parse.
+        validate_inference_url("http://10.10.0.13:8080/v1")
 
     def test_public_dict_has_no_token(self) -> None:
         cfg = load_config(_write(GOOD), dev_override=False)

@@ -27,6 +27,38 @@ _PRIVATE_NETWORKS = (
 DEFAULT_CONFIG_PATH = "/etc/termini/agent.yaml"
 DEFAULT_INFERENCE_TOKEN_FILE = "/etc/termini/inference.token"
 
+# The endpoint's OpenAI-compatible surface lives under /v1 (agent-runtime.md §8.2:
+# `/v1/models`, `/v1/chat/completions`), and the `openai` SDK appends
+# `/chat/completions` to whatever base URL it is handed. This is the single place the
+# configured base URL is turned into that form.
+OPENAI_API_SUFFIX = "/v1"
+
+
+def normalize_inference_base_url(base_url: str) -> str:
+    """Return the OpenAI-compatible base URL — `<scheme>://<host>:<port>/v1`.
+
+    Both spellings a deployment may write in `agent.yaml` must produce the identical
+    request path `/v1/chat/completions`:
+
+        http://10.10.0.13:8080      -> http://10.10.0.13:8080/v1
+        http://10.10.0.13:8080/     -> http://10.10.0.13:8080/v1
+        http://10.10.0.13:8080/v1   -> http://10.10.0.13:8080/v1
+        http://10.10.0.13:8080/v1/  -> http://10.10.0.13:8080/v1
+
+    The front door serves only `/health`, `/v1/models` and `/v1/chat/completions`
+    (`infra/inference/proxy.py`); anything else is a 404, so a base URL without
+    `/v1` makes every agent LLM call fail at the first token.
+    """
+    base = str(base_url).strip().rstrip("/")
+    if not base.endswith(OPENAI_API_SUFFIX):
+        base += OPENAI_API_SUFFIX
+    return base
+
+
+def inference_chat_completions_url(base_url: str) -> str:
+    """The exact POST target the runtime uses: normalised base + `/chat/completions`."""
+    return f"{normalize_inference_base_url(base_url)}/chat/completions"
+
 
 class ConfigError(ValueError):
     """Raised when the on-disk config is missing or violates the frozen contract."""
@@ -43,6 +75,20 @@ class InferenceConfig:
     request_timeout_s: float = 120.0
     # On-prem CIDRs an operator explicitly whitelisted (default: the frozen D5 range).
     allowed_networks: tuple[str, ...] = ALLOWED_INFERENCE_NETWORKS
+
+    @property
+    def api_base_url(self) -> str:
+        """The base URL the OpenAI SDK must be given: always ends in `/v1`.
+
+        `base_url` is kept exactly as configured (that is what the status surface
+        reports and what an operator typed); every wire request goes through this
+        normalised form so `http://h:8080` and `http://h:8080/v1` behave identically.
+        """
+        return normalize_inference_base_url(self.base_url)
+
+    def chat_completions_url(self) -> str:
+        """Absolute POST target for `/v1/chat/completions`."""
+        return inference_chat_completions_url(self.base_url)
 
 
 @dataclass(frozen=True)
@@ -90,6 +136,17 @@ class AgentConfig:
             return Path(self.inference.token_file).read_text(encoding="utf-8").strip()
         except OSError:
             return None
+
+    @property
+    def telemetry_class(self) -> str:
+        """The governing telemetry class (`governance.telemetry_class`, §4.4).
+
+        Defaults to C0 when the key is absent: the runtime only ever emits C0/C1
+        metadata, and an older config predating the key must not silently lose the
+        startup diagnostics C0 allows.
+        """
+        gov = self.raw.get("governance") if isinstance(self.raw, dict) else None
+        return str((gov or {}).get("telemetry_class", "C0")).strip().upper() or "C0"
 
     def as_public_dict(self) -> dict[str, Any]:
         """A redacted view (no token material) suitable for the status surface."""

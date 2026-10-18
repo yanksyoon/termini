@@ -185,7 +185,7 @@ Config applied through the LXD API (JSON), the canonical form:
   "config": {
     "limits.cpu": "2",
     "limits.memory": "4GiB",
-    "cloud-init.user-data": "#cloud-config\nwrite_files:\n  - path: /etc/termini/agent.yaml\n    permissions: '0600'\n    content: |\n      project_id: 01M4349RPSZFTB60AVJEG0ZZY9\n      vm_id: 01M4349RPXWDC52ZDAVMPCMJSH\n      node_id: 01M4349RPTT29RNTC6VBCXQ0RC\n      inference:\n        base_url: http://10.10.0.13:8080\n        default_model: gemma\n        allowed_models: [gemma]\n        token_file: /etc/termini/inference.token\n        stream: true\n        connect_timeout_s: 2\n        request_timeout_s: 120\n      broker:\n        endpoint: http://10.20.1.1:7071\n        pull_interval_s: 1\n        max_concurrent_tasks: 2\n      logging:\n        sink: /var/log/termini/agent.jsonl\n        local_only: true\n      governance:\n        telemetry_class: C0\n        egress: deny\nruncmd:\n  - [ systemctl, enable, --now, termini-agent.service ]\n"
+    "cloud-init.user-data": "#cloud-config\nwrite_files:\n  - path: /etc/termini/agent.yaml\n    permissions: '0600'\n    content: |\n      project_id: 01M4349RPSZFTB60AVJEG0ZZY9\n      vm_id: 01M4349RPXWDC52ZDAVMPCMJSH\n      node_id: 01M4349RPTT29RNTC6VBCXQ0RC\n      inference:\n        base_url: http://10.10.0.13:8080/v1\n        default_model: gemma\n        allowed_models: [gemma]\n        token_file: /etc/termini/inference.token\n        stream: true\n        connect_timeout_s: 2\n        request_timeout_s: 120\n      broker:\n        endpoint: http://10.20.1.1:7071\n        pull_interval_s: 1\n        max_concurrent_tasks: 2\n      logging:\n        sink: /var/log/termini/agent.jsonl\n        local_only: true\n      governance:\n        telemetry_class: C0\n        egress: deny\nruncmd:\n  - [ systemctl, enable, --now, termini-agent.service ]\n"
   },
   "devices": {
     "root": { "type": "disk", "pool": "local", "path": "/", "size": "8GiB" },
@@ -217,7 +217,7 @@ Rendered by cloud-init; the **only** inputs the agent runtime reads at start. Sc
 | `project_id` | yes | ULID | Scoping / telemetry. |
 | `vm_id` | yes | ULID | Identity presented to the broker and inference router. |
 | `node_id` | yes | ULID | Owning node. |
-| `inference.base_url` | yes | URL | `http://10.10.0.13:8080` (frozen; D5). |
+| `inference.base_url` | yes | URL | `http://10.10.0.13:8080/v1` (frozen; D5). The OpenAI-compatible surface is under `/v1` (§8.2); the runtime accepts the un-suffixed `http://10.10.0.13:8080` too and normalises it, but the shipped form carries the suffix. |
 | `inference.default_model` | yes | enum | `gemma` (default; the alias the Node C endpoint serves). |
 | `inference.allowed_models` | yes | array | `[gemma]`; the runtime refuses any other alias (`ModelNotAllowed`). |
 | `inference.token_file` | yes | path | Per-project scoped bearer for the router. |
@@ -535,6 +535,10 @@ loopback-only, provider-only, and is nobody's agent destination.
 | `GET` | `/metrics` | token, loopback-or-underlay | Prometheus text: queue depth, tok/s, VRAM, per-alias counters (feeds telemetry §4.7). |
 
 `Authorization: Bearer <inference_token>`; missing/invalid → `401` with the OpenAI-style error envelope (§10.5). The token is per-project, scoped to `:8080`, and distributed only to that project's agent VMs and to the controller's intent-extraction caller.
+
+**Base URL form.** The OpenAI-compatible endpoints are the `/v1/...` rows above, and an OpenAI SDK appends `/chat/completions` to whatever base URL it is given. `inference.base_url` therefore carries the `/v1` suffix (`http://10.10.0.13:8080/v1`). The runtime normalises either spelling to the same request path `/v1/chat/completions` (`termini_agent.config.normalize_inference_base_url`), and `/health` stays at the root — it is *not* `/v1/health` for callers of this contract.
+
+**Which routes exist depends on the backend.** In the shipped `gemini-proxy` backend only `/health`, `/v1/models` and `/v1/chat/completions` are served; anything else is `404 MODEL_NOT_FOUND` naming those three. `/props` and `/metrics` above are llama.cpp routes, reachable only in the `local` backend, where the proxy passes unknown paths through to the worker (`infra/inference/proxy.py`).
 
 ### 8.3 Health semantics
 
@@ -959,7 +963,7 @@ All commands run **from inside an agent VM** unless noted.
 
 | Item | Value | Source |
 |------|-------|--------|
-| Inference base URL (agents) | `http://10.10.0.13:8080` | D5 |
+| Inference base URL (agents) | `http://10.10.0.13:8080/v1` | D5 |
 | Flash worker | `127.0.0.1:8081` | this doc §8.1 |
 | Pro worker | `127.0.0.1:8082` | this doc §8.1 |
 | Agent broker (per node) | `http://10.20.<n>.1:7071` | this doc §6 |
@@ -975,7 +979,7 @@ vm_id: 01M4349RPXWDC52ZDAVMPCMJSH
 node_id: 01M4349RPTT29RNTC6VBCXQ0RC
 agent_image_version: agent-vm-2026.10.0+g1ab2c3d
 inference:
-  base_url: http://10.10.0.13:8080
+  base_url: http://10.10.0.13:8080/v1
   default_model: gemma
   allowed_models: [gemma]
   token_file: /etc/termini/inference.token

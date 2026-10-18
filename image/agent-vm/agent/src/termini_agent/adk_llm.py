@@ -113,7 +113,9 @@ class LlamaCppLlm(BaseLlm):
         from openai import AsyncOpenAI
 
         return AsyncOpenAI(
-            base_url=self._inference.base_url,
+            # Same normalisation as `InferenceClient` (config.InferenceConfig):
+            # the endpoint only serves the OpenAI-compatible surface under /v1.
+            base_url=self._inference.api_base_url,
             api_key=self._token,
             timeout=self._inference.request_timeout_s,
             max_retries=0,
