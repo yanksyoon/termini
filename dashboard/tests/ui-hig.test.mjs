@@ -154,6 +154,33 @@ test("the module moves the shipped nodes and puts them back, and owns no data", 
   assert.deepEqual(imports, ["../../js/ui/dom.js"]);
 });
 
+test("a rebuild is re-decorated before paint (no pre-HIG flash)", async () => {
+  const source = strip(await js());
+
+  // The shipped panels rebuild their DOM under this module: `renderOverview()`
+  // clears and recreates every node card on each selection, so the decoration
+  // (and the hiding of the per-card Charts / Ask AI / Restart / Drain buttons)
+  // went with them and only came back on the 250 ms sweep — measured as ~160 ms
+  // of the pre-HIG layout on screen after a click. The observer must be what
+  // keeps the shape correct, and it must run as a microtask so the browser
+  // never paints the undecorated intermediate state.
+  assert.match(source, /new MutationObserver\(queueReconcile\)/, "a mutation observer is the trigger");
+  assert.match(source, /queueMicrotask\(/, "the reconcile is queued as a microtask, i.e. before paint");
+  assert.match(
+    source,
+    /const OBSERVED_HOSTS = \["#overview", "#decision-list", "#charts"\]/,
+    "it watches exactly the containers the shipped renderers rebuild",
+  );
+  assert.match(source, /observer\.observe\(host, \{ childList: true, subtree: true \}\)/);
+  assert.doesNotMatch(source, /observe\(document\.body/, "observing the body would reconcile on every log line");
+
+  // Re-entrancy: reconcile() moves nodes itself, so it must drain its own
+  // records and refuse to run inside itself, or the observer loops.
+  assert.match(source, /observer\.takeRecords\(\)/);
+  assert.match(source, /if \(!mounted \|\| reconciling\) return;/);
+  assert.match(source, /if \(!mounted \|\| reconciling \|\| reconcileQueued\) return;/);
+});
+
 test("docs/ui-hig.md maps every rule in the card", async () => {
   const doc = await readFile(join(REPO, "docs", "ui-hig.md"), "utf8");
   const required = [

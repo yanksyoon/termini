@@ -60,6 +60,9 @@ let mounted = false;
 let shell = null;
 let sweep = null;
 let clock = null;
+let observer = null;
+let reconcileQueued = false;
+let reconciling = false;
 const ui = {};
 const state = { dest: "fleet", appearance: "system", decisionId: null };
 
@@ -995,8 +998,10 @@ export function mount() {
   reconcile();
   // The shipped panels re-render on their own polls (overview every 3 s, the
   // incident list on every decision poll). This module does not own that data:
-  // it reconciles the shape afterwards, on a cheap timer, instead of hooking
-  // observers into code it must not modify.
+  // it reconciles the shape afterwards. An observer does that in the SAME task
+  // as the rebuild (microtask, so nothing undecorated is ever painted); the
+  // timer stays as a backstop for mutations an observer cannot see.
+  observeHosts();
   sweep = setInterval(reconcile, RECONCILE_MS);
   clock = setInterval(() => {
     if (!ui.approvals || ui.approvals.hidden) return;
@@ -1019,6 +1024,10 @@ export function unmount() {
   clearInterval(clock);
   sweep = null;
   clock = null;
+  if (observer) observer.disconnect();
+  observer = null;
+  reconcileQueued = false;
+  reconciling = false;
   unbindDecisions();
   document.removeEventListener("keydown", onGlobalKeydown);
   document.removeEventListener("click", onDocumentClick);
@@ -1065,15 +1074,61 @@ window.addEventListener("proto:variant-change", (ev) => {
   else unmount();
 });
 
+/**
+ * Containers the SHIPPED code rebuilds under us. `renderOverview()` clears and
+ * recreates every node card on each selection (`overview.js:10`), and the
+ * decision list reconciles rows on every poll — the variant's decoration lives
+ * on those nodes, so a rebuild paints an undecorated shape until the next sweep.
+ */
+const OBSERVED_HOSTS = ["#overview", "#decision-list", "#charts"];
+
+function queueReconcile() {
+  if (!mounted || reconciling || reconcileQueued) return;
+  reconcileQueued = true;
+  queueMicrotask(() => {
+    reconcileQueued = false;
+    reconcile();
+  });
+}
+
+/**
+ * Re-decorate BEFORE the browser paints.
+ *
+ * A MutationObserver callback is a microtask, so reconciling from it lands in
+ * the same task as the rebuild that triggered it — the undecorated intermediate
+ * state is never painted. Measured before this: clicking a node showed the
+ * pre-HIG layout (per-card Charts / Ask AI / Restart / Drain) for ~160 ms, until
+ * the 250 ms sweep put it back.
+ */
+function observeHosts() {
+  if (typeof MutationObserver !== "function") return; // DOM shim / very old browser
+  if (!observer) observer = new MutationObserver(queueReconcile);
+  observer.disconnect();
+  for (const sel of OBSERVED_HOSTS) {
+    const host = document.querySelector(sel);
+    if (host) observer.observe(host, { childList: true, subtree: true });
+  }
+}
+
 function reconcile() {
-  if (!mounted) return;
-  owned = owned.filter((n) => typeof n.remove !== "function" || n.isConnected !== false);
-  labelFields();
-  decorateCards();
-  placeNodeDetail();
-  syncDecisions();
-  syncApprovals();
-  syncSubtitle();
+  if (!mounted || reconciling) return;
+  reconciling = true;
+  try {
+    owned = owned.filter((n) => typeof n.remove !== "function" || n.isConnected !== false);
+    labelFields();
+    decorateCards();
+    placeNodeDetail();
+    syncDecisions();
+    syncApprovals();
+    syncSubtitle();
+  } finally {
+    // This function MOVES nodes, so it produces mutations of its own. Drop them
+    // (and re-arm on the containers, in case a shipped re-render replaced one),
+    // or the observer would re-enter on work it just did.
+    if (observer) observer.takeRecords();
+    reconciling = false;
+    observeHosts();
+  }
 }
 
 if (document.documentElement.dataset.variant === VARIANT) mount();
