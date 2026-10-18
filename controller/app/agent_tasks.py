@@ -43,6 +43,7 @@ import logging
 import sqlite3
 import threading
 import time
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from . import db, errors, store, ulid
@@ -225,10 +226,41 @@ def agent_id_for_name(instance_name: str) -> str:
     return vmids.vm_id_for_instance(instance_name)
 
 
+@dataclass
+class AgentResolution:
+    """What :func:`resolve_agent_target` learned about an agent identifier.
+
+    ``node``/``instance_name`` are set ONLY when the identifier was found in a
+    LIVE source (an allocation this controller materialised, or a live LXD
+    instance list). That pair is the dispatch authority: an instance the
+    controller cannot see live is never tasked, however many telemetry samples
+    name it.
+
+    The failure side carries enough to answer honestly instead of "unknown":
+    ``unscanned_nodes`` names every non-synthetic node whose instance list could
+    not be read (the reason a 503 is owed, not a 404), and ``telemetry_node_ids``
+    names the nodes whose latest telemetry sample reports the id — the node(s)
+    the client was shown it for. ``known`` holds internal instance NAMES (never
+    handed to a client); ``known_agent_ids`` is their safe, one-way form.
+    """
+
+    node: dict | None = None
+    instance_name: str | None = None
+    reason: str | None = None            # None | "node_unreachable" | "unknown_vm"
+    known: list[str] = field(default_factory=list)
+    unscanned_nodes: list[dict] = field(default_factory=list)
+    telemetry_node_ids: list[str] = field(default_factory=list)
+    sources: list[str] = field(default_factory=list)
+
+    @property
+    def known_agent_ids(self) -> list[str]:
+        return sorted({agent_id_for_name(n) for n in self.known})
+
+
 def resolve_agent_target(conn, cfg, project_id: str, vm_id: str, *,
                          executor_factory: Callable[[Any, dict], Any] | None = None
-                         ) -> tuple[dict | None, str | None, str | None, list[str]]:
-    """Resolve an agent identifier to `(node, instance_name, reason, known_names)`.
+                         ) -> AgentResolution:
+    """Resolve an agent identifier to its owning node (and, when live, its name).
 
     The identifier a caller may hold comes from one of two places and BOTH are
     accepted here, because the two contracts name different things:
@@ -239,79 +271,112 @@ def resolve_agent_target(conn, cfg, project_id: str, vm_id: str, *,
         derived `vm_id`, `sha256("termini-vm-id:" + name)` in Crockford base32 —
         a one-way id, deliberately not the name.
 
-    The Agents panel only ever has the second. If this resolver accepted only
-    names, "give this agent a task" would 404 for every agent the client can
-    see — the exact gap this card closes. Matching therefore tries the literal
-    identifier first (cheap, covers the apply-time name and the day-2/adopted
-    instance) and then the derived id against each live instance name.
+    Three sources are consulted, in order:
 
-    Returns a reason on failure: `unknown_vm` (no node has it) or
-    `node_unreachable` (the owning node's LXD cannot be reached, so its state —
-    including the instance's existence — cannot be established).
+      1. `store.live_allocations()` — instances THIS controller materialised;
+      2. each non-synthetic node's live `executor.list_instance_names()` — the
+         DISPATCH authority: only an instance seen live is ever tasked;
+      3. each node's latest telemetry sample (`metrics_latest.lxd_instances[]`) —
+         attribution only: which node the client was SHOWN the id for.
+
+    `reason` is `None` on a live hit; `node_unreachable` when at least one
+    non-synthetic node's instance list could not be read (so the id's absence
+    cannot be proven — a 503, not a 404); and `unknown_vm` only when every
+    eligible node was read successfully and the id is in none of their live lists.
     """
     from .operator import target as op_target
 
     factory = executor_factory or op_target.executor_for_node
-    known: list[str] = []
-    node_id = None
+    out = AgentResolution(sources=["live_allocations"])
+
+    # 1. Allocations — the controller's own record of what it materialised.
     for row in store.live_allocations(conn, project_id):
         ids = row.get("vm_ids") or []
         if not isinstance(ids, list):
             continue
         names = [str(i) for i in ids]
-        known.extend(names)
+        out.known.extend(names)
         for name in names:
-            if name == vm_id:
-                node_id, resolved = row["node_id"], name
-                break
-            if agent_id_for_name(name) == vm_id:
-                node_id, resolved = row["node_id"], name
+            if name == vm_id or agent_id_for_name(name) == vm_id:
+                node = store.get_node(conn, row["node_id"])
+                if node is not None:
+                    out.node = node
+                    out.instance_name = name
+                    out.known = sorted(set(out.known))
+                    return out
                 break
         else:
             continue
         break
-    else:
-        node_id, resolved = None, None
-    if node_id:
-        node = store.get_node(conn, node_id)
-        if node is not None:
-            return node, resolved, None, known
 
-    for node in store.list_nodes(conn, project_id):
+    # 2. Live enumeration — dispatch authority — while tracking nodes we could
+    #    not read, so a failed scan is never silently read as "no such agent".
+    out.sources.append("live_lxd_enumeration")
+    nodes = store.list_nodes(conn, project_id)
+    for node in nodes:
         if node.get("synthetic"):
             continue
         executor = factory(cfg, node)
         try:
             ok, live = executor.list_instance_names()
-        except Exception:  # noqa: BLE001 — an unreachable node is not an empty node
-            ok, live = False, []
+        except Exception as exc:  # noqa: BLE001 — an unreachable node is not an empty node
+            out.unscanned_nodes.append({
+                "node_id": node.get("id"),
+                "why": f"list_instance_names raised {type(exc).__name__}: {exc}",
+            })
+            continue
         if not ok:
+            out.unscanned_nodes.append({
+                "node_id": node.get("id"),
+                "why": "instance list not reachable (LXD did not answer)",
+            })
             continue
         names = [str(n) for n in live]
-        known.extend(names)
+        out.known.extend(names)
         for name in names:
             if name == vm_id or agent_id_for_name(name) == vm_id:
-                return node, name, None, sorted(set(known))
+                out.node = node
+                out.instance_name = name
+                out.known = sorted(set(out.known))
+                return out
 
-    # Nothing claimed it. Distinguish "the node that should have it is down" from
-    # "no such agent", because the operator's next action differs.
-    known_sorted = sorted(set(known))
-    if vm_id in known_sorted or any(agent_id_for_name(k) == vm_id for k in known_sorted):
-        return None, None, "node_unreachable", known_sorted
-    return None, None, "unknown_vm", known_sorted
+    # 3. Telemetry attribution — which node the client was shown the id for. Over
+    #    EVERY node, synthetic included: the panel's row may come from a
+    #    seeder-fabricated sample, and the attribution must name that provenance.
+    out.sources.append("node_telemetry")
+    for node in nodes:
+        sample = store.latest_sample(conn, node["id"])
+        if not sample:
+            continue
+        for inst in sample.get("lxd_instances") or []:
+            if not isinstance(inst, dict):
+                continue
+            ivm = inst.get("vm_id")
+            if ivm == vm_id or ivm == agent_id_for_name(vm_id):
+                if node["id"] not in out.telemetry_node_ids:
+                    out.telemetry_node_ids.append(node["id"])
+                break
+
+    out.known = sorted(set(out.known))
+    if out.unscanned_nodes:
+        # A node we could not read might own the id — absence is not proven.
+        out.reason = "node_unreachable"
+    else:
+        out.reason = "unknown_vm"
+    return out
 
 
 def resolve_agent(conn, cfg, project_id: str, vm_id: str, *,
                   executor_factory: Callable[[Any, dict], Any] | None = None
                   ) -> tuple[dict | None, str | None, list[str]]:
-    """Which node holds this agent instance? Returns `(node, reason, known_vm_ids)`.
+    """Which node holds this agent instance? Returns `(node, reason, known_names)`.
 
     Backwards-compatible wrapper over :func:`resolve_agent_target` (which also
     accepts the telemetry-form derived id and returns the LXD instance name).
     """
-    node, _name, reason, known = resolve_agent_target(
-        conn, cfg, project_id, vm_id, executor_factory=executor_factory)
-    return node, reason, known
+    r = resolve_agent_target(conn, cfg, project_id, vm_id,
+                             executor_factory=executor_factory)
+    return r.node, r.reason, r.known
 
 
 # ----------------------------------------------------------------------- dispatch

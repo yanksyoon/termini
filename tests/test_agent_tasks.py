@@ -421,7 +421,17 @@ class AgentTaskRouteTest(_Base):
         st, body = self._post_task({"prompt": "x"}, vm="termini-nope-0-0")
         self.assertEqual(st, 404, body)
         self.assertEqual(body["error"]["code"], "AGENT_NOT_FOUND")
-        self.assertIn(VM, body["error"]["details"][0]["known_vm_ids"])
+        details = body["error"]["details"][0]
+        self.assertEqual(details["reason"], "unknown")
+        # The client-safe derived id, never the internal instance name.
+        self.assertIn(agent_tasks.agent_id_for_name(VM), details["known_agent_ids"])
+        self.assertNotIn(VM, json.dumps(details))
+        # The 404 is actionable: the forms compared and the sources consulted.
+        self.assertEqual(details["literal_name"], "termini-nope-0-0")
+        self.assertEqual(details["derived_agent_id"],
+                         agent_tasks.agent_id_for_name("termini-nope-0-0"))
+        self.assertIn("node_telemetry", details["sources"])
+        self.assertEqual(details["unscanned_nodes"], [])
 
     def test_agent_without_the_task_surface_is_unreachable_not_silent(self):
         """An instance whose runtime predates §5.6 must fail loudly, never hang."""
@@ -597,6 +607,67 @@ class ResolveAgentTest(_Base):
                 conn, self.cfg, PROJECT_ID, "termini-nope-0-0")
         self.assertIsNone(node)
         self.assertEqual(reason, "unknown_vm")
+
+
+class AgentResolutionHonestyTest(_Base):
+    """The three honest classifications, distinct from one another.
+
+    The defect this fixes answered "no such agent" (404) for an id whose owning
+    node simply could not be enumerated. These tests pin the three outcomes:
+
+      * a telemetry-only id is attributed to the node the client was shown;
+      * a node whose instance list cannot be read turns an otherwise-unknown id
+        into a 503 that NAMES the unreadable node — never a 404;
+      * a genuinely unknown id (every node read, id in none) is still a 404.
+    """
+
+    def _seed_telemetry(self, derived: str) -> None:
+        with db.session(self.db_path) as conn:
+            store.insert_samples(conn, self.node_id, "telemetry-call", [
+                {"seq": 1, "ts": "2026-10-18T05:00:00Z",
+                 "lxd_instances": [{"vm_id": derived, "state": "running"}]}])
+            conn.commit()
+
+    def test_id_only_in_telemetry_is_attributed_to_its_node(self):
+        derived = agent_tasks.agent_id_for_name("demo-workload")
+        self._seed_telemetry(derived)
+        with db.session(self.db_path) as conn:
+            res = agent_tasks.resolve_agent_target(conn, self.cfg, PROJECT_ID, derived)
+        # Telemetry names the owner but is not dispatch authority: the instance
+        # is not seen live, so it must never be tasked.
+        self.assertIsNone(res.node)
+        self.assertEqual(res.telemetry_node_ids, [self.node_id])
+        self.assertIn("node_telemetry", res.sources)
+        # The node IS readable and its live list does not contain the id, so the
+        # honest answer is still "not found" — but attributed, not anonymous.
+        self.assertEqual(res.reason, "unknown_vm")
+
+    def test_unscannable_node_makes_unknown_id_503_not_404(self):
+        with db.session(self.db_path) as conn:
+            conn.execute("UPDATE nodes SET lxd_endpoint = ?", ("http://127.0.0.1:1",))
+            conn.commit()
+        st, body = self._post_task({"prompt": "x"}, vm="termini-nope-0-0")
+        self.assertEqual(st, 503, body)
+        self.assertEqual(body["error"]["code"], "NODE_UNREACHABLE")
+        details = body["error"]["details"][0]
+        self.assertEqual(details["reason"], "node_unreachable")
+        self.assertEqual([u["node_id"] for u in details["unscanned_nodes"]],
+                         [self.node_id])
+
+    def test_telemetry_attributed_id_on_unscannable_node_is_503_naming_it(self):
+        derived = agent_tasks.agent_id_for_name("demo-workload")
+        self._seed_telemetry(derived)
+        with db.session(self.db_path) as conn:
+            conn.execute("UPDATE nodes SET lxd_endpoint = ?", ("http://127.0.0.1:1",))
+            conn.commit()
+        st, body = self._post_task({"prompt": "x"}, vm=derived)
+        self.assertEqual(st, 503, body)
+        self.assertEqual(body["error"]["code"], "NODE_UNREACHABLE")
+        details = body["error"]["details"][0]
+        # The unreadable node is named, and telemetry names the owner.
+        self.assertEqual([u["node_id"] for u in details["unscanned_nodes"]],
+                         [self.node_id])
+        self.assertEqual(details["attributed_nodes"], [self.node_id])
 
 
 class TelemetryIdTaskTest(_Base):

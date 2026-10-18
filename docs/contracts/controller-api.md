@@ -1277,9 +1277,13 @@ starts it (a restart cannot bring a stopped instance up), and every action
 confirms the resulting state before reporting success — an ineffective action is
 `failed`, never `succeeded`.
 
-**Errors** (§3 envelope): `404 AGENT_NOT_FOUND` (with
-`details[0].known_agent_ids` — the telemetry ids, and `known_vm_ids` — instance
-names), `503 NODE_OFFLINE`, `503 NODE_UNREACHABLE`. A body is accepted and
+**Errors** (§3 envelope): `404 AGENT_NOT_FOUND` (with `details[0]`
+carrying `literal_name`, `derived_agent_id`, `sources` consulted,
+`known_agent_ids` — the client-safe telemetry ids, and `unscanned_nodes` — the
+nodes whose LXD could not be read; instance NAMES are never exposed),
+`503 NODE_OFFLINE`, `503 NODE_UNREACHABLE` (with `details[0].unscanned_nodes`
+naming the node(s) that could not be read and `details[0].attributed_nodes`
+naming the node(s) whose telemetry reports the id). A body is accepted and
 ignored; an unknown action is `404`.
 
 **Contract note (population semantics).** Telemetry reports only RUNNING
