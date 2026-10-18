@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Termini — AI-Infra deck v2.3</title>
+<title>Termini — AI-Infra deck v2.4</title>
 <style>
   :root {
     --bg: #0b0f14;
@@ -171,6 +171,8 @@
   .case p { font-size: 14px; line-height: 1.4; color: var(--muted); }
   .case p b { color: var(--text); }
   .case .q { font-size: 12.5px; line-height: 1.38; color: #a9b6c4; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--line); }
+  .case .src { font-size: 10.5px; color: #6b7885; margin-top: 6px; letter-spacing: 0.02em; }
+  .case .src a { color: #8b98a6; text-decoration: none; border-bottom: 1px dotted #46525f; }
 
   /* compact stat line (slide 5) */
   .statline { display: flex; gap: 14px; margin-top: 16px; position: relative; }
@@ -319,18 +321,21 @@
         <h3>Engineers debugged with ChatGPT</h3>
         <p>Confidential <b>source code</b>, equipment yield data and a full meeting's notes went in as prompts. Samsung restricted generative AI across its network weeks later.</p>
         <div class="q">&ldquo;Data is transmitted and stored to an external server, making it impossible for the company to retrieve it.&rdquo; &mdash; Samsung internal memo</div>
+        <div class="src"><a href="https://fortune.com/2023/05/02/samsung-bans-employee-use-chatgpt-data-leak">fortune.com &middot; 2 May 2023</a></div>
       </div>
       <div class="case">
         <div class="when">Jan 2025 &middot; DeepSeek</div>
         <h3>A database of everyone's prompts</h3>
         <p>Wiz Research found an unauthenticated ClickHouse instance holding <b>1M+ log lines</b>, chat history, API keys and plaintext passwords.</p>
         <div class="q">Not a breach of the model &mdash; a copy of every conversation, reachable from the open internet.</div>
+        <div class="src"><a href="https://www.wiz.io/blog/wiz-research-uncovers-exposed-deepseek-database-leak">wiz.io/blog &middot; 29 Jan 2025</a></div>
       </div>
       <div class="case">
         <div class="when">Sep 2026 &middot; Navier&ndash;Stokes</div>
         <h3>The credit left with the data</h3>
         <p>OpenAI announced a Navier&ndash;Stokes solution that its own team described as using <b>&ldquo;very little human input&rdquo;</b>. Twelve hours earlier, Buckmaster said his and Alp&ouml;ge's unpublished Euler advances had leaked to the lab.</p>
         <div class="q">A Millennium Prize result &mdash; and a priority dispute about whose work the model had read.</div>
+        <div class="src"><a href="https://en.wikipedia.org/wiki/Navier%E2%80%93Stokes_priority_controversy">wikipedia.org &middot; Sept 2026</a></div>
       </div>
     </div>
     <div class="resolve-strip"><span class="rl">How Termini closes it</span><span class="rt">Not a better policy &mdash; a topology where <b>the copy never leaves</b>: C2 stays on the node, and what does leave is named, classified and audited.</span></div>
@@ -351,8 +356,8 @@
       </div>
       <div class="verb">
         <div class="vnum">02 &middot; Operate</div>
-        <h3>Self-healing, not alerting</h3>
-        <p>When memory or disk crosses a limit, Termini restarts the runaway workload, records why it chose that action and what happened, and falls back to a fixed rule whenever the model is unsure.</p>
+        <h3>An operator you don't hire</h3>
+        <p>An AI agent watches telemetry and makes decisions the way a professional data-centre operator would &mdash; restarting a runaway workload, stopping what is about to fill a disk, recording why &mdash; and falls back to a fixed rule when it is unsure.</p>
         <div class="removes">Removes: the on-call rotation</div>
       </div>
       <div class="verb">
@@ -376,7 +381,7 @@
       <tr><th style="width:130px;">Level</th><th style="width:230px;">Runs on</th><th style="width:330px;">Good at</th><th style="width:190px;">Data movement</th><th style="width:110px;">In the demo</th></tr>
       <tr><td class="lv">L0<small>deterministic</small></td><td>Controller rules</td><td>Known remedies, threshold-to-action mappings</td><td>None</td><td class="yes">Yes</td></tr>
       <tr><td class="lv">L1<small>small local</small></td><td>The node &mdash; 4B class, <code>llama.cpp</code></td><td>Classify, extract, summarise, triage</td><td>None</td><td class="yes">Yes</td></tr>
-      <tr><td class="lv">L2<small>large local</small></td><td>A GPU node over your own corpus</td><td>Reasoning over your own records</td><td>None</td><td class="no">Config only</td></tr>
+      <tr><td class="lv">L2<small>large local</small></td><td>A GPU node over your data</td><td>Reasoning specific to your domain data</td><td>None</td><td class="no">Config only</td></tr>
       <tr><td class="lv">L3<small>frontier</small></td><td>Gemini, via Vertex AI</td><td>The hardest reasoning, the smallest payload</td><td>Minimised C0, if permitted</td><td class="yes">Yes</td></tr>
     </table>
     <div class="flow tight" style="margin-top:14px;">
@@ -420,7 +425,7 @@
     <div class="flow tight" style="margin-top:16px;">
       <span class="step">Telemetry</span><span class="arrow">&rarr;</span>
       <span class="step">Threshold rule fires</span><span class="arrow">&rarr;</span>
-      <span class="step">Model decides &mdash; allowlist only</span><span class="arrow">&rarr;</span>
+      <span class="step">Model decides &mdash; constrained to safe actions</span><span class="arrow">&rarr;</span>
       <span class="step">Audited LXD execution</span><span class="arrow">&rarr;</span>
       <span class="step hot">Audit row</span>
     </div>
@@ -430,8 +435,8 @@
         <p>Thresholds on memory, disk and inference health. The loop runs <b>whether or not anyone is awake</b>, and a rule &mdash; never a model &mdash; is what notices.</p>
       </div>
       <div class="card">
-        <h3><span class="num">2</span> It decides, inside a cage</h3>
-        <p>The model chooses among <b>allowlisted actions</b>; grammar-constrained decoding makes anything else unencodable, and the deterministic fallback is always available.</p>
+        <h3><span class="num">2</span> It decides, with guardrails</h3>
+        <p>The model picks among the actions an operator is permitted to take; grammar-constrained decoding makes anything outside that set unencodable, and a deterministic fallback is always available.</p>
       </div>
       <div class="card">
         <h3><span class="num">3</span> It leaves a receipt</h3>

@@ -56,7 +56,7 @@ Two sides of the same market:
 
 | # | Requirement (competition wording) | Artifact | Status |
 |---|---|---|---|
-| 1 | **Clear proposal** — "a deck/PPT converted into a PDF", stating problem, benefit, feasibility and scalability | [`deck/v2/termini-deck-v2.3.pdf`](deck/v2/termini-deck-v2.3.pdf) (16 slides, 16:9) — source [`deck/v2/index.html`](deck/v2/index.html). v1 kept at [`deck/termini-demo-deck.pdf`](deck/termini-demo-deck.pdf) | ✅ ready |
+| 1 | **Clear proposal** — "a deck/PPT converted into a PDF", stating problem, benefit, feasibility and scalability | [`deck/v2/termini-deck-v2.4.pdf`](deck/v2/termini-deck-v2.4.pdf) (16 slides, 16:9) — source [`deck/v2/index.html`](deck/v2/index.html). v1 kept at [`deck/termini-demo-deck.pdf`](deck/termini-demo-deck.pdf) | ✅ ready |
 | 2 | **Functional prototype** — "working prototype using Google Cloud's AI tools & deployed on Cloud Run/GCP/Firebase" | Live on GCP — links in §3, evidence in §4 | ✅ deployed |
 | 3 | **Comprehensive documentation** — "a link to a public YouTube/Vimeo video or public Google Drive link (3 minutes) showcasing your AI creation in action" | [`docs/video-script-3min.md`](docs/video-script-3min.md) — shot-by-shot script | ⚠️ **script ready; the recorded video + public link is a human step — see §5** |
 | 4 | **Category specification** | §1 above | ✅ stated |
@@ -293,7 +293,7 @@ than an honest gap for a judge.
 | Path | What |
 |---|---|
 | [`README.md`](README.md) | Product + deployed-stack overview, quickstart, verification |
-| [`deck/v2/`](deck/v2/index.html) | Proposal deck v2.3 — 16 slides, HTML source + CDP-rendered PDF (`termini-deck-v2.3.pdf`); v1 kept at `deck/index.html` |
+| [`deck/v2/`](deck/v2/index.html) | Proposal deck v2.4 — 16 slides, HTML source + CDP-rendered PDF (`termini-deck-v2.4.pdf`); v1 kept at `deck/index.html` |
 | [`docs/architecture.md`](docs/architecture.md) | Frozen architecture, contracts index, R1–R24 answers |
 | [`docs/contracts/governance.md`](docs/contracts/governance.md) | The C0/C1/C2 boundary and the external-model rule |
 | [`docs/contracts/operator-decision.md`](docs/contracts/operator-decision.md) | The decision step's contract |

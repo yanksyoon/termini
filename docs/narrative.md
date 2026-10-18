@@ -98,7 +98,7 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 
 ## 7. Deck v2 — the story-led arc, its sources, and what is thesis
 
-`deck/v2/termini-deck-v2.3.pdf` replaces the v1 framing (*AI is stuck at the on-prem
+`deck/v2/termini-deck-v2.4.pdf` replaces the v1 framing (*AI is stuck at the on-prem
 gate*) with a story-led arc that starts from one clinic and ends at the architecture.
 v2.3 is 16 slides. It opens the story properly — slide 2 is the clinic and its rule
 (*all client data must not leave the building*) with the source link — so the later
@@ -106,7 +106,9 @@ references (“the clinic is the requirement”, “the next one won't have to�
 antecedent. The opening was condensed from eight slides to five by folding the three
 gates into the constraint slide and merging “intelligence should be plural” and “the
 feedback loop” into one loop slide. Every problem slide (3, 4, 5, 7) closes with a
-**How Termini closes it** strip.
+**How Termini closes it** strip. The three unauthorised-use cases and the case slide each
+carry a visible source link (Fortune, Wiz, Wikipedia, arca.live); the links survive the
+PDF export as annotations, and the domain is printed as text either way.
 
 Three classes of statement must not be confused when this deck is edited.
 
@@ -117,9 +119,9 @@ Three classes of statement must not be confused when this deck is edited.
 | “A neighbourhood dental clinic's AX transformation”, arca.live `b/aihomelab/185810092` (13 Oct 2026; 330k+ views) | The governance rule (“patient information does not leave this building”) that frames slide 2; the phone/claims/reporting work and the human grading loop used on slides 8 and 9; and the three-model monthly diagnosis. The hardware inventory and the self-built PBX are **not** on the slides any more — v2.1 dropped the infrastructure detail from the opening | **One public forum post.** It is cited as a case, never as a market size. Its figures are the author's own report, not audited |
 | MIT NANDA, *The GenAI Divide: State of AI in Business 2025* (Jul 2025) | 95% of enterprise GenAI pilots with no measurable P&L impact; $30–40B of spend; ~5% reaching production | **Preliminary and not peer-reviewed**; the 95% has been publicly contested. The deck labels it “preliminary, contested” and uses it as directional, not as a verdict |
 | McKinsey, *The State of AI 2025* | 88% of organisations using AI in at least one function; 6% high performers | Survey of self-reported use; the deck quotes the two figures, not an ROI claim |
-| Samsung internal memo, Apr–May 2023 (reported by Bloomberg, Fortune, CNBC) | Slide 6: engineers put confidential source code, equipment yield data and meeting notes into ChatGPT; the memo says data entered is "transmitted and stored to an external server, making it impossible for the company to retrieve it" | Company memo quoted in the press, not a first-party publication; the quotation is verbatim as reported |
-| Wiz Research, Jan 2025 | Slide 6: an unauthenticated ClickHouse database with 1M+ log lines, chat history, API keys and plaintext passwords | First-party security research (wiz.io blog); the 1M+ figure is Wiz's |
-| Navier–Stokes priority controversy, Sept 2026 (Wikipedia; Clay Mathematics Institute; NYT) | Slide 6: OpenAI announced a solution its team described as using "very little human input"; twelve hours earlier Buckmaster said his and Alpöge's unpublished Euler advances had leaked to the lab | **The leak is a claim by Buckmaster, not an established fact**, and the deck says so. The quote is OpenAI's own characterisation as reported, not the announcement's wording |
+| Samsung internal memo, Apr–May 2023 — [fortune.com/2023/05/02](https://fortune.com/2023/05/02/samsung-bans-employee-use-chatgpt-data-leak) (reported by Bloomberg, Fortune, CNBC) | Slide 6: engineers put confidential source code, equipment yield data and meeting notes into ChatGPT; the memo says data entered is "transmitted and stored to an external server, making it impossible for the company to retrieve it" | Company memo quoted in the press, not a first-party publication; the quotation is verbatim as reported |
+| Wiz Research, Jan 2025 — [wiz.io/blog](https://www.wiz.io/blog/wiz-research-uncovers-exposed-deepseek-database-leak) | Slide 6: an unauthenticated ClickHouse database with 1M+ log lines, chat history, API keys and plaintext passwords | First-party security research (wiz.io blog); the 1M+ figure is Wiz's |
+| Navier–Stokes priority controversy, Sept 2026 — [wikipedia.org](https://en.wikipedia.org/wiki/Navier%E2%80%93Stokes_priority_controversy) (Clay Mathematics Institute; NYT) | Slide 6: OpenAI announced a solution its team described as using "very little human input"; twelve hours earlier Buckmaster said his and Alpöge's unpublished Euler advances had leaked to the lab | **The leak is a claim by Buckmaster, not an established fact**, and the deck says so. The quote is OpenAI's own characterisation as reported, not the announcement's wording |
 
 ### 7.2 Thesis (labelled as a thesis on slide 7, argued and conceded on slide 9)
 
