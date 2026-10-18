@@ -10,11 +10,12 @@ Manufacturing — Intelligent Operations & Industrial Efficiency).
 
 | Version | Source | PDF | Slides | Story |
 |---|---|---|---|---|
-| **v2 (current)** | `v2/index.html` | `v2/termini-deck-v2.pdf` | 18 | A clinic's server room → the adoption paradox → plural intelligence → Termini → the architecture |
+| **v2.1 (current)** | `v2/index.html` | `v2/termini-deck-v2.1.pdf` | 18 | The constraint → the product → the unclosed ecosystem → the diagnosis → the fear → plural intelligence → Termini → the architecture |
+| v2.0 | — (git history) | `termini-deck-v2.pdf` | 18 | Superseded by v2.1; the story-led first cut |
 | v1 | `index.html` | `termini-demo-deck.pdf` | 15 | On-prem gate → delegation → proof points → live demo |
 
-**Submit `v2/termini-deck-v2.pdf`.** v1 is kept because it is the deck the
-earlier submission pack referenced; nothing else in the repo depends on it.
+**Submit `v2/termini-deck-v2.1.pdf`.** v2.0 exists only in git history, and v1 is
+kept because it is the deck the earliest submission pack referenced.
 
 ## Present
 
@@ -33,7 +34,7 @@ per page, background graphics included). Or headless Chromium:
 ```bash
 chrome --headless=new --disable-gpu --no-sandbox \
   --no-pdf-header-footer \
-  --print-to-pdf=deck/v2/termini-deck-v2.pdf deck/v2/index.html
+  --print-to-pdf=deck/v2/termini-deck-v2.1.pdf deck/v2/index.html
 ```
 
 The v2 PDF in this repo was produced over CDP (`Page.printToPDF`,
@@ -42,20 +43,24 @@ exactly instead of falling back to Letter.
 
 ## v2 story arc
 
-1. The room — a dentist's data centre and the one rule it was built around
-2. The turn — he succeeded, and that is the scandal
-3. The adoption paradox — capability compounds, deployment is flat (MIT NANDA, McKinsey)
-4. Three gates — permission, operations, context
-5. The deadlock — value scales with context, context can't move
-6. The inversion — intelligence should be plural (thesis)
-7. Evidence — the jury, the eval loop, the private corpus
-8. The honest objection — "isn't local just worse?" (counterargument + concession)
-9. Day-0 and day-2 — the product, both halves
-10. How it lands — SME outcome, hardware-owner licence, model as a knob
-11. Proof — six measurements
-12. Architecture and the boundary — what leaves, exactly
-13. Built on Google AI & Cloud
-14. Roadmap, then the bookend: *he built this alone; nobody should have to*
+1. **Termini** — the title, and nothing else
+2. The constraint — eight industries, the data that cannot leave, the work it would unlock
+3. The product — Bootstrap / Operate / Prove, and *he is the requirements document*
+4. The ecosystem — a five-node loop with one arc missing: *sovereign AI*
+5. The diagnosis — three gates, with the adoption numbers as the symptom
+6. The fear — stolen data, in three documented cases (Samsung, DeepSeek, Navier–Stokes)
+7. The inversion — intelligence should be plural (thesis)
+8. Evidence — the jury, the eval loop, the private corpus
+9. The honest objection — "isn't local just worse?" (counterargument + concession)
+10. Day-0 and day-2 — the operating contract in two workflows
+11. How it lands — SME outcome, hardware-owner licence, model as a knob
+12. Proof — six measurements
+13. Architecture and the boundary — what leaves, exactly
+14. Built on Google AI & Cloud
+15. Roadmap, then the bookend: *he built this alone; nobody should have to*
+
+Every problem slide (2, 4, 5, 6) ends with a `How Termini closes it` strip, so the
+deck never accumulates problems without naming the mechanism that answers them.
 
 Source of truth for every claim: `docs/narrative.md` (§7 records the v2 sources
 and which claims are thesis rather than measurement), `docs/architecture.md`,

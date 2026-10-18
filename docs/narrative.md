@@ -98,17 +98,24 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 
 ## 7. Deck v2 — the story-led arc, its sources, and what is thesis
 
-`deck/v2/termini-deck-v2.pdf` replaces the v1 framing (*AI is stuck at the on-prem
+`deck/v2/termini-deck-v2.1.pdf` replaces the v1 framing (*AI is stuck at the on-prem
 gate*) with a story-led arc that starts from one clinic and ends at the architecture.
+v2.1 shortens the opening: the title is the product name, the clinic survives only
+as one line in slide 2 (its rule, not its hardware), and every problem slide
+(2, 4, 5, 6) closes with a **How Termini closes it** strip.
+
 Three classes of statement must not be confused when this deck is edited.
 
 ### 7.1 External sources (cited on the slide that uses them)
 
 | Source | What the deck uses it for | How to read it |
 |---|---|---|
-| “A neighbourhood dental clinic's AX transformation”, arca.live `b/aihomelab/185810092` (13 Oct 2026; 330k+ views) | The whole Act 1 story: 12 DGX Spark-class boxes wired in rings of four, 2× Mac mini M5 Pro + an M4 mini, 3 virtualisation servers, 6 UPS, a self-built PBX, first token in 0.1 s, insurance-claim reconciliation, the monthly three-model diagnosis, the human grading screen, accountant/SaaS cancelled, marketing at zero, and the line “cheaper than the salary of a bad hire” | **One public forum post.** It is cited as a case, never as a market size. Its figures are the author's own report, not audited |
+| “A neighbourhood dental clinic's AX transformation”, arca.live `b/aihomelab/185810092` (13 Oct 2026; 330k+ views) | The governance rule (“patient information does not leave this building”) that frames slide 2; the phone/claims/reporting work and the human grading loop used on slides 8 and 9; and the three-model monthly diagnosis. The hardware inventory and the self-built PBX are **not** on the slides any more — v2.1 dropped the infrastructure detail from the opening | **One public forum post.** It is cited as a case, never as a market size. Its figures are the author's own report, not audited |
 | MIT NANDA, *The GenAI Divide: State of AI in Business 2025* (Jul 2025) | 95% of enterprise GenAI pilots with no measurable P&L impact; $30–40B of spend; ~5% reaching production | **Preliminary and not peer-reviewed**; the 95% has been publicly contested. The deck labels it “preliminary, contested” and uses it as directional, not as a verdict |
 | McKinsey, *The State of AI 2025* | 88% of organisations using AI in at least one function; 6% high performers | Survey of self-reported use; the deck quotes the two figures, not an ROI claim |
+| Samsung internal memo, Apr–May 2023 (reported by Bloomberg, Fortune, CNBC) | Slide 6: engineers put confidential source code, equipment yield data and meeting notes into ChatGPT; the memo says data entered is "transmitted and stored to an external server, making it impossible for the company to retrieve it" | Company memo quoted in the press, not a first-party publication; the quotation is verbatim as reported |
+| Wiz Research, Jan 2025 | Slide 6: an unauthenticated ClickHouse database with 1M+ log lines, chat history, API keys and plaintext passwords | First-party security research (wiz.io blog); the 1M+ figure is Wiz's |
+| Navier–Stokes priority controversy, Sept 2026 (Wikipedia; Clay Mathematics Institute; NYT) | Slide 6: OpenAI announced a solution its team described as using "very little human input"; twelve hours earlier Buckmaster said his and Alpöge's unpublished Euler advances had leaked to the lab | **The leak is a claim by Buckmaster, not an established fact**, and the deck says so. The quote is OpenAI's own characterisation as reported, not the announcement's wording |
 
 ### 7.2 Thesis (labelled as a thesis on slide 7, argued and conceded on slide 9)
 
@@ -123,6 +130,11 @@ Three classes of statement must not be confused when this deck is edited.
 
 None of §7.2 is measured. The dentist's three-model jury, eval loop and private corpus
 (slide 8) are the only evidence offered for it, and they are one clinic's practice.
+
+The market evidence that used to sit on the v1 differentiation slide is now folded in
+rather than argued as a competitive matrix: slide 4 carries one line (Datadog delegated
+the operations by moving the telemetry; Samsung × Mistral bought sovereignty bespoke)
+to show that the missing arc is already being purchased at the top of the market.
 
 ### 7.3 Measured claims (unchanged from v1)
 
