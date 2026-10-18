@@ -146,19 +146,17 @@ class AgentActionsTest(unittest.TestCase):
     # -- (1) the identifier the client holds resolves to the instance ---------
     def test_telemetry_vm_id_resolves_to_the_instance_name(self):
         with db.session(self.db_path) as conn:
-            node, name, reason, _known = agent_tasks.resolve_agent_target(
-                conn, self.cfg, PROJECT_ID, VM_ID)
-        self.assertIsNone(reason)
-        self.assertEqual(node["id"], self.node_id)
-        self.assertEqual(name, VM)
+            res = agent_tasks.resolve_agent_target(conn, self.cfg, PROJECT_ID, VM_ID)
+        self.assertIsNone(res.reason)
+        self.assertEqual(res.node["id"], self.node_id)
+        self.assertEqual(res.instance_name, VM)
 
     def test_the_instance_name_still_resolves(self):
         with db.session(self.db_path) as conn:
-            node, name, reason, _ = agent_tasks.resolve_agent_target(
-                conn, self.cfg, PROJECT_ID, VM)
-        self.assertIsNone(reason)
-        self.assertEqual(node["id"], self.node_id)
-        self.assertEqual(name, VM)
+            res = agent_tasks.resolve_agent_target(conn, self.cfg, PROJECT_ID, VM)
+        self.assertIsNone(res.reason)
+        self.assertEqual(res.node["id"], self.node_id)
+        self.assertEqual(res.instance_name, VM)
 
     # -- (2) a real, confirmed state change ------------------------------------
     def test_restart_reaches_lxd_and_is_confirmed(self):

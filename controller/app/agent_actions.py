@@ -69,21 +69,30 @@ def perform_action(
     if action not in ACTIONS:
         raise errors.not_found(f"unknown agent action {action}")
 
-    node, instance_name, reason, known = agent_tasks.resolve_agent_target(
+    resolution = agent_tasks.resolve_agent_target(
         conn, cfg, project_id, vm_id, executor_factory=executor_factory)
-    if node is None:
-        if reason == "node_unreachable":
+    if resolution.node is None:
+        if resolution.reason == "node_unreachable":
             raise errors.err(
                 503, "NODE_UNREACHABLE",
                 f"the node holding agent {vm_id} cannot be reached, so its state "
                 f"cannot be established",
-                [{"field": "vm_id", "reason": "owning node unreachable"}])
+                [{"field": "vm_id",
+                  "reason": "node_unreachable",
+                  "unscanned_nodes": resolution.unscanned_nodes,
+                  "attributed_nodes": resolution.telemetry_node_ids}])
         raise errors.err(
             404, "AGENT_NOT_FOUND",
             f"no agent {vm_id} on this project's nodes",
-            [{"field": "vm_id", "reason": "unknown",
-              "known_vm_ids": known[:20],
-              "known_agent_ids": [agent_tasks.agent_id_for_name(n) for n in known[:20]]}])
+            [{"field": "vm_id",
+              "reason": "unknown",
+              "literal_name": vm_id,
+              "derived_agent_id": agent_tasks.agent_id_for_name(vm_id),
+              "sources": resolution.sources,
+              "known_agent_ids": resolution.known_agent_ids[:20],
+              "unscanned_nodes": resolution.unscanned_nodes}])
+    node = resolution.node
+    instance_name = resolution.instance_name
 
     sample = store.latest_sample(conn, node["id"])
     node_status, _ = health.node_status_health(node, sample, time.time())
