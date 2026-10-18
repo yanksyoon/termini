@@ -10,13 +10,14 @@ Manufacturing — Intelligent Operations & Industrial Efficiency).
 
 | Version | Source | PDF | Slides | Story |
 |---|---|---|---|---|
-| **v2.3 (current)** | `v2/index.html` | `v2/termini-deck-v2.3.pdf` | 16 | The case → the constraint → the loop → unauthorised use → the product → the ladder → the team → the split → proof → architecture |
-| v2.2 | — (git history) | `termini-deck-v2.2.pdf` | 18 | Superseded by v2.3; ladder + compliance evidence |
+| **v2.4 (current)** | `v2/index.html` | `v2/termini-deck-v2.4.pdf` | 16 | The case → the constraint → the loop → unauthorised use → the product → the ladder → the team → the split → proof → architecture |
+| v2.3 | — (git history) | `termini-deck-v2.3.pdf` | 16 | Superseded by v2.4; case slide + condensed opening |
+| v2.2 | — (git history) | `termini-deck-v2.2.pdf` | 18 | Superseded; ladder + compliance evidence |
 | v2.1 | — (git history) | `termini-deck-v2.1.pdf` | 18 | Superseded; product-led opening |
 | v2.0 | — (git history) | `termini-deck-v2.pdf` | 18 | Superseded; the story-led first cut |
 | v1 | `index.html` | `termini-demo-deck.pdf` | 15 | On-prem gate → delegation → proof points → live demo |
 
-**Submit `v2/termini-deck-v2.3.pdf`.** Earlier versions exist only in git history; v1
+**Submit `v2/termini-deck-v2.4.pdf`.** Earlier versions exist only in git history; v1
 is kept because it is the deck the earliest submission pack referenced.
 
 ## Present
@@ -36,7 +37,7 @@ per page, background graphics included). Or headless Chromium:
 ```bash
 chrome --headless=new --disable-gpu --no-sandbox \
   --no-pdf-header-footer \
-  --print-to-pdf=deck/v2/termini-deck-v2.3.pdf deck/v2/index.html
+  --print-to-pdf=deck/v2/termini-deck-v2.4.pdf deck/v2/index.html
 ```
 
 The v2 PDF in this repo was produced over CDP (`Page.printToPDF`,
