@@ -1,3 +1,8 @@
 $ gcloud compute ssh termini-controller --zone=asia-south1-a --quiet --command="sudo journalctl -u termini-controller --no-pager -o short-iso | grep -E 'LXD trust' | tail -5"
-# captured 2026-10-17T22:58:02Z
+# captured 2026-10-18T10:42:05Z
 
+2026-10-18T10:15:32+00:00 termini-controller.asia-south1-a.c.termini-510609.internal python3[501850]: 2026-10-18 10:15:32,096 INFO termini.controller node 01M577CTYM4FXZCHKKFRVK69C2 LXD trust at 10.10.0.14:8443: error — cannot reach https://10.10.0.14:8443: could not determine trust: error / URLError: <urlopen error [Errno 111] Connection refused>
+2026-10-18T10:15:34+00:00 termini-controller.asia-south1-a.c.termini-510609.internal python3[501850]: 2026-10-18 10:15:34,343 INFO termini.controller node 01M577CTYM4FXZCHKKFRVK69C2 LXD trust at 10.10.0.14:8443: error — cannot reach https://10.10.0.14:8443: could not determine trust: error / URLError: <urlopen error [Errno 111] Connection refused>
+2026-10-18T10:15:38+00:00 termini-controller.asia-south1-a.c.termini-510609.internal python3[501850]: 2026-10-18 10:15:38,131 INFO termini.controller node 01M577CTYM4FXZCHKKFRVK69C2 LXD trust at 10.10.0.14:8443: error — cannot reach https://10.10.0.14:8443: could not determine trust: error / URLError: <urlopen error [Errno 111] Connection refused>
+2026-10-18T10:31:23+00:00 termini-controller.asia-south1-a.c.termini-510609.internal python3[509795]: 2026-10-18 10:31:23,077 INFO termini.controller node 01M577CTYM4FXZCHKKFRVK69C2 LXD trust at 10.10.0.14:8443: trusted — authenticated GET /1.0/instances -> 200
+2026-10-18T10:41:46+00:00 termini-controller.asia-south1-a.c.termini-510609.internal python3[509795]: 2026-10-18 10:41:46,900 INFO termini.controller node 01M579MW4H6MHY61YTCJR8NN32 LXD trust at 10.10.0.14:8443: trusted — authenticated GET /1.0/instances -> 200

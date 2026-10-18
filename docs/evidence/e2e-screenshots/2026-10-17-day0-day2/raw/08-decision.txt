@@ -1,9 +1,9 @@
 $ sleep 12; curl -sS -H 'Authorization: Bearer demo-project-token' 'https://34-93-190-64.sslip.io/v1/operator/decisions?limit=6' | python3 -c "import json,sys;[print(r['decided_at'],r['rule_id'],'->',r['action_kind'],'src='+str(r.get('decision_source')),'conf='+str(r.get('confidence')),r.get('action_params')) for r in json.load(sys.stdin)['decisions'][:6]]"
-# captured 2026-10-17T22:59:55Z
+# captured 2026-10-18T10:45:58Z
 
-2026-10-17T23:00:04.947Z disk-degrade-01 -> instance.stop src=model conf=0.9 {'instance_name': 'demo-workload', 'force': True, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
-2026-10-17T22:59:57.907Z oom-guard-01 -> instance.restart src=model conf=0.9 {'instance_name': 'NNB9287WRHGFDPEZ995TKCXDNW', 'force': True, 'timeout_s': 30, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
-2026-10-17T22:58:56.112Z oom-guard-01 -> instance.restart src=model conf=0.95 {'instance_name': 'demo-workload', 'force': True, 'timeout_s': 30, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
-2026-10-17T22:58:30.352Z oom-guard-01 -> instance.restart src=model conf=0.95 {'instance_name': 'demo-workload', 'force': True, 'timeout_s': 30, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
-2026-10-17T22:58:19.017Z oom-guard-01 -> instance.restart src=model conf=0.95 {'instance_name': 'demo-workload', 'force': True, 'timeout_s': 30, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
-2026-10-17T22:58:10.655Z disk-degrade-01 -> instance.stop src=model conf=0.9 {'instance_name': 'demo-workload', 'force': True, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
+2026-10-18T10:46:01.757Z oom-guard-01 -> instance.restart src=model conf=0.95 {'instance_name': 'demo-workload', 'force': True, 'timeout_s': 30, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
+2026-10-18T10:45:30.439Z oom-guard-01 -> instance.restart src=model conf=0.95 {'instance_name': 'NNB9287WRHGFDPEZ995TKCXDNW', 'force': True, 'timeout_s': 30, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
+2026-10-18T10:45:17.547Z disk-degrade-01 -> instance.stop src=model conf=0.85 {'instance_name': 'NNB9287WRHGFDPEZ995TKCXDNW', 'force': True, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
+2026-10-18T10:44:24.915Z oom-guard-01 -> instance.restart src=model conf=0.95 {'instance_name': 'NNB9287WRHGFDPEZ995TKCXDNW', 'force': True, 'timeout_s': 30, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
+2026-10-18T10:43:43.315Z oom-guard-01 -> instance.restart src=model conf=0.95 {'instance_name': 'NNB9287WRHGFDPEZ995TKCXDNW', 'force': True, 'timeout_s': 30, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}
+2026-10-18T10:43:21.840Z disk-degrade-01 -> instance.stop src=model conf=0.9 {'instance_name': 'NNB9287WRHGFDPEZ995TKCXDNW', 'force': True, '_vm_id': 'NNB9287WRHGFDPEZ995TKCXDNW'}

@@ -1,30 +1,36 @@
 $ for i in $(seq 1 24); do S=$(gcloud compute ssh termini-day0 --zone=asia-south1-a --quiet --command 'sudo termini-bootstrap status' 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["state"])' 2>/dev/null); echo "$(date -u +%H:%M:%SZ) state=$S"; [ "$S" = ONLINE ] && break; sleep 5; done; gcloud compute ssh termini-day0 --zone=asia-south1-a --quiet --command="sudo journalctl -u termini-bootstrap --no-pager -o short-iso | grep -E 'REGISTERED|LXD_TRUST|Starting'; echo; sudo termini-bootstrap status"
-# captured 2026-10-17T22:57:48Z
+# captured 2026-10-18T10:40:56Z
 
-22:57:57Z state=ONLINE
+10:41:00Z state=
+10:41:10Z state=
+10:41:20Z state=
+10:41:36Z state=REGISTERING
+10:41:46Z state=REGISTERING
+10:41:58Z state=ONLINE
 External IP address was not found; defaulting to using IAP tunneling.
 WARNING: 
 
 To increase the performance of the tunnel, consider installing NumPy. For instructions,
 please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
 
-2026-10-17T22:38:32+00:00 node-d systemd[1]: Starting termini-bootstrap.service - Termini node bootstrap (register + telemetry)...
-2026-10-17T22:38:58+00:00 termini-day0.asia-south1-a.c.termini-510609.internal termini-bootstrap[659]: 2026-10-17T22:38:58Z [termini-bootstrap] REGISTERED node_id=01M5609C8CQHS2EMZT2V9VZZA6 role=compute register_ms=24786 boot_to_registered_ms=48210
-2026-10-17T22:38:58+00:00 termini-day0.asia-south1-a.c.termini-510609.internal termini-bootstrap[659]: 2026-10-17T22:38:58Z [termini-bootstrap] LXD_TRUST skipped: could not mint a trust token
+2026-10-18T10:41:22+00:00 node-d systemd[1]: Starting termini-bootstrap.service - Termini node bootstrap (register + telemetry)...
+2026-10-18T10:41:46+00:00 termini-day0.asia-south1-a.c.termini-510609.internal termini-bootstrap[651]: 2026-10-18T10:41:46Z [termini-bootstrap] REGISTERED node_id=01M579MW4H6MHY61YTCJR8NN32 role=compute register_ms=23765 boot_to_registered_ms=41930
+2026-10-18T10:41:46+00:00 termini-day0.asia-south1-a.c.termini-510609.internal termini-bootstrap[651]: 2026-10-18T10:41:46Z [termini-bootstrap] LXD_TRUST certificate added to this node's trust store (/var/snap/lxd/common/lxd/unix.socket: HTTP 201)
+2026-10-18T10:41:46+00:00 termini-day0.asia-south1-a.c.termini-510609.internal termini-bootstrap[651]: 2026-10-18T10:41:46Z [termini-bootstrap] LXD_TRUST installed at https://10.10.0.14:8443 (authenticated GET /1.0/instances -> 200)
 
 {
   "state": "ONLINE",
-  "updated_at": "2026-10-17T22:58:00Z",
-  "node_id": "01M5609C8CQHS2EMZT2V9VZZA6",
+  "updated_at": "2026-10-18T10:42:02Z",
+  "node_id": "01M579MW4H6MHY61YTCJR8NN32",
   "role": "compute",
   "registration_id": "node-d",
   "cluster_member": "node-d",
-  "register_ms": 24786,
-  "boot_to_registered_ms": 48210,
+  "register_ms": 23765,
+  "boot_to_registered_ms": 41930,
   "last_error": null,
   "failure_kind": null,
   "terminal": false,
   "registration_attempts": 0,
-  "seq": 345,
-  "last_telemetry_at": "2026-10-17T22:58:00Z"
+  "seq": 5,
+  "last_telemetry_at": "2026-10-18T10:42:02Z"
 }

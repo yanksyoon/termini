@@ -1,12 +1,12 @@
 $ curl -sS -H 'Authorization: Bearer demo-project-token' 'https://34-93-190-64.sslip.io/v1/operator/audits?limit=6' | python3 -c "import json,sys;[print(r['executed_at'],r['rule_id'],r['action_kind'],'result='+str(r['result']),'ep='+str(r.get('lxd_endpoint')),'path='+str(r.get('lxd_path')),'|',str(r.get('detail'))[:120]) for r in json.load(sys.stdin)['audits'][:6]]"; echo; gcloud compute ssh termini-day0 --zone=asia-south1-a --quiet --command="sudo lxc list --format=csv -c ns4; sudo lxc info demo-workload | grep -iE '^Status|PID'; sudo lxc exec demo-workload -- uptime"
-# captured 2026-10-17T23:00:08Z
+# captured 2026-10-18T10:46:10Z
 
-2026-10-17T22:59:57.907Z oom-guard-01 instance.restart result=error ep=https://10.10.0.14:8443 path=/1.0/instances/NNB9287WRHGFDPEZ995TKCXDNW/state | HTTP 403: {"type":"error","status":"","status_code":0,"operation":"","error_code":403,"error":"Forbidden","metadata":nul
-2026-10-17T22:58:56.112Z oom-guard-01 instance.restart result=ok ep=https://10.10.0.11:8443 path=/1.0/instances/demo-workload/state | operation Success: /1.0/operations/53ccb761-7360-497b-8f2a-d31d5c7b9975; action=restart; state Running -> Running
-2026-10-17T22:58:30.352Z oom-guard-01 instance.restart result=ok ep=https://10.10.0.11:8443 path=/1.0/instances/demo-workload/state | operation Success: /1.0/operations/f2f5af1a-de70-4fa2-a5d7-fe6ae065ab04; action=restart; state Running -> Running
-2026-10-17T22:58:19.017Z oom-guard-01 instance.restart result=ok ep=https://10.10.0.11:8443 path=/1.0/instances/demo-workload/state | operation Success: /1.0/operations/a3b58890-ad1d-4ea4-a435-fc5790ea03a8; action=start; state Stopped -> Running
-2026-10-17T22:58:10.655Z disk-degrade-01 instance.stop result=ok ep=https://10.10.0.11:8443 path=/1.0/instances/demo-workload/state | operation Success: /1.0/operations/a286a9a7-04ed-45fc-be19-82fae43ff08b; action=stop; state ? -> Stopped
-2026-10-17T22:58:00.942Z oom-guard-01 instance.restart result=ok ep=https://10.10.0.11:8443 path=/1.0/instances/demo-workload/state | operation Success: /1.0/operations/31d6623f-ccc3-4f11-a055-badc10e0af89; action=restart; state Running -> Running
+2026-10-18T10:46:01.757Z oom-guard-01 instance.restart result=ok ep=https://10.10.0.14:8443 path=/1.0/instances/demo-workload/state | operation Success: /1.0/operations/eec6bac8-2171-4a27-9e0b-0528a6a05e6c; action=restart; state Running -> Running
+2026-10-18T10:45:30.439Z oom-guard-01 instance.restart result=error ep=https://10.10.0.11:8443 path=/1.0/instances/NNB9287WRHGFDPEZ995TKCXDNW/state | URLError: <urlopen error [Errno 111] Connection refused>
+2026-10-18T10:45:17.547Z disk-degrade-01 instance.stop result=error ep=https://10.10.0.11:8443 path=/1.0/instances/NNB9287WRHGFDPEZ995TKCXDNW/state | URLError: <urlopen error [Errno 111] Connection refused>
+2026-10-18T10:44:24.915Z oom-guard-01 instance.restart result=error ep=https://10.10.0.11:8443 path=/1.0/instances/NNB9287WRHGFDPEZ995TKCXDNW/state | URLError: <urlopen error [Errno 111] Connection refused>
+2026-10-18T10:43:43.315Z oom-guard-01 instance.restart result=error ep=https://10.10.0.11:8443 path=/1.0/instances/NNB9287WRHGFDPEZ995TKCXDNW/state | URLError: <urlopen error [Errno 111] Connection refused>
+2026-10-18T10:43:21.840Z disk-degrade-01 instance.stop result=error ep=https://10.10.0.11:8443 path=/1.0/instances/NNB9287WRHGFDPEZ995TKCXDNW/state | URLError: <urlopen error [Errno 111] Connection refused>
 
 External IP address was not found; defaulting to using IAP tunneling.
 WARNING: 
@@ -14,7 +14,7 @@ WARNING:
 To increase the performance of the tunnel, consider installing NumPy. For instructions,
 please see https://cloud.google.com/iap/docs/using-tcp-forwarding#increasing_the_tcp_upload_bandwidth
 
-demo-workload,RUNNING,10.49.240.96 (eth0)
+demo-workload,RUNNING,10.55.65.147 (eth0)
 Status: RUNNING
-PID: 2745
- 23:00:13 up 13 min,  0 user,  load average: 0.20, 0.20, 0.18
+PID: 3084
+ 10:46:19 up 0 min,  0 user,  load average: 1.89, 0.72, 0.28

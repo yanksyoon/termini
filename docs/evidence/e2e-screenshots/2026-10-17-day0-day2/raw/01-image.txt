@@ -1,6 +1,8 @@
 $ gcloud compute images list --no-standard-images --filter='family=termini-node-os' --format='table(name,family,status,creationTimestamp)'
-# captured 2026-10-17T22:57:35Z
+# captured 2026-10-18T10:40:24Z
 
 NAME               FAMILY           STATUS  CREATION_TIMESTAMP
 termini-node-os-5  termini-node-os  READY   2026-10-12T12:31:10.175-07:00
 termini-node-os-6  termini-node-os  READY   2026-10-17T15:00:30.175-07:00
+termini-node-os-7  termini-node-os  READY   2026-10-18T02:59:44.281-07:00
+termini-node-os-8  termini-node-os  READY   2026-10-18T03:37:28.726-07:00
