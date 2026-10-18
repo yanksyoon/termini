@@ -311,11 +311,26 @@ is `error` with a distinct code.
 | `INFERENCE_UNREACHABLE` | the endpoint is not answering at all (connect refused/timeout on connect) | check node C; the agent stays healthy |
 | `INFERENCE_TIMEOUT` | the endpoint accepted the call but exceeded `inference.request_timeout_s` | retry, or lower `max_tokens` |
 | `EMPTY_COMPLETION` | HTTP 200 with empty content | treat as a failure — never as an empty answer |
+| `UNGROUNDED_CLAIM` | the answer claimed an outcome the supplied record contradicts (its `execution.result` is not `ok`) | the answer is discarded, not returned: re-ask without the false premise, or fix the record |
 | `CONTEXT_LENGTH_EXCEEDED`, `INFERENCE_BUSY`, `INFERENCE_ERROR` | §10.5 mappings | as §12 |
 
 `INFERENCE_UNREACHABLE` is deliberately distinct from `INFERENCE_TIMEOUT`: "the
 endpoint is down" and "the model is slow" are different operational facts, and a
 task must never be reported as finished because a slow call was cut short.
+
+**Grounding: an answer may not invent an outcome.** Every task is answered under
+the grounding rules (`termini_agent.grounded_instruction()`): only facts present in
+the supplied record, an action's outcome is exactly `execution.result` (`error`
+must be described as failed, with the error's own text), no invented impact,
+symptoms, timestamps or numbers, and no implied action the agent cannot take. When
+the payload carries a record whose `execution.result` is not `ok`, the answer is
+then checked deterministically: a success claim ("resolved", "fixed", "closed",
+"succeeded") that is not negated, hedged or attributed to the operator fails the
+task with `UNGROUNDED_CLAIM` and the offending sentence — a leading prompt cannot
+buy a false resolution. The check is a refusal, not a rewrite: it never alters an
+answer, and it does not demand particular wording. `termini_agent.prompt_regression`
+holds the five-prompt set (summarise, on-call handover, false premise, act-now,
+business note) that measures a model swap against this behaviour.
 
 **Provenance is carried on the result, never assumed.** Every answer records what
 actually served it, taken from the endpoint's own in-band labels (`termini_backend`
@@ -464,7 +479,7 @@ Neither is ever reported as a slow-but-fine task, and neither is a success.
 | `429 TASK_BOUND_EXCEEDED` | the agent refused: its per-instance bound (§5.6) is in flight; `Retry-After` is returned |
 | `400 MODEL_NOT_ALLOWED` | the agent refused the alias (a retired catalog alias, AR-6) |
 | `413 PROMPT_TOO_LARGE` | prompt over 8192 bytes (refused by the controller and the agent) |
-| task `error` states | recorded on the task row with the runtime's code (`INFERENCE_UNREACHABLE`, `INFERENCE_TIMEOUT`, `EMPTY_COMPLETION`, `TASK_TIMEOUT`, `TASK_ORPHANED`, …) |
+| task `error` states | recorded on the task row with the runtime's code (`INFERENCE_UNREACHABLE`, `INFERENCE_TIMEOUT`, `EMPTY_COMPLETION`, `UNGROUNDED_CLAIM`, `TASK_TIMEOUT`, `TASK_ORPHANED`, …) |
 
 Transport-level refusals are also recorded on the task row before the API error is
 returned, so a failed submission is as auditable as a successful one.

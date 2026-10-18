@@ -21,12 +21,13 @@ from typing import Any, Iterable, Sequence
 
 from . import __version__
 from .config import AgentConfig
+from .grounding import BASE_INSTRUCTION, GROUNDING_VERSION, grounded_instruction
 from .stream_metrics import ChunkRecorder
 
-DEFAULT_INSTRUCTION = (
-    "You are a Termini operations agent. Answer the operator concisely. "
-    "Prefer a single short sentence unless asked to enumerate."
-)
+# The agent's instruction is the grounding contract, not a style hint: an answer
+# that invents an outcome is a defect (card `t_4533183a`), so the rules ship with
+# the default instruction and `instruction` is never used without them.
+DEFAULT_INSTRUCTION = grounded_instruction(BASE_INSTRUCTION)
 DEFAULT_TURNS: tuple[str, ...] = (
     "In one short sentence, name the first letter of the Greek alphabet.",
     "State the second letter of the Greek alphabet.",
@@ -86,6 +87,9 @@ async def run_multiturn_async(
     if alias not in cfg.inference.allowed_models:
         raise ValueError(f"model {alias!r} not in allowed_models {cfg.inference.allowed_models}")
 
+    # A per-task instruction extends the grounding rules; it never replaces them.
+    instruction = grounded_instruction(instruction)
+
     recorder = ChunkRecorder()
     llm = LlamaCppLlm(
         model=alias,
@@ -113,6 +117,7 @@ async def run_multiturn_async(
         "inference_base_url": cfg.inference.base_url,
         "model": alias,
         "instruction": instruction,
+        "grounding_version": GROUNDING_VERSION,
         "max_tokens": max_tokens,
         "streaming_mode": "sse" if streaming else "none",
         "turns": [],
