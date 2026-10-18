@@ -1,0 +1,40 @@
+frame      : 11-web-terminal-access.png
+card step  : 10
+captured_at: 2026-10-17T20:53:51Z
+window     : 1280x1000 (Xvfb :99, headful Chromium, full window incl. browser chrome)
+url        : see address bar
+command    : python3 tools/capture-e2e-client.py
+
+WHAT IT PROVES
+the web-terminal control does NOT exist as a reachable dashboard control (the link stays hidden), while /terminal/ itself serves and the controller's node-SSH endpoint answers — the gap is captured rather than omitted
+
+--- the dashboard's terminal control (DOM) ---
+{
+ "hidden": true,
+ "href": "/terminal/",
+ "present": true,
+ "visible": false
+}
+
+--- GET /projects/{pid}/nodes/{node_a}/ssh (HTTP 200) ---
+{
+ "auth_model": "ssh_ca",
+ "command": null,
+ "host": null,
+ "key_algorithm": "unknown",
+ "key_comment": "termini-operator-cert",
+ "key_fingerprint": "",
+ "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+ "port": 22,
+ "user": "ubuntu"
+}
+
+--- the /terminal/ page ---
+{
+ "body": "\u25c7 Termini operations dashboard nodes \u2014 agents \u2014 backend \u2014 stream \u2014 --:--:-- Web terminal \u2726 Ask AI Settings Your node \u2014 Forget Client view: one node, read with that node's own credential. The provider's project token is never used here, and no credential of yours is ever placed in a URL or a shared link. node_id node_token Show my node Both values live on your node, at /var/lib/termini/identity/node.json (root-only, written when the installer registered it). They stay in this browser tab and are gone when the tab closes. \u2014 registration\u2014 last seen\u2014 Node health \u2014 Refresh Agents inference: not yet reported \u2014 Refresh One row per instance the nodes actually report in telemetry lxd_instances[] \u2014 the id shown is the controller-issued vm_id (a one-way hash; the instance name is not on the wire, \u00a74.6). Fields that contract does not carry are labelled \"not reported\", not guessed. Actions are human-",
+ "title": "Termini \u2014 Operations Dashboard",
+ "url": "https://termini-510609.web.app/terminal/"
+}
+
+--- finding ---
+The dashboard ships a 'Web terminal' link in its top bar, but nothing ever unhides it (dashboard/js/main.js only binds it: hidden stays true), so the control a judge is told to look for is not reachable from the UI. /terminal/ itself answers 200 and serves the one-click terminal build; the controller's SSH endpoint is the real access path. Both are captured here as they are.

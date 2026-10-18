@@ -1,0 +1,263 @@
+frame      : 12-reset-capacity-released.png
+card step  : 11
+captured_at: 2026-10-17T20:54:26Z
+window     : 1280x1000 (Xvfb :99, headful Chromium, full window incl. browser chrome)
+url        : see address bar
+command    : python3 tools/capture-e2e-client.py
+
+WHAT IT PROVES
+the RESET releases the plan's committed capacity back to node-a and the audit trail is preserved; the fleet is back at its pre-plan capacity for the next visitor
+
+--- POST /vms/release (HTTP 200) ---
+{
+ "deleted": [
+  "termini-01m55s73gajk1s1t03yztknk-0-0",
+  "termini-01m55s73gajk1s1t03yztknk-0-1",
+  "termini-01m55s73gajk1s1t03yztknk-0-2"
+ ],
+ "failed": [],
+ "plan_id": "01M55S73GAJK1S1T03YZTKNK68",
+ "released": {
+  "cpu_allocated": 3,
+  "disk_allocated_gb": 24,
+  "ram_allocated_gb": 3
+ },
+ "released_at": "2026-10-17T20:53:51Z",
+ "rows_released": 1,
+ "status": "released",
+ "unknown_instances": false
+}
+
+--- DOM read back ---
+{
+ "agents": "",
+ "agents_inference": "inference: not yet reported",
+ "apply_disabled": true,
+ "banner": "",
+ "chart_text": "",
+ "charts": 0,
+ "decider": "decider: unknown",
+ "decisions_count": "0 decisions",
+ "intent_result": "",
+ "log_count": "0 lines",
+ "log_state": "connecting\u2026",
+ "overview": "",
+ "pills": [
+  "nodes \u2014",
+  "agents \u2014",
+  "backend \u2014",
+  "stream \u2014"
+ ],
+ "terminal_hidden": true,
+ "url": "https://termini-510609.web.app/terminal/"
+}
+
+--- GET /projects/{pid}/nodes after the reset (HTTP 200) ---
+{
+ "nodes": [
+  {
+   "capacity": {
+    "cpu_allocated": 1,
+    "cpu_cores": 2,
+    "cpu_free": 3,
+    "disk_allocated_gb": 8,
+    "disk_free_gb": 44,
+    "disk_gb": 57,
+    "disk_known": true,
+    "gpu_free": 0,
+    "ram_allocated_gb": 1,
+    "ram_free_gb": 4,
+    "ram_gb": 7
+   },
+   "hardware": {
+    "cpu": {
+     "cores": 2,
+     "model": "Intel(R) Xeon(R) CPU @ 2.80GHz",
+     "sockets": 1,
+     "threads": 2
+    },
+    "disks": [
+     {
+      "device": "/dev/root",
+      "health": "ok",
+      "size_bytes": 61285326848,
+      "type": "ssd"
+     }
+    ],
+    "gpus": [],
+    "memory": {
+     "total_bytes": 8319729664
+    }
+   },
+   "health": {
+    "cpu_util_pct": 3.45,
+    "degraded_reasons": [],
+    "disk_ok": true,
+    "gpu_ok": null,
+    "inference_ok": null,
+    "ram_used_pct": 45.7,
+    "services": [
+     {
+      "name": "termini-bootstrap",
+      "status": "running"
+     },
+     {
+      "name": "lxd",
+      "status": "running"
+     },
+     {
+      "name": "sshd",
+      "status": "running"
+     }
+    ]
+   },
+   "last_seen_at": "2026-10-17T20:54:22Z",
+   "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+   "registration_id": "ba1f1faeacb4501aed12cf8ea1e5713b",
+   "role": "compute",
+   "status": "online",
+   "synthetic": false,
+   "uptime_sec": 15740
+  },
+  {
+   "capacity": {
+    "cpu_allocated": 0,
+    "cpu_cores": 8,
+    "cpu_free": 16,
+    "disk_allocated_gb": 0,
+    "disk_free_gb": 52,
+    "disk_gb": 57,
+    "disk_known": true,
+    "gpu_free": 0,
+    "ram_allocated_gb": 0,
+    "ram_free_gb": 29,
+    "ram_gb": 31
+   },
+   "hardware": {
+    "cpu": {
+     "cores": 8,
+     "model": "Intel(R) Xeon(R) CPU @ 2.20GHz",
+     "sockets": 1,
+     "threads": 8
+    },
+    "disks": [
+     {
+      "device": "/dev/root",
+      "health": "ok",
+      "size_bytes": 61285326848,
+      "type": "ssd"
+     }
+    ],
+    "gpus": [],
+    "memory": {
+     "total_bytes": 33646968832
+    }
+   },
+   "health": {
+    "cpu_util_pct": 0.0,
+    "degraded_reasons": [],
+    "disk_ok": true,
+    "gpu_ok": null,
+    "inference_ok": null,
+    "ram_used_pct": 18.0,
+    "services": [
+     {
+      "name": "termini-bootstrap",
+      "status": "running"
+     },
+     {
+      "name": "lxd",
+      "status": "running"
+     },
+     {
+      "name": "sshd",
+      "status": "running"
+     },
+     {
+      "name": "llama-cpp",
+      "status": "running"
+     }
+    ]
+   },
+   "last_seen_at": "2026-10-17T20:54:25Z",
+   "node_id": "01M4ZQ7Q2J80ATY3K32PY3PPJH",
+   "registration_id": "33678f54a5e3e25cc03620b1bd2486e6",
+   "role": "compute",
+   "status": "online",
+   "synthetic": false,
+   "uptime_sec": 85783
+  }
+ ]
+}
+
+--- GET /operator/audits?limit=3 (audit preserved, HTTP 200) ---
+{
+ "audits": [
+  {
+   "action_kind": "instance.restart",
+   "conversation_id": null,
+   "decision_id": "01M55T8DH380QES47818SMT8B3",
+   "detail": "operation Success: /1.0/operations/b162acb4-dcb1-421b-bda7-2ba1cc4799d1; action=restart; state Running -> Running",
+   "dry_run": 0,
+   "event_id": "01M55T8AD9Y02CRE9X727YMCDS",
+   "executed_at": "2026-10-17T20:53:32.245Z",
+   "id": "01M55T8FJXERACV4J23JGHZCQK",
+   "idempotency_key": "01M4TGD31WXH97JAA5S6A4R10D:oom-guard-01:instance.restart:demo-workload:22",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"restart\", \"force\": true, \"timeout\": 30}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/b162acb4-dcb1-421b-bda7-2ba1cc4799d1",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "oom-guard-01"
+  },
+  {
+   "action_kind": "instance.restart",
+   "conversation_id": null,
+   "decision_id": "01M55T889MC0HTZTVWMCZ4WCB3",
+   "detail": "operation Success: /1.0/operations/8617f16e-9a0e-471a-a203-ddfdce507b0f; action=restart; state Running -> Running",
+   "dry_run": 0,
+   "event_id": "01M55T887VTS78CTQ2SD40G05D",
+   "executed_at": "2026-10-17T20:53:30.000Z",
+   "id": "01M55T8ABDM4V1EHX8F08N5AEV",
+   "idempotency_key": "01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:demo-workload:3554",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"restart\", \"force\": true, \"timeout\": 30}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/8617f16e-9a0e-471a-a203-ddfdce507b0f",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "oom-guard-01"
+  },
+  {
+   "action_kind": "instance.restart",
+   "conversation_id": null,
+   "decision_id": "01M55T84609J6K9V6WTNDJ9Y8P",
+   "detail": "operation Success: /1.0/operations/236b58d9-fe15-4374-9240-ce7607a950ab; action=restart; state Running -> Running",
+   "dry_run": 0,
+   "event_id": "01M55T843MNXQZMJAP34TGQ4AB",
+   "executed_at": "2026-10-17T20:53:25.771Z",
+   "id": "01M55T868160GSEJ474M6KRBH8",
+   "idempotency_key": "01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:demo-workload:3553",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"restart\", \"force\": true, \"timeout\": 30}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/236b58d9-fe15-4374-9240-ce7607a950ab",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "oom-guard-01"
+  }
+ ]
+}

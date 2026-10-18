@@ -1,0 +1,36 @@
+frame      : 04-headline-prompt-typed.png
+card step  : 04
+captured_at: 2026-10-17T20:35:04Z
+window     : 1280x1000 (Xvfb :99, headful Chromium, full window incl. browser chrome)
+url        : see address bar
+command    : python3 tools/capture-e2e-client.py
+
+WHAT IT PROVES
+the headline prompt typed into the Scale-intent box exactly as a judge would type it: "deploy 3 worker agents for coding plus a fast LLM"
+
+--- typed value read back ---
+deploy 3 worker agents for coding plus a fast LLM
+
+--- DOM read back ---
+{
+ "agents": "ba1f1faeacb4501aed12cf8ea1e5713bonline6 reported runningsample 2m 38s ago7NM4JV8B\u2026runningid7NM4JV8BSD1P8KYBYP8B7BT7CYnodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM110.9 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026J2DFSZ2V\u2026runningidJ2DFSZ2VRKD2EVF2ZAJFCE2H8Enodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM135.0 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026NNB9287W\u2026runningidNNB9287WRHGFDPEZ995TKCXDNWnodeba1f1faeacb4501aed12cf8ea1e5713bCPU\u2014RAM22.8 MiB / 7.75 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026R3P229VX\u2026runningidR3P229VXA4EM2QSJS38WB411C8nodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM85.8 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026T6K2AZ0P\u2026runningidT6K2AZ0PQ08AGKMZTKGRM7QGB0nodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM85.7 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026VW4XZD24\u2026runningidVW4XZD24288MCXGT4557CDYFF9nodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM101.4 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u202633678f54a5e3e25cc03620b1bd2486e6online0 reported runningsample 2m 33s agoThe node reports zero running agent instances.",
+ "agents_inference": "inference: inference backend not yet reported",
+ "apply_disabled": true,
+ "banner": "",
+ "chart_text": "CPU utilizationderived%Ask AICPU %mean over 5 s buckets (derived by the controller) \u00b7 CPU %: mean over 5 s buckets (derived by the controller)MemoryderivedGiBAsk AIRAM usedswap usedmean over 5 s buckets (derived by the controller) \u00b7 RAM used: mean over 5 s buckets (derived by the controller) \u00b7 swap used: mean over 5 s buckets (derived by the controller)Disk write latencyderivedmsAsk AIwrite latencymean over 5 s buckets (derived by the controller) \u00b7 write latency: disk[0] \u00b7 collector write probe, not a kernel latencyNetwork throughputderivedGiBAsk AIRXTXmean over 5 s buckets (derived by the controller) \u00b7 RX: net[0] \u00b7 TX: net[0]Top processes10 of 10lxdsleeping3.6%195.4 MiB23tsystemd-journalsleeping0.3%71.3 MiB1ttermini-agentsleeping0.2%57.2 MiB5ttermini-agentsleeping0.2%54.3 MiB5ttermini-agentsleeping0.2%46.7 MiB5ttermini-agentsleeping0.0%42.6 MiB5ttermini-agentsleeping0.2%41.5 MiB5tmultipathdsleeping0.0%26.4 MiB7tlxdsleeping\u201424.3 MiB1tlxdsleeping0.0%24.2 MiB1tPSI pressure (latest sample)raw samplerank 1not reported \u2014 no \u00a74.12\u2013\u00a74.14 fields on this node's latest sample (absent, not zero)raw sample: kernel 10 s average per task class, not an aggregate of samples | leading indicator for",
+ "charts": 11,
+ "decider": "decider: forwarded managed model \u00b7 gemini-2.5-flashbackend=gemini-proxy \u00b7 model=gemini-2.5-flash \u00b7 egress=external \u00b7 destination=aiplatform.googleapis.com \u00b7 answered by=forwarded-managed-model \u00b7 endpoint=http://127.0.0.1:8085the decision was not computed by local weights on this fleet: the operator's model call was answered by a forwarded managed model reached over egress",
+ "decisions_count": "50 shown / 50 decisions \u00b7 model 10 \u00b7 fallback 4 \u00b7 incident records 14 (AI 10 \u00b7 controller-generated 4) \u00b7 thinking logs 14 (model 10 \u00b7 fallback 4)",
+ "intent_result": "",
+ "log_count": "2000 shown / 2000 buffered",
+ "log_state": "live \u00b7 resumed from the oldest retained line",
+ "overview": "ba1f1faeacb4501aed12cf8ea1e5713b01M4TG\u2026R10DcomputeonlineCPU100.0%RAM42.7%Diskok \u00b7 63.9 GiB free\u2022\u2022\u2022\u25cf ChartsAsk AIRestartDrain33678f54a5e3e25cc03620b1bd2486e601M4ZQ\u2026PPJHcomputeonlineCPU0.0%RAM18.0%Diskok \u00b7 99.1 GiB free\u2022\u2022\u2022ChartsAsk AIRestartDrain",
+ "pills": [
+  "agents 6",
+  "nodes 2",
+  "backend ok",
+  "stream open"
+ ],
+ "terminal_hidden": true,
+ "url": "https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1&projectId=01J0DEM0WARM000000000000AB&dest=fleet"
+}

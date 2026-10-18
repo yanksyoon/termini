@@ -1,0 +1,745 @@
+frame      : 07-decider-forwarded-managed-model.png
+card step  : 07
+captured_at: 2026-10-17T20:51:32Z
+window     : 1280x1000 (Xvfb :99, headful Chromium, full window incl. browser chrome)
+url        : see address bar
+command    : python3 tools/capture-e2e-client.py
+
+WHAT IT PROVES
+the live AI-operator log stream carries the decision's own provenance: the externalModelCall lines name endpoint/backend/egress/model/destination=aiplatform.googleapis.com and answered_by=forwarded-managed-model, i.e. the decision was answered by the forwarded managed model through node C's inference front door and not by local weights
+
+--- DOM read back ---
+{
+ "decider": "decider: forwarded managed model \u00b7 gemini-2.5-flashbackend=gemini-proxy \u00b7 model=gemini-2.5-flash \u00b7 egress=external \u00b7 destination=aiplatform.googleapis.com \u00b7 answered by=forwarded-managed-model \u00b7 endpoint=http://127.0.0.1:8085the decision was not computed by local weights on this fleet: the operator's model call was answered by a forwarded managed model reached over egress",
+ "external_model_call_lines": [
+  "20:50:08infoprojectexternalModelCall after endpoint=http://127.0.0.1:8085 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=returned request_id=01M55T20NZB7WD9BMMBX8NJWPY",
+  "20:51:22infoprojectexternalModelCall before endpoint=http://127.0.0.1:8085 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=ok request_id=01M55T4BBV32ZR7FXPCVTVBH4N",
+  "20:51:24infoprojectexternalModelCall after endpoint=http://127.0.0.1:8085 backend=gemini-proxy egress=external model=gemini-2.5-flash destination=aiplatform.googleapis.com answered_by=forwarded-managed-model outcome=returned request_id=01M55T4BBV32ZR7FXPCVTVBH4N"
+ ],
+ "latency_lines": [
+  "20:49:38info01M4NZ\u2026JRXMdisk-degrade-01: instance.stop demo-workload -> ok (threshold: free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s)",
+  "20:50:09info01M4NZ\u2026JRXMdisk-degrade-01: instance.stop demo-workload -> ok (threshold: free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s)",
+  "20:51:26info01M4NZ\u2026JRXMdisk-degrade-01: instance.stop demo-workload -> ok (threshold: free <= 5% OR write_latency_ms >= 50 OR free slope <= -5000000.0 bytes/s)"
+ ],
+ "log_count": "2000 shown / 2000 buffered",
+ "log_state": "live \u00b7 resumed from the oldest retained line"
+}
+
+--- GET /operator/decisions?limit=6 ---
+{
+ "decisions": [
+  {
+   "action_kind": "instance.stop",
+   "action_params": {
+    "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW",
+    "force": true,
+    "instance_name": "demo-workload"
+   },
+   "confidence": 0.9,
+   "conversation_id": null,
+   "decided_at": "2026-10-17T20:51:22.046Z",
+   "decision_source": "model",
+   "decision_trace": {
+    "decided_by": "model",
+    "steps": [
+     {
+      "detail": "rule_id=disk-degrade-01 event_id=01M55T4B96V1R6S04XT9E04KG5 fired_at=2026-10-17T20:51:22.022Z detection_latency_ms=3022",
+      "label": "rule disk-degrade-01 fired",
+      "state": "ok",
+      "step": "threshold_fired",
+      "ts": "2026-10-17T20:51:22.106Z"
+     },
+     {
+      "detail": "template=operator-decision v2 sha256=23d5898e-633fc8e4-580c146c-1b11f7a5-93ce4a04-c9b52b20-707b98c1-6cdff3d4 substituted_fields=2622 C0_assertion=ok",
+      "label": "prompt rendered (C0 assertion ok)",
+      "state": "ok",
+      "step": "prompt_built",
+      "ts": "2026-10-17T20:51:24.927Z"
+     },
+     {
+      "detail": "endpoint=external model=gemini-2.5-flash answered_by=forwarded-managed-model latency_ms=2808 request_id=01M55T4BBV32ZR7FXPCVTVBH4N",
+      "label": "model answered",
+      "state": "ok",
+      "step": "model_call",
+      "ts": "2026-10-17T20:51:24.927Z"
+     },
+     {
+      "detail": "[dropped: C2]",
+      "label": "model reply received",
+      "state": "rejected",
+      "step": "reply_received",
+      "truncated": false,
+      "ts": "2026-10-17T20:51:24.928Z"
+     },
+     {
+      "detail": "rule=G7 field=rationale decision=accept (C0-safe, within bounds)",
+      "label": "G7 rationale",
+      "state": "ok",
+      "step": "gates",
+      "ts": "2026-10-17T20:51:24.928Z"
+     },
+     {
+      "detail": "rule=G9 decision=accept (record clean or absent)",
+      "label": "G9 incident record",
+      "state": "ok",
+      "step": "gates",
+      "ts": "2026-10-17T20:51:24.928Z"
+     },
+     {
+      "detail": "rule=G9 field=trace.evidence_window.detail decision=drop (C2 signature in trace step evidence_window: : phone-number signature)",
+      "label": "G9 trace detail",
+      "state": "dropped",
+      "step": "gates",
+      "ts": "2026-10-17T20:51:24.928Z"
+     },
+     {
+      "detail": "rule=G9 field=trace.reply_received.detail decision=drop (C2 signature in model reply: : phone-number signature)",
+      "label": "G9 trace detail",
+      "state": "dropped",
+      "step": "gates",
+      "ts": "2026-10-17T20:51:24.928Z"
+     },
+     {
+      "detail": "action_kind=instance.stop target=demo-workload",
+      "label": "action decided: instance.stop",
+      "state": "ok",
+      "step": "action_decided",
+      "ts": "2026-10-17T20:51:24.928Z"
+     },
+     {
+      "detail": "result=ok latency_ms=3927",
+      "label": "action executed: ok",
+      "state": "ok",
+      "step": "executed",
+      "ts": "2026-10-17T20:51:26.021Z"
+     },
+     {
+      "detail": "audit_id=01M55T4F65R41W3GEB02X3Q62J decision_id=01M55T4E44BAH1APCN32WTGB7J",
+      "label": "audit row written",
+      "state": "ok",
+      "step": "audit_recorded",
+      "ts": "2026-10-17T20:51:26.022Z"
+     }
+    ],
+    "trace_version": 1
+   },
+   "event_id": "01M55T4B96V1R6S04XT9E04KG5",
+   "fallback_reason": null,
+   "id": "01M55T4E44BAH1APCN32WTGB7J",
+   "incident_actions": [
+    {
+     "action_kind": "instance.stop",
+     "note": "stop the instance with the highest disk usage to alleviate I/O pressure",
+     "target": "NNB9287WRHGFDPEZ995TKCXDNW"
+    }
+   ],
+   "incident_evidence": [
+    {
+     "field": "disk.write_latency_ms",
+     "seq": 1792268807,
+     "value": 120.0
+    },
+    {
+     "field": "pressure.io_some_avg10",
+     "seq": 1792268807,
+     "value": 68.9
+    },
+    {
+     "field": "lxd_instances.disk_used_bytes",
+     "seq": 1792268807,
+     "value": "2,362,232,012"
+    }
+   ],
+   "incident_explanation": "The disk.write_latency_ms for /dev/sda is consistently at 120.0ms across the evidence window, which is significantly above the threshold. The pressure.io_some_avg10 is also high at 68.9, indicating I/O bound issues. The instance NNB9287WRHGFDPEZ995TKCXDNW has disk_used_bytes of 2,362,232,012, making it the heaviest disk user. Stopping this instance is the most direct way to reduce the I/O load and prevent further degradation or failure of the disk.",
+   "incident_generated": "model",
+   "incident_title": "Disk I/O degradation on /dev/sda",
+   "initiated_by": "operator",
+   "message_id": null,
+   "node_id": "01M4NZK46WXG5ZEFAGAAV5JRXM",
+   "playbook": "disk-degrade-01",
+   "reason": "disk write latency on /dev/sda is 120ms and rising, indicating severe I/O degradation; stopping the instance with the highest disk usage will alleviate the pressure.",
+   "rule_id": "disk-degrade-01",
+   "trace_version": 1
+  },
+  {
+   "action_kind": "instance.restart",
+   "action_params": {
+    "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW",
+    "force": true,
+    "instance_name": "demo-workload",
+    "timeout_s": 30
+   },
+   "confidence": null,
+   "conversation_id": null,
+   "decided_at": "2026-10-17T20:51:17.823Z",
+   "decision_source": "deterministic",
+   "decision_trace": null,
+   "event_id": "01M55T4756G28NBM1F0AB3EYX6",
+   "fallback_reason": null,
+   "id": "01M55T4776QXSC5CFN2FZBG8CQ",
+   "incident_actions": null,
+   "incident_evidence": null,
+   "incident_explanation": null,
+   "incident_generated": null,
+   "incident_title": null,
+   "initiated_by": "operator",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "playbook": "oom-guard-01",
+   "reason": "host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.",
+   "rule_id": "oom-guard-01",
+   "trace_version": null
+  },
+  {
+   "action_kind": "instance.restart",
+   "action_params": {
+    "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW",
+    "force": true,
+    "instance_name": "demo-workload",
+    "timeout_s": 30
+   },
+   "confidence": null,
+   "conversation_id": null,
+   "decided_at": "2026-10-17T20:51:07.600Z",
+   "decision_source": "deterministic",
+   "decision_trace": null,
+   "event_id": "01M55T3X5VJCGWVGSS4ZE45KVY",
+   "fallback_reason": null,
+   "id": "01M55T3X8C1S6BHD760AW5M831",
+   "incident_actions": null,
+   "incident_evidence": null,
+   "incident_explanation": null,
+   "incident_generated": null,
+   "incident_title": null,
+   "initiated_by": "operator",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "playbook": "oom-guard-01",
+   "reason": "host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.",
+   "rule_id": "oom-guard-01",
+   "trace_version": null
+  },
+  {
+   "action_kind": "instance.restart",
+   "action_params": {
+    "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW",
+    "force": true,
+    "instance_name": "demo-workload",
+    "timeout_s": 30
+   },
+   "confidence": null,
+   "conversation_id": null,
+   "decided_at": "2026-10-17T20:50:13.592Z",
+   "decision_source": "deterministic",
+   "decision_trace": null,
+   "event_id": "01M55T28E3DYAYGBKWGQCN3DJQ",
+   "fallback_reason": null,
+   "id": "01M55T28GAPYX85P79WM1KZEY9",
+   "incident_actions": null,
+   "incident_evidence": null,
+   "incident_explanation": null,
+   "incident_generated": null,
+   "incident_title": null,
+   "initiated_by": "operator",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "playbook": "oom-guard-01",
+   "reason": "host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.",
+   "rule_id": "oom-guard-01",
+   "trace_version": null
+  },
+  {
+   "action_kind": "instance.stop",
+   "action_params": {
+    "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW",
+    "force": true,
+    "instance_name": "demo-workload"
+   },
+   "confidence": 0.9,
+   "conversation_id": null,
+   "decided_at": "2026-10-17T20:50:05.597Z",
+   "decision_source": "model",
+   "decision_trace": {
+    "decided_by": "model",
+    "steps": [
+     {
+      "detail": "rule_id=disk-degrade-01 event_id=01M55T20MBKC8H8FEW7GCX2520 fired_at=2026-10-17T20:50:05.579Z detection_latency_ms=3579",
+      "label": "rule disk-degrade-01 fired",
+      "state": "ok",
+      "step": "threshold_fired",
+      "ts": "2026-10-17T20:50:05.631Z"
+     },
+     {
+      "detail": "template=operator-decision v2 sha256=5a80c38c-9fa6b0f6-c2b66745-a27e0b32-9a30d739-71bf93ef-1f585b00-5ab0a654 substituted_fields=2622 C0_assertion=ok",
+      "label": "prompt rendered (C0 assertion ok)",
+      "state": "ok",
+      "step": "prompt_built",
+      "ts": "2026-10-17T20:50:08.442Z"
+     },
+     {
+      "detail": "endpoint=external model=gemini-2.5-flash answered_by=forwarded-managed-model latency_ms=2811 request_id=01M55T20NZB7WD9BMMBX8NJWPY",
+      "label": "model answered",
+      "state": "ok",
+      "step": "model_call",
+      "ts": "2026-10-17T20:50:08.443Z"
+     },
+     {
+      "detail": "{\"schema_version\":1,\"request_id\":\"01M55T20NZB7WD9BMMBX8NJWPY\",\"action_id\":\"instance.stop\",\"params\":{\"instance_name\":\"NNB9287WRHGFDPEZ995TKCXDNW\",\"force\":true},\"confidence\":0.9,\"rationale\":\"disk write latency on /dev/sda is 120ms and rising, with high I/O pressure; stopping the heaviest instance will shed the I/O load.\",\"incident_title\":\"Degrading disk I/O on /dev/sda\",\"explanation\":\"The disk.write_latency_ms on /dev/sda is consistently at 120.0ms, which is significantly above the threshold, and pressure.io_some_avg10 is high at 68.9. The disk is not mounted read-only, indicating it's still operational but struggling. The instance NNB9287WRHGFDPEZ995TKCXDNW is the only instance listed and is therefore the heaviest, and stopping it is the most direct way to alleviate the I/O pressure on the degrading disk.\",\"evidence\":[{\"field\":\"disk.write_latency_ms\",\"value\":120.0,\"seq\":\"1,792,268,731\"},{\"field\":\"pressure.io_some_avg10\",\"value\":68.9,\"seq\":\"1,792,268,731\"},{\"field\":\"disk.mount_ro\",\"value\":false,\"seq\":\"1,792,268,731\"},{\"field\":\"lxd_instances.ram_used_bytes\",\"value\":\"4,500,000,000\",\"seq\":\"1,792,268,731\"}],\"actions\":[{\"action_kind\":\"instance.stop\",\"target\":\"NNB9287WRHGFDPEZ995TKCXDNW\",\"note\":\"shed I/O load from the degrading disk by stopping the heaviest instance\"}]}",
+      "label": "model reply received",
+      "state": "ok",
+      "step": "reply_received",
+      "truncated": false,
+      "ts": "2026-10-17T20:50:08.444Z"
+     },
+     {
+      "detail": "rule=G7 field=rationale decision=accept (C0-safe, within bounds)",
+      "label": "G7 rationale",
+      "state": "ok",
+      "step": "gates",
+      "ts": "2026-10-17T20:50:08.444Z"
+     },
+     {
+      "detail": "rule=G9 decision=accept (record clean or absent)",
+      "label": "G9 incident record",
+      "state": "ok",
+      "step": "gates",
+      "ts": "2026-10-17T20:50:08.444Z"
+     },
+     {
+      "detail": "rule=G9 field=trace.evidence_window.detail decision=drop (C2 signature in trace step evidence_window: : phone-number signature)",
+      "label": "G9 trace detail",
+      "state": "dropped",
+      "step": "gates",
+      "ts": "2026-10-17T20:50:08.444Z"
+     },
+     {
+      "detail": "action_kind=instance.stop target=demo-workload",
+      "label": "action decided: instance.stop",
+      "state": "ok",
+      "step": "action_decided",
+      "ts": "2026-10-17T20:50:08.444Z"
+     },
+     {
+      "detail": "result=ok latency_ms=3908",
+      "label": "action executed: ok",
+      "state": "ok",
+      "step": "executed",
+      "ts": "2026-10-17T20:50:09.536Z"
+     },
+     {
+      "detail": "audit_id=01M55T24G03RSPNZTYM8EK3KKT decision_id=01M55T23E4YGTNR6X4ABF7PZAE",
+      "label": "audit row written",
+      "state": "ok",
+      "step": "audit_recorded",
+      "ts": "2026-10-17T20:50:09.536Z"
+     }
+    ],
+    "trace_version": 1
+   },
+   "event_id": "01M55T20MBKC8H8FEW7GCX2520",
+   "fallback_reason": null,
+   "id": "01M55T23E4YGTNR6X4ABF7PZAE",
+   "incident_actions": [
+    {
+     "action_kind": "instance.stop",
+     "note": "shed I/O load from the degrading disk by stopping the heaviest instance",
+     "target": "NNB9287WRHGFDPEZ995TKCXDNW"
+    }
+   ],
+   "incident_evidence": [
+    {
+     "field": "disk.write_latency_ms",
+     "value": 120.0
+    },
+    {
+     "field": "pressure.io_some_avg10",
+     "value": 68.9
+    },
+    {
+     "field": "disk.mount_ro",
+     "value": false
+    },
+    {
+     "field": "lxd_instances.ram_used_bytes",
+     "value": "4,500,000,000"
+    }
+   ],
+   "incident_explanation": "The disk.write_latency_ms on /dev/sda is consistently at 120.0ms, which is significantly above the threshold, and pressure.io_some_avg10 is high at 68.9. The disk is not mounted read-only, indicating it's still operational but struggling. The instance NNB9287WRHGFDPEZ995TKCXDNW is the only instance listed and is therefore the heaviest, and stopping it is the most direct way to alleviate the I/O pressure on the degrading disk.",
+   "incident_generated": "model",
+   "incident_title": "Degrading disk I/O on /dev/sda",
+   "initiated_by": "operator",
+   "message_id": null,
+   "node_id": "01M4NZK46WXG5ZEFAGAAV5JRXM",
+   "playbook": "disk-degrade-01",
+   "reason": "disk write latency on /dev/sda is 120ms and rising, with high I/O pressure; stopping the heaviest instance will shed the I/O load.",
+   "rule_id": "disk-degrade-01",
+   "trace_version": 1
+  },
+  {
+   "action_kind": "instance.restart",
+   "action_params": {
+    "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW",
+    "force": true,
+    "instance_name": "demo-workload",
+    "timeout_s": 30
+   },
+   "confidence": null,
+   "conversation_id": null,
+   "decided_at": "2026-10-17T20:49:48.409Z",
+   "decision_source": "fallback",
+   "decision_trace": {
+    "decided_by": "fallback",
+    "steps": [
+     {
+      "detail": "rule_id=oom-guard-01 event_id=01M55T1FV38Z0437DNGX1KZZ9N fired_at=2026-10-17T20:49:48.387Z detection_latency_ms=1387",
+      "label": "rule oom-guard-01 fired",
+      "state": "ok",
+      "step": "threshold_fired",
+      "ts": "2026-10-17T20:49:48.411Z"
+     },
+     {
+      "detail": "template=operator-decision v2 sha256=8ca8e8fd-c5ee67ea-d16e148e-9524a01f-5832fce8-7d7e746f-1909b890-54fd478e substituted_fields=2853 C0_assertion=ok",
+      "label": "prompt rendered (C0 assertion ok)",
+      "state": "ok",
+      "step": "prompt_built",
+      "ts": "2026-10-17T20:49:51.281Z"
+     },
+     {
+      "detail": "endpoint=external model=gemini-2.5-flash answered_by=forwarded-managed-model latency_ms=2869 request_id=01M55T1FVVJY22RKV8M1PZ60TA",
+      "label": "model answered",
+      "state": "ok",
+      "step": "model_call",
+      "ts": "2026-10-17T20:49:51.281Z"
+     },
+     {
+      "detail": "{\"schema_version\":1,\"request_id\":\"01M55T1FVVJY22RKV8M1PZ60TA\",\"action_id\":\"instance.restart\",\"params\":{\"instance_name\":\"NNB9287WRHGFDPEZ995TKCXDNW\",\"force\":true,\"timeout_s\":30},\"confidence\":0.95,\"rationale\":\"Host RAM is at 96.04% of total, and the instance NNB9287WRHGFDPEZ995TKCXDNW is using 16.5GB of RAM while its limit is 4.29GB, indicating a memory leak or misconfiguration. Restarting it will reclaim memory.\",\"incident_title\":\"Host memory exhaustion due to instance exceeding its RAM limit\",\"explanation\":\"The node's ram_used_bytes is 66,000,000,000 bytes, which is 96.04% of the total 68,719,476,736 bytes. The pressure.memory_some_avg10 is high at 72.4 and pressure.memory_full_avg10 is also high at 41.3, indicating significant memory pressure. The instance NNB9287WRHGFDPEZ995TKCXDNW is consuming 16,500,000,000 bytes of RAM, which is significantly above its ram_limit_bytes of 4,294,967,296 bytes. This instance is the primary contributor to the memory exhaustion. Restarting this instance is the most effective action to reclaim the memory and alleviate the OOM condition.\",\"evidence\":[{\"field\":\"ram_used_bytes\",\"value\":\"66,000,000,000\",\"seq\":\"1,792,268,713\"},{\"field\":\"ram_total_bytes\",\"value\":\"68,719,476,736\",\"seq\":\"1,792,268,713\"},{\"field\":\"pressure.memory_some_avg10\",\"value\":72.4,\"seq\":\"1,792,268,713\"},{\"field\":\"pressure.",
+      "label": "model reply (parse=schema_violation)",
+      "state": "rejected",
+      "step": "reply_received",
+      "truncated": false,
+      "ts": "2026-10-17T20:49:51.282Z"
+     },
+     {
+      "detail": "rule=G9 field=trace.evidence_window.detail decision=drop (C2 signature in trace step evidence_window: : phone-number signature)",
+      "label": "G9 trace detail",
+      "state": "dropped",
+      "step": "gates",
+      "ts": "2026-10-17T20:49:51.282Z"
+     },
+     {
+      "detail": "decided_by=fallback reason=schema_violation action_kind=instance.restart",
+      "label": "fallback to deterministic action",
+      "state": "fallback",
+      "step": "action_decided",
+      "ts": "2026-10-17T20:49:51.282Z"
+     },
+     {
+      "detail": "result=ok latency_ms=5064",
+      "label": "action executed: ok",
+      "state": "ok",
+      "step": "executed",
+      "ts": "2026-10-17T20:49:53.473Z"
+     },
+     {
+      "detail": "audit_id=01M55T1MT1MYQJY43P2HCGJ69H decision_id=01M55T1JQ5QKW7MJS6B9AA0VE3",
+      "label": "audit row written",
+      "state": "ok",
+      "step": "audit_recorded",
+      "ts": "2026-10-17T20:49:53.473Z"
+     }
+    ],
+    "trace_version": 1
+   },
+   "event_id": "01M55T1FV38Z0437DNGX1KZZ9N",
+   "fallback_reason": "schema_violation",
+   "id": "01M55T1JQ5QKW7MJS6B9AA0VE3",
+   "incident_actions": [
+    {
+     "action_kind": "instance.restart",
+     "target": "demo-workload"
+    }
+   ],
+   "incident_evidence": [
+    {
+     "field": "ram_used_bytes",
+     "seq": 1792268713,
+     "value": 96.04264050722122
+    }
+   ],
+   "incident_explanation": "model unavailable (schema_violation); the deterministic playbook chose instance.restart on demo-workload for rule oom-guard-01",
+   "incident_generated": "fallback",
+   "incident_title": "oom on node 01M4NZK474BVARFBXYQBMVA8GV",
+   "initiated_by": "operator",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "playbook": "oom-guard-01",
+   "reason": "host memory sustained above OOM threshold; restart the heaviest workload to reclaim memory.",
+   "rule_id": "oom-guard-01",
+   "trace_version": 1
+  }
+ ]
+}
+
+--- model decisions with their in-band provenance ---
+[
+ {
+  "action_kind": "instance.stop",
+  "action_params": {
+   "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW",
+   "force": true,
+   "instance_name": "demo-workload"
+  },
+  "confidence": 0.9,
+  "conversation_id": null,
+  "decided_at": "2026-10-17T20:51:22.046Z",
+  "decision_source": "model",
+  "decision_trace": {
+   "decided_by": "model",
+   "steps": [
+    {
+     "detail": "rule_id=disk-degrade-01 event_id=01M55T4B96V1R6S04XT9E04KG5 fired_at=2026-10-17T20:51:22.022Z detection_latency_ms=3022",
+     "label": "rule disk-degrade-01 fired",
+     "state": "ok",
+     "step": "threshold_fired",
+     "ts": "2026-10-17T20:51:22.106Z"
+    },
+    {
+     "detail": "template=operator-decision v2 sha256=23d5898e-633fc8e4-580c146c-1b11f7a5-93ce4a04-c9b52b20-707b98c1-6cdff3d4 substituted_fields=2622 C0_assertion=ok",
+     "label": "prompt rendered (C0 assertion ok)",
+     "state": "ok",
+     "step": "prompt_built",
+     "ts": "2026-10-17T20:51:24.927Z"
+    },
+    {
+     "detail": "endpoint=external model=gemini-2.5-flash answered_by=forwarded-managed-model latency_ms=2808 request_id=01M55T4BBV32ZR7FXPCVTVBH4N",
+     "label": "model answered",
+     "state": "ok",
+     "step": "model_call",
+     "ts": "2026-10-17T20:51:24.927Z"
+    },
+    {
+     "detail": "[dropped: C2]",
+     "label": "model reply received",
+     "state": "rejected",
+     "step": "reply_received",
+     "truncated": false,
+     "ts": "2026-10-17T20:51:24.928Z"
+    },
+    {
+     "detail": "rule=G7 field=rationale decision=accept (C0-safe, within bounds)",
+     "label": "G7 rationale",
+     "state": "ok",
+     "step": "gates",
+     "ts": "2026-10-17T20:51:24.928Z"
+    },
+    {
+     "detail": "rule=G9 decision=accept (record clean or absent)",
+     "label": "G9 incident record",
+     "state": "ok",
+     "step": "gates",
+     "ts": "2026-10-17T20:51:24.928Z"
+    },
+    {
+     "detail": "rule=G9 field=trace.evidence_window.detail decision=drop (C2 signature in trace step evidence_window: : phone-number signature)",
+     "label": "G9 trace detail",
+     "state": "dropped",
+     "step": "gates",
+     "ts": "2026-10-17T20:51:24.928Z"
+    },
+    {
+     "detail": "rule=G9 field=trace.reply_received.detail decision=drop (C2 signature in model reply: : phone-number signature)",
+     "label": "G9 trace detail",
+     "state": "dropped",
+     "step": "gates",
+     "ts": "2026-10-17T20:51:24.928Z"
+    },
+    {
+     "detail": "action_kind=instance.stop target=demo-workload",
+     "label": "action decided: instance.stop",
+     "state": "ok",
+     "step": "action_decided",
+     "ts": "2026-10-17T20:51:24.928Z"
+    },
+    {
+     "detail": "result=ok latency_ms=3927",
+     "label": "action executed: ok",
+     "state": "ok",
+     "step": "executed",
+     "ts": "2026-10-17T20:51:26.021Z"
+    },
+    {
+     "detail": "audit_id=01M55T4F65R41W3GEB02X3Q62J decision_id=01M55T4E44BAH1APCN32WTGB7J",
+     "label": "audit row written",
+     "state": "ok",
+     "step": "audit_recorded",
+     "ts": "2026-10-17T20:51:26.022Z"
+    }
+   ],
+   "trace_version": 1
+  },
+  "event_id": "01M55T4B96V1R6S04XT9E04KG5",
+  "fallback_reason": null,
+  "id": "01M55T4E44BAH1APCN32WTGB7J",
+  "incident_actions": [
+   {
+    "action_kind": "instance.stop",
+    "note": "stop the instance with the highest disk usage to alleviate I/O pressure",
+    "target": "NNB9287WRHGFDPEZ995TKCXDNW"
+   }
+  ],
+  "incident_evidence": [
+   {
+    "field": "disk.write_latency_ms",
+    "seq": 1792268807,
+    "value": 120.0
+   },
+   {
+    "field": "pressure.io_some_avg10",
+    "seq": 1792268807,
+    "value": 68.9
+   },
+   {
+    "field": "lxd_instances.disk_used_bytes",
+    "seq": 1792268807,
+    "value": "2,362,232,012"
+   }
+  ],
+  "incident_explanation": "The disk.write_latency_ms for /dev/sda is consistently at 120.0ms across the evidence window, which is significantly above the threshold. The pressure.io_some_avg10 is also high at 68.9, indicating I/O bound issues. The instance NNB9287WRHGFDPEZ995TKCXDNW has disk_used_bytes of 2,362,232,012, making it the heaviest disk user. Stopping this instance is the most direct way to reduce the I/O load and prevent further degradation or failure of the disk.",
+  "incident_generated": "model",
+  "incident_title": "Disk I/O degradation on /dev/sda",
+  "initiated_by": "operator",
+  "message_id": null,
+  "node_id": "01M4NZK46WXG5ZEFAGAAV5JRXM",
+  "playbook": "disk-degrade-01",
+  "reason": "disk write latency on /dev/sda is 120ms and rising, indicating severe I/O degradation; stopping the instance with the highest disk usage will alleviate the pressure.",
+  "rule_id": "disk-degrade-01",
+  "trace_version": 1
+ },
+ {
+  "action_kind": "instance.stop",
+  "action_params": {
+   "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW",
+   "force": true,
+   "instance_name": "demo-workload"
+  },
+  "confidence": 0.9,
+  "conversation_id": null,
+  "decided_at": "2026-10-17T20:50:05.597Z",
+  "decision_source": "model",
+  "decision_trace": {
+   "decided_by": "model",
+   "steps": [
+    {
+     "detail": "rule_id=disk-degrade-01 event_id=01M55T20MBKC8H8FEW7GCX2520 fired_at=2026-10-17T20:50:05.579Z detection_latency_ms=3579",
+     "label": "rule disk-degrade-01 fired",
+     "state": "ok",
+     "step": "threshold_fired",
+     "ts": "2026-10-17T20:50:05.631Z"
+    },
+    {
+     "detail": "template=operator-decision v2 sha256=5a80c38c-9fa6b0f6-c2b66745-a27e0b32-9a30d739-71bf93ef-1f585b00-5ab0a654 substituted_fields=2622 C0_assertion=ok",
+     "label": "prompt rendered (C0 assertion ok)",
+     "state": "ok",
+     "step": "prompt_built",
+     "ts": "2026-10-17T20:50:08.442Z"
+    },
+    {
+     "detail": "endpoint=external model=gemini-2.5-flash answered_by=forwarded-managed-model latency_ms=2811 request_id=01M55T20NZB7WD9BMMBX8NJWPY",
+     "label": "model answered",
+     "state": "ok",
+     "step": "model_call",
+     "ts": "2026-10-17T20:50:08.443Z"
+    },
+    {
+     "detail": "{\"schema_version\":1,\"request_id\":\"01M55T20NZB7WD9BMMBX8NJWPY\",\"action_id\":\"instance.stop\",\"params\":{\"instance_name\":\"NNB9287WRHGFDPEZ995TKCXDNW\",\"force\":true},\"confidence\":0.9,\"rationale\":\"disk write latency on /dev/sda is 120ms and rising, with high I/O pressure; stopping the heaviest instance will shed the I/O load.\",\"incident_title\":\"Degrading disk I/O on /dev/sda\",\"explanation\":\"The disk.write_latency_ms on /dev/sda is consistently at 120.0ms, which is significantly above the threshold, and pressure.io_some_avg10 is high at 68.9. The disk is not mounted read-only, indicating it's still operational but struggling. The instance NNB9287WRHGFDPEZ995TKCXDNW is the only instance listed and is therefore the heaviest, and stopping it is the most direct way to alleviate the I/O pressure on the degrading disk.\",\"evidence\":[{\"field\":\"disk.write_latency_ms\",\"value\":120.0,\"seq\":\"1,792,268,731\"},{\"field\":\"pressure.io_some_avg10\",\"value\":68.9,\"seq\":\"1,792,268,731\"},{\"field\":\"disk.mount_ro\",\"value\":false,\"seq\":\"1,792,268,731\"},{\"field\":\"lxd_instances.ram_used_bytes\",\"value\":\"4,500,000,000\",\"seq\":\"1,792,268,731\"}],\"actions\":[{\"action_kind\":\"instance.stop\",\"target\":\"NNB9287WRHGFDPEZ995TKCXDNW\",\"note\":\"shed I/O load from the degrading disk by stopping the heaviest instance\"}]}",
+     "label": "model reply received",
+     "state": "ok",
+     "step": "reply_received",
+     "truncated": false,
+     "ts": "2026-10-17T20:50:08.444Z"
+    },
+    {
+     "detail": "rule=G7 field=rationale decision=accept (C0-safe, within bounds)",
+     "label": "G7 rationale",
+     "state": "ok",
+     "step": "gates",
+     "ts": "2026-10-17T20:50:08.444Z"
+    },
+    {
+     "detail": "rule=G9 decision=accept (record clean or absent)",
+     "label": "G9 incident record",
+     "state": "ok",
+     "step": "gates",
+     "ts": "2026-10-17T20:50:08.444Z"
+    },
+    {
+     "detail": "rule=G9 field=trace.evidence_window.detail decision=drop (C2 signature in trace step evidence_window: : phone-number signature)",
+     "label": "G9 trace detail",
+     "state": "dropped",
+     "step": "gates",
+     "ts": "2026-10-17T20:50:08.444Z"
+    },
+    {
+     "detail": "action_kind=instance.stop target=demo-workload",
+     "label": "action decided: instance.stop",
+     "state": "ok",
+     "step": "action_decided",
+     "ts": "2026-10-17T20:50:08.444Z"
+    },
+    {
+     "detail": "result=ok latency_ms=3908",
+     "label": "action executed: ok",
+     "state": "ok",
+     "step": "executed",
+     "ts": "2026-10-17T20:50:09.536Z"
+    },
+    {
+     "detail": "audit_id=01M55T24G03RSPNZTYM8EK3KKT decision_id=01M55T23E4YGTNR6X4ABF7PZAE",
+     "label": "audit row written",
+     "state": "ok",
+     "step": "audit_recorded",
+     "ts": "2026-10-17T20:50:09.536Z"
+    }
+   ],
+   "trace_version": 1
+  },
+  "event_id": "01M55T20MBKC8H8FEW7GCX2520",
+  "fallback_reason": null,
+  "id": "01M55T23E4YGTNR6X4ABF7PZAE",
+  "incident_actions": [
+   {
+    "action_kind": "instance.stop",
+    "note": "shed I/O load from the degrading disk by stopping the heaviest instance",
+    "target": "NNB9287WRHGFDPEZ995TKCXDNW"
+   }
+  ],
+  "incident_evidence": [
+   {
+    "field": "disk.write_latency_ms",
+    "value": 120.0
+   },
+   {
+    "field": "pressure.io_some_avg10",
+    "value": 68.9
+   },
+   {
+    "field": "disk.mount_ro",
+    "value": false
+   },
+   {
+    "field": "lxd_instances.ram_used_bytes",
+    "value": "4,500,000,000"
+   }
+  ],
+  "incident_explanation": "The disk.write_latency_ms on /dev/sda is consistently at 120.0ms, which is significantly above the threshold, and pressure.io_some_avg10 is high at 68.9. The disk is not mounted read-only, indicating it's still operational but struggling. The instance NNB9287WRHGFDPEZ995TKCXDNW is the only instance listed and is therefore the heaviest, and stopping it is the most direct way to alleviate the I/O pressure on the degrading disk.",
+  "incident_generated": "model",
+  "incident_title": "Degrading disk I/O on /dev/sda",
+  "initiated_by": "operator",
+  "message_id": null,
+  "node_id": "01M4NZK46WXG5ZEFAGAAV5JRXM",
+  "playbook": "disk-degrade-01",
+  "reason": "disk write latency on /dev/sda is 120ms and rising, with high I/O pressure; stopping the heaviest instance will shed the I/O load.",
+  "rule_id": "disk-degrade-01",
+  "trace_version": 1
+ }
+]
