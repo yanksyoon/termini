@@ -730,6 +730,7 @@ class LxdExecutor:
         ephemeral: bool = False,
         wait: bool = True,
         timeout_s: float = 120.0,
+        user_data: str | None = None,
     ) -> ExecResult:
         """Materialise an instance from a preloaded image (POST /1.0/instances).
 
@@ -759,6 +760,12 @@ class LxdExecutor:
             config["limits.cpu"] = str(int(cpu))
         if memory:
             config["limits.memory"] = str(memory)
+        if user_data:
+            # Launch-time agent config (agent-runtime.md §4.4): cloud-init writes
+            # the instance's own /etc/termini/agent.yaml and enables the service.
+            # Without it the guest keeps the image's placeholder ids and the
+            # agent never starts.
+            config["cloud-init.user-data"] = user_data
         body = {
             "name": name,
             "source": source,

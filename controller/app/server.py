@@ -53,6 +53,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from . import db, errors, governance, health, inventory, lxdtrust, registration, role, store, validate, ws as wsmod
 from . import agent_tasks as agent_tasks_mod
+from . import agent_provision
 from . import agent_actions as agent_actions_mod
 from . import assistant as assistant_mod
 from . import commands as cmd_mod
@@ -1270,11 +1271,31 @@ class ControllerHandler(BaseHTTPRequestHandler):
             already = 0
             for slot in range(count):
                 name = op_target.instance_name(plan_id, index, slot)
+                # agent-runtime.md §4.4: the LAUNCH writes this instance's own
+                # /etc/termini/agent.yaml and enables termini-agent. The vm_id is
+                # the node-derivable id for this exact name, i.e. the id telemetry
+                # will report and the client will address a task to.
+                try:
+                    user_data = agent_provision.render_user_data(
+                        project_id=project_id,
+                        vm_id=agent_tasks_mod.agent_id_for_name(name),
+                        node_id=node_id or "",
+                        inference_base_url=agent_provision.agent_inference_base_url(cfg),
+                        default_model=os.environ.get("TERMINI_AGENT_MODEL") or None,
+                        image_version=str(cfg.lxd_workload_image).replace("/", "-"),
+                        max_concurrent=int(
+                            os.environ.get("TERMINI_AGENT_TASK_BOUND") or
+                            agent_provision.DEFAULT_MAX_CONCURRENT),
+                    )
+                except agent_provision.AgentConfigError as exc:
+                    failure = (f"cannot render the launch config for {name}: {exc}")
+                    break
                 r = executor.create_instance(
                     name, image_alias=image_alias,
                     cpu=vcpus or None,
                     memory=f"{ram_gb}GiB" if ram_gb else None,
                     timeout_s=cfg.lxd_create_timeout_s,
+                    user_data=user_data,
                 )
                 if r.result == "already_applied":
                     already += 1

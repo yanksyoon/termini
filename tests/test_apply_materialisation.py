@@ -38,6 +38,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "tests"))
 
 from app import db, events, registration, server as server_mod, store  # noqa: E402
+from app import agent_tasks as agent_tasks_mod  # noqa: E402
 from app import logs as logs_mod  # noqa: E402
 from app.operator import target as target_mod  # noqa: E402
 from app.operator.models import ExecResult  # noqa: E402
@@ -124,6 +125,10 @@ def _cfg(**over):
         lxd_base_url="http://127.0.0.1:1",
         lxd_node_scheme="https",
         lxd_workload_image="agent-vm",
+        # The launch now carries the instance's own agent config (§4.4), which
+        # names the inference endpoint the guest dials. An apply without one is
+        # refused rather than producing an agent that cannot answer.
+        inference_base_url="http://10.10.0.13:8080",
         lxd_create_timeout_s=5.0,
         lxd_start_timeout_s=5.0,
         lxd_client_cert=None,
@@ -327,6 +332,31 @@ class ApplyPlanTest(unittest.TestCase):
         ev, data, _ = broker.events[-1]
         self.assertEqual((ev, data["state"]), ("vm.provisioned", "ready"))
         self.assertEqual(data["vm_ids"], [vm_id])
+
+    def test_the_create_carries_the_launch_time_agent_config(self):
+        """agent-runtime.md §4.4: the launch writes the config and starts the agent.
+
+        Before this, `create_instance` got no `cloud-init.user-data`, so an
+        Apply-created instance booted with the bake's placeholder ids and a
+        termini-agent that was never enabled — a guest that cannot answer the
+        task surface at all.
+        """
+        plan = _plan("PLAN000000000000000000000D", [_alloc(0, self.node_id, count=1)])
+        fake = _FakeExecutor()
+        status, body, _ = self._apply(plan, factory=lambda cfg, node, dry_run=False: fake)
+        self.assertEqual(status, 202)
+        name = body["vm_ids"][0]
+        _, kw = fake.created[0]
+        user_data = kw["user_data"]
+        self.assertIn("#cloud-config", user_data)
+        self.assertIn("/etc/termini/agent.yaml", user_data)
+        # The service is enabled AT LAUNCH (the bake leaves it disabled).
+        self.assertIn("systemctl, enable, --now, termini-agent.service", user_data)
+        # The config names THIS instance, with the id the node will report.
+        self.assertIn(f"vm_id: {agent_tasks_mod.agent_id_for_name(name)}", user_data)
+        self.assertIn(f"node_id: {self.node_id}", user_data)
+        self.assertIn(f"project_id: {PROJECT_ID}", user_data)
+        self.assertIn("base_url: http://10.10.0.13:8080/v1", user_data)
 
     def test_count_fans_out_to_n_instances(self):
         plan = _plan("PLAN000000000000000000000B", [_alloc(0, self.node_id, count=3)])
