@@ -1444,7 +1444,7 @@ def install_lxd_trust(cfg: dict, identity: dict, *, timeout: float = 30.0) -> bo
         log(f"LXD_TRUST installed at {resp.get('endpoint') or api['endpoint']} "
             f"({resp.get('detail')})")
         return True
-    log(f"LXD_TRUST not installed: HTTP {status} {str(resp)[:200]}")
+    log(f"LXD_TRUST not installed: HTTP {status} {str(resp)[:400]}")
     return False
 
 

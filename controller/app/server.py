@@ -1926,13 +1926,30 @@ class ControllerHandler(BaseHTTPRequestHandler):
             common_name=cfg.lxd_trust_name,
             provision=False,
         )
+        if (identity is None or not identity.available) and cfg.lxd_auto_provision:
+            # Same self-heal main() does at startup: a controller whose client
+            # identity is missing/named differently must mint one rather than fail
+            # every node's registration-time trust push forever.
+            identity = lxdtrust.resolve_identity(
+                explicit_cert=cfg.lxd_client_cert,
+                explicit_key=cfg.lxd_client_key,
+                client_dir=cfg.lxd_client_dir,
+                common_name=cfg.lxd_trust_name,
+                provision=True,
+            )
         if identity is None or not identity.available:
             raise errors.err(
                 503, "UNAVAILABLE",
                 "the controller has no LXD client identity on disk; trust cannot be installed",
             )
+        # A node reports its listener as `host:port` (no scheme) while a hand-wired
+        # node's stored endpoint carries `https://`. Normalise BOTH to a base URL
+        # before probing: handing the executor a scheme-less string made the probe
+        # fail with `URLError` and the trust install never happened (measured on a
+        # freshly registered node, 2026-10-18).
+        base_url = op_target.endpoint_base_url(endpoint, fallback=cfg.lxd_base_url)
         result = lxdtrust.ensure_trusted(
-            endpoint, identity, token.strip(),
+            base_url, identity, token.strip(),
             name=cfg.lxd_trust_name, server_ca=cfg.lxd_server_ca,
             timeout_s=cfg.lxd_request_timeout_s,
         )
@@ -1951,7 +1968,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
                  node_id, endpoint, result.status, result.detail)
         return 200, {
             "node_id": node_id,
-            "endpoint": endpoint,
+            "endpoint": base_url,
             "trusted": bool(result.ok),
             "status": result.status,
             "detail": result.detail,
