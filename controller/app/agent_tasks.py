@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 import threading
 import time
@@ -436,6 +437,29 @@ def _call_agent_surface(cfg, node, vm_id: str, *, method: str, path: str,
     return status, body, outer.get("retry_after")
 
 
+def _snippet(body: Any, limit: int = 160) -> str:
+    """A short, single-line rendering of an unparseable answer for the message.
+
+    The point is to name WHAT answered (python's `http.server` HTML page, an
+    nginx 404, ...) so a reader can tell "no task surface" from "task refused".
+    Markup is stripped first: the informative line of `http.server`'s 501 page
+    ("Message: Unsupported method ('POST')") sits well past the first 160
+    characters of its HTML, and truncating the byte stream would have hidden
+    exactly the words that identify the cause.
+    """
+    if isinstance(body, dict):
+        raw = body.get("raw")
+        if raw is None:
+            raw = json.dumps(body)
+    else:
+        raw = body
+    text = str(raw or "")
+    if "<" in text and ">" in text:
+        text = re.sub(r"<[^>]*>", " ", text)
+    text = " ".join(text.split())
+    return text[:limit] + ("…" if len(text) > limit else "")
+
+
 def submit_to_agent(cfg, node, task: dict, *,
                     instance_name: str | None = None) -> dict:
     """Hand one recorded task to the agent. Raises AgentTaskError if refused.
@@ -454,6 +478,26 @@ def submit_to_agent(cfg, node, task: dict, *,
         payload=payload)
     if status >= 400:
         err = (body or {}).get("error") or {}
+        if not err:
+            # The port answered, but not with the runtime's own envelope. The
+            # observed case is an instance booted from an image that predates
+            # §5.6: its status listener is the bare `http.server` handler, which
+            # answers an unimplemented method with `501 Unsupported method`
+            # (HTML). That is a MISSING SURFACE, not a refused task — reporting it
+            # as `AGENT_REJECTED`/`field=vm_id` pointed the client at its own
+            # request while the real cause was the image the instance boots from.
+            raise AgentTaskError(
+                "AGENT_SURFACE_MISSING",
+                (f"agent {task['vm_id']} answered HTTP {status} on its loopback task "
+                 f"port without the runtime's error envelope: {_snippet(body)}"),
+                status=503,
+                actionable=(
+                    "the instance is running an agent runtime older than the task "
+                    "surface (agent-runtime.md §5.6) — relaunch it from the current "
+                    f"workload image `{getattr(cfg, 'lxd_workload_image', 'agent-vm')}`; "
+                    "the image, not the request, is what has to change"),
+                param="vm_id",
+            )
         # Preserve the agent's own refusal semantics where they are actionable: a
         # bound refusal must stay a 429 (retry later), an oversize prompt a 413, a
         # refused alias a 400 — never flattened into one generic error.
