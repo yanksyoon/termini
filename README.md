@@ -443,4 +443,23 @@ Secrets and runtime state are never committed (see the pre-commit hook in
 
 ## Licence
 
-No licence is present in this repository.
+Termini is released under the **GNU General Public License, version 3 only**
+(SPDX: `GPL-3.0-only`). The full text is in [`LICENSE`](LICENSE).
+
+    Copyright (C) 2026 The Termini Authors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, version 3.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+Third-party components keep their own terms:
+
+- `frontend/terminal/vendor/` bundles xterm.js and its fit addon under the MIT
+  licence. The upstream notices sit beside the files.
+- The AI Builder Cup template artwork in `deck/v3/` belongs to the competition
+  organisers. It appears here only because the submission has to be made on
+  their template. The GPL covers our code and our text, not their branding.
