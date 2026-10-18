@@ -13,9 +13,21 @@ fix), served locally at 1440×900 and pointed at the live controller
 `dashboard/evidence/ui-demo/` (numbered below). See "Not verified" for what is
 pinned to code rather than to a live screen.
 
-The standing fleet as observed: **four** nodes — two seeder-fabricated (`demo-node-a`
-compute, `demo-node-c` inference) and two **real** registered nodes
-(`ba1f1fae…` 2-core compute, `33678f54…` 8-core compute, the latter running
+**Deployed since (2026-10-18, orchestrator):** Firebase Hosting was redeployed from `origin/main`
+@ `e523f62` after this capture. The served assets now match `main` — `assets/styles.css`
+`2ea989a7…`, `proto/variants/hig.js` `e04a7ba6…`, `proto/variants/hig.css` `6504cacafaf4…` —
+and the legibility claim was re-measured on the **deployed** page (Chromium, cache disabled,
+`?synthetic=1&dest=fleet`): **0 clipped sample cells of 66** at 1280×900 and at 1440×900, with
+`documentElement.scrollWidth === innerWidth` (no horizontal overflow) at both widths. Labels
+render in full (`CPU stall (some)`, `I/O stall (some)`, `cumulative` under the value), and the
+card titles wrap (`PSI pressure (latest sample)`, `Disk saturation / inodes (latest sample)`).
+So the fix is live, not only on a local bundle; the counts above are the presenter's floor —
+re-measure if the fleet or the build changes.
+
+The standing fleet as observed: **four** nodes at capture (five at the 2026-10-18 re-check —
+registrations come and go, so count them live rather than off this page) — two
+seeder-fabricated (`demo-node-a` compute, `demo-node-c` inference) and two **real** registered
+nodes (`ba1f1fae…` 2-core compute, `33678f54…` 8-core compute, the latter running
 `llama-cpp`). `?synthetic=1` reveals the two `demo` rows; the default listing hides
 them while real nodes are registered (`docs/contracts/dashboard.md` §1.1).
 
@@ -265,15 +277,14 @@ not from a live pending item.
 
 ## Not verified
 
-- **The deployed page is still pre-fix.** Firebase serves a build whose
-  `assets/styles.css` (sha256 `2ba74819…`) is the **old five-track `.sample-row`** with
-  `text-overflow: ellipsis`; the truncation fix `cbea13d` is on `origin/main`
-  (sha256 `2ea989a7…`) but **not yet deployed**. These screenshots are from the local
-  `origin/main` bundle served against the live controller — not from the deployed page —
-  so they show the fixed layout. Legibility across laptop widths is **not** claimed from
-  these captures; it is pinned to `cbea13d` by the frontend worker's measurement
-  (`docs/ui-hig.md` → "Raw-sample legibility": 0 clipped of 72 cells at 1024/1280/1440/1920,
-  dark and light). My own capture at 1440×900 measured 0 clipped of 66 cells.
+- **The screenshots predate the hosting deploy.** They were taken from a local
+  `origin/main` bundle served against the live controller, not from the deployed page —
+  at that time Firebase still served the old five-track `.sample-row` (`assets/styles.css`
+  sha256 `2ba74819…`). That has since been corrected: hosting was redeployed from
+  `e523f62` (see the note at the top) and the same measurement now passes **on the
+  deployed page** (0 clipped of 66 cells at 1280×900 and 1440×900). The screenshots still
+  show the fixed layout, so they remain representative; the numbers, not the images, are
+  what pin legibility, and both now agree.
 - **§4.12–§4.14 only render on the synthetic nodes.** The two real nodes report none of
   those fields, so their indicator cards read "not reported"; the filled cards shown in
   screenshot 3 are `demo-node-c`'s. Say this if a real node is selected on stage.

@@ -12,7 +12,20 @@ hit-test follow-up `90617b0`), served locally at **1440×900**, dark, pointed at
 controller (`https://34-93-190-64.sslip.io/v1`, project `01J0DEM0WARM000000000000AB`,
 `?synthetic=1&dest=incidents&decisionLimit=200`). Screenshots in
 `dashboard/evidence/ui-demo/` (numbered below). The click is **proved live** on the merged
-tree (§6); the deployed Firebase build still serves the pre-fix `hig.js` — see "Not verified".
+tree (§6).
+
+**Deployed since (2026-10-18, orchestrator):** Firebase Hosting was redeployed from
+`origin/main` @ `e523f62` after this capture, so the served `proto/variants/hig.js`
+(`e04a7ba6…`) now carries `6de7a52` + `90617b0`. The click was re-proved **on the deployed
+page** (Chromium, cache disabled, `?synthetic=1&dest=incidents`): clicking a row that was not
+the newest — `01M56PJBF65WS2DHCYGSBT278K` — moved `aria-selected` to that row and rendered its
+own record in the pane ("Host memory exhaustion due to runaway instance memory usage", six
+blocks), and the pane still held the same record 10 s later across three 3 s polls (no
+duplicate parts, no blank pane). The controller half of this capture is live as well: the
+deployed controller ref `4bca67b` contains the fallback-evidence fix `4928eea`, and the
+installed `/opt/termini/controller/app/operator/decision.py` carries
+`_fallback_observed_value` (unit restarted 22:22 UTC) — see the corrected contradiction
+below.
 
 Each element below: **Shows** / **Do** / **Why** / **From → reappears**.
 
@@ -245,12 +258,12 @@ Fixed by `6de7a52` (the row-click handler `onDecisionClick` in
 
 ## Not verified
 
-- **The deployed Firebase build is still pre-fix.** `https://termini-510609.web.app/
-  proto/variants/hig.js` hashes to `a4867c3e…`, which is byte-identical to the pre-fix
-  `f1c947a3` (no `onDecisionClick`). The click fix `6de7a52` / `90617b0` is on `origin/main`
-  (`e04a7ba6…`) but **not yet deployed**. These screenshots are from the local `origin/main`
-  bundle served against the live controller, exactly as the Fleet half's are — not from the
-  deployed page. The live click on the deployed URL is pending the hosting deploy.
+- **The screenshots predate the hosting deploy.** `https://termini-510609.web.app/
+  proto/variants/hig.js` hashed to `a4867c3e…` (the pre-fix build, no `onDecisionClick`) at
+  capture time, so these images come from a local `origin/main` bundle served against the
+  live controller, exactly as the Fleet half's do. Hosting has since been redeployed from
+  `e523f62`: the served `hig.js` now hashes to `e04a7ba6…` and the click was re-proved on the
+  deployed page (see the note at the top).
 - **The audit-row dialog** was verified from the shipped `showAuditDetail` handler and the
   sibling `telemetry sample` dialog (seen live, §4); the audit dialog itself was not pinned in a
   screenshot because the 3 s poll re-selected a different record between the probe and the click.
@@ -266,17 +279,20 @@ Fixed by `6de7a52` (the row-click handler `onDecisionClick` in
   live in the (hidden) Fleet destination. From the Incidents pane the visible effect is the
   state change (node/window/synthetic) that the viewer sees only after switching to Fleet by
   hand. The card's phrase "jumps to the Fleet chart" overstates the actual behaviour.
-- **The fallback evidence unit defect is still live** (controller not redeployed with the
-  `4928eea` fix). A fallback OOM record quotes `ram_used_bytes = 96 B` in the evidence block
-  (the value `96.04…` is a *percent*, rendered with the `_bytes` unit because the field name is
-  `ram_used_bytes`), while the breach line beside it correctly reads
+- **The fallback evidence unit defect is fixed in the deployed code, but not observed on a
+  rendered fallback row.** At capture time the controller still ran a tree without the fix, and
+  a fallback OOM record quoted `ram_used_bytes = 96 B` in the evidence block (the value
+  `96.04…` is a *percent*, rendered with the `_bytes` unit because the field name is
+  `ram_used_bytes`), while the breach line beside it correctly read
   `ram_used_bytes RAM used = 96.04% of ram_total_bytes`. Exact strings, from
   `inc-09-fallback-record.png`: evidence `ram_used_bytes = 96 B seq 1792270042`; breach
   `ram_used_bytes RAM used = 96.04% of ram_total_bytes`. Model records do **not** show this —
   they quote the observed byte count (`ram_used_bytes = 8,070,137,774`) under the same field
-  name. Screenshot `inc-09` shows the defect; the walkthrough above describes the evidence block
-  by what it is meant to prove (the field the decision was made on and its `seq`), not by this
-  rendering.
+  name. The fix (`4928eea`) is now in the deployed controller tree (`4bca67b`; the installed
+  `decision.py` carries `_fallback_observed_value`, unit restarted 22:22 UTC), but **no
+  fallback decision occurred in the last 200 fetched** (all `incident_generated: "model"`), so
+  the corrected rendering has not been seen on screen — `inc-09` remains pre-fix evidence.
+  Re-check the first fallback record of the demo run before quoting it on stage.
 - **Model records use dotted field paths; the fallback uses a bare metric name.** Model evidence
   quotes `ram_used_bytes`, `ram_total_bytes`, `lxd_instances.ram_used_bytes`,
   `disk.write_latency_ms`, `pressure.io_some_avg10` (dotted); the fallback evidence quotes the
