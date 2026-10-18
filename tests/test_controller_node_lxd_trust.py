@@ -149,6 +149,19 @@ class NodeLxdTrustAtRegistrationTest(_StubHarness):
             finally:
                 e.close()
 
+    def _get_cert(self, *, node_token: str | None = NODE_TOKEN):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/v1/nodes/{self.node_id}/lxd-trust-cert",
+            headers={"Authorization": "Bearer " + (node_token or "")}, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return r.status, json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            try:
+                return e.code, json.loads(e.read() or b"{}")
+            finally:
+                e.close()
+
     def _cert_posts(self) -> int:
         return sum(1 for m, path, _b in self.stub.requests if m == "POST" and path == "/1.0/certificates")
 
@@ -196,6 +209,45 @@ class NodeLxdTrustAtRegistrationTest(_StubHarness):
         self.assertEqual(status, 403)
         self.assertEqual(body["error"]["code"], "PERMISSION_DENIED")
         self.assertEqual(self._cert_posts(), 0)
+
+    def test_certificate_route_publishes_the_controllers_public_cert(self):
+        """The node fetches our PUBLIC cert and adds it to its own trust store —
+        the flow that works on a deployed node, where the controller cannot be
+        the one to install trust (403 / unreachable, measured 2026-10-18)."""
+        status, body = self._get_cert()
+        self.assertEqual(status, 200, body)
+        self.assertIn("BEGIN CERTIFICATE", body["certificate_pem"])
+        self.assertEqual(body["fingerprint"], self.identity.fingerprint)
+        self.assertEqual(body["name"], self.cfg.lxd_trust_name)
+        # the cert route never claims trust and never touches the node's LXD
+        self.assertEqual(self._cert_posts(), 0)
+
+    def test_certificate_route_needs_the_nodes_own_token(self):
+        status, body = self._get_cert(node_token="another-node-token")
+        self.assertEqual(status, 403)
+        self.assertEqual(body["error"]["code"], "PERMISSION_DENIED")
+
+    def test_certificate_added_confirms_with_a_probe_and_no_secret(self):
+        # the node has already added our cert locally; it only needs the probe
+        lxdtrust_probe = ("app.lxdtrust.probe_trusted")
+        from app import lxdtrust as _lt
+        orig = _lt.probe_trusted
+        calls = []
+
+        def fake_probe(base_url, identity, **kw):
+            calls.append(base_url)
+            return _lt.TrustProbe(True, 200, "authenticated GET /1.0/instances -> 200")
+        _lt.probe_trusted = fake_probe
+        try:
+            status, body = self._post_trust(
+                {"lxd": {"endpoint": self.stub.base_url}, "certificate_added": True})
+        finally:
+            _lt.probe_trusted = orig
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body["trusted"], body)
+        self.assertEqual(body["status"], "trusted")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self._cert_posts(), 0, "no certificate POST when the node already added it")
 
     def test_scheme_less_endpoint_is_normalised_to_https(self):
         # A freshly registered node reports `host:port` with no scheme; a hand-wired

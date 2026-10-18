@@ -402,6 +402,9 @@ class ControllerHandler(BaseHTTPRequestHandler):
         if (method == "POST" and len(segs) == 4 and segs[:2] == ["v1", "nodes"]
                 and segs[3] == "lxd-trust"):
             return self._node_lxd_trust(conn, segs[2])
+        if (method == "GET" and len(segs) == 4 and segs[:2] == ["v1", "nodes"]
+                and segs[3] == "lxd-trust-cert"):
+            return self._node_lxd_trust_cert(conn, segs[2])
         if method == "GET" and segs[:2] == ["v1", "telemetry"] and segs[2:] == ["recent"]:
             return self._recent(conn)
         if method == "GET" and segs[:2] == ["v1", "operator"] and len(segs) == 3:
@@ -1873,6 +1876,55 @@ class ControllerHandler(BaseHTTPRequestHandler):
         limit = self._limit_param()
         return 200, {"node_id": node_id, "samples": store.recent_samples(conn, node_id, limit)}
 
+    def _resolve_lxd_identity(self):
+        """The controller's LXD client identity, minting one if configured to."""
+        cfg = self.server.cfg
+        identity = lxdtrust.resolve_identity(
+            explicit_cert=cfg.lxd_client_cert,
+            explicit_key=cfg.lxd_client_key,
+            client_dir=cfg.lxd_client_dir,
+            common_name=cfg.lxd_trust_name,
+            provision=False,
+        )
+        if (identity is None or not identity.available) and cfg.lxd_auto_provision:
+            identity = lxdtrust.resolve_identity(
+                explicit_cert=cfg.lxd_client_cert,
+                explicit_key=cfg.lxd_client_key,
+                client_dir=cfg.lxd_client_dir,
+                common_name=cfg.lxd_trust_name,
+                provision=True,
+            )
+        return identity
+
+    def _node_lxd_trust_cert(self, conn, node_id: str) -> tuple[int, dict]:
+        """GET /v1/nodes/{nid}/lxd-trust-cert — the controller's PUBLIC LXD client
+        certificate, so the node can add it to its own trust store.
+
+        The certificate is public material (it is presented on every TLS
+        connection); the node token is what makes this answer belong to THIS node.
+        The node-owned direction exists because every controller-owned route to
+        install trust on a node failed on real hardware — see
+        `install_lxd_trust` in the node daemon for the measurements.
+        """
+        self._require_node(conn, node_id)
+        identity = self._resolve_lxd_identity()
+        if identity is None or not identity.available:
+            raise errors.err(
+                503, "UNAVAILABLE",
+                "the controller has no LXD client identity on disk",
+            )
+        try:
+            with open(identity.cert_path, encoding="utf-8") as fh:
+                pem = fh.read()
+        except OSError as e:
+            raise errors.err(503, "UNAVAILABLE", f"cannot read the LXD client certificate: {e}")
+        return 200, {
+            "node_id": node_id,
+            "certificate_pem": pem,
+            "fingerprint": identity.fingerprint,
+            "name": self.server.cfg.lxd_trust_name,
+        }
+
     def _node_lxd_trust(self, conn, node_id: str) -> tuple[int, dict]:
         """POST /v1/nodes/{nid}/lxd-trust — the node hands over a one-time
         certificate-add trust token so the controller's CLIENT certificate lands
@@ -1909,12 +1961,16 @@ class ControllerHandler(BaseHTTPRequestHandler):
         # password`), while a short-lived `core.trust_password` the node sets and
         # clears around this one call is. Both are single-use here: the node
         # clears the password in a `finally`, whatever this route answers.
+        # `certificate_added: true` is the node saying it has ALREADY put our
+        # certificate in its own trust store (over its admin socket). That is the
+        # flow a deployed node uses; the secret forms remain for other deployments.
+        certificate_added = bool(body.get("certificate_added"))
         token = body.get("trust_token") or body.get("token")
         password = body.get("trust_password") or body.get("password")
         secret = password if isinstance(password, str) and password.strip() else token
-        if not isinstance(secret, str) or not secret.strip():
+        if not certificate_added and (not isinstance(secret, str) or not secret.strip()):
             raise errors.invalid_argument(
-                "trust_token or trust_password is required (the node's one-time LXD secret)",
+                "trust_token/trust_password, or certificate_added: true, is required",
                 [{"field": "trust_password", "reason": "missing"}],
             )
         # The endpoint must be the node's own address. A node that reports a
@@ -1927,24 +1983,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
             )
 
         cfg = self.server.cfg
-        identity = lxdtrust.resolve_identity(
-            explicit_cert=cfg.lxd_client_cert,
-            explicit_key=cfg.lxd_client_key,
-            client_dir=cfg.lxd_client_dir,
-            common_name=cfg.lxd_trust_name,
-            provision=False,
-        )
-        if (identity is None or not identity.available) and cfg.lxd_auto_provision:
-            # Same self-heal main() does at startup: a controller whose client
-            # identity is missing/named differently must mint one rather than fail
-            # every node's registration-time trust push forever.
-            identity = lxdtrust.resolve_identity(
-                explicit_cert=cfg.lxd_client_cert,
-                explicit_key=cfg.lxd_client_key,
-                client_dir=cfg.lxd_client_dir,
-                common_name=cfg.lxd_trust_name,
-                provision=True,
-            )
+        identity = self._resolve_lxd_identity()
         if identity is None or not identity.available:
             raise errors.err(
                 503, "UNAVAILABLE",
@@ -1956,11 +1995,22 @@ class ControllerHandler(BaseHTTPRequestHandler):
         # fail with `URLError` and the trust install never happened (measured on a
         # freshly registered node, 2026-10-18).
         base_url = op_target.endpoint_base_url(endpoint, fallback=cfg.lxd_base_url)
-        result = lxdtrust.ensure_trusted(
-            base_url, identity, secret.strip(),
-            name=cfg.lxd_trust_name, server_ca=cfg.lxd_server_ca,
-            timeout_s=cfg.lxd_request_timeout_s,
-        )
+        if certificate_added:
+            probe = lxdtrust.probe_trusted(
+                base_url, identity,
+                server_ca=cfg.lxd_server_ca, timeout_s=cfg.lxd_request_timeout_s,
+            )
+            result = lxdtrust.TrustResult(
+                probe.trusted is True,
+                "trusted" if probe.trusted else "error",
+                probe.detail, probe.status,
+            )
+        else:
+            result = lxdtrust.ensure_trusted(
+                base_url, identity, secret.strip(),
+                name=cfg.lxd_trust_name, server_ca=cfg.lxd_server_ca,
+                timeout_s=cfg.lxd_request_timeout_s,
+            )
         logs = getattr(self.server, "operator_logs", None)
         if logs is not None:
             logs.append(
