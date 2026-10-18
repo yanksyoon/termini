@@ -47,6 +47,7 @@ import os
 import platform
 import random
 import re
+import secrets
 import socket
 import ssl
 import subprocess
@@ -1370,6 +1371,92 @@ def mint_trust_token_over_socket(name: str = "termini-controller",
     return None
 
 
+def _lxd_config_set_over_socket(key: str, value: str,
+                                 *, timeout: float | None = None) -> tuple[bool, str]:
+    """`PUT /1.0` over LXD's unix socket: set one server config key.
+
+    Admin-only in LXD, and over the unix socket that means "root on this host" —
+    which the daemon is, even under `NoNewPrivileges` (the sandbox kills the snap
+    CLI, not the socket). Returns (ok, detail); never raises.
+    """
+    timeout = LXD_INVENTORY_TIMEOUT_S if timeout is None else timeout
+    last = "no LXD unix socket found"
+    for path in LXD_UNIX_SOCKETS:
+        if not os.path.exists(path):
+            continue
+        conn = None
+        try:
+            conn = _LxdUnixConnection(path, timeout=timeout)
+            body = json.dumps({"config": {key: value}})
+            conn.request("PUT", "/1.0", body=body,
+                         headers={"Content-Type": "application/json"})
+            resp = conn.getresponse()
+            raw = resp.read()
+            status = resp.status
+        except (OSError, http.client.HTTPException) as e:
+            last = f"{path}: {type(e).__name__}: {e}"
+            continue
+        finally:
+            if conn is not None:
+                conn.close()
+        if status in (200, 201, 202):
+            return True, f"{path}: HTTP {status}"
+        last = f"{path}: HTTP {status}: {raw[:160]!r}"
+    return False, last
+
+
+def install_lxd_trust(cfg: dict, identity: dict, *, timeout: float = 30.0) -> bool:
+    """Hand the controller a short-lived LXD trust secret for THIS node.
+
+    Why this shape (measured 2026-10-18): LXD authorises per CLIENT CERTIFICATE.
+    A certificate-add TOKEN minted over the node's admin socket is not redeemable
+    by a second party — LXD answers the controller's redemption with
+    `403 Bad trust password` — and the node cannot mint one that is, because the
+    snap `lxc` CLI (the tool that would) cannot exec under the unit's
+    `NoNewPrivileges=true`. What DOES work is the classic trust-password flow:
+
+      1. this node sets `core.trust_password` to a random secret over its socket,
+      2. it hands the secret to the controller (node token, own node only),
+      3. the controller POSTs /1.0/certificates {password: <secret>} with its own
+         certificate and is added to the trust store,
+      4. this function clears the password again — ALWAYS, success or failure.
+
+    The secret lives for the duration of one HTTP round trip, is useless after the
+    controller is trusted, and never lands on disk.
+    """
+    node_id = identity.get("node_id")
+    node_token = identity.get("node_token")
+    if not node_id or not node_token:
+        return False
+    api = ensure_lxd_api(cfg)
+    if not api.get("ok"):
+        log(f"LXD_TRUST skipped: own LXD API is not listening ({api.get('detail')})")
+        return False
+    secret = secrets.token_urlsafe(32)
+    ok, detail = _lxd_config_set_over_socket("core.trust_password", secret)
+    if not ok:
+        log(f"LXD_TRUST skipped: cannot set core.trust_password ({detail})")
+        return False
+    url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/lxd-trust"
+    body = {"lxd": {"endpoint": api["endpoint"]}, "trust_password": secret}
+    try:
+        try:
+            status, resp = http_json("POST", url, body=body, token=node_token, timeout=timeout)
+        except Exception as e:  # noqa: BLE001 - trust must never break telemetry
+            log(f"LXD_TRUST not installed: {e}")
+            return False
+        if status == 200 and isinstance(resp, dict) and resp.get("trusted"):
+            log(f"LXD_TRUST installed at {resp.get('endpoint') or api['endpoint']} "
+                f"({resp.get('detail')})")
+            return True
+        log(f"LXD_TRUST not installed: HTTP {status} {str(resp)[:400]}")
+        return False
+    finally:
+        cleared, cdetail = _lxd_config_set_over_socket("core.trust_password", "")
+        if not cleared:
+            log(f"LXD_TRUST WARNING: could not clear core.trust_password ({cdetail})")
+
+
 def mint_lxd_trust_token(name: str = "termini-controller",
                          *, timeout: float = 30.0) -> str | None:
     """Mint a one-time LXD trust token on this node; return it (None on failure).
@@ -1395,57 +1482,6 @@ def mint_lxd_trust_token(name: str = "termini-controller",
         log("cannot mint LXD trust token: no token in output: "
             + proc.stdout.strip()[:200])
     return token
-
-
-def install_lxd_trust(cfg: dict, identity: dict, *, timeout: float = 30.0) -> bool:
-    """Hand the controller a one-time LXD cert-add trust token for THIS node.
-
-    Why this exists: LXD authorises per CLIENT CERTIFICATE. The node token
-    authenticates the node TO the controller; it grants the controller no
-    authority OVER this node's LXD. Until the controller's client certificate is
-    in this node's trust store every operator call answers `403 Forbidden` — the
-    state a node booted from the pre-baked image was left in (measured
-    2026-10-17): registration succeeded, telemetry streamed, and the first
-    remediation was refused, with the vm_id -> instance-name resolution unable to
-    even list instances.
-
-    The token is minted HERE because only this host can mint one (`lxc config
-    trust add`), then pushed to `POST /v1/nodes/{id}/lxd-trust` with the node's
-    own token. Failures are logged and swallowed: day-2 is the controller's
-    problem to repair, and it must never stop telemetry.
-    """
-    node_id = identity.get("node_id")
-    node_token = identity.get("node_token")
-    if not node_id or not node_token:
-        return False
-    api = ensure_lxd_api(cfg)
-    if not api.get("ok"):
-        log("LXD_TRUST skipped: own LXD API is not listening "
-            f"({api.get('detail')})")
-        return False
-    # Socket FIRST: on a deployed node the unit's NoNewPrivileges makes the snap
-    # `lxc` CLI unusable, and a token that cannot be minted silently costs the
-    # node every future remediation (403). The CLI stays as the fallback for
-    # hosts where it does work (dev boxes, containers without the sandbox).
-    token = mint_trust_token_over_socket("termini-controller")
-    if not token:
-        token = mint_lxd_trust_token("termini-controller")
-    if not token:
-        log("LXD_TRUST skipped: could not mint a trust token (socket and CLI both failed)")
-        return False
-    url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/lxd-trust"
-    body = {"lxd": {"endpoint": api["endpoint"]}, "trust_token": token}
-    try:
-        status, resp = http_json("POST", url, body=body, token=node_token, timeout=timeout)
-    except Exception as e:  # noqa: BLE001 - trust must never break telemetry
-        log(f"LXD_TRUST not installed: {e}")
-        return False
-    if status == 200 and isinstance(resp, dict) and resp.get("trusted"):
-        log(f"LXD_TRUST installed at {resp.get('endpoint') or api['endpoint']} "
-            f"({resp.get('detail')})")
-        return True
-    log(f"LXD_TRUST not installed: HTTP {status} {str(resp)[:400]}")
-    return False
 
 
 def cmd_mint_trust_token(argv: list[str]) -> int:

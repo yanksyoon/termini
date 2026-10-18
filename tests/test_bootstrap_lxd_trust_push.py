@@ -45,12 +45,15 @@ class InstallLxdTrustTest(unittest.TestCase):
         self.calls: list[tuple] = []
         self.mod.ensure_lxd_api = lambda cfg: {"ok": True, "endpoint": "https://10.10.0.14:8443",
                                                "detail": "", "repaired": False}
-        self.mod.mint_lxd_trust_token = lambda name="termini-controller": "trust-tok-1"
-        # Deterministic CLI-fallback tests: this host HAS a real LXD socket
-        # (/var/snap/lxd/common/lxd/unix.socket), and a test must never mint a
-        # certificate-add token against the machine running it. The socket path
-        # has its own tests against a stub (`SocketMintedTrustTokenTest`).
-        self.mod.mint_trust_token_over_socket = lambda *a, **k: None
+        # The trust secret is a short-lived core.trust_password the daemon sets
+        # over LXD's unix socket and clears in a finally. This host HAS a real LXD
+        # socket, and a test must never touch it — so the setter is faked and the
+        # call sequence is asserted instead. (`SocketMintedTrustTokenTest` covers
+        # the socket transport itself against a stub server.)
+        self.config_sets: list[tuple[str, str]] = []
+        self.mod._lxd_config_set_over_socket = lambda key, value, **k: (
+            self.config_sets.append((key, value)) or (True, "stub: HTTP 200"))
+        self.mod.mint_lxd_trust_token = lambda name="termini-controller": "cli-token"
         self.mod.log = lambda msg: None
 
     def _http(self, reply_status, reply_body):
@@ -69,17 +72,25 @@ class InstallLxdTrustTest(unittest.TestCase):
         self.assertEqual(method, "POST")
         self.assertEqual(url, "http://10.10.0.2:8080/v1/nodes/01NODE/lxd-trust")
         self.assertEqual(token, "node-tok")
-        self.assertEqual(body["trust_token"], "trust-tok-1")
         self.assertEqual(body["lxd"]["endpoint"], "https://10.10.0.14:8443")
+        secret = body["trust_password"]
+        self.assertTrue(isinstance(secret, str) and len(secret) >= 32, secret)
+        # set before the call, cleared after it — same key, empty value
+        self.assertEqual([k for k, _v in self.config_sets], ["core.trust_password"] * 2)
+        self.assertEqual(self.config_sets[0][1], secret)
+        self.assertEqual(self.config_sets[1][1], "")
+        self.assertNotIn("trust_token", body)
 
     def test_untrusted_answer_is_reported_not_raised(self):
         self.mod.http_json = self._http(200, {"trusted": False, "status": "error",
                                               "detail": "trust install failed: HTTP 403"})
         self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
 
-    def test_controller_error_is_swallowed(self):
+    def test_controller_error_is_swallowed_and_the_password_is_cleared(self):
         self.mod.http_json = self._http(503, {"error": {"code": "UNAVAILABLE"}})
         self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
+        self.assertEqual(self.config_sets[-1], ("core.trust_password", ""),
+                         "the temporary trust password must never survive a failure")
 
     def test_transport_failure_is_swallowed(self):
         def boom(*a, **k):
@@ -87,8 +98,8 @@ class InstallLxdTrustTest(unittest.TestCase):
         self.mod.http_json = boom
         self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
 
-    def test_no_token_minted_means_no_request(self):
-        self.mod.mint_lxd_trust_token = lambda name="termini-controller": None
+    def test_cannot_set_the_password_means_no_request(self):
+        self.mod._lxd_config_set_over_socket = lambda key, value, **k: (False, "socket: HTTP 403")
         self.mod.http_json = self._http(200, {"trusted": True})
         self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
         self.assertEqual(self.calls, [])
@@ -194,9 +205,11 @@ class SocketMintedTrustTokenTest(unittest.TestCase):
         self.srv.reply = {"type": "sync", "metadata": {"addresses": []}}
         self.assertIsNone(self.mod.mint_trust_token_over_socket())
 
-    def test_install_prefers_the_socket_and_never_shells_out(self):
-        calls = []
-        self.mod.mint_lxd_trust_token = lambda name="termini-controller": calls.append(name) or "cli-token"
+    def test_config_set_over_the_socket_never_shells_out(self):
+        """`lxc` cannot exec under NoNewPrivileges; the socket call must be used."""
+        seen = []
+        self.mod._lxd_config_set_over_socket = lambda key, value, **k: (
+            seen.append((key, value)) or (True, "stub"))
         self.mod.ensure_lxd_api = lambda cfg: {"ok": True, "endpoint": "https://10.10.0.14:8443",
                                                "detail": "", "repaired": False}
         sent = {}
@@ -207,10 +220,9 @@ class SocketMintedTrustTokenTest(unittest.TestCase):
 
         self.mod.http_json = fake_http
         self.assertTrue(self.mod.install_lxd_trust(CFG, IDENTITY))
-        self.assertEqual(calls, [], "the CLI must not be used when the socket works")
-        self.assertIsNotNone(sent.get("trust_token"))
-        decoded = json.loads(base64.b64decode(sent["trust_token"]))
-        self.assertEqual(decoded["secret"], "s3cr3t-value")
+        self.assertEqual(seen[0][0], "core.trust_password")
+        self.assertNotEqual(seen[0][1], "", "the password must be set to a real secret")
+        self.assertEqual(sent["trust_password"], seen[0][1])
 
 
 if __name__ == "__main__":
