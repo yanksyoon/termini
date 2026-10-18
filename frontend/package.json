@@ -4,7 +4,7 @@
   "private": true,
   "description": "Termini embedded xterm.js web terminal + SSH access string UX",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "GPL-3.0-only",
   "scripts": {
     "test": "node --test test/*.test.mjs"
   }
