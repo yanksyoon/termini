@@ -194,7 +194,7 @@ for sh in s1.shapes:
         rows = [
             ("Team name: ", "Termini"),
             ("Team leader name: ", "[to be filled]"),
-            ("Problem Statement: ", "Future of Work & Enterprise Productivity — every organisation should be able to run AI on data it cannot send to a cloud."),
+            ("Problem Statement: ", "Future of Work & Enterprise Productivity. Every organisation should be able to run AI on data it cannot send to a cloud."),
         ]
         for label, value in rows:
             p = tf.add_paragraph(); p.space_before = Pt(6)
@@ -208,14 +208,14 @@ s = new_slide("Brief about the idea", 2)
 head(s, "One clinic, one rule")
 rich(s, 0.29, 1.62, 5.55, 1.7, [
     [("A dental clinic in Korea wanted AI for its phones, its insurance claims and its own reporting. "
-      "Sending patient data to a cloud was not an option — so the owner, a biology graduate rather than "
-      "a computer scientist, built the infrastructure himself.", {})]], size=11, spacing=1.2)
+      "Sending patient data to a cloud was not an option, so the owner built the infrastructure himself. "
+      "He studied biology, not computer science.", {})]], size=11, spacing=1.2)
 q = rect(s, 0.29, 2.75, 5.55, 0.9, fill=RGBColor(0xE8, 0xF0, 0xFE), line=None, radius=0.08)
 shape_text(q, "“All client data must not leave the building.”", size=15, bold=True, color=BLUE)
 rich(s, 0.29, 3.75, 5.55, 0.3, [[("The rule the whole build was organised around", {"size": 9, "color": MUTED})]])
-rich(s, 0.29, 4.3, 5.55, 0.6, [[("Phones, insurance claims, reporting and document retrieval — all running on models in the same room as the chair.", {"size": 9.5, "color": MUTED, "italic": True})]])
+rich(s, 0.29, 4.3, 5.55, 0.6, [[("Phones, insurance claims, reporting and document retrieval all run on models in the same room as the chair.", {"size": 9.5, "color": MUTED, "italic": True})]])
 # right column facts
-for i, (big, cap) in enumerate([("6 months", "of evenings, on top of dentistry — the cost of there being no product"),
+for i, (big, cap) in enumerate([("6 months", "of evenings, on top of dentistry. That is what it costs when no product exists."),
                                 ("0", "client records sent off-site; phones, claims and reporting all run in the back room")]):
     y = 1.62 + i * 1.6
     txt(s, 6.35, y, 3.36, 0.5, big, size=30, bold=True, color=(INK if i == 0 else GREEN))
@@ -223,12 +223,12 @@ for i, (big, cap) in enumerate([("6 months", "of evenings, on top of dentistry �
 rule(s, 0.29, 5.02, 9.42)
 rich(s, 0.29, 5.1, 9.42, 0.3, [[("Source: ", {"size": 8, "color": FAINT}),
                                 ("arca.live/b/aihomelab/185810092", {"size": 8, "color": BLUE}),
-                                (" — “A neighbourhood dental clinic's AX transformation”, 13 Oct 2026", {"size": 8, "color": FAINT})]])
+                                (". “A neighbourhood dental clinic's AX transformation”, 13 Oct 2026", {"size": 8, "color": FAINT})]])
 
 # ---------------------------------------------------------------- 3 · brief 2
 s = new_slide("Brief about the idea", 3)
 head(s, "What can't leave the building")
-sub(s, "The clinic's rule is not a dental rule — it is the rule of every business whose best data is also its most restricted.")
+sub(s, "The clinic is not unusual. Every business whose best data is also its most restricted lives by something like it.")
 inds = [
     ("Healthcare & dental", "Patient records, calls, insurance claims", "Front desk, adjudication, notes"),
     ("Banking & insurance", "KYC files, transactions, loss records", "Fraud triage, credit memos, claims"),
@@ -256,7 +256,7 @@ rich(s, 0.29, 4.78, 9.42, 0.5, [
      ("95%", {"bold": True, "color": RED}),
      (" of GenAI pilots show no measurable P&L impact (MIT NANDA 2025, contested) while ", {"color": MUTED}),
      ("88%", {"bold": True}),
-     (" of firms use AI somewhere (McKinsey 2025) — permission, operations and context are missing at once.", {"color": MUTED})]], size=9.5)
+     (" of firms use AI somewhere (McKinsey 2025). Permission, operations and context are missing at once.", {"color": MUTED})]], size=9.5)
 rule(s, 0.29, 5.16, 9.42)
 txt(s, 0.29, 5.23, 9.42, 0.25, "Sources: MIT NANDA, The GenAI Divide (Jul 2025) · McKinsey, The State of AI 2025", size=7.5, color=FAINT)
 
@@ -267,15 +267,15 @@ sub(s, "The loud concern is AI replacing existing labour. The governing one arri
 cases = [
     ("Apr 2023 · Samsung", "Engineers debugged with ChatGPT",
      "Confidential source code, equipment yield data and a meeting's notes went in as prompts. Samsung restricted generative AI across its network weeks later.",
-     "“Data is transmitted and stored to an external server, making it impossible for the company to retrieve it.” — Samsung memo",
+     "“Data is transmitted and stored to an external server, making it impossible for the company to retrieve it.”. Samsung internal memo",
      "fortune.com · 2 May 2023"),
     ("Jan 2025 · DeepSeek", "A database of everyone's prompts",
      "Wiz Research found an unauthenticated ClickHouse instance holding 1M+ log lines, chat history, API keys and plaintext passwords.",
-     "Not a breach of the model — a copy of every conversation, reachable from the open internet.",
+     "The model was never breached. A copy of every conversation sat open on the internet.",
      "wiz.io/blog · 29 Jan 2025"),
     ("Sep 2026 · Navier–Stokes", "The credit left with the data",
      "OpenAI announced a Navier–Stokes solution its team described as using “very little human input”. Twelve hours earlier, Buckmaster said his and Alpöge's unpublished advances had leaked to the lab.",
-     "A Millennium Prize result — and a priority dispute about whose work the model had read.",
+     "A Millennium Prize result, and a priority dispute about whose work the model had read.",
      "wikipedia.org · Sept 2026"),
 ]
 for i, (when, title, body_txt, quote, src) in enumerate(cases):
@@ -294,7 +294,7 @@ for i, (when, title, body_txt, quote, src) in enumerate(cases):
     p = tf.add_paragraph(); p.space_before = Pt(5); r = p.add_run(); r.text = src
     r.font.size = Pt(7); r.font.color.rgb = BLUE; r.font.name = BODY
 rich(s, 0.29, 4.42, 9.42, 0.5, [[("How Termini closes it: ", {"bold": True, "color": BLUE}),
-                                  ("not a better policy, but a topology where the copy never leaves — C2 stays on the node, and what does leave is named, classified and audited.", {})]], size=9.5)
+                                  ("a topology where the copy never leaves. C2 stays on the node, and what does leave is named, classified and audited.", {})]], size=9.5)
 
 # ---------------------------------------------------------------- 5 · brief 4
 s = new_slide("Brief about the idea", 5)
@@ -303,7 +303,7 @@ sub(s, "A system improves by learning from its own outcomes. When the record liv
 nodes = ["Data owners", "Model builders", "Compute", "Applications", "Value"]
 for i, n in enumerate(nodes):
     cx = 0.29 + i * 1.94
-    b = rect(s, cx, 1.86, 1.72, 0.5, fill=WHITE, line=LINE, radius=0.12)
+    b = rect(s, cx, 2.0, 1.72, 0.5, fill=WHITE, line=LINE, radius=0.12)
     shape_text(b, n, size=9.5, bold=True, align=PP_ALIGN.CENTER)
     b.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
     if i < 4:
@@ -312,39 +312,42 @@ for i, n in enumerate(nodes):
 def seg(x1, y1, x2, y2, dashed=False):
     c = s.shapes.add_connector(1, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
     c.line.color.rgb = RGBColor(0xBD, 0xC1, 0xC6)
-    c.line.width = Pt(1.25)
+    c.line.width = Pt(1)
+    _st = c._element.find(qn('p:style'))
+    if _st is not None:
+        c._element.remove(_st)
     if dashed:
         c.line.dash_style = MSO_LINE_DASH_STYLE.DASH
     return c
 
-seg(9.14, 2.36, 9.14, 2.62)
-seg(9.14, 2.62, 6.95, 2.62, dashed=True)
-seg(1.15, 2.36, 1.15, 2.62)
-seg(3.5, 2.62, 1.15, 2.62, dashed=True)
-chip = rect(s, 3.5, 2.43, 3.45, 0.38, fill=RGBColor(0xE8, 0xF0, 0xFE), line=BLUE, radius=0.4)
-shape_text(chip, "sovereign AI — the missing arc", size=9.5, bold=True, color=BLUE, align=PP_ALIGN.CENTER)
+seg(9.14, 2.5, 9.14, 2.74)
+seg(9.14, 2.74, 6.95, 2.74, dashed=True)
+seg(1.15, 2.5, 1.15, 2.74)
+seg(3.5, 2.74, 1.15, 2.74, dashed=True)
+chip = rect(s, 3.5, 2.55, 3.45, 0.38, fill=RGBColor(0xE8, 0xF0, 0xFE), line=BLUE, radius=0.4)
+shape_text(chip, "sovereign AI: the missing arc", size=9.5, bold=True, color=BLUE, align=PP_ALIGN.CENTER)
 chip.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
 props = [("A memory that stays", "Outcomes, corrections and exceptions remain with the entity."),
          ("A jury, not an oracle", "Several models read the same evidence; disagreement is where a person looks."),
          ("A corpus no one else has", "The private record no model has seen and no vendor could be given.")]
 for i, (t, d) in enumerate(props):
     cx = 0.29 + i * 3.18
-    c = rect(s, cx, 3.12, 3.02, 1.1, fill=PANEL, line=None, radius=0.06)
+    c = rect(s, cx, 3.24, 3.02, 1.1, fill=PANEL, line=None, radius=0.06)
     tf = c.text_frame
     p = tf.paragraphs[0]; r = p.add_run(); r.text = t
     r.font.size = Pt(10); r.font.bold = True; r.font.color.rgb = INK; r.font.name = BODY
     p = tf.add_paragraph(); p.space_before = Pt(3); r = p.add_run(); r.text = d
     r.font.size = Pt(8.2); r.font.color.rgb = MUTED; r.font.name = BODY
-rich(s, 0.29, 4.5, 9.42, 0.5, [[("Intelligence should be plural. ", {"bold": True}),
-                                  ("Governance is not the tax on the loop — it is what closes it.", {"color": BLUE, "bold": True})]], size=12)
+rich(s, 0.29, 4.62, 9.42, 0.5, [[("Intelligence should be plural. ", {"bold": True}),
+                                  ("Governance is what makes the loop close.", {"color": BLUE, "bold": True})]], size=12)
 
 # ---------------------------------------------------------------- 6 · opportunities 1
 s = new_slide("Opportunities", 6)
 head(s, "Right-size the intelligence")
-sub(s, "Frontier models are not the answer to every task. They are the top of a ladder — and the product is the routing between the levels.")
+sub(s, "Most tasks do not need a frontier model. The product is a ladder, and the routing between its levels.")
 rows = [("Level", "Runs on", "Good at", "Data movement", "In the demo"),
         ("L0 · deterministic", "Controller rules", "Known remedies, threshold-to-action mappings", "None", "Yes"),
-        ("L1 · small local", "The node — 4B class, llama.cpp", "Classify, extract, summarise, triage", "None", "Yes"),
+        ("L1 · small local", "The node: 4B class, llama.cpp", "Classify, extract, summarise, triage", "None", "Yes"),
         ("L2 · large local", "A GPU node over your data", "Reasoning specific to your domain data", "None", "Config only"),
         ("L3 · frontier", "Gemini, via Vertex AI", "The hardest reasoning, the smallest payload", "Minimised C0, if permitted", "Yes")]
 tbl_shape = s.shapes.add_table(len(rows), 5, Inches(0.29), Inches(1.92), Inches(9.42), Inches(2.3))
@@ -377,7 +380,7 @@ for ri, row in enumerate(rows):
             r.font.color.rgb = INK if ci == 2 else MUTED
 rich(s, 0.29, 4.42, 9.42, 0.5, [[("L1 triages → L3 reasons, only where policy allows → L0 executes → ", {"color": MUTED}),
                                   ("the audit records which level answered.", {"bold": True})]], size=10)
-rich(s, 0.29, 4.82, 9.42, 0.4, [[("Local is not worse — it is the right level for most of the work.", {"bold": True, "color": BLUE})]], size=11)
+rich(s, 0.29, 4.82, 9.42, 0.4, [[("Local is the right level for most of the work.", {"bold": True, "color": BLUE})]], size=11)
 
 # ---------------------------------------------------------------- 7 · opportunities 2
 s = new_slide("Opportunities", 7)
@@ -396,7 +399,7 @@ for i, (t, d, col) in enumerate(cards):
     r.font.size = Pt(11); r.font.bold = True; r.font.color.rgb = INK; r.font.name = BODY
     p = tf.add_paragraph(); p.space_before = Pt(5); r = p.add_run(); r.text = d
     r.font.size = Pt(8.8); r.font.color.rgb = MUTED; r.font.name = BODY
-rich(s, 0.29, 4.4, 9.42, 0.6, [[("One control plane, two buyers, one boundary — ", {"color": MUTED}),
+rich(s, 0.29, 4.4, 9.42, 0.6, [[("One control plane, two buyers, one boundary, ", {"color": MUTED}),
                                  ("and the boundary is what makes delegation signable.", {"bold": True})]], size=12)
 
 # ---------------------------------------------------------------- 8 · features
@@ -406,7 +409,7 @@ sub(s, "The clinic needed all three, so one man built all three by hand. In Term
 feats = [("01 · Bootstrap", "Hardware becomes a fleet",
           "A bare node boots the pre-baked image, registers in 150 ms, is assigned a role and joins the cluster. No installs, no specialist on site.", "Removes: the wiring weekend"),
          ("02 · Operate", "An operator you don't hire",
-          "An AI agent watches telemetry and makes decisions the way a data-centre operator would — restarting a runaway workload, stopping what will fill a disk — and falls back to a fixed rule when unsure.", "Removes: the on-call rotation"),
+          "An AI agent watches telemetry and makes the calls a data-centre operator would: restarting a runaway workload, stopping what will fill a disk. When it is unsure it falls back to a fixed rule.", "Removes: the on-call rotation"),
          ("03 · Prove", "A boundary you can audit",
           "C0 / C1 / C2 classification, an on-node redactor and a fail-closed controller gate. What leaves is named, classified and logged.", "Removes: the compliance gap")]
 for i, (k, t, d, rm) in enumerate(feats):
@@ -431,7 +434,7 @@ txt(s, 0.29, 1.62, 3.0, 0.3, "DAY-0 · BRING-UP", size=8.5, bold=True, color=BLU
 d0 = ["Bare node", "Pre-baked image", "Registered 150 ms", "Role assigned", "Agents running"]
 for i, n in enumerate(d0):
     cx = 0.29 + i * 1.94
-    b = rect(s, cx, 1.95, 1.72, 0.5, fill=WHITE, line=LINE, radius=0.12)
+    b = rect(s, cx, 2.0, 1.72, 0.5, fill=WHITE, line=LINE, radius=0.12)
     shape_text(b, n, size=9, bold=(i == 2), color=(BLUE if i == 2 else INK), align=PP_ALIGN.CENTER)
     b.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
     if i < 4:
@@ -447,7 +450,7 @@ for i, n in enumerate(d2):
         arrow(s, cx + 1.73, 3.2, 0.19, 0.18)
 rich(s, 0.29, 3.85, 9.42, 0.7, [[("The rule detects; the model decides; the executor acts; the audit row links ", {"color": MUTED}),
                                  ("trigger → decision → action → result.", {"bold": True})]], size=10)
-rich(s, 0.29, 4.2, 9.42, 0.4, [[("Nothing is decided by a model that a person could not read back afterwards — and the deterministic path needs no model at all.", {"color": MUTED})]], size=9.5)
+rich(s, 0.29, 4.2, 9.42, 0.4, [[("Nothing is decided by a model that a person could not read back afterwards. The deterministic path needs no model at all.", {"color": MUTED})]], size=9.5)
 rich(s, 0.29, 4.62, 9.42, 0.4, [[("The action space is grammar-constrained: ", {"bold": True}),
                                   ("an off-allowlist action has no valid encoding, so safety is enforced in the decoder rather than checked afterwards.", {"color": MUTED})]], size=9.5)
 
@@ -466,9 +469,9 @@ for i, (n, d) in enumerate(steps):
     r.font.size = Pt(7.2); r.font.color.rgb = MUTED; r.font.name = BODY
     if i < 5:
         arrow(s, cx + 1.41, 2.3, 0.17, 0.16)
-for i, (t, d) in enumerate([("Substrate and channel — adopted, not invented",
+for i, (t, d) in enumerate([("Substrate and channel: adopted, not invented",
                              "Ubuntu and an LXD cluster across nodes; one outbound-only mTLS WebSocket per node carries heartbeat, telemetry, commands and acks. No route from an agent VM to the controller."),
-                            ("Boundary and loop — the two things we build",
+                            ("Boundary and loop: the two things we build",
                              "A fail-closed telemetry gate that rejects a non-conforming batch rather than dropping fields, and a governed operator loop that audits every action it takes.")]):
     cx = 0.29 + i * 4.8
     c = rect(s, cx, 3.1, 4.62, 1.25, fill=PANEL, line=None, radius=0.05)
@@ -478,14 +481,14 @@ for i, (t, d) in enumerate([("Substrate and channel — adopted, not invented",
     p = tf.add_paragraph(); p.space_before = Pt(3); r = p.add_run(); r.text = d
     r.font.size = Pt(8); r.font.color.rgb = MUTED; r.font.name = BODY
 rich(s, 0.29, 4.55, 9.42, 0.4, [[("EU AI Act Art. 10 / 12 / 14 / 15 · GDPR Art. 25 / 32 / 44–49 · ISO/IEC 42001 · 27001 · SOC 2 Type II · HIPAA §164.312", {"color": MUTED})]], size=8.5)
-rich(s, 0.29, 4.9, 9.42, 0.3, [[("We don't certify you — we generate the evidence a certification asks for, continuously.", {"bold": True})]], size=9)
+rich(s, 0.29, 4.9, 9.42, 0.3, [[("We don't certify anyone. We generate the evidence a certification asks for, continuously.", {"bold": True})]], size=9)
 
 # ---------------------------------------------------------------- 11 · architecture 2
 s = new_slide("Architecture diagram of the proposed solution", 11)
 head(s, "What leaves the building, exactly")
 rows = [("Class", "Leaves?", "Contents"),
-        ("C0", "Yes — allowlisted", "Hardware and OS health: CPU, RAM, disk, GPU, inference liveness, instance inventory, rule metrics"),
-        ("C1", "Yes — transformed", "Salted hashes, bounded display labels, timestamps. Never raw identifiers"),
+        ("C0", "Yes, allowlisted", "Hardware and OS health: CPU, RAM, disk, GPU, inference liveness, instance inventory, rule metrics"),
+        ("C1", "Yes, transformed", "Salted hashes, bounded display labels, timestamps. Never raw identifiers"),
         ("C2", "Never", "Workload payloads, call transcripts, patient or customer records, prompts, credentials, logs")]
 tbl = s.shapes.add_table(4, 3, Inches(0.29), Inches(1.9), Inches(9.42), Inches(1.75)).table
 light_table(tbl)
@@ -502,10 +505,10 @@ for ri, row in enumerate(rows):
         r.font.size = Pt(8.5 if ri else 8); r.font.name = BODY
         r.font.bold = (ri == 0) or (ci == 0)
         r.font.color.rgb = MUTED if ri == 0 else (RED if (ci == 1 and val == "Never") else INK)
-for i, (t, d) in enumerate([("The one external call — disclosed",
+for i, (t, d) in enumerate([("The one external call, disclosed",
                              "The operator's diagnosis runs on Gemini via Vertex AI. The prompt is C0 only, the audit row records egress=external, and one variable (backend=local) puts it back on the node's own weights."),
                             ("Why publish the exception",
-                             "A boundary you cannot see is not a boundary. The claim is not “nothing leaves” — it is “nothing C2 leaves, and everything that does is named and audited.”")]):
+                             "A boundary you cannot see is not a boundary. The claim is “nothing C2 leaves, and everything that does is named, classified and audited.”")]):
     cx = 0.29 + i * 4.8
     c = rect(s, cx, 3.85, 4.62, 1.2, fill=PANEL, line=None, radius=0.05)
     tf = c.text_frame
@@ -517,9 +520,9 @@ for i, (t, d) in enumerate([("The one external call — disclosed",
 # ---------------------------------------------------------------- 12 · technologies
 s = new_slide("Technologies to be used in the solution", 12)
 head(s, "Gemini decides. Gemma stays home.")
-techs = [("Gemini 2.5 Flash · Vertex AI", "The diagnosis — naming the remediation from C0 telemetry. Measured 1.8 s warm. The only call that leaves the premises, and it says so in the audit trail."),
-         ("Gemma 3 · on the node", "Google's open weights, served by llama.cpp. Automatically detects the inference node, bootstraps the toolchain and leaves it ready for agents — nothing forwarded."),
-         ("Cloud Run · GPU reference", "The same Gemma on 1× L4 with vLLM — deployed as the managed reference and the shape this takes when GPU quota stops being the blocker.")]
+techs = [("Gemini 2.5 Flash · Vertex AI", "The diagnosis: naming the remediation from C0 telemetry. Measured 1.8 s warm. The only call that leaves the premises, and it says so in the audit trail."),
+         ("Gemma 3 · on the node", "Google's open weights, served by llama.cpp. Automatically detects the inference node, bootstraps the toolchain and leaves it ready for agents, with nothing forwarded."),
+         ("Cloud Run · GPU reference", "The same Gemma on 1× L4 with vLLM, deployed as the managed reference. It is the shape this takes when GPU quota stops being the blocker.")]
 for i, (t, d) in enumerate(techs):
     cx = 0.29 + i * 3.18
     c = rect(s, cx, 2.25, 3.02, 1.62, fill=PANEL, line=None, radius=0.06)
@@ -536,12 +539,12 @@ rich(s, 0.29, 4.55, 9.42, 0.5, [[("Local data uses local models. ", {"bold": Tru
 # ---------------------------------------------------------------- 13 · benchmarking
 s = new_slide("Prototype Performance report/Benchmarking", 13)
 head(s, "What runs today, measured")
-metrics = [("150 ms", "Node registration from the pre-baked image — zero installs at boot", INK),
-           ("0", "C2 payloads the controller has ever stored — fail-closed by design", GREEN),
+metrics = [("150 ms", "Node registration from the pre-baked image, with zero installs at boot", INK),
+           ("0", "C2 payloads the controller has ever stored. Fail-closed by design.", GREEN),
            ("422", "A C2 field rejected before any byte is stored, checked three ways", RED),
            ("1", "Remediation decided by the model, executed and audited end to end", INK),
-           ("1.8 s", "Diagnosis warm on the managed path — 402 s on local CPU weights, stated not hidden", INK),
-           ("live", "On GCE + Firebase + Vertex AI — a judge can open it and watch", BLUE)]
+           ("1.8 s", "Diagnosis warm on the managed path. 402 s on local CPU weights, stated not hidden.", INK),
+           ("live", "On GCE + Firebase + Vertex AI. A judge can open it and watch.", BLUE)]
 for i, (v, k, col) in enumerate(metrics):
     cx = 0.29 + (i % 3) * 3.18
     cy = 1.95 + (i // 3) * 1.25
@@ -559,14 +562,14 @@ rich(s, 7.0, 1.85, 2.7, 3.4, [
     [("Fallback visible", {"bold": True, "size": 10})],
     [("Decisions the model did not take are labelled deterministic or fallback, in the same list.", {"size": 8.2, "color": MUTED})],
     [("Live", {"bold": True, "size": 10})],
-    [("termini-510609.web.app — the demo is paused between judging sessions; the resume command is in SUBMISSION.md §3.", {"size": 8.2, "color": MUTED})]])
+    [("termini-510609.web.app. The demo is paused between judging sessions; the resume command is in SUBMISSION.md §3.", {"size": 8.2, "color": MUTED})]])
 
 # ---------------------------------------------------------------- 15 · future
 s = new_slide("Additional Details/Future Development (if any)", 15)
 head(s, "From one clinic to a fleet of them")
 fut = [("Real bare-metal onboarding", "MAAS + iPXE netboot, so a box arrives from a partner and joins without a technician on site."),
        ("A GPU node in the demo", "L4 quota is the current blocker; the path is already built and served on Cloud Run."),
-       ("Learned baselines", "Edge anomaly detection replacing static thresholds — the operator learns each site's normal."),
+       ("Learned baselines", "Edge anomaly detection replacing static thresholds, so the operator learns each site's normal."),
        ("Federated eval exchange", "Evals and weights travel between entities; records don't. The plural-ecosystem mechanism, productised."),
        ("Compliance mapping", "GDPR, EU AI Act, Korea PIPA, India DPDP posture mapped onto the C0/C1/C2 boundary."),
        ("Hardware partner channel", "The box is commodity; the operator is the product. Partners sell metal, we run it.")]
@@ -580,7 +583,7 @@ for i, (t, d) in enumerate(fut):
 s = new_slide("Provide links to your:", 16)
 head(s, "Links")
 links = [("GitHub public repository", "github.com/yanksyoon/termini", "https://github.com/yanksyoon/termini"),
-         ("Demo video (3 minutes)", "script ready — recording is the pending human step (SUBMISSION.md §5)", None),
+         ("Demo video (3 minutes)", "script ready; recording is the pending human step (SUBMISSION.md §5)", None),
          ("Final product link", "termini-510609.web.app", "https://termini-510609.web.app"),
          ("Live API", "34-93-190-64.sslip.io/v1", "https://34-93-190-64.sslip.io/v1")]
 for i, (k, v, url) in enumerate(links):
