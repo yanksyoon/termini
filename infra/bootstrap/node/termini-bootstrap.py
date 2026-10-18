@@ -52,6 +52,7 @@ import socket
 import ssl
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -1405,24 +1406,106 @@ def _lxd_config_set_over_socket(key: str, value: str,
     return False, last
 
 
+def _wait_for_own_lxd_listener(endpoint: str, timeout_s: float = 60.0) -> bool:
+    """Wait until THIS node's LXD accepts TCP connections on its published endpoint.
+
+    Measured 2026-10-18 on a node booted from the pre-baked image: the unix socket
+    answers a `PUT /1.0` ~20 s before the `:8443` TCP listener accepts, so
+    `ensure_lxd_api()` reports "up" while every client — including this node's own
+    heartbeat — gets `Connection refused`. Registration then succeeds and the trust
+    push immediately fails, which costs the node every future remediation.
+
+    The probe is the listener, not the socket: that is the thing clients use.
+    """
+    hostport = (endpoint or "").strip()
+    if "://" in hostport:
+        hostport = hostport.split("://", 1)[1]
+    hostport = hostport.rstrip("/").split("/")[0]
+    if ":" not in hostport:
+        return False
+    host, port_s = hostport.rsplit(":", 1)
+    try:
+        port = int(port_s)
+    except ValueError:
+        return False
+    deadline = time.monotonic() + max(1.0, timeout_s)
+    while True:
+        try:
+            with socket.create_connection((host, port), timeout=2.0):
+                return True
+        except OSError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(2.0)
+
+
+def _pem_to_lxd_certificate(pem: str) -> str | None:
+    """PEM -> what LXD's `POST /1.0/certificates` wants: base64 of the DER bytes.
+
+    Measured 2026-10-18 on LXD 5.21: raw PEM is rejected `illegal base64 data at
+    input byte 0`, base64(PEM) is rejected `x509: malformed certificate`, and
+    base64(DER) is accepted `201`. The PEM body IS the base64 of the DER, so this
+    is a strip-and-join, not a conversion.
+    """
+    blocks = re.findall(
+        r"-----BEGIN CERTIFICATE-----(.+?)-----END CERTIFICATE-----", pem or "", re.S)
+    if not blocks:
+        return None
+    return "".join("".join(b.split()) for b in blocks)
+
+
+def _add_certificate_over_socket(certificate_b64: str,
+                                 name: str = "termini-controller") -> tuple[bool, str]:
+    """`POST /1.0/certificates` over LXD's unix socket: trust a client cert.
+
+    Admin-only, and over the socket that means "root on this host" — which the
+    daemon is, even under NoNewPrivileges (the sandbox kills the snap CLI, not the
+    socket). Returns (ok, detail); never raises.
+    """
+    last = "no LXD unix socket found"
+    for path in LXD_UNIX_SOCKETS:
+        if not os.path.exists(path):
+            continue
+        conn = None
+        try:
+            conn = _LxdUnixConnection(path, timeout=LXD_INVENTORY_TIMEOUT_S)
+            body = json.dumps({"type": "client", "name": name,
+                               "certificate": certificate_b64})
+            conn.request("POST", "/1.0/certificates", body=body,
+                         headers={"Content-Type": "application/json"})
+            resp = conn.getresponse()
+            raw = resp.read()
+            status = resp.status
+        except (OSError, http.client.HTTPException) as e:
+            last = f"{path}: {type(e).__name__}: {e}"
+            continue
+        finally:
+            if conn is not None:
+                conn.close()
+        if status in (200, 201):
+            return True, f"{path}: HTTP {status}"
+        if status == 409:
+            return True, f"{path}: already trusted (HTTP 409)"
+        last = f"{path}: HTTP {status}: {raw[:200]!r}"
+    return False, last
+
+
 def install_lxd_trust(cfg: dict, identity: dict, *, timeout: float = 30.0) -> bool:
-    """Hand the controller a short-lived LXD trust secret for THIS node.
+    """Make THIS node trust the controller's LXD client certificate.
 
-    Why this shape (measured 2026-10-18): LXD authorises per CLIENT CERTIFICATE.
-    A certificate-add TOKEN minted over the node's admin socket is not redeemable
-    by a second party — LXD answers the controller's redemption with
-    `403 Bad trust password` — and the node cannot mint one that is, because the
-    snap `lxc` CLI (the tool that would) cannot exec under the unit's
-    `NoNewPrivileges=true`. What DOES work is the classic trust-password flow:
+    Why the node does it, and not the controller (measured 2026-10-18): LXD
+    authorises per client certificate, so the controller's cert must land in THIS
+    node's trust store. Every cross-host route to that failed on a real node —
+    a certificate-add TOKEN minted here is not redeemable by another party
+    (`403 Bad trust password`), a shared `core.trust_password` works but leaves a
+    secret on disk and depends on the controller reaching `:8443` inside a window
+    where LXD is still binding its listener, and the node's snap `lxc` cannot run
+    under the unit's `NoNewPrivileges=true`.
 
-      1. this node sets `core.trust_password` to a random secret over its socket,
-      2. it hands the secret to the controller (node token, own node only),
-      3. the controller POSTs /1.0/certificates {password: <secret>} with its own
-         certificate and is added to the trust store,
-      4. this function clears the password again — ALWAYS, success or failure.
-
-    The secret lives for the duration of one HTTP round trip, is useless after the
-    controller is trusted, and never lands on disk.
+    What works, and is what this does: the controller publishes its (public)
+    client certificate, and the node — which owns its trust store — adds it over
+    its own admin socket. No secret is stored, no cross-host TLS is involved, and
+    the operation is idempotent (a second add answers 409, which counts as done).
     """
     node_id = identity.get("node_id")
     node_token = identity.get("node_token")
@@ -1432,43 +1515,51 @@ def install_lxd_trust(cfg: dict, identity: dict, *, timeout: float = 30.0) -> bo
     if not api.get("ok"):
         log(f"LXD_TRUST skipped: own LXD API is not listening ({api.get('detail')})")
         return False
-    secret = secrets.token_urlsafe(32)
-    ok, detail = _lxd_config_set_over_socket("core.trust_password", secret)
-    if not ok:
-        log(f"LXD_TRUST skipped: cannot set core.trust_password ({detail})")
+    if not _wait_for_own_lxd_listener(api["endpoint"], timeout_s=cfg.get("lxd_listener_wait_s", 90)):
+        log(f"LXD_TRUST skipped: own LXD listener never accepted on {api['endpoint']}")
         return False
-    url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/lxd-trust"
-    body = {"lxd": {"endpoint": api["endpoint"]}, "trust_password": secret}
+
+    base = cfg["controller_url"].rstrip("/")
+    cert_url = f"{base}/v1/nodes/{node_id}/lxd-trust-cert"
     try:
-        # Retry: the controller's first probe lands in the seconds right after this
-        # daemon started, and at that moment the node's own LXD may still be
-        # re-binding its listener (the start-up `ensure_lxd_api` touches
-        # core.https_address). Measured 2026-10-18: a probe in that window answers
-        # `Connection refused` while the identical probe seconds later gets 200.
-        # The password survives across attempts and is cleared once, below.
-        last_detail = "no attempt"
-        for attempt in range(3):
-            if attempt:
-                time.sleep(1.5 * attempt)
-            try:
-                status, resp = http_json("POST", url, body=body, token=node_token, timeout=timeout)
-            except Exception as e:  # noqa: BLE001 - trust must never break telemetry
-                last_detail = f"transport: {e}"
-                continue
-            if status == 200 and isinstance(resp, dict) and resp.get("trusted"):
-                log(f"LXD_TRUST installed at {resp.get('endpoint') or api['endpoint']} "
-                    f"({resp.get('detail')})")
-                return True
-            last_detail = f"HTTP {status} {str(resp)[:400]}"
-            detail = str((resp or {}).get("detail") if isinstance(resp, dict) else "")
-            if "already_trusted" in detail:
-                return True
-        log(f"LXD_TRUST not installed after 3 attempts: {last_detail}")
+        status, resp = http_json("GET", cert_url, token=node_token, timeout=timeout)
+    except Exception as e:  # noqa: BLE001 - trust must never break telemetry
+        log(f"LXD_TRUST not installed: fetching the controller certificate failed: {e}")
         return False
-    finally:
-        cleared, cdetail = _lxd_config_set_over_socket("core.trust_password", "")
-        if not cleared:
-            log(f"LXD_TRUST WARNING: could not clear core.trust_password ({cdetail})")
+    pem = (resp or {}).get("certificate_pem") if isinstance(resp, dict) else None
+    if status != 200 or not isinstance(pem, str):
+        log(f"LXD_TRUST not installed: controller returned HTTP {status} {str(resp)[:200]}")
+        return False
+    certificate = _pem_to_lxd_certificate(pem)
+    if not certificate:
+        log("LXD_TRUST not installed: controller certificate is not a PEM certificate")
+        return False
+    ok, detail = _add_certificate_over_socket(certificate)
+    if not ok:
+        log(f"LXD_TRUST not installed: could not add the certificate ({detail})")
+        return False
+    log(f"LXD_TRUST certificate added to this node's trust store ({detail})")
+
+    # Ask the controller to confirm with its own authenticated probe; its answer is
+    # the observable truth (the add above only proves LXD accepted the cert).
+    trust_url = f"{base}/v1/nodes/{node_id}/lxd-trust"
+    body = {"lxd": {"endpoint": api["endpoint"]}, "certificate_added": True}
+    last_detail = "no attempt"
+    for attempt in range(3):
+        if attempt:
+            time.sleep(1.5 * attempt)
+        try:
+            status, resp = http_json("POST", trust_url, body=body, token=node_token, timeout=timeout)
+        except Exception as e:  # noqa: BLE001
+            last_detail = f"transport: {e}"
+            continue
+        if status == 200 and isinstance(resp, dict) and resp.get("trusted"):
+            log(f"LXD_TRUST installed at {resp.get('endpoint') or api['endpoint']} "
+                f"({resp.get('detail')})")
+            return True
+        last_detail = f"HTTP {status} {str(resp)[:300]}"
+    log(f"LXD_TRUST added locally but the controller's probe still fails: {last_detail}")
+    return False
 
 
 def mint_lxd_trust_token(name: str = "termini-controller",
@@ -2684,8 +2775,10 @@ def run(cfg: dict) -> int:
     node_token = identity["node_token"]
     # Day-0 must leave a node the operator can ACT on, not merely one that is
     # enrolled: install the controller's client certificate into this node's LXD
-    # trust store (contract §5/§6.3) before the telemetry loop starts.
-    install_lxd_trust(cfg, identity)
+    # trust store (contract §5/§6.3). In the BACKGROUND: on a fresh boot the LXD
+    # listener can take ~30 s to accept after the unix socket answers, and
+    # telemetry must not wait for that.
+    threading.Thread(target=install_lxd_trust, args=(cfg, identity), daemon=True).start()
     url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/telemetry"
     hb_url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/heartbeat"
     hb_interval = heartbeat_interval_s(cfg)

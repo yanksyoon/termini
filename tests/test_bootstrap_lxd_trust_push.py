@@ -40,66 +40,88 @@ IDENTITY = {"node_id": "01NODE", "node_token": "node-tok", "role": "compute"}
 
 
 class InstallLxdTrustTest(unittest.TestCase):
+    """The node adds the controller's published certificate to its OWN trust store."""
+
+    PEM = ("-----BEGIN CERTIFICATE-----\n"
+           "MIIBsTCCAVegAwIBAgIUHleGhZRLaikvRZY4e/tPVU271k8wCgYIKoZIzj0EAwIw\n"
+           "HTEbMBkGA1UEAwwSdGVybWluaS1jb250cm9sbGVyMB4XDTI2MTAxMjE3MjUxNloX\n"
+           "-----END CERTIFICATE-----\n")
+
     def setUp(self):
         self.mod = load_daemon()
         self.calls: list[tuple] = []
+        self.config_sets: list[tuple[str, str]] = []
+        self.added: list[str] = []
         self.mod.ensure_lxd_api = lambda cfg: {"ok": True, "endpoint": "https://10.10.0.14:8443",
                                                "detail": "", "repaired": False}
-        # The trust secret is a short-lived core.trust_password the daemon sets
-        # over LXD's unix socket and clears in a finally. This host HAS a real LXD
-        # socket, and a test must never touch it — so the setter is faked and the
-        # call sequence is asserted instead. (`SocketMintedTrustTokenTest` covers
-        # the socket transport itself against a stub server.)
-        self.config_sets: list[tuple[str, str]] = []
-        self.mod._lxd_config_set_over_socket = lambda key, value, **k: (
-            self.config_sets.append((key, value)) or (True, "stub: HTTP 200"))
-        self.mod.mint_lxd_trust_token = lambda name="termini-controller": "cli-token"
+        # never dial the network from a unit test
+        self.mod._wait_for_own_lxd_listener = lambda endpoint, timeout_s=90: True
+        self.mod._add_certificate_over_socket = lambda cert_b64, name="termini-controller": (
+            self.added.append(cert_b64) or (True, "stub: HTTP 201"))
         self.mod.log = lambda msg: None
 
-    def _http(self, reply_status, reply_body):
+    def _http(self, reply_status, reply_body, *, cert_status=200, cert_pem=None):
+        pem = self.PEM if cert_pem is None else cert_pem
+
         def fake(method, url, body=None, token=None, timeout=None):
             self.calls.append((method, url, body, token))
+            if method == "GET":
+                return cert_status, {"certificate_pem": pem, "fingerprint": "abc"}
             return reply_status, reply_body
+
         return fake
 
-    def test_pushes_token_to_own_node_route(self):
+    def test_fetches_the_certificate_and_adds_it_locally(self):
         self.mod.http_json = self._http(200, {"trusted": True, "status": "trusted",
                                               "endpoint": "https://10.10.0.14:8443",
                                               "detail": "certificate added"})
-        ok = self.mod.install_lxd_trust(CFG, IDENTITY)
-        self.assertTrue(ok)
-        method, url, body, token = self.calls[0]
-        self.assertEqual(method, "POST")
-        self.assertEqual(url, "http://10.10.0.2:8080/v1/nodes/01NODE/lxd-trust")
-        self.assertEqual(token, "node-tok")
-        self.assertEqual(body["lxd"]["endpoint"], "https://10.10.0.14:8443")
-        secret = body["trust_password"]
-        self.assertTrue(isinstance(secret, str) and len(secret) >= 32, secret)
-        # set before the call, cleared after it — same key, empty value
-        self.assertEqual([k for k, _v in self.config_sets], ["core.trust_password"] * 2)
-        self.assertEqual(self.config_sets[0][1], secret)
-        self.assertEqual(self.config_sets[1][1], "")
-        self.assertNotIn("trust_token", body)
+        self.assertTrue(self.mod.install_lxd_trust(CFG, IDENTITY))
+        get_call, post_call = self.calls[0], self.calls[1]
+        self.assertEqual(get_call[0], "GET")
+        self.assertEqual(get_call[1], "http://10.10.0.2:8080/v1/nodes/01NODE/lxd-trust-cert")
+        self.assertEqual(get_call[3], "node-tok")
+        # the certificate handed to LXD is the PEM BODY (base64 of the DER), no armor
+        self.assertEqual(len(self.added), 1)
+        self.assertNotIn("BEGIN CERTIFICATE", self.added[0])
+        self.assertNotIn("\n", self.added[0])
+        self.assertTrue(self.added[0].startswith("MIIBsTCCAVeg"))
+        # and the confirm call carries the endpoint, not a secret
+        self.assertEqual(post_call[0], "POST")
+        self.assertTrue(post_call[2]["certificate_added"])
+        self.assertEqual(post_call[2]["lxd"]["endpoint"], "https://10.10.0.14:8443")
+        self.assertNotIn("trust_password", post_call[2])
 
-    def test_untrusted_answer_is_reported_not_raised(self):
+    def test_controller_refusing_the_certificate_means_no_add(self):
+        self.mod.http_json = self._http(200, {"trusted": True}, cert_status=500)
+        self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
+        self.assertEqual(self.added, [])
+
+    def test_a_body_that_is_not_a_certificate_is_refused(self):
+        self.mod.http_json = self._http(200, {"trusted": True}, cert_pem="not a certificate")
+        self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
+        self.assertEqual(self.added, [])
+
+    def test_lxd_rejecting_the_add_means_no_confirm(self):
+        self.mod._add_certificate_over_socket = lambda *a, **k: (False, "HTTP 400: bad cert")
+        self.mod.http_json = self._http(200, {"trusted": True})
+        self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
+        self.assertEqual([c[0] for c in self.calls], ["GET"], "no confirm call after a failed add")
+
+    def test_untrusted_probe_answer_is_reported_not_raised(self):
         self.mod.http_json = self._http(200, {"trusted": False, "status": "error",
-                                              "detail": "trust install failed: HTTP 403"})
+                                              "detail": "GET /1.0/instances -> HTTP 403"})
         self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
-
-    def test_controller_error_is_swallowed_and_the_password_is_cleared(self):
-        self.mod.http_json = self._http(503, {"error": {"code": "UNAVAILABLE"}})
-        self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
-        self.assertEqual(self.config_sets[-1], ("core.trust_password", ""),
-                         "the temporary trust password must never survive a failure")
+        self.assertEqual(len(self.added), 1)
 
     def test_transport_failure_is_swallowed(self):
         def boom(*a, **k):
             raise OSError("network down")
+        self.mod._wait_for_own_lxd_listener = lambda endpoint, timeout_s=90: True
         self.mod.http_json = boom
         self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
 
-    def test_cannot_set_the_password_means_no_request(self):
-        self.mod._lxd_config_set_over_socket = lambda key, value, **k: (False, "socket: HTTP 403")
+    def test_listener_that_never_accepts_means_no_request(self):
+        self.mod._wait_for_own_lxd_listener = lambda endpoint, timeout_s=90: False
         self.mod.http_json = self._http(200, {"trusted": True})
         self.assertFalse(self.mod.install_lxd_trust(CFG, IDENTITY))
         self.assertEqual(self.calls, [])
@@ -175,6 +197,8 @@ class SocketMintedTrustTokenTest(unittest.TestCase):
         self.srv = _StubLxdUnix(self.sock_path)
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
         self.mod = load_daemon_with_socket(self.sock_path)
+        # never dial the network from a unit test
+        self.mod._wait_for_own_lxd_listener = lambda endpoint, timeout_s=90: True
 
     def tearDown(self):
         self.srv.shutdown()
@@ -205,24 +229,25 @@ class SocketMintedTrustTokenTest(unittest.TestCase):
         self.srv.reply = {"type": "sync", "metadata": {"addresses": []}}
         self.assertIsNone(self.mod.mint_trust_token_over_socket())
 
-    def test_config_set_over_the_socket_never_shells_out(self):
-        """`lxc` cannot exec under NoNewPrivileges; the socket call must be used."""
-        seen = []
-        self.mod._lxd_config_set_over_socket = lambda key, value, **k: (
-            seen.append((key, value)) or (True, "stub"))
-        self.mod.ensure_lxd_api = lambda cfg: {"ok": True, "endpoint": "https://10.10.0.14:8443",
-                                               "detail": "", "repaired": False}
-        sent = {}
+    def test_add_certificate_over_the_socket_uses_the_real_transport(self):
+        """The cert is added with a POST to LXD's socket — never the `lxc` CLI,
+        which cannot exec under the unit's NoNewPrivileges."""
+        self.srv.status = 201
+        self.srv.reply = {"type": "sync", "metadata": {}}
+        ok, detail = self.mod._add_certificate_over_socket("MIIBsTCCAVeg", "termini-controller")
+        self.assertTrue(ok, detail)
+        method, path, body = self.srv.requests[0]
+        self.assertEqual((method, path), ("POST", "/1.0/certificates"))
+        self.assertEqual(body["certificate"], "MIIBsTCCAVeg")
+        self.assertEqual(body["type"], "client")
+        self.assertEqual(body["name"], "termini-controller")
 
-        def fake_http(method, url, body=None, token=None, timeout=None):
-            sent.update(body or {})
-            return 200, {"trusted": True, "status": "trusted", "endpoint": "x", "detail": "d"}
-
-        self.mod.http_json = fake_http
-        self.assertTrue(self.mod.install_lxd_trust(CFG, IDENTITY))
-        self.assertEqual(seen[0][0], "core.trust_password")
-        self.assertNotEqual(seen[0][1], "", "the password must be set to a real secret")
-        self.assertEqual(sent["trust_password"], seen[0][1])
+    def test_socket_add_reports_a_rejection(self):
+        self.srv.status = 400
+        self.srv.reply = {"type": "error", "error": "x509: malformed certificate"}
+        ok, detail = self.mod._add_certificate_over_socket("not-a-cert")
+        self.assertFalse(ok)
+        self.assertIn("400", detail)
 
 
 if __name__ == "__main__":
