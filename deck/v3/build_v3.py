@@ -119,6 +119,12 @@ def shape_text(sh, text, size=10, bold=False, color=INK, align=PP_ALIGN.LEFT, sp
         r.font.size = Pt(size); r.font.bold = bold
         r.font.color.rgb = color; r.font.name = BODY
 
+def link_runs(box, url):
+    for para in box.text_frame.paragraphs:
+        for run in para.runs:
+            run.hyperlink.address = url
+            run.font.color.rgb = BLUE
+
 def new_slide(section, num):
     s = prs.slides.add_slide(BLANK)
     s.shapes.add_picture(HEADER, 0, 0, width=Inches(10), height=Inches(0.5549))
@@ -193,7 +199,7 @@ for sh in s1.shapes:
         r.font.size = Pt(20); r.font.bold = True; r.font.name = TITLEFONT; r.font.color.rgb = INK
         rows = [
             ("Team name: ", "Termini"),
-            ("Team leader name: ", "[to be filled]"),
+            ("Team leader name: ", "Florentiana Yuwono"),
             ("Problem Statement: ", "Future of Work & Enterprise Productivity. Every organisation should be able to run AI on data it cannot send to a cloud."),
         ]
         for label, value in rows:
@@ -582,21 +588,31 @@ for i, (t, d) in enumerate(fut):
 # ---------------------------------------------------------------- 16 · links
 s = new_slide("Provide links to your:", 16)
 head(s, "Links")
-links = [("GitHub public repository", "github.com/yanksyoon/termini", "https://github.com/yanksyoon/termini"),
-         ("Demo video (3 minutes)", "script ready; recording is the pending human step (SUBMISSION.md §5)", None),
-         ("Final product link", "termini-510609.web.app", "https://termini-510609.web.app"),
-         ("Live API", "34-93-190-64.sslip.io/v1", "https://34-93-190-64.sslip.io/v1")]
-for i, (k, v, url) in enumerate(links):
-    y = 2.0 + i * 0.72
-    txt(s, 0.29, y, 3.4, 0.3, k, size=10.5, bold=True)
-    box = txt(s, 3.8, y, 5.9, 0.3, v, size=10, color=(BLUE if url else AMBER))
-    if url:
-        for para in box.text_frame.paragraphs:
-            for run in para.runs:
-                run.hyperlink.address = url
-                run.font.color.rgb = BLUE
-rule(s, 0.29, 4.95, 9.42)
-txt(s, 0.29, 5.05, 9.42, 0.3, "The dashboard opens with no credential in the URL; sign in with the project token once (Settings → sign in).", size=8, color=FAINT)
+FULL = ("https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1"
+        "&projectId=01J0DEM0WARM000000000000AB&synthetic=1&dest=fleet")
+
+txt(s, 0.29, 1.95, 2.6, 0.3, "GitHub public repository", size=10.5, bold=True)
+box = txt(s, 2.95, 1.95, 6.7, 0.3, "github.com/yanksyoon/termini", size=10, color=BLUE)
+link_runs(box, "https://github.com/yanksyoon/termini")
+
+txt(s, 0.29, 2.5, 2.6, 0.3, "Final product link", size=10.5, bold=True)
+txt(s, 0.29, 2.82, 9.42, 0.25,
+    "opens the full dashboard: fleet, operator log, agents panel, synthetic nodes included",
+    size=8, color=MUTED)
+p1 = "https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1"
+p2 = "&projectId=01J0DEM0WARM000000000000AB&synthetic=1&dest=fleet"
+box = txt(s, 2.95, 3.12, 6.7, 0.55, p1 + "\n" + p2, size=8, color=BLUE, spacing=1.35)
+link_runs(box, FULL)
+
+txt(s, 0.29, 3.95, 2.6, 0.3, "Demo sign-in", size=10.5, bold=True)
+txt(s, 2.95, 3.95, 6.7, 0.3, "project token: demo-project-token", size=10, color=INK)
+txt(s, 2.95, 4.24, 6.7, 0.3,
+    "the dashboard refuses a token inside a URL, so the token is printed here; paste it at Settings, then sign in",
+    size=8, color=MUTED)
+
+txt(s, 0.29, 4.72, 2.6, 0.3, "Live API", size=10.5, bold=True)
+box = txt(s, 2.95, 4.72, 6.7, 0.3, "34-93-190-64.sslip.io/v1", size=10, color=BLUE)
+link_runs(box, "https://34-93-190-64.sslip.io/v1")
 
 # ---------------------------------------------------------------- closing image, rebuilt
 sc = prs.slides.add_slide(BLANK)
