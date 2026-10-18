@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Termini AI-Infra — The Dentist's Server Room (Deck v2)</title>
+<title>Termini — AI-Infra deck v2.1</title>
 <style>
   :root {
     --bg: #0b0f14;
@@ -141,6 +141,45 @@
 
   .close-actions { display: flex; gap: 14px; margin-top: 36px; position: relative; }
 
+
+  /* industry grid (slide 2) */
+  .ind-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; margin-top: 16px; position: relative; }
+  .ind { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .ind h3 { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
+  .ind .d { font-size: 12.5px; line-height: 1.36; color: var(--muted); }
+  .ind .u { font-size: 12px; line-height: 1.32; color: var(--accent); margin-top: 5px; }
+  .ind .u::before { content: "\2192  "; color: #5f6d7a; }
+
+  /* product verbs (slide 3) */
+  .verb { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 17px 19px; position: relative; }
+  .verb .vnum { font-size: 11.5px; letter-spacing: 0.16em; color: var(--accent); font-weight: 800; text-transform: uppercase; }
+  .verb h3 { font-size: 21px; font-weight: 800; margin: 5px 0 7px; letter-spacing: -0.01em; }
+  .verb p { font-size: 15px; line-height: 1.44; color: var(--muted); }
+  .verb p b { color: var(--text); }
+  .verb .removes { margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 13px; color: var(--warn); }
+
+  /* resolution strip — every problem slide ends with one */
+  .resolve-strip { margin-top: 15px; display: flex; gap: 12px; align-items: baseline; background: rgba(84,224,200,0.07); border: 1px solid rgba(84,224,200,0.32); border-radius: 10px; padding: 10px 15px; position: relative; }
+  .resolve-strip .rl { font-size: 11px; letter-spacing: 0.13em; text-transform: uppercase; font-weight: 800; color: var(--accent); white-space: nowrap; }
+  .resolve-strip .rt { font-size: 14.5px; line-height: 1.4; color: #cfd9e4; }
+  .resolve-strip .rt b { color: var(--text); }
+
+  /* evidence cards (slide 6) */
+  .case { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 15px 17px; }
+  .case .when { font-size: 11px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--warn); font-weight: 800; }
+  .case h3 { font-size: 17.5px; font-weight: 800; margin: 4px 0 7px; }
+  .case p { font-size: 14px; line-height: 1.4; color: var(--muted); }
+  .case p b { color: var(--text); }
+  .case .q { font-size: 12.5px; line-height: 1.38; color: #a9b6c4; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--line); }
+
+  /* compact stat line (slide 5) */
+  .statline { display: flex; gap: 14px; margin-top: 16px; position: relative; }
+  .statline .sl { flex: 1; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+  .statline .sv { font-size: 22px; font-weight: 800; color: var(--warn); line-height: 1.05; }
+  .statline .st { font-size: 12.5px; color: var(--muted); line-height: 1.35; margin-top: 3px; }
+  .statline .st b { color: var(--text); }
+  .statline .src { font-size: 10.5px; color: #6b7885; margin-top: 4px; }
+
   @page { size: 1280px 720px; margin: 0; }
   @media print {
     html, body { background: #fff; }
@@ -158,7 +197,7 @@
   <!-- 1 · TITLE -->
   <section class="slide title">
     <div class="brand">Termini &nbsp;·&nbsp; AI Builder Cup 2026 &nbsp;·&nbsp; Future of Work &amp; Enterprise Productivity</div>
-    <h1>The dentist's<br>server room</h1>
+    <h1 style="font-size:104px;">Termini</h1>
     <div class="sub">Every organisation should be able to run its own intelligence. <b>Termini is the layer that makes that possible</b> — bare hardware in, a governed AI fleet out, and the data never leaves the building.</div>
     <div class="tagline-hero">“Your hardware. Your data. Our operations.”</div>
     <div class="title-meta">
@@ -168,136 +207,161 @@
     </div>
   </section>
 
-  <!-- 2 · THE ROOM -->
+  <!-- 2 · THE CONSTRAINT -->
   <section class="slide">
-    <div class="kicker"><span class="n">01</span> &nbsp;A room in a clinic</div>
-    <h2>There is a data centre <span class="accent">behind the dental chair</span></h2>
-    <div class="lede">A dentist in a small Korean clinic — a biology graduate, not a computer scientist — spent six months building one in his back room. He started by asking ChatGPT what a dental clinic could do with AI. He had exactly one rule.</div>
-    <div class="quote">
-      <div class="q">Patient information does not leave this building. Not one character.</div>
-      <div class="who">The principle the whole build was organised around</div>
+    <div class="kicker"><span class="n">01</span> &nbsp;The constraint</div>
+    <h2>What can't leave the building</h2>
+    <div class="lede">The clinic's rule is not a dental rule. It is the rule of every business whose most valuable data is also its most restricted.</div>
+    <div class="ind-grid">
+      <div class="ind"><h3>Healthcare &amp; dental</h3><div class="d">Patient records, call recordings, insurance claims</div><div class="u">Front desk, adjudication, clinical notes</div></div>
+      <div class="ind"><h3>Banking &amp; insurance</h3><div class="d">KYC files, transaction histories, loss records</div><div class="u">Fraud triage, credit memos, claims</div></div>
+      <div class="ind"><h3>Legal</h3><div class="d">Privileged matter files, client advice</div><div class="u">Contract review, discovery, drafting</div></div>
+      <div class="ind"><h3>Manufacturing</h3><div class="d">Design files, process parameters, yields</div><div class="u">Quality, maintenance, planning</div></div>
+      <div class="ind"><h3>Life sciences</h3><div class="d">Trial data, patient histories</div><div class="u">Protocol analysis, safety review</div></div>
+      <div class="ind"><h3>Public sector &amp; defence</h3><div class="d">Classified material, citizen records</div><div class="u">Analysis, briefings, casework</div></div>
+      <div class="ind"><h3>Software</h3><div class="d">Source code, incident data, architecture</div><div class="u">Code agents, on-call triage</div></div>
+      <div class="ind"><h3>Retail &amp; commerce</h3><div class="d">Customer PII, supplier terms, margins</div><div class="u">Demand, service, pricing</div></div>
     </div>
-    <div class="cols two" style="margin-top:20px;">
-      <div class="ledger">
-        <div class="row"><span class="k">Accelerators</span><span class="v hot">12 DGX Spark-class, wired in rings of four</span></div>
-        <div class="row"><span class="k">Voice &amp; documents</span><span class="v">2× Mac mini M5 Pro + an M4 mini</span></div>
-        <div class="row"><span class="k">Internal services</span><span class="v">3 virtualisation servers</span></div>
-        <div class="row"><span class="k">Power</span><span class="v">6 UPS units</span></div>
-      </div>
-      <div class="ledger">
-        <div class="row"><span class="k">Telephony</span><span class="v">A PBX he built himself</span></div>
-        <div class="row"><span class="k">Models in production</span><span class="v hot">DeepSeek · GLM · others, side by side</span></div>
-        <div class="row"><span class="k">Data sent off-site</span><span class="v good">None</span></div>
-        <div class="row"><span class="k">Who runs it</span><span class="v warn">Him, after hours</span></div>
-      </div>
-    </div>
-    <div class="note">Source: arca.live/b/aihomelab/185810092 — “A neighbourhood dental clinic's AX transformation” (13 Oct 2026; 330k+ views).</div>
+    <div class="big-line" style="font-size:22px; margin-top:16px;">Eight industries, one constraint: <span class="mark">the data that would make AI useful is the data that can't be handed over.</span></div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">02</span></div>
   </section>
 
-  <!-- 3 · THE TURN -->
+
+  <!-- 3 · THE PRODUCT -->
   <section class="slide">
-    <div class="kicker"><span class="n">02</span> &nbsp;The turn</div>
-    <h2>He succeeded. <span class="danger">That is the scandal.</span></h2>
-    <div class="cols two" style="margin-top:18px;">
-      <div class="card">
-        <h3><span class="num">+</span> What the clinic got</h3>
-        <ul>
-          <li>Phones answered by AI — <b>first token in 0.1&nbsp;s</b>, transcribed live, summarised with a to-do list</li>
-          <li>Insurance claims reconciled line by line — <b>the task staff hated most</b></li>
-          <li>Three models write a monthly diagnosis of the same numbers; <b>he only looks when they disagree</b></li>
-          <li>Accountant cancelled. SaaS subscriptions cancelled. Marketing spend: <b>zero</b></li>
-        </ul>
+    <div class="kicker"><span class="n">02</span> &nbsp;The product</div>
+    <h2>Termini turns hardware you own<br>into <span class="accent">AI you can govern</span></h2>
+    <div class="lede">Every use case on the previous slide needs the same three things, and no vendor sells them together. The clinic needed all three, so one man built all three by hand. In Termini they are one product.</div>
+    <div class="cols three" style="margin-top:18px;">
+      <div class="verb">
+        <div class="vnum">01 &middot; Bootstrap</div>
+        <h3>Hardware becomes a fleet</h3>
+        <p>A bare node boots the pre-baked image, registers in <b>150&nbsp;ms</b>, is assigned a role and joins the cluster. No installs, no specialist on site.</p>
+        <div class="removes">Removes: the wiring weekend</div>
       </div>
-      <div class="card">
-        <h3><span class="num">−</span> What it cost</h3>
-        <ul>
-          <li><b>Six months of evenings</b>, on top of dentistry</li>
-          <li>A five-figure hardware bet, justified as <b>“cheaper than the salary of a bad hire”</b></li>
-          <li>Skills no clinic should have to hire for: <b>networking, virtualisation, PBX, inference serving</b></li>
-          <li>A single point of failure called <b>“the owner”</b></li>
-        </ul>
+      <div class="verb">
+        <div class="vnum">02 &middot; Operate</div>
+        <h3>An operator you don't hire</h3>
+        <p>A threshold fires, the model chooses among <b>allowlisted actions</b>, LXD executes, the audit row records it. The deterministic fallback is always there.</p>
+        <div class="removes">Removes: the 3 a.m. pager</div>
+      </div>
+      <div class="verb">
+        <div class="vnum">03 &middot; Prove</div>
+        <h3>A boundary you can audit</h3>
+        <p>C0 / C1 / C2 classification, an on-node redactor and a <b>fail-closed</b> controller gate. What leaves is named, classified and logged.</p>
+        <div class="removes">Removes: the policy nobody can check</div>
       </div>
     </div>
-    <div class="big-line" style="font-size:26px; margin-top:26px;">A market that requires heroics is not yet a market. <span class="mark">The technology works. The product doesn't exist.</span></div>
+    <div class="big-line" style="font-size:25px; margin-top:24px;">He is not the hero of this deck. <span class="mark">He is the requirements document.</span></div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">03</span></div>
   </section>
 
-  <!-- 4 · ADOPTION PARADOX -->
+
+  <!-- 4 · THE ECOSYSTEM -->
   <section class="slide">
-    <div class="kicker"><span class="n">03</span> &nbsp;The adoption paradox</div>
-    <h2>Capability is compounding. <span class="warn">Deployment is flat.</span></h2>
-    <div class="lede">The most capable technology in history is not compounding where work actually happens — in the twelve-person firm, the clinic, the workshop, the practice.</div>
-    <div class="stats">
-      <div class="stat">
-        <div class="v warnv">95%</div>
-        <div class="k">of enterprise GenAI pilots produced <b>no measurable P&amp;L impact</b></div>
-        <div class="src">MIT NANDA, The GenAI Divide, Jul 2025 — preliminary, contested</div>
-      </div>
-      <div class="stat">
-        <div class="v warnv">$30–40B</div>
-        <div class="k">of enterprise GenAI spend behind that number; <b>~5% reached production</b></div>
-        <div class="src">Same study — “high adoption, low transformation”</div>
-      </div>
-      <div class="stat">
-        <div class="v">88% · 6%</div>
-        <div class="k">of organisations use AI somewhere; <b>6% are high performers</b></div>
-        <div class="src">McKinsey, The State of AI, 2025</div>
-      </div>
-    </div>
-    <div class="big-line">The gap is not model quality. The gap is <span class="mark">where the work is</span> — and who is allowed to put the model next to it.</div>
+    <div class="kicker"><span class="n">03</span> &nbsp;The ecosystem</div>
+    <h2>The loop doesn't close</h2>
+    <svg viewBox="0 0 1080 178" style="width:100%; height:210px; margin-top:12px; position:relative;" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#93a1b0"/>
+        </marker>
+      </defs>
+      <g font-family="Segoe UI, system-ui, sans-serif">
+      <rect x="4" y="4" width="176" height="66" rx="12" fill="#121820" stroke="#24303d"/>
+      <text x="92" y="34" text-anchor="middle" fill="#e8eef5" font-size="16" font-weight="700">Data owners</text>
+      <text x="92" y="53" text-anchor="middle" fill="#93a1b0" font-size="10.5">records &middot; claims &middot; calls</text>
+      <rect x="228" y="4" width="176" height="66" rx="12" fill="#121820" stroke="#24303d"/>
+      <text x="316" y="34" text-anchor="middle" fill="#e8eef5" font-size="16" font-weight="700">Model builders</text>
+      <text x="316" y="53" text-anchor="middle" fill="#93a1b0" font-size="10.5">weights &middot; evals</text>
+      <rect x="452" y="4" width="176" height="66" rx="12" fill="#121820" stroke="#24303d"/>
+      <text x="540" y="34" text-anchor="middle" fill="#e8eef5" font-size="16" font-weight="700">Compute</text>
+      <text x="540" y="53" text-anchor="middle" fill="#93a1b0" font-size="10.5">GPUs &middot; on-prem nodes</text>
+      <rect x="676" y="4" width="176" height="66" rx="12" fill="#121820" stroke="#24303d"/>
+      <text x="764" y="34" text-anchor="middle" fill="#e8eef5" font-size="16" font-weight="700">Applications</text>
+      <text x="764" y="53" text-anchor="middle" fill="#93a1b0" font-size="10.5">agents &middot; tools</text>
+      <rect x="900" y="4" width="176" height="66" rx="12" fill="#121820" stroke="#24303d"/>
+      <text x="988" y="34" text-anchor="middle" fill="#e8eef5" font-size="16" font-weight="700">Value</text>
+      <text x="988" y="53" text-anchor="middle" fill="#93a1b0" font-size="10.5">revenue &middot; time saved</text>
+      </g>
+      <g stroke="#93a1b0" stroke-width="1.4" marker-end="url(#arw)">
+        <line x1="183" y1="37" x2="222" y2="37"/>
+        <line x1="407" y1="37" x2="446" y2="37"/>
+        <line x1="631" y1="37" x2="670" y2="37"/>
+        <line x1="855" y1="37" x2="894" y2="37"/>
+      </g>
+      <g fill="none" stroke="#3d4c5c" stroke-width="2.2" stroke-dasharray="6 5">
+        <path d="M 988 70 V 134 H 668"/>
+        <path d="M 422 134 H 92 V 76" marker-end="url(#arw)"/>
+      </g>
+      <rect x="430" y="108" width="230" height="52" rx="12" fill="rgba(84,224,200,0.08)" stroke="#54e0c8" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text x="545" y="132" text-anchor="middle" fill="#54e0c8" font-size="17" font-weight="800" font-family="Segoe UI, system-ui, sans-serif">sovereign AI</text>
+      <text x="545" y="149" text-anchor="middle" fill="#93a1b0" font-size="10.5" letter-spacing="1.4" font-family="Segoe UI, system-ui, sans-serif">THE MISSING ARC</text>
+    </svg>
+    <div class="big-line" style="font-size:20px; margin-top:0px;">Value returns to whoever owns the model, not whoever owns the data. Datadog delegated the operations by moving the telemetry; Samsung bought sovereignty bespoke. <span class="mark">Neither is available to a twelve-person firm.</span></div>
+    <div class="resolve-strip"><span class="rl">How Termini closes it</span><span class="rt">The model runs on the entity's own hardware, the operations stay ours, and the boundary makes the arrangement <b>checkable</b>.</span></div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">04</span></div>
   </section>
 
+
   <!-- 5 · THREE GATES -->
   <section class="slide">
-    <div class="kicker"><span class="n">04</span> &nbsp;Why adoption isn't explosive</div>
+    <div class="kicker"><span class="n">04</span> &nbsp;The diagnosis</div>
     <h2>Three gates between a model <span class="accent">and the work</span></h2>
-    <div class="cols three" style="margin-top:24px;">
-      <div class="card">
+    <div class="statline">
+      <div class="sl"><div class="sv">95%</div><div class="st">of enterprise GenAI pilots with <b>no measurable P&amp;L impact</b></div><div class="src">MIT NANDA, 2025 &mdash; preliminary, contested</div></div>
+      <div class="sl"><div class="sv">$30&ndash;40B</div><div class="st">spent, and <b>~5% of pilots reached production</b></div><div class="src">Same study</div></div>
+      <div class="sl"><div class="sv">88% &middot; 6%</div><div class="st">use AI somewhere; <b>6% are high performers</b></div><div class="src">McKinsey, State of AI 2025</div></div>
+    </div>
+    <div class="cols three" style="margin-top:16px;">
+      <div class="card compact">
         <h3><span class="num">1</span> Permission</h3>
         <p>The data that would make AI valuable is the data you are <b>not allowed to move</b>: patient records, payroll, insurance claims, designs, source code.</p>
       </div>
-      <div class="card">
+      <div class="card compact">
         <h3><span class="num">2</span> Operations</h3>
-        <p>On-prem means <b>you are the SRE</b>. A twelve-person firm has nobody to watch disks, memory and inference health at 3am — so it doesn't buy the box.</p>
+        <p>On-prem means <b>you are the SRE</b>. A twelve-person firm has nobody to watch disks, memory and inference health at 3am &mdash; so it doesn't buy the box.</p>
       </div>
-      <div class="card">
+      <div class="card compact">
         <h3><span class="num">3</span> Context</h3>
         <p>Generic tools don't retain feedback or learn your workflow. The data that would teach them is <b>the data that can't leave</b>.</p>
       </div>
     </div>
-    <div class="big-line" style="font-size:24px;">Three gates, one cause: <span class="mark">value scales with context, and context is exactly what cannot be uploaded.</span></div>
+    <div class="big-line" style="font-size:21px; margin-top:14px;">Three gates, one cause: <span class="mark">value scales with context, and context is exactly what cannot be uploaded.</span></div>
+    <div class="resolve-strip"><span class="rl">How Termini closes it</span><span class="rt">Bootstrap answers operations, the boundary answers permission, and running the model beside the work answers context.</span></div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">05</span></div>
   </section>
 
-  <!-- 6 · THE DEADLOCK -->
+
+  <!-- 6 · THE FEAR -->
   <section class="slide">
-    <div class="kicker"><span class="n">05</span> &nbsp;The deadlock</div>
-    <h2>So the loop closes <span class="danger">on itself</span></h2>
-    <div class="flow tight" style="margin-top:28px;">
-      <span class="step">Entity holds the data</span><span class="arrow">→</span>
-      <span class="step">It can't be sent to a cloud</span><span class="arrow">→</span>
-      <span class="step">The model stays generic</span><span class="arrow">→</span>
-      <span class="step">Worth less to that entity</span><span class="arrow">→</span>
-      <span class="step gate">No adoption</span>
-    </div>
-    <div class="loopback">↺ &nbsp;<span>and the cycle holds</span> — because the next best option is still to send the data</div>
-    <div class="big-line" style="margin-top:22px;">Cloud AI asks you to <b>export the asset</b> in order to <b>rent the tool</b>. The dentist's six months is what that bargain costs when one person refuses to accept it.</div>
-    <div class="cols two" style="margin-top:20px;">
-      <div class="card compact">
-        <h3>SaaS ops already proved delegation</h3>
-        <p><b>Datadog</b> runs best-in-class day-2 operations with an agentic surface — but it is SaaS-architected, with no self-hosted or air-gapped AI offering. It assumes the infrastructure already exists.</p>
+    <div class="kicker"><span class="n">05</span> &nbsp;The fear</div>
+    <h2>The fear is stolen data</h2>
+    <div class="lede">The fear about jobs is the loud one. The data fear is the one that comes first, because when the work leaves it comes back as someone else's product.</div>
+    <div class="cols three" style="margin-top:14px;">
+      <div class="case">
+        <div class="when">Apr 2023 &middot; Samsung</div>
+        <h3>Engineers debugged with ChatGPT</h3>
+        <p>Confidential <b>source code</b>, equipment yield data and a full meeting's notes went in as prompts. Samsung banned generative AI across its network weeks later.</p>
+        <div class="q">&ldquo;Data is transmitted and stored to an external server, making it impossible for the company to retrieve it.&rdquo; &mdash; Samsung internal memo</div>
       </div>
-      <div class="card compact">
-        <h3>The top of the market is buying the boundary</h3>
-        <p><b>Samsung × Mistral</b> (Sept 2026) keeps AI on-prem for data sovereignty — bespoke, equity-backed, and covering models and platform, <b>not day-2 operations</b>.</p>
+      <div class="case">
+        <div class="when">Jan 2025 &middot; DeepSeek</div>
+        <h3>A database of everyone's prompts</h3>
+        <p>Wiz Research found an unauthenticated ClickHouse instance holding <b>1M+ log lines</b>, chat history, API keys and plaintext passwords.</p>
+        <div class="q">Not a breach of the model &mdash; a copy of every conversation, open to the internet.</div>
+      </div>
+      <div class="case">
+        <div class="when">Sep 2026 &middot; Navier&ndash;Stokes</div>
+        <h3>The credit left with the data</h3>
+        <p>OpenAI announced a Navier&ndash;Stokes solution that its own team described as using <b>&ldquo;very little human input&rdquo;</b>. Twelve hours earlier, Buckmaster said his and Alp&ouml;ge's unpublished Euler advances had leaked to the lab.</p>
+        <div class="q">A Millennium Prize result &mdash; and a priority dispute about whose work the model had read.</div>
       </div>
     </div>
-    <div class="note">Even the largest buyers are paying for the boundary. Nobody is selling it to the long tail.</div>
-    <div class="big-line" style="font-size:24px; margin-top:28px;">So the model gets smarter every quarter, and the firm that needs it most <span class="mark">gets no closer to using it.</span></div>
+    <div class="resolve-strip"><span class="rl">The answer</span><span class="rt">Not a better policy &mdash; a topology where <b>the copy never leaves</b>: C2 stays on the node, and what does leave is named, classified and audited.</span></div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">06</span></div>
   </section>
+
 
   <!-- 7 · PLURAL INTELLIGENCE -->
   <section class="slide">
