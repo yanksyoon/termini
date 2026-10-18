@@ -20,6 +20,26 @@
  *     from telemetry. The panel keeps the rows it acted on (`retained`) and
  *     labels them "stopped by you — no longer reported", so a stop is visible
  *     instead of the row silently disappearing.
+ *
+ * Two more rules shape what the panel may OFFER (task t_df3120a8). A row is
+ * evidence about the fleet; an ACTION on it is a separate claim:
+ *
+ *  4. A row whose node is fabricated by the demo seeder (`node.synthetic ===
+ *     true`, contract §1.1) is still rendered — it says something about what
+ *     reported it — but it is not taskable, because no agent runtime is behind
+ *     it. The reason is rendered beside the disabled action instead of being
+ *     discovered as a 404. The decision comes from the node's own flag and the
+ *     row's provenance, NEVER from the shape of the id: an id is a hash, and a
+ *     hash that looks plausible is exactly how an unanswerable offer got made.
+ *  5. When the controller DOES refuse a task, the refusal is rendered as the
+ *     controller's answer (`refusalView`): code, message, `request_id` and every
+ *     field of `details[0]` it sent — `reason`, `unscanned_nodes`,
+ *     `attributed_nodes`, `known_agent_ids`, `literal_name`, `derived_agent_id`,
+ *     `sources`. A 503 that names an unreadable node reads as "the node holding
+ *     this agent could not be read", not as a generic failure. Fields the
+ *     controller did not send are not invented; `known_vm_ids` is gone from the
+ *     contract (internal instance names are not client-visible), so it is not
+ *     rendered.
  */
 
 export const INVENTORY = { REPORTED: "reported", ABSENT: "absent", NO_SAMPLE: "no-sample" };
@@ -54,12 +74,54 @@ function str(v) {
   return typeof v === "string" && v ? v : null;
 }
 
+/* ------------------------------------------------------------ taskability */
+
+/*
+ * The reasons an action is NOT offered, written for the reader standing in
+ * front of the panel. They are rendered beside the disabled control, so the
+ * panel cannot offer something that will 404 and leave the reader guessing.
+ */
+export const TASK_REFUSAL = {
+  DEMO: "demo row: seeder-fabricated instance, no agent runtime behind it",
+  STOPPED: "stopped by you — start it before giving it a task",
+  NO_ROW: "this row is not an agent instance",
+};
+
+/**
+ * May this row be given a task, and if not, why?
+ *
+ * Pure, and decided from facts the panel already holds:
+ *  - `synthetic` — the node that attested the instance is fabricated by the
+ *    demo seeder (contract §1.1). The row is shown; the action is not offered.
+ *  - `retained` / `state === "stopped"` — the instance is not running, so the
+ *    runtime inside it is not listening either. (Its Start/Stop controls stay
+ *    available: start is how the reader brings it back.)
+ *
+ * `actions` is false only when NO control on the row can work (a demo row has
+ * no instance at all, so start/stop/restart would 404 exactly like the task).
+ *
+ * Deliberately NOT decided from `vmId`: the id is a one-way hash, so its shape
+ * carries no evidence about whether a runtime answers behind it.
+ */
+export function taskability(row) {
+  if (!row || typeof row !== "object") return { taskable: false, reason: TASK_REFUSAL.NO_ROW, actions: false };
+  if (row.synthetic === true) return { taskable: false, reason: TASK_REFUSAL.DEMO, actions: false };
+  if (row.retained === true || row.state === "stopped") return { taskable: false, reason: TASK_REFUSAL.STOPPED, actions: true };
+  return { taskable: true, reason: null, actions: true };
+}
+
+/** A row with its taskability merged in, so every renderer reads one field. */
+export function withTaskability(row) {
+  const t = taskability(row);
+  return { ...row, taskable: t.taskable, taskableReason: t.reason, actionsAvailable: t.actions };
+}
+
 /** Normalise one `lxd_instances[]` entry. Every field stays optional/nullable. */
 export function agentFromInstance(node, inst) {
   if (!inst || typeof inst !== "object") return null;
   const vmId = str(inst.vm_id);
   if (!vmId) return null;
-  return {
+  return withTaskability({
     vmId,
     label: shortId(vmId),
     nodeId: node.node_id,
@@ -74,7 +136,10 @@ export function agentFromInstance(node, inst) {
     restarts: num(inst.restart_count),
     retained: false,
     source: "telemetry",
-  };
+    // Provenance: which kind of node attested this row. A row from a synthetic
+    // node is shown as evidence, never offered as a target (t_df3120a8).
+    synthetic: node.synthetic === true,
+  });
 }
 
 /**
@@ -82,13 +147,20 @@ export function agentFromInstance(node, inst) {
  *
  * `samples` is a Map(node_id -> latest Sample). `retained` is a Map(vm_id ->
  * row) of agents this tab stopped (they are no longer in `lxd_instances[]`).
+ *
+ * A synthetic (seeder-fabricated) node still gets a group and its rows, because
+ * those rows are evidence — but the group is marked `synthetic`, its rows are
+ * not taskable, and they are NOT counted as the client's agents (`demo` counts
+ * them separately). Hiding them would have made the panel claim a clean fleet
+ * it had not looked at; offering an action on them is what produced the bare
+ * `AGENT_NOT_FOUND` this card is about (t_df3120a8).
  */
 export function agentGroups({ nodes = [], samples = new Map(), retained = new Map(), now = Date.now() } = {}) {
   const groups = [];
   const seen = new Set();
 
   for (const node of nodes) {
-    if (node.synthetic) continue; // a seeder row is not hardware (contract §1.1)
+    const synthetic = node.synthetic === true;
     const sample = samples instanceof Map ? samples.get(node.node_id) : samples[node.node_id];
     let inventory = INVENTORY.NO_SAMPLE;
     let agents = [];
@@ -105,6 +177,7 @@ export function agentGroups({ nodes = [], samples = new Map(), retained = new Ma
       label: node.registration_id || shortId(node.node_id),
       role: node.role || "compute",
       status: node.status || "unknown",
+      synthetic,
       inventory,
       agents,
       updatedAt: sample && sample.ts ? sample.ts : null,
@@ -112,28 +185,36 @@ export function agentGroups({ nodes = [], samples = new Map(), retained = new Ma
   }
 
   // Agents this tab stopped: telemetry no longer lists them (only running
-  // instances are reported), so their node group gets them back, labelled.
+  // instances are reported), so their node group gets them back, labelled. The
+  // fallback is a REAL node: a stopped agent is not evidence about a demo row.
   for (const [vmId, row] of retained) {
     if (seen.has(vmId)) continue;
-    const group = groups.find((g) => g.nodeId === row.nodeId) || groups.find((g) => g.status !== "offline");
+    const group =
+      groups.find((g) => !g.synthetic && g.nodeId === row.nodeId) ||
+      groups.find((g) => !g.synthetic && g.status !== "offline");
     if (!group) continue;
-    group.agents.push({ ...row, vmId, label: shortId(vmId), state: "stopped", retained: true });
+    group.agents.push(withTaskability({ ...row, vmId, label: shortId(vmId), state: "stopped", retained: true, synthetic: false }));
     group.agents.sort((a, b) => a.label.localeCompare(b.label));
   }
 
-  const all = groups.flatMap((g) => g.agents);
-  const running = all.filter((a) => a.state === "running").length;
-  const stopped = all.filter((a) => a.state === "stopped").length;
+  const isReal = (g) => !g.synthetic;
+  const real = groups.filter(isReal).flatMap((g) => g.agents);
+  const demo = groups.filter((g) => g.synthetic).flatMap((g) => g.agents);
+  const running = real.filter((a) => a.state === "running").length;
+  const stopped = real.filter((a) => a.state === "stopped").length;
   return {
     groups,
-    agents: all,
-    total: all.length,
+    agents: real,
+    demoAgents: demo,
+    total: real.length,
     running,
     stopped,
+    demo: demo.length,
     // "we do not know" is not "none": only a reported inventory can say zero.
-    known: groups.some((g) => g.inventory === INVENTORY.REPORTED),
-    inventoryMissing: groups.filter((g) => g.inventory !== INVENTORY.REPORTED).length,
+    known: groups.filter(isReal).some((g) => g.inventory === INVENTORY.REPORTED),
+    inventoryMissing: groups.filter((g) => isReal(g) && g.inventory !== INVENTORY.REPORTED).length,
     nodes: groups.length,
+    realNodes: groups.filter(isReal).length,
     at: now,
   };
 }
@@ -144,10 +225,13 @@ export function agentsSummary(view) {
   const degraded = view.inventoryMissing
     ? ` · ${view.inventoryMissing} node${view.inventoryMissing === 1 ? "" : "s"} no inventory`
     : "";
-  if (!view.known) return { kind: "warn", text: `agents unknown${degraded}` };
+  // Demo rows are named, never folded into the client's agent count: a
+  // seeder-fabricated row is not one of the client's agents.
+  const demo = view.demo ? ` · ${view.demo} demo` : "";
+  if (!view.known) return { kind: "warn", text: `agents unknown${demo}${degraded}` };
   const kind = view.total === 0 ? "muted" : view.stopped ? "warn" : "ok";
   const stopped = view.stopped ? ` · ${view.stopped} stopped` : "";
-  return { kind, text: `agents ${view.total}${stopped}${degraded}` };
+  return { kind, text: `agents ${view.total}${stopped}${demo}${degraded}` };
 }
 
 /**
@@ -216,9 +300,177 @@ export function taskView(task) {
     provenance: task.provenance && typeof task.provenance === "object" ? task.provenance : null,
     errorCode: str(task.error_code),
     errorMessage: str(task.error_message) || str(task.error && task.error.message) || null,
+    // A REFUSED submission carries the controller's whole answer (see
+    // `refusalView`); the panel renders it instead of a one-line message.
+    refusal: task.refusal && typeof task.refusal === "object" ? task.refusal : null,
     durationMs: num(task.duration_ms),
     submittedAt: str(task.submitted_at),
     terminal: state === "done" || state === "error",
+  };
+}
+
+/* --------------------------------------------------------------- refusals */
+
+/*
+ * A refused task is the controller's ANSWER, and the panel must render that
+ * answer — not the transport that carried it. Before t_df3120a8 the panel
+ * showed a bare `AGENT_NOT_FOUND`, which reads as "the product is broken" when
+ * the truth is "this id is not on your nodes" or "the node holding it could not
+ * be read".
+ *
+ * Every field below comes from the response: nothing is invented, and a field
+ * the controller did not send is not rendered. `known_vm_ids` is deliberately
+ * absent from the contract now (it held internal instance names); the client-
+ * safe field is `known_agent_ids`.
+ */
+
+/** Fields the controller sends first, in the order a reader needs them. */
+const DETAIL_ORDER = [
+  "reason",
+  "unscanned_nodes",
+  "attributed_nodes",
+  "known_agent_ids",
+  "literal_name",
+  "derived_agent_id",
+  "sources",
+];
+
+/*
+ * Fields that left the contract and must not be drawn even when an older
+ * controller still sends them: `known_vm_ids` held internal LXD instance NAMES,
+ * which the client is never shown (t_a1fa0567 removed it for that reason). The
+ * client-safe form is `known_agent_ids` — the one-way ids the panel already
+ * shows. Rendering the superseded field would re-leak what the contract stopped
+ * sending, so it is dropped here rather than trusted to the deployment's ref.
+ */
+const SUPERSEDED_DETAIL_FIELDS = ["known_vm_ids"];
+
+/** One `unscanned_nodes[]` / object entry as a single readable line. */
+function detailValue(v) {
+  if (v === null || v === undefined) return "—";
+  if (Array.isArray(v)) {
+    if (!v.length) return "none";
+    return v
+      .map((x) => {
+        if (x && typeof x === "object") {
+          const id = x.node_id || x.id || x.node || null;
+          const why = x.why || x.reason || x.detail || null;
+          if (id && why) return `${id} — ${why}`;
+          if (id) return String(id);
+          return Object.entries(x).map(([k, y]) => `${k}=${y}`).join(" ");
+        }
+        return String(x);
+      })
+      .join("; ");
+  }
+  if (typeof v === "object") return Object.entries(v).map(([k, y]) => `${k}=${y}`).join(" ");
+  return String(v);
+}
+
+/** The kind of refusal, from the code the controller answered with. */
+function refusalKind(status, code, reason) {
+  if (code === "NODE_UNREACHABLE" || reason === "node_unreachable") return "node_unreadable";
+  if (code === "NODE_OFFLINE" || reason === "node_offline") return "node_offline";
+  if (code === "AGENT_NOT_FOUND" || status === 404) return "not_on_project";
+  if (code === "AGENT_UNREACHABLE") return "agent_unreachable";
+  if (!status) return "network";
+  return "refused";
+}
+
+const HEADLINES = {
+  node_unreadable:
+    "The node holding this agent could not be read, so whether it carries this id is unknown — nothing was dispatched.",
+  node_offline: "The node holding this agent is offline — nothing was dispatched.",
+  not_on_project:
+    "That id is not on this project: none of your nodes carries it — nothing was dispatched.",
+  agent_unreachable:
+    "The instance exists, but its agent runtime did not answer — the task was not accepted.",
+  network: "The controller could not be reached, so the task was not accepted.",
+  refused: "The controller refused this task.",
+};
+
+/**
+ * Render an `ApiError` (or anything shaped like one) as the refusal it is.
+ *
+ * @param {{status?:number, code?:string, message?:string, request_id?:string, details?:object[]}} err
+ */
+export function refusalView(err) {
+  const e = err && typeof err === "object" ? err : {};
+  const status = typeof e.status === "number" ? e.status : 0;
+  const code = str(e.code) || (status ? "ERROR" : "NETWORK");
+  const message = str(e.message) || "the request failed";
+  const requestId = str(e.request_id) || null;
+  const first =
+    Array.isArray(e.details) && e.details.length && e.details[0] && typeof e.details[0] === "object"
+      ? e.details[0]
+      : {};
+  const reason = str(first.reason) || null;
+  const kind = refusalKind(status, code, reason);
+
+  // EVERY field the controller sent, in a stable reading order, then anything
+  // else it sent that this panel has not learned about yet — minus the fields
+  // that left the contract (they may still arrive from an older deployment).
+  const keep = (k) => !SUPERSEDED_DETAIL_FIELDS.includes(k);
+  const keys = [
+    ...DETAIL_ORDER.filter((k) => keep(k) && Object.prototype.hasOwnProperty.call(first, k)),
+    ...Object.keys(first).filter(
+      (k) => keep(k) && !DETAIL_ORDER.includes(k) && k !== "field" && k !== "field_name",
+    ),
+  ];
+  const fields = keys.map((k) => ({ name: k, value: detailValue(first[k]) }));
+  if (Object.prototype.hasOwnProperty.call(first, "field")) {
+    fields.unshift({ name: "field", value: detailValue(first.field) });
+  }
+
+  const nodes = Array.isArray(first.unscanned_nodes)
+    ? first.unscanned_nodes
+        .map((n) => (n && typeof n === "object" ? { nodeId: n.node_id || n.id || null, why: n.why || n.reason || null } : null))
+        .filter((n) => n && n.nodeId)
+    : [];
+  const attributed = Array.isArray(first.attributed_nodes)
+    ? first.attributed_nodes.map((n) => (n && typeof n === "object" ? n.node_id || n.id : String(n))).filter(Boolean)
+    : [];
+
+  const headline = HEADLINES[kind] || HEADLINES.refused;
+  const text = [headline, message, ...fields.map((f) => `${f.name}: ${f.value}`)]
+    .concat(requestId ? [`request_id: ${requestId}`] : [])
+    .join("\n");
+
+  return {
+    kind,
+    status: status || null,
+    code,
+    message,
+    requestId,
+    reason,
+    nodes,
+    attributed,
+    fields,
+    headline,
+    text,
+  };
+}
+
+/**
+ * A row the panel itself refuses to task (no request is sent at all). The shape
+ * matches `refusalView` so the panel has ONE way to draw a refusal.
+ */
+export function refusedLocally(reason, vmId = null) {
+  const why = str(reason) || TASK_REFUSAL.NO_ROW;
+  const fields = [{ name: "reason", value: why }].concat(vmId ? [{ name: "vm_id", value: vmId }] : []);
+  const headline = "No task was sent: this row cannot answer one.";
+  return {
+    kind: "not_taskable",
+    status: null,
+    code: "NOT_TASKABLE",
+    message: why,
+    requestId: null,
+    reason: "not_taskable",
+    nodes: [],
+    attributed: [],
+    fields,
+    headline,
+    text: [headline, why].join("\n"),
   };
 }
 

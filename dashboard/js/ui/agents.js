@@ -8,7 +8,14 @@
  *  - the inference label comes from the task's own `provenance`, so a forwarded
  *    managed model is named as such and never presented as local GPU inference;
  *  - every non-list state (no agents yet, node offline, no inventory, stopped by
- *    you, waiting for a just-applied plan) renders an explicit line.
+ *    you, waiting for a just-applied plan) renders an explicit line;
+ *  - a row that cannot be given a task (a demo/seeder-fabricated row, an agent
+ *    stopped by you) still renders — it is evidence about the fleet — but its
+ *    action is DISABLED with the reason beside it, so the reader is never sent
+ *    down a path that ends in a 404 (task t_df3120a8);
+ *  - a refusal that does arrive is drawn as the controller's answer: code,
+ *    message, request_id and every details[0] field, with a headline that says
+ *    whether the id is unknown or the node holding it could not be read.
  *
  * Re-rendering every poll must not eat a half-typed prompt, so drafts, open
  * task boxes and in-flight submissions live on the panel instance, not in the
@@ -136,13 +143,22 @@ export class AgentsPanel {
   }
 
   _group(group) {
+    const demo = group.synthetic === true;
     const head = el("div", { class: "agent-group-head" }, [
       el("span", { class: "agent-group-name", text: group.label, title: group.nodeId }),
       el("span", { class: `badge status-${group.status}`, text: group.status }),
+      demo
+        ? el("span", {
+            class: "badge synthetic",
+            text: "demo",
+            title: "fabricated by the demo seeder (node.synthetic === true) — its rows are evidence, not hardware",
+          })
+        : null,
       el("span", {
         class: "muted small",
-        text:
-          group.inventory === INVENTORY.REPORTED
+        text: demo
+          ? `${group.agents.length} demo row${group.agents.length === 1 ? "" : "s"} — seeder-fabricated`
+          : group.inventory === INVENTORY.REPORTED
             ? `${group.agents.filter((a) => !a.retained).length} reported running`
             : group.inventory === INVENTORY.ABSENT
               ? "inventory not reported"
@@ -152,6 +168,22 @@ export class AgentsPanel {
     ]);
 
     const box = el("div", { class: "agent-group", dataset: { node: group.nodeId } }, [head]);
+
+    if (demo) {
+      // The row is drawn (it is what the panel was shown) and the reason it
+      // cannot be tasked is stated here, once, instead of per row.
+      box.appendChild(
+        el("div", { class: "agent-edge" }, [
+          el("strong", { text: "Demo node — these rows have no agent runtime behind them." }),
+          el("div", {
+            class: "muted small",
+            text:
+              "This node is fabricated by the demo seeder (node.synthetic === true), so its instance ids are " +
+              "sample data. They are shown as evidence about what reported them; they cannot be given a task.",
+          }),
+        ]),
+      );
+    }
 
     if (group.inventory === INVENTORY.ABSENT) {
       box.appendChild(
@@ -222,29 +254,32 @@ export class AgentsPanel {
       fact("vCPU", "not reported", "per-instance vCPU count is not a §4.6 field; ram_limit_bytes is"),
     ]);
 
+    // A demo row has no instance at all, so start/stop/restart would fail
+    // exactly like the task would: they are disabled with the same reason.
+    const blocked = agent.actionsAvailable === false ? agent.taskableReason || "this row cannot be actioned" : null;
     const actions = el("div", { class: "btn-row agent-actions" }, [
       el("button", {
         class: "btn btn-sm",
         type: "button",
         text: busy === "start" ? "starting…" : "Start",
-        disabled: offline || busy || running ? "" : null,
-        title: "Start this agent (audited as vm.start)",
+        disabled: offline || busy || running || blocked ? "" : null,
+        title: blocked || "Start this agent (audited as vm.start)",
         onclick: () => this.handlers.onAction && this.handlers.onAction(agent.vmId, "start", agent),
       }),
       el("button", {
         class: "btn btn-sm btn-warn",
         type: "button",
         text: busy === "stop" ? "stopping…" : "Stop",
-        disabled: offline || busy || !running ? "" : null,
-        title: "Stop this agent (audited as vm.stop)",
+        disabled: offline || busy || !running || blocked ? "" : null,
+        title: blocked || "Stop this agent (audited as vm.stop)",
         onclick: () => this.handlers.onAction && this.handlers.onAction(agent.vmId, "stop", agent),
       }),
       el("button", {
         class: "btn btn-sm btn-warn",
         type: "button",
         text: busy === "restart" ? "restarting…" : "Restart",
-        disabled: offline || busy ? "" : null,
-        title: "Restart this agent (audited as vm.restart)",
+        disabled: offline || busy || blocked ? "" : null,
+        title: blocked || "Restart this agent (audited as vm.restart)",
         onclick: () => this.handlers.onAction && this.handlers.onAction(agent.vmId, "restart", agent),
       }),
       this._taskToggle(agent),
@@ -257,11 +292,37 @@ export class AgentsPanel {
       ]),
       facts,
       actions,
+      // The explicit line the card asks for: why this row's action is not
+      // available. It is visible text, not only a tooltip.
+      agent.taskable === false
+        ? el("div", {
+            class: "agent-task-reason muted small",
+            id: `agent-task-reason-${agent.vmId}`,
+            text: agent.taskableReason || "this row cannot be given a task",
+          })
+        : null,
       this._taskBox(agent),
     ]);
   }
 
   _taskToggle(agent) {
+    // A row nothing can answer gets a DISABLED action, with the reason on its
+    // own line beneath the controls (rendered by `_row`): not a button that
+    // fails after the reader has typed a prompt (t_df3120a8).
+    if (agent.taskable === false) {
+      const reason = agent.taskableReason || "this row cannot be given a task";
+      return el("span", { class: "agent-task-off" }, [
+        el("button", {
+          class: "btn btn-sm btn-ghost agent-task-toggle",
+          type: "button",
+          text: "Give a task…",
+          disabled: "",
+          title: reason,
+          "aria-describedby": `agent-task-reason-${agent.vmId}`,
+          dataset: { refused: reason },
+        }),
+      ]);
+    }
     const open = this.open.has(agent.vmId);
     return el("button", {
       class: "btn btn-sm btn-ghost agent-task-toggle",
@@ -278,6 +339,9 @@ export class AgentsPanel {
   _taskBox(agent) {
     const task = this.tasks.get(agent.vmId) || null;
     const taskEl = task ? this._taskResult(task) : null;
+    // Never draw a prompt for a row that cannot be tasked, even if it was
+    // opened before the row's provenance changed under a poll.
+    if (agent.taskable === false) return taskEl;
     const open = this.open.has(agent.vmId);
     if (!open) {
       // A finished answer stays visible collapsed: the client must be able to
@@ -307,7 +371,7 @@ export class AgentsPanel {
         if (!prompt) return;
         this.busy.set(agent.vmId, "task");
         this.render();
-        this.handlers.onTask && this.handlers.onTask(agent.vmId, prompt);
+        this.handlers.onTask && this.handlers.onTask(agent.vmId, prompt, agent);
       },
     });
 
@@ -332,10 +396,12 @@ export class AgentsPanel {
 
     if (task.state === "error") {
       parts.push(
-        el("div", { class: "agent-task-error" }, [
-          el("strong", { text: task.errorCode || "ERROR" }),
-          el("div", { class: "muted small", text: task.errorMessage || "the task failed" }),
-        ]),
+        task.refusal
+          ? this._refusal(task.refusal)
+          : el("div", { class: "agent-task-error" }, [
+              el("strong", { text: task.errorCode || "ERROR" }),
+              el("div", { class: "muted small", text: task.errorMessage || "the task failed" }),
+            ]),
       );
     }
     if (task.answer) {
@@ -351,6 +417,43 @@ export class AgentsPanel {
       parts.push(el("div", { class: "muted small", text: `task ${task.state} — the answer appears here when it is done` }));
     }
     return el("div", { class: "agent-task-result" }, parts);
+  }
+
+  /**
+   * A REFUSED task, drawn as the controller's own answer: the code it answered
+   * with, its message, the `request_id` that ties it to the operator log, and
+   * every `details[0]` field it sent. The headline names WHY, in the reader's
+   * terms — a 503 that could not read a node must not read like a 404.
+   */
+  _refusal(refusal) {
+    const code = refusal.status ? `${refusal.status} · ${refusal.code}` : refusal.code;
+    const head = el("div", { class: "agent-refusal-head" }, [
+      el("span", { class: `badge agent-refusal-code agent-refusal-${refusal.kind}`, text: code }),
+      refusal.requestId
+        ? el("span", { class: "muted small", text: `request_id ${refusal.requestId}`, title: "quote this to the operator; it names the exact request in their log" })
+        : null,
+    ]);
+    const parts = [
+      head,
+      el("div", { class: "agent-refusal-headline", text: refusal.headline }),
+      el("div", { class: "muted small", text: refusal.message }),
+    ];
+    const fields = Array.isArray(refusal.fields) ? refusal.fields : [];
+    if (fields.length) {
+      parts.push(
+        el(
+          "div",
+          { class: "agent-refusal-fields" },
+          fields.map((f) =>
+            el("div", { class: "agent-refusal-field", dataset: { field: f.name } }, [
+              el("span", { class: "agent-refusal-name", text: f.name }),
+              el("span", { class: "agent-refusal-value", text: f.value }),
+            ]),
+          ),
+        ),
+      );
+    }
+    return el("div", { class: `agent-task-error agent-refusal agent-refusal-kind-${refusal.kind}` }, parts);
   }
 
   _expectedRow(row, group) {

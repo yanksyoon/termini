@@ -30,6 +30,8 @@ import {
   inferenceLabel,
   materialisedNames,
   pruneExpected,
+  refusedLocally,
+  refusalView,
   taskView,
   vmIdForName,
 } from "./core/agents.js";
@@ -248,7 +250,7 @@ const agentsPanel = new AgentsPanel(
   },
   {
     onAction: (vmId, action, agent) => agentAction(vmId, action, agent),
-    onTask: (vmId, prompt) => giveAgentTask(vmId, prompt),
+    onTask: (vmId, prompt, agent) => giveAgentTask(vmId, prompt, agent),
     onRefresh: () => refreshAgents({ force: true }),
     onDeployIntent: () => {
       if (!dom.intentPrompt) return;
@@ -517,13 +519,18 @@ async function refreshNodes() {
  * (`metrics_latest`, dashboard.md §1.2) is the ONLY inventory — one row per
  * `lxd_instances[]` entry (node-telemetry.md §4.6). Nothing here fabricates an
  * instance; a node that cannot report its inventory renders as unknown.
+ *
+ * Synthetic (seeder) nodes are read too, because the panel shows their rows as
+ * evidence (t_df3120a8) — only to the reader who asked for them (`?synthetic=1`
+ * or the Demo-nodes toggle, which is what puts them in `state.nodes`). Their
+ * rows are never counted as the client's agents and never offered a task.
  */
 async function refreshAgents({ force = false } = {}) {
   if (missingConfig() || !state.nodes.length) {
     agentsPanel.render();
     return;
   }
-  const nodes = state.nodes.filter((n) => !n.synthetic);
+  const nodes = state.nodes;
   await Promise.all(
     nodes.map(async (n) => {
       try {
@@ -580,6 +587,12 @@ function renderAgents() {
  * the operator-log line, and the result says what LXD actually answered.
  */
 async function agentAction(vmId, action, agent) {
+  if (agent && agent.actionsAvailable === false) {
+    // Same rule as the task action: nothing is sent for a row that has no
+    // instance behind it (t_df3120a8).
+    toastWarn("No action sent", `${agent.label || shortId(vmId)}: ${agent.taskableReason || "this row cannot be actioned"}`);
+    return;
+  }
   if (typeof backend.api.agentAction !== "function") {
     toastErr("No agent action API on this backend", "The offline demo has no agent operations; use the live controller.");
     return;
@@ -624,8 +637,21 @@ async function agentAction(vmId, action, agent) {
  * Give one agent a task (controller-api.md §4.9) and follow it to a terminal
  * state. The answer and the endpoint's own provenance label are rendered with
  * the agent identified, so "which agent produced which answer" is never implied.
+ *
+ * A row the panel knows cannot answer is refused HERE as well as in the UI, so
+ * no request leaves the page for it (t_df3120a8). A refusal that does come back
+ * is rendered as the controller's answer — code, message, request_id and every
+ * `details[0]` field — not as a one-line transport error.
  */
-async function giveAgentTask(vmId, prompt) {
+async function giveAgentTask(vmId, prompt, agent) {
+  if (agent && agent.taskable === false) {
+    const refusal = refusedLocally(agent.taskableReason, vmId);
+    state.agentTasks.set(vmId, taskView({ state: "error", error_code: refusal.code, error_message: refusal.message, refusal, task_id: null }));
+    agentsPanel.setBusy(vmId, null);
+    renderAgents();
+    toastWarn("No task sent", `${agent.label || shortId(vmId)}: ${refusal.message}`);
+    return;
+  }
   if (typeof backend.api.submitAgentTask !== "function") {
     toastErr("No agent task API on this backend", "This demo backend has no agent surface; use the live controller.");
     agentsPanel.setBusy(vmId, null);
@@ -639,11 +665,18 @@ async function giveAgentTask(vmId, prompt) {
     toastOk("Task accepted", `agent ${vmId.slice(0, 8)}… · task ${task && task.task_id ? task.task_id.slice(0, 10) + "…" : "?"} · ${task && task.state ? task.state : "queued"}`);
     pollAgentTask(vmId, task.task_id);
   } catch (e) {
-    const view = taskView({ state: "error", error_code: e.code || "ERROR", error_message: formatError(e), task_id: null });
+    const refusal = refusalView(e);
+    const view = taskView({
+      state: "error",
+      error_code: refusal.code,
+      error_message: refusal.message,
+      refusal,
+      task_id: null,
+    });
     state.agentTasks.set(vmId, view);
     agentsPanel.setBusy(vmId, null);
     renderAgents();
-    toastErr("Task not accepted", `agent ${vmId.slice(0, 8)}…: ${formatError(e)}`);
+    toastErr("Task not accepted", `agent ${vmId.slice(0, 8)}…: ${refusal.headline}`);
   }
 }
 
