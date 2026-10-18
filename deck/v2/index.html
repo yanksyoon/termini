@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Termini — AI-Infra deck v2.1</title>
+<title>Termini — AI-Infra deck v2.3</title>
 <style>
   :root {
     --bg: #0b0f14;
@@ -220,9 +220,26 @@
     </div>
   </section>
 
-  <!-- 2 · THE CONSTRAINT -->
+  <!-- 2 · THE CASE -->
   <section class="slide">
-    <div class="kicker"><span class="n">01</span> &nbsp;The constraint</div>
+    <div class="kicker"><span class="n">01</span> &nbsp;The case</div>
+    <h2>One clinic, <span class="accent">one rule</span></h2>
+    <div class="lede">A dental clinic in Korea wanted AI for its phones, its insurance claims and its own reporting. Sending patient data to a cloud was not an option &mdash; so the owner, a biology graduate rather than a computer scientist, built the infrastructure himself.</div>
+    <div class="quote">
+      <div class="q">All client data must not leave the building.</div>
+      <div class="who">The rule the whole build was organised around</div>
+    </div>
+    <div class="cols two" style="margin-top:18px;">
+      <div class="stat"><div class="v">6 months</div><div class="k">of evenings, on top of dentistry &mdash; <b>the cost of there being no product</b></div></div>
+      <div class="stat"><div class="v good">0</div><div class="k"><b>client records sent off-site.</b> Phones, claims and reporting all run in the back room</div></div>
+    </div>
+    <div class="note">Source: <a href="https://arca.live/b/aihomelab/185810092">arca.live/b/aihomelab/185810092</a> &mdash; &ldquo;A neighbourhood dental clinic's AX transformation&rdquo;, 13 Oct 2026.</div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">02</span></div>
+  </section>
+
+  <!-- 3 · THE CONSTRAINT -->
+  <section class="slide">
+    <div class="kicker"><span class="n">02</span> &nbsp;The constraint</div>
     <h2>What can't leave the building</h2>
     <div class="lede">The clinic's rule is not a dental rule. It is the rule of every business whose most valuable data is also its most restricted.</div>
     <div class="ind-grid">
@@ -235,46 +252,17 @@
       <div class="ind"><h3>Software</h3><div class="d">Source code, incident data, architecture</div><div class="u">Code agents, on-call triage</div></div>
       <div class="ind"><h3>Retail &amp; commerce</h3><div class="d">Customer PII, supplier terms, margins</div><div class="u">Demand, service, pricing</div></div>
     </div>
-    <div class="big-line" style="font-size:22px; margin-top:16px;">Eight industries, one constraint: <span class="mark">the data that would make AI useful is the data that can't be handed over.</span></div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">02</span></div>
-  </section>
-
-
-  <!-- 3 · THE PRODUCT -->
-  <section class="slide">
-    <div class="kicker"><span class="n">02</span> &nbsp;The product</div>
-    <h2>Termini turns hardware you own<br>into <span class="accent">AI you can govern</span></h2>
-    <div class="lede">Every use case on the previous slide needs the same three things, and no vendor sells them together. The clinic needed all three, so one man built all three by hand. In Termini they are one product.</div>
-    <div class="cols three" style="margin-top:18px;">
-      <div class="verb">
-        <div class="vnum">01 &middot; Bootstrap</div>
-        <h3>Hardware becomes a fleet</h3>
-        <p>A bare node boots the pre-baked image, registers in <b>150&nbsp;ms</b>, is assigned a role and joins the cluster. No installs, no specialist on site.</p>
-        <div class="removes">Removes: the wiring weekend</div>
-      </div>
-      <div class="verb">
-        <div class="vnum">02 &middot; Operate</div>
-        <h3>An operator you don't hire</h3>
-        <p>A threshold fires, the model chooses among <b>allowlisted actions</b>, LXD executes, the audit row records it. The deterministic fallback is always there.</p>
-        <div class="removes">Removes: the on-call rota</div>
-      </div>
-      <div class="verb">
-        <div class="vnum">03 &middot; Prove</div>
-        <h3>A boundary you can audit</h3>
-        <p>C0 / C1 / C2 classification, an on-node redactor and a <b>fail-closed</b> controller gate. What leaves is named, classified and logged.</p>
-        <div class="removes">Removes: the compliance gap</div>
-      </div>
-    </div>
-    <div class="big-line" style="font-size:25px; margin-top:24px;">The clinic is the requirement. <span class="mark">Termini is the product.</span></div>
+    <div class="big-line" style="font-size:21px; margin-top:14px;">Eight industries, one constraint: <span class="mark">the data that would make AI useful is the data that can't be handed over.</span></div>
+    <div class="note">And the result: <b>95%</b> of GenAI pilots with no measurable P&amp;L impact (MIT NANDA 2025, contested) while <b>88%</b> of firms use AI somewhere (McKinsey 2025) &mdash; permission, operations and context are missing at once.</div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">03</span></div>
   </section>
 
-
-  <!-- 4 · THE ECOSYSTEM -->
+  <!-- 4 · THE LOOP -->
   <section class="slide">
-    <div class="kicker"><span class="n">03</span> &nbsp;The ecosystem</div>
-    <h2>The loop doesn't close</h2>
-    <svg viewBox="0 0 1080 178" style="width:100%; height:210px; margin-top:12px; position:relative;" xmlns="http://www.w3.org/2000/svg">
+    <div class="kicker"><span class="n">03</span> &nbsp;The feedback loop</div>
+    <h2>The loop only closes <span class="accent">where the data lives</span></h2>
+    <div class="lede">A system improves by learning from its own outcomes &mdash; record, decide, act, observe, record again. When the record lives in someone else's cloud, the loop belongs to someone else.</div>
+    <svg viewBox="0 0 1080 178" style="width:100%; height:186px; margin-top:6px; position:relative;" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z" fill="#93a1b0"/>
@@ -311,44 +299,18 @@
       <text x="545" y="132" text-anchor="middle" fill="#54e0c8" font-size="17" font-weight="800" font-family="Segoe UI, system-ui, sans-serif">sovereign AI</text>
       <text x="545" y="149" text-anchor="middle" fill="#93a1b0" font-size="10.5" letter-spacing="1.4" font-family="Segoe UI, system-ui, sans-serif">THE MISSING ARC</text>
     </svg>
-    <div class="big-line" style="font-size:20px; margin-top:0px;">Value returns to whoever owns the model, not whoever owns the data. Datadog delegated the operations by moving the telemetry; Samsung bought sovereignty bespoke. Both are out of reach today &mdash; <span class="mark">that is the gap Termini closes.</span></div>
-    <div class="resolve-strip"><span class="rl">How Termini closes it</span><span class="rt">The model runs on the entity's own hardware, the operations stay ours, and the boundary makes the arrangement <b>checkable</b>.</span></div>
+    <div class="cols three" style="margin-top:4px;">
+      <div class="card compact"><h3>A memory that stays</h3><p>Outcomes, corrections and exceptions remain with the entity, so every decision is measured against the last one.</p></div>
+      <div class="card compact"><h3>A jury, not an oracle</h3><p>Several models read the same evidence. Agreement confirms; disagreement is where a person looks.</p></div>
+      <div class="card compact"><h3>A corpus no one else has</h3><p>The private record &mdash; claims, calls, outcomes &mdash; that no foundation model has seen and no vendor could be given.</p></div>
+    </div>
+    <div class="big-line" style="font-size:22px; margin-top:12px;">Intelligence should be plural. <span class="mark">Governance is not the tax on the loop &mdash; it is what closes it.</span></div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">04</span></div>
   </section>
 
-
-  <!-- 5 · THREE GATES -->
+  <!-- 5 · UNAUTHORISED USE -->
   <section class="slide">
-    <div class="kicker"><span class="n">04</span> &nbsp;The diagnosis</div>
-    <h2>Three gates between a model <span class="accent">and the work</span></h2>
-    <div class="statline">
-      <div class="sl"><div class="sv">95%</div><div class="st">of enterprise GenAI pilots with <b>no measurable P&amp;L impact</b></div><div class="src">MIT NANDA, 2025 &mdash; preliminary, contested</div></div>
-      <div class="sl"><div class="sv">$30&ndash;40B</div><div class="st">spent, and <b>~5% of pilots reached production</b></div><div class="src">Same study</div></div>
-      <div class="sl"><div class="sv">88% &middot; 6%</div><div class="st">use AI somewhere; <b>6% are high performers</b></div><div class="src">McKinsey, State of AI 2025</div></div>
-    </div>
-    <div class="cols three" style="margin-top:16px;">
-      <div class="card compact">
-        <h3><span class="num">1</span> Permission</h3>
-        <p>The data that would make AI valuable is the data you are <b>not allowed to move</b>: patient records, payroll, insurance claims, designs, source code.</p>
-      </div>
-      <div class="card compact">
-        <h3><span class="num">2</span> Operations</h3>
-        <p>On-prem means the operations land on you. A twelve-person firm has <b>no bench</b> for disks, memory and inference health &mdash; which is why the box usually stays unbought.</p>
-      </div>
-      <div class="card compact">
-        <h3><span class="num">3</span> Context</h3>
-        <p>Generic tools don't retain feedback or learn your workflow. The data that would teach them is <b>the data that can't leave</b>.</p>
-      </div>
-    </div>
-    <div class="big-line" style="font-size:21px; margin-top:14px;">Three gates, one cause: <span class="mark">value scales with context, and context is exactly what cannot be uploaded.</span></div>
-    <div class="resolve-strip"><span class="rl">How Termini closes it</span><span class="rt">Bootstrap answers operations, the boundary answers permission, and running the model beside the work answers context.</span></div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">05</span></div>
-  </section>
-
-
-  <!-- 6 · THE RISK -->
-  <section class="slide">
-    <div class="kicker"><span class="n">05</span> &nbsp;Unauthorised use</div>
+    <div class="kicker"><span class="n">04</span> &nbsp;Unauthorised use</div>
     <h2>Data used without permission</h2>
     <div class="lede">The loud concern is AI replacing existing labour. The governing one arrives first: the work leaves the building, and comes back as someone else's product.</div>
     <div class="cols three" style="margin-top:14px;">
@@ -372,76 +334,49 @@
       </div>
     </div>
     <div class="resolve-strip"><span class="rl">How Termini closes it</span><span class="rt">Not a better policy &mdash; a topology where <b>the copy never leaves</b>: C2 stays on the node, and what does leave is named, classified and audited.</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">05</span></div>
+  </section>
+
+  <!-- 6 · THE PRODUCT -->
+  <section class="slide">
+    <div class="kicker"><span class="n">05</span> &nbsp;The product</div>
+    <h2>Termini turns hardware you own<br>into <span class="accent">AI you can govern</span></h2>
+    <div class="lede">Every use case so far needs the same three things, and no vendor sells them together. The clinic needed all three, so one man built all three by hand. In Termini they are one product.</div>
+    <div class="cols three" style="margin-top:16px;">
+      <div class="verb">
+        <div class="vnum">01 &middot; Bootstrap</div>
+        <h3>Hardware becomes a fleet</h3>
+        <p>A bare node boots the pre-baked image, registers in <b>150&nbsp;ms</b>, is assigned a role and joins the cluster. No installs, no specialist on site.</p>
+        <div class="removes">Removes: the wiring weekend</div>
+      </div>
+      <div class="verb">
+        <div class="vnum">02 &middot; Operate</div>
+        <h3>Self-healing, not alerting</h3>
+        <p>When memory or disk crosses a limit, Termini restarts the runaway workload, records why it chose that action and what happened, and falls back to a fixed rule whenever the model is unsure.</p>
+        <div class="removes">Removes: the on-call rotation</div>
+      </div>
+      <div class="verb">
+        <div class="vnum">03 &middot; Prove</div>
+        <h3>A boundary you can audit</h3>
+        <p>C0 / C1 / C2 classification, an on-node redactor and a <b>fail-closed</b> controller gate. What leaves is named, classified and logged.</p>
+        <div class="removes">Removes: the compliance gap</div>
+      </div>
+    </div>
+    <div class="big-line" style="font-size:24px; margin-top:20px;">The clinic is the requirement. <span class="mark">Termini is the product.</span></div>
     <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">06</span></div>
   </section>
 
 
-  <!-- 7 · PLURAL INTELLIGENCE -->
+  <!-- 7 · THE LADDER -->
   <section class="slide">
-    <div class="kicker"><span class="n">06</span> &nbsp;The inversion</div>
-    <h2>Intelligence should be <span class="accent">plural</span></h2>
-    <div class="cols two" style="margin-top:18px;">
-      <div class="card">
-        <h3>Today: one model, everyone's data</h3>
-        <p>One answer for everyone · value accrues to the <b>model owner</b> · shared blind spots · the entity's own context is the raw material, and it is spent.</p>
-      </div>
-      <div class="card" style="border-color:rgba(84,224,200,0.4);">
-        <h3>Inverted: one model per entity</h3>
-        <p>Its own data, its own answer · value accrues to the <b>entity</b> · different priors, so disagreement becomes <b>signal</b> · the context compounds instead of leaking.</p>
-      </div>
-    </div>
-    <div class="cols three" style="margin-top:18px;">
-      <div class="card compact">
-        <h3>More useful</h3>
-        <p>A 4B model that has read twelve years of your claims beats a frontier model that hasn't. <b>The marginal token of general intelligence is worth less than your context in the loop.</b></p>
-      </div>
-      <div class="card compact">
-        <h3>More reliable</h3>
-        <p>Centralisation correlates failure: same weights, same blind spots. A population of sovereign models is a <b>portfolio</b>, and a jury beats an oracle.</p>
-      </div>
-      <div class="card compact">
-        <h3>More shareable</h3>
-        <p>Evals, weights and lessons can travel between entities. <b>Records don't have to.</b> That is what enriching the ecosystem actually means.</p>
-      </div>
-    </div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">07</span></div>
-  </section>
-
-  <!-- 8 · EVIDENCE -->
-  <section class="slide">
-    <div class="kicker"><span class="n">07</span> &nbsp;The feedback loop</div>
-    <h2>The loop only closes <span class="accent">where the data lives</span></h2>
-    <div class="lede">A system improves by learning from its own outcomes: record, decide, act, observe, record again. When the record lives in someone else's cloud, the loop belongs to someone else.</div>
-    <div class="cols three" style="margin-top:16px;">
-      <div class="card">
-        <h3><span class="num">A</span> A memory that stays</h3>
-        <p>Outcomes, corrections and exceptions remain with the entity, so every decision is measured against the last one. <i>In one clinic: a screen where the owner graded the AI's call summaries by hand.</i></p>
-      </div>
-      <div class="card">
-        <h3><span class="num">B</span> A jury, not an oracle</h3>
-        <p>Several models read the same evidence. Agreement is confirmation; disagreement is where a person looks. <i>In one clinic: three models wrote a monthly diagnosis of the same numbers.</i></p>
-      </div>
-      <div class="card">
-        <h3><span class="num">C</span> A corpus no one else has</h3>
-        <p>The private record &mdash; claims, calls, outcomes &mdash; that no foundation model has seen and no vendor could be given. <i>In one clinic: twelve years of it.</i></p>
-      </div>
-    </div>
-    <div class="big-line" style="font-size:24px;">Governance is not the tax on the loop. <span class="mark">It is what closes it.</span></div>
-    <div class="note">A single case, cited as a case &mdash; three properties of a loop, illustrated by one clinic.</div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">08</span></div>
-  </section>
-
-
-  <!-- 9 · THE LADDER -->
-  <section class="slide">
-    <div class="kicker"><span class="n">08</span> &nbsp;The ladder</div>
+    <div class="kicker"><span class="n">06</span> &nbsp;The ladder</div>
     <h2>Right-size the intelligence</h2>
     <div class="lede">Frontier models are not the answer to every task. They are the top of a ladder &mdash; and the ecosystem is the routing between the levels.</div>
     <table class="tbl ladder">
-      <tr><th style="width:150px;">Level</th><th style="width:210px;">Runs on</th><th>Good at</th><th style="width:190px;">Data movement</th><th style="width:120px;">In the demo</th></tr>
+      <tr><th style="width:130px;">Level</th><th style="width:230px;">Runs on</th><th style="width:330px;">Good at</th><th style="width:190px;">Data movement</th><th style="width:110px;">In the demo</th></tr>
       <tr><td class="lv">L0<small>deterministic</small></td><td>Controller rules</td><td>Known remedies, threshold-to-action mappings</td><td>None</td><td class="yes">Yes</td></tr>
       <tr><td class="lv">L1<small>small local</small></td><td>The node &mdash; 4B class, <code>llama.cpp</code></td><td>Classify, extract, summarise, triage</td><td>None</td><td class="yes">Yes</td></tr>
-      <tr><td class="lv">L2<small>large local</small></td><td>A GPU node over your own corpus</td><td>Reasoning that needs your records, not the world's</td><td>None</td><td class="no">Config only</td></tr>
+      <tr><td class="lv">L2<small>large local</small></td><td>A GPU node over your own corpus</td><td>Reasoning over your own records</td><td>None</td><td class="no">Config only</td></tr>
       <tr><td class="lv">L3<small>frontier</small></td><td>Gemini, via Vertex AI</td><td>The hardest reasoning, the smallest payload</td><td>Minimised C0, if permitted</td><td class="yes">Yes</td></tr>
     </table>
     <div class="flow tight" style="margin-top:14px;">
@@ -451,20 +386,19 @@
       <span class="step hot">The audit records which level answered</span>
     </div>
     <div class="resolve-strip"><span class="rl">How Termini closes it</span><span class="rt">The ladder is a routing table; the boundary decides what may climb it. <b>Local is not worse</b> &mdash; it is the right level for most work.</span></div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">09</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">07</span></div>
   </section>
 
 
-  <!-- 10 · DAY 0 -->
+  <!-- 8 · DAY 0 -->
   <section class="slide">
-    <div class="kicker"><span class="n">09</span> &nbsp;The product · day-0</div>
+    <div class="kicker"><span class="n">07</span> &nbsp;The product · day-0</div>
     <h2>Six months, compressed <span class="accent">into an afternoon</span></h2>
     <div class="flow tight">
       <span class="step">Bare node</span><span class="arrow">→</span>
       <span class="step">Pre-baked image</span><span class="arrow">→</span>
       <span class="step hot">Registered 150&nbsp;ms</span><span class="arrow">→</span>
-      <span class="step">Plain-English intent</span><span class="arrow">→</span>
-      <span class="step gate">Guardrail clamps</span><span class="arrow">→</span>
+      <span class="step">Role assigned</span><span class="arrow">→</span>
       <span class="step">Agents running</span>
     </div>
     <table class="tbl">
@@ -475,12 +409,12 @@
       <tr><td>Governance</td><td>A rule enforced by discipline</td><td>A gate that rejects C2 fail-closed, before storage</td></tr>
     </table>
     <div class="big-line" style="font-size:22px; margin-top:18px;">What took him six months of evenings is <span class="mark">the product's first hour</span>.</div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">10</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">08</span></div>
   </section>
 
-  <!-- 11 · DAY 2 -->
+  <!-- 9 · DAY 2 -->
   <section class="slide">
-    <div class="kicker"><span class="n">10</span> &nbsp;The team</div>
+    <div class="kicker"><span class="n">08</span> &nbsp;The team</div>
     <h2>Lightweight teams, <span class="accent">heavy infrastructure</span></h2>
     <div class="lede">A small team should not have to hire infrastructure engineers to move quickly. The infrastructure should arrive already operating.</div>
     <div class="flow tight" style="margin-top:16px;">
@@ -505,19 +439,19 @@
       </div>
     </div>
     <div class="big-line" style="font-size:24px;">The small team, <span class="mark">with serious infrastructure behind it.</span></div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">11</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">09</span></div>
   </section>
 
 
-  <!-- 12 · HOW IT LANDS -->
+  <!-- 10 · HOW IT LANDS -->
   <section class="slide">
-    <div class="kicker"><span class="n">11</span> &nbsp;How it lands</div>
+    <div class="kicker"><span class="n">09</span> &nbsp;How it lands</div>
     <h2>Delegate the operations, <span class="accent">not the data</span></h2>
     <div class="lede">That split is the whole proposition. Packaging, partners and pricing all follow from it &mdash; and the boundary is what makes the delegation a contract rather than a hope.</div>
     <div class="cols three" style="margin-top:22px;">
       <div class="card">
         <h3><span class="num">A</span> What is delegated</h3>
-        <p>Bootstrap, remediation, upgrades, the on-call rota. <b>The operations.</b> This is the work a twelve-person firm cannot staff and a hardware owner does not want to build.</p>
+        <p>Bootstrap, remediation, upgrades, the on-call rotation. <b>The operations.</b> This is the work a twelve-person firm cannot staff and a hardware owner does not want to build.</p>
       </div>
       <div class="card">
         <h3><span class="num">B</span> What is never delegated</h3>
@@ -529,17 +463,17 @@
       </div>
     </div>
     <div class="big-line" style="font-size:24px;">One control plane, two buyers, one boundary &mdash; <span class="mark">and the boundary is what makes delegation signable.</span></div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">12</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">10</span></div>
   </section>
 
 
-  <!-- 13 · PROOF -->
+  <!-- 11 · PROOF -->
   <section class="slide">
-    <div class="kicker"><span class="n">12</span> &nbsp;Proof</div>
+    <div class="kicker"><span class="n">10</span> &nbsp;Proof</div>
     <h2>What runs today, <span class="accent">measured</span></h2>
     <div class="cols three" style="margin-top:24px;">
       <div class="stat"><div class="v">150&nbsp;ms</div><div class="k">Node registration from the pre-baked image — <b>zero installs at boot</b></div></div>
-      <div class="stat"><div class="v">128→8</div><div class="k">A 128-vCPU request <b>clamped</b> to the host ceiling, with reasons</div></div>
+      <div class="stat"><div class="v good">0</div><div class="k"><b>C2 payloads</b> the controller has ever stored &mdash; fail-closed by design</div></div>
       <div class="stat"><div class="v">422</div><div class="k">C2 field <b>rejected before storage</b> — fail-closed, three ways checked</div></div>
     </div>
     <div class="cols three" style="margin-top:18px;">
@@ -548,12 +482,12 @@
       <div class="stat"><div class="v">live</div><div class="k">On GCE + Firebase + Vertex AI — <b>a judge can open it and watch</b></div></div>
     </div>
     <div class="big-line" style="font-size:22px;">Three claims, three measurements. <span class="mark">Nothing on this slide is a projection.</span></div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">13</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">11</span></div>
   </section>
 
-  <!-- 14 · ARCHITECTURE -->
+  <!-- 12 · ARCHITECTURE -->
   <section class="slide">
-    <div class="kicker"><span class="n">13</span> &nbsp;Technical · the architecture</div>
+    <div class="kicker"><span class="n">11</span> &nbsp;Technical · the architecture</div>
     <h2>The architecture <span class="accent">is the governance claim</span></h2>
     <div class="flow tight" style="margin-top:22px;">
       <span class="step">Node on premises</span><span class="arrow">&rarr;</span>
@@ -582,13 +516,13 @@
     </div>
     <div class="big-line" style="font-size:19px; margin-top:12px;">The node keeps the data. The controller keeps the proof &mdash; which rule fired, which model answered, which action ran, what left the boundary &mdash; <span class="mark">evidence an auditor can read without touching a record.</span></div>
     <div class="note">We don't certify you. We generate the evidence a certification asks for, continuously. High-risk obligations under the AI Act apply from 2 Dec 2027.</div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">14</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">12</span></div>
   </section>
 
 
-  <!-- 15 · WHAT LEAVES -->
+  <!-- 13 · WHAT LEAVES -->
   <section class="slide">
-    <div class="kicker"><span class="n">14</span> &nbsp;Technical · the boundary</div>
+    <div class="kicker"><span class="n">12</span> &nbsp;Technical · the boundary</div>
     <h2>What leaves the building, <span class="warn">exactly</span></h2>
     <table class="tbl">
       <tr><th style="width:110px;">Class</th><th style="width:175px;">Leaves?</th><th>Contents</th></tr>
@@ -606,12 +540,12 @@
         <p>Because a boundary you cannot see is not a boundary. The claim is not “nothing leaves” — it is <b>“nothing C2 leaves, and everything that does is named, classified and audited.”</b></p>
       </div>
     </div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">15</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">13</span></div>
   </section>
 
-  <!-- 16 · BUILT ON GOOGLE -->
+  <!-- 14 · BUILT ON GOOGLE -->
   <section class="slide">
-    <div class="kicker"><span class="n">15</span> &nbsp;Built on Google AI &amp; Google Cloud</div>
+    <div class="kicker"><span class="n">13</span> &nbsp;Built on Google AI &amp; Google Cloud</div>
     <h2>Gemini decides. <span class="accent">Gemma stays home.</span></h2>
     <div class="cols three" style="margin-top:26px;">
       <div class="card">
@@ -635,12 +569,12 @@
       <span class="step">Pre-baked node image</span>
     </div>
     <div class="big-line" style="font-size:22px;">Local data uses local models. Where the customer permits it, <span class="mark">Termini integrates with Gemini.</span></div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">16</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">14</span></div>
   </section>
 
-  <!-- 17 · ROADMAP -->
+  <!-- 15 · ROADMAP -->
   <section class="slide">
-    <div class="kicker"><span class="n">16</span> &nbsp;What's next</div>
+    <div class="kicker"><span class="n">14</span> &nbsp;What's next</div>
     <h2>From one clinic <span class="accent">to a fleet of them</span></h2>
     <div class="cols three" style="margin-top:24px;">
       <div class="card compact">
@@ -669,10 +603,10 @@
       </div>
     </div>
     <div class="big-line" style="font-size:22px;">The long tail does not need a data centre. <span class="mark">It needs one box, one afternoon, and someone else on call.</span></div>
-    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">17</span></div>
+    <div class="footer"><span>Termini AI-Infra</span><span class="tagline-chip">Your hardware. Your data. Our operations.</span><span class="pageno">15</span></div>
   </section>
 
-  <!-- 18 · CLOSE -->
+  <!-- 16 · CLOSE -->
   <section class="slide title">
     <div class="brand">Termini &nbsp;·&nbsp; AI-Infra</div>
     <h1 style="font-size:64px;">The doctor built it alone.<br><span class="accent">The next one won't have to.</span></h1>

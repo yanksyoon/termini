@@ -98,13 +98,15 @@ Termini productizes, for the long tail, what Samsung bought bespoke: open-weight
 
 ## 7. Deck v2 — the story-led arc, its sources, and what is thesis
 
-`deck/v2/termini-deck-v2.2.pdf` replaces the v1 framing (*AI is stuck at the on-prem
+`deck/v2/termini-deck-v2.3.pdf` replaces the v1 framing (*AI is stuck at the on-prem
 gate*) with a story-led arc that starts from one clinic and ends at the architecture.
-v2.2 removes the last of the fear framing: slide 6 is **data used without
-permission** (not “stolen data”), slide 11 is **lightweight teams, heavy
-infrastructure**, slide 12 is **delegate the operations, not the data**, and the
-closing line is positive (*the doctor built it alone. The next one won't have to.*).
-Every problem slide (2, 4, 5, 6, 9) closes with a **How Termini closes it** strip.
+v2.3 is 16 slides. It opens the story properly — slide 2 is the clinic and its rule
+(*all client data must not leave the building*) with the source link — so the later
+references (“the clinic is the requirement”, “the next one won't have to”) have an
+antecedent. The opening was condensed from eight slides to five by folding the three
+gates into the constraint slide and merging “intelligence should be plural” and “the
+feedback loop” into one loop slide. Every problem slide (3, 4, 5, 7) closes with a
+**How Termini closes it** strip.
 
 Three classes of statement must not be confused when this deck is edited.
 
