@@ -76,14 +76,14 @@ Everything below is deployed and serving now. No local install is required.
 
 ### Dashboard (start here — no account needed)
 
-**https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB**
+**https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1&projectId=01J0DEM0WARM000000000000AB&synthetic=1&dest=fleet&token=demo-project-token**
 
-> **No credential in the URL, on purpose.** Open the link, then use
-> **Settings → sign in** once with the project token: it is sent in the
-> `Authorization` header from then on and kept for that browser tab only, so any
-> link you copy carries no credential. A legacy `?token=…` link is *refused* —
-> the dashboard strips the parameter out of the address bar and asks you to sign
-> in instead (task `t_5649d117`).
+> **The link signs you in.** It carries the demo project token so the whole
+> dashboard opens in one click. The app adopts that token into the tab's session
+> storage and strips it from the address bar immediately (`main.js`
+> `adoptUrlToken`), so a link you copy afterwards no longer carries it. The
+> credential still travels in the `Authorization` header only, and `apiUrl()`
+> refuses to build a request URL that contains one.
 
 > **The demo is paused by default**, so it does not bill compute time while
 > nobody is looking at it: the seeder is stopped and the node VMs are terminated.

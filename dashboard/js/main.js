@@ -267,9 +267,9 @@ function readInputs() {
   const params = new URLSearchParams(location.search);
   const query = {};
   for (const [k, v] of params.entries()) query[k] = v;
-  // `query` may still carry ?token=… — resolveConfig refuses it by rule and
-  // reports it back as `urlTokenIgnored`; the app then scrubs it from the
-  // address bar (scrubUrlCredential()). Nothing below honours it.
+  // `query` may carry a share link's ?token=…, which resolveConfig honours and
+  // flags as `tokenFromUrl`; the app then keeps it for this tab and strips it
+  // from the address bar (adoptUrlToken).
   let stored = {};
   try {
     stored = JSON.parse(localStorage.getItem(STORE_KEY) || "{}") || {};
@@ -331,13 +331,14 @@ function persistNodeCredential(cred) {
 }
 
 /**
- * A legacy link carrying `?token=…` is not honoured: a credential in a URL is
- * shareable by construction (address bar, history, Referer, any copied link).
- * Strip it from the address bar and the history entry, and tell the viewer to
- * sign in instead.
+ * A share link may carry `?token=…`. Honour it, then stop it travelling: the
+ * credential is written to this tab's sessionStorage and removed from the
+ * address bar and the history entry, so a reload still works and a copied link
+ * no longer carries it.
  */
-function scrubUrlCredential() {
-  if (!cfg.urlTokenIgnored) return false;
+function adoptUrlToken() {
+  if (!cfg.tokenFromUrl) return false;
+  persistToken(cfg.token);
   try {
     const clean = stripKeysFromQuery(location.search);
     history.replaceState(null, "", `${location.pathname}${clean}${location.hash || ""}`);
@@ -1589,20 +1590,15 @@ function init() {
     });
   }
 
-  if (scrubUrlCredential()) {
-    // A warning banner is not enough on its own here: the very next poll is
-    // likely to 401 for someone arriving on a legacy link, and that error
-    // banner replaces this one. The toast survives it.
-    const text =
-      "A credential in the URL (?token=…) is not accepted and has been removed from the address bar. " +
-      "Open Settings and sign in — from then on it is sent in the Authorization header only.";
-    showBanner({
-      kind: "warn",
-      text,
-      actionLabel: "Open settings",
-      onAction: () => dom.settingsBtn.click(),
-    });
-    toast("warn", "Credential in the URL refused", text, 20000);
+  if (adoptUrlToken()) {
+    // No warning banner: the link is meant to sign the viewer in. The toast says
+    // where the credential went, because it disappears from the address bar.
+    toast(
+      "info",
+      "Signed in from the link",
+      "The credential is held by this tab only and has been removed from the address bar.",
+      12000,
+    );
   }
 
   renderOverview(dom.overview, state, overviewHandlers());

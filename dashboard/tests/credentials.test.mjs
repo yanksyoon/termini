@@ -1,15 +1,14 @@
 /**
- * The credential-in-URL rule (task `t_5649d117`) — enforced, not just documented.
+ * The share-link credential rule (supersedes the refusal in `t_5649d117`).
  *
- * The published dashboard URL used to carry `?token=<project_token>`. That is
- * shareable by construction (address bar, browser history, Referer, proxy logs,
- * any link a viewer copies), so it is now refused at three depths:
+ * A demo link has to work in one click, so `?token=…` IS resolved now. The
+ * credential is then adopted into this tab's sessionStorage and stripped from
+ * the address bar, which keeps two properties that matter:
  *
- *   1. `resolveConfig` never reads a credential from the query string,
- *   2. `apiUrl` (used by every REST call AND the SSE stream) throws rather than
- *      build a URL carrying one,
- *   3. the SSE reader sends the credential in the `Authorization` header, which
- *      is why the dashboard no longer uses `EventSource` at all.
+ *   1. `resolveConfig` marks it (`tokenFromUrl`) so the app knows to scrub it,
+ *   2. `apiUrl` still throws rather than build a REQUEST url carrying a
+ *      credential, so the token never travels on the wire or in a Referer,
+ *   3. the SSE reader keeps sending it in the `Authorization` header.
  *
  * The last test is the behavioural one: it runs the real `LogStream` against a
  * real HTTP server and asserts on the bytes the server actually received.
@@ -28,24 +27,26 @@ import {
 } from "../js/core/config.js";
 import { FIRST_CURSOR, LogStream, parseSseBlock, splitSseBlocks } from "../js/stream.js";
 
-test("config: ?token= in the URL is never resolved into a credential", () => {
+test("config: a ?token= share link is resolved and flagged for scrubbing", () => {
   const cfg = resolveConfig({
-    query: { apiBase: "https://c.example/v1", projectId: "01J0DEM0WARM000000000000AB", token: "leaked-in-url" },
+    query: { apiBase: "https://c.example/v1", projectId: "01J0DEM0WARM000000000000AB", token: "from-share-link" },
     stored: {},
     file: {},
     defaults: DEFAULTS,
   });
-  assert.equal(cfg.token, "");
-  assert.equal(cfg.urlTokenIgnored, true);
+  assert.equal(cfg.token, "from-share-link");
+  assert.equal(cfg.tokenFromUrl, true);
   assert.equal(cfg.projectId, "01J0DEM0WARM000000000000AB");
   assert.equal(cfg.apiBase, "https://c.example/v1");
 });
 
-test("config: the credential still comes from this tab's storage (never the query)", () => {
+test("config: the share link wins, then storage, then the injected file", () => {
+  assert.equal(resolveConfig({ query: { token: "from-url" }, stored: { token: "from-storage" }, file: {} }).token, "from-url");
   assert.equal(resolveConfig({ query: {}, stored: { token: "from-storage" }, file: { token: "from-file" } }).token, "from-storage");
   assert.equal(resolveConfig({ stored: {}, file: { token: "from-file" } }).token, "from-file");
-  assert.equal(resolveConfig({ query: { token: "x" }, stored: {}, file: {} }).token, "");
-  assert.equal(resolveConfig({ stored: {}, file: {} }).urlTokenIgnored, false);
+  assert.equal(resolveConfig({ stored: {}, file: {} }).token, "");
+  assert.equal(resolveConfig({ stored: {}, file: {} }).tokenFromUrl, false);
+  assert.equal(resolveConfig({ query: { projectId: "01AB" }, stored: {}, file: {} }).tokenFromUrl, false);
 });
 
 test("stripKeysFromQuery scrubs the credential and keeps everything else", () => {

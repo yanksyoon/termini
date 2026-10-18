@@ -47,6 +47,11 @@ python3 build_v3.py                      # writes termini-deck-v3.pptx
 soffice --headless --convert-to pdf --outdir render termini-deck-v3.pptx
 ```
 
+The script finds the template at `~/Submission Template _ AI Builder Cup.pptx`
+(override with `TERMINI_TEMPLATE=/path/to/template.pptx`). On first run it
+extracts the template's header strip and back cover into `assets/`, so the build
+does not depend on anything outside this directory.
+
 `build_v3.py` opens the template, deletes its prompt slides (dropping their
 relationships too, or the orphaned parts collide with the new partnames on save),
 and rebuilds each page from the template's own decorations. The `Team leader name` field on slide 1 is a
