@@ -1,6 +1,6 @@
 $ curl -sS -H 'Authorization: Bearer demo-project-token' 'https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/nodes' | python3 -c "import json,sys;d=json.load(sys.stdin);[print(n['node_id'],n['role'],n['status'],'synthetic='+str(n['synthetic']),n['last_seen_at']) for n in d['nodes']]"
-# captured 2026-10-17T22:58:02Z
+# captured 2026-10-18T10:42:04Z
 
-01M4TGD31WXH97JAA5S6A4R10D compute online synthetic=False 2026-10-17T22:57:59Z
-01M4ZQ7Q2J80ATY3K32PY3PPJH compute online synthetic=False 2026-10-17T22:58:00Z
-01M5609C8CQHS2EMZT2V9VZZA6 compute online synthetic=False 2026-10-17T22:58:01Z
+01M4TGD31WXH97JAA5S6A4R10D compute online synthetic=False 2026-10-18T10:41:59Z
+01M4ZQ7Q2J80ATY3K32PY3PPJH compute online synthetic=False 2026-10-18T10:42:03Z
+01M579MW4H6MHY61YTCJR8NN32 compute online synthetic=False 2026-10-18T10:42:03Z

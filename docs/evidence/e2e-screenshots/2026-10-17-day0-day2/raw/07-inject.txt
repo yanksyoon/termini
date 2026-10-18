@@ -1,5 +1,5 @@
-$ echo node_id=01M5609C8CQHS2EMZT2V9VZZA6; curl -sS -X POST 'https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/demo/faults' -H 'Authorization: Bearer demo-project-token' -H 'Content-Type: application/json' -d '{"scenario":"oom","node_id":"01M5609C8CQHS2EMZT2V9VZZA6","target":"real","duration_s":120}'
-# captured 2026-10-17T22:59:55Z
+$ echo node_id=01M579MW4H6MHY61YTCJR8NN32; curl -sS -X POST 'https://34-93-190-64.sslip.io/v1/projects/01J0DEM0WARM000000000000AB/demo/faults' -H 'Authorization: Bearer demo-project-token' -H 'Content-Type: application/json' -d '{"scenario":"oom","node_id":"01M579MW4H6MHY61YTCJR8NN32","target":"real","duration_s":120}'
+# captured 2026-10-18T10:45:57Z
 
-node_id=01M5609C8CQHS2EMZT2V9VZZA6
-{"schema_version": "1.0", "injection_id": "01M561FQTJCKH52ZXR9WFR50JJ", "project_id": "01J0DEM0WARM000000000000AB", "node_id": "01M5609C8CQHS2EMZT2V9VZZA6", "node_registration_id": "9a0225f061470886c42163f7c9140b58", "node_role": "compute", "scenario": "oom", "rule_id": "oom-guard-01", "target": "real", "state": "active", "duration_s": 120.0, "started_at": "2026-10-17T22:59:55.346Z", "expires_at": "2026-10-17T23:01:55.346Z", "cleared_at": null, "cleared_by": null, "clear_reason": null, "samples_written": 0, "recovery_samples": 0, "clear_samples_needed": 3, "open": true}
+node_id=01M579MW4H6MHY61YTCJR8NN32
+{"schema_version": "1.0", "injection_id": "01M579WHQVJD53S1M85EQTXRN5", "project_id": "01J0DEM0WARM000000000000AB", "node_id": "01M579MW4H6MHY61YTCJR8NN32", "node_registration_id": "ad403c98cde290d86195942614a7e3c1", "node_role": "compute", "scenario": "oom", "rule_id": "oom-guard-01", "target": "real", "state": "active", "duration_s": 120.0, "started_at": "2026-10-18T10:45:58.139Z", "expires_at": "2026-10-18T10:47:58.139Z", "cleared_at": null, "cleared_by": null, "clear_reason": null, "samples_written": 0, "recovery_samples": 0, "clear_samples_needed": 3, "open": true}
