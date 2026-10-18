@@ -155,7 +155,7 @@ node-level `oom_kill_count`.
 
 ## 4. Agents panel
 
-**Shows** — one row per instance a **real** node reports in `lxd_instances[]`, grouped by
+**Shows** — one row per instance a node reports in `lxd_instances[]`, grouped by
 node. Each row: the `vm_id` (26-char Crockford id), state badge, and facts — CPU, RAM
 (`used / limit`), disk used, state age, restarts — then the fields the contract does not
 carry, each labelled **"not reported"**: `image alias`, `IP`, `vCPU`
@@ -165,12 +165,20 @@ carry, each labelled **"not reported"**: `image alias`, `IP`, `vCPU`
 (`base32(sha256("termini-vm-id:" + name))`, `node-telemetry.md` §4.6); the LXD instance
 name, IP and image alias are **not on the wire**, so the panel shows "not reported" and
 never guesses. Actions (Start / Stop / Restart / Give a task…) are human-issued commands
-audited exactly like a node Restart/Drain.
+audited exactly like a node Restart/Drain. A refusal comes back as the controller's own
+answer — code, message, `request_id` and every `details[0]` field (`reason`,
+`unscanned_nodes`, `attributed_nodes`, `known_agent_ids`…): a 503 that could not read a
+node says the node holding the agent could not be read, and only a 404 says the id is
+not on the project (t_df3120a8).
 
 **Why** — there is **no second inventory**: the panel is each node's `lxd_instances[]`
 from telemetry. On the live fleet that is the real node `ba1f1fae…`, which reports six
 running instances; `33678f54…` reports an empty array ("zero running"); the two `demo`
-rows are excluded (synthetic). Note the honesty cases: an **omitted** array renders
+rows are still **shown** — they are evidence about what reported them — but their node is
+`node.synthetic === true`, so the row carries a `demo` badge, is counted as `demo` in the
+pill instead of as one of the client's agents, and its actions are **disabled with the
+reason stated** ("demo row: seeder-fabricated instance, no agent runtime behind it")
+because no runtime answers them. Note the honesty cases: an **omitted** array renders
 "inventory not reported" (never "no agents"), and a node you stop keeps its row labelled
 "stopped by you".
 

@@ -744,6 +744,13 @@ body.chat-open .topbar { padding-right: calc(var(--chat-w) + 20px); }
 .agent-actions { margin: 4px 0 2px; }
 .agent-actions .agent-task-toggle { margin-left: auto; }
 
+/* A row nothing can answer: the action is DISABLED and the reason sits beside
+   it, so the panel never offers something that would end in a 404 (t_df3120a8).
+   The reason uses the warn token — it is a fact about the row, not an error. */
+.agent-task-off { margin-left: auto; display: inline-flex; }
+.agent-task-off .agent-task-toggle { margin-left: 0; }
+.agent-task-reason { color: var(--warn); margin: 4px 0 0; padding-left: 2px; line-height: 1.35; max-width: 70ch; }
+
 .agent-task { margin-top: 8px; padding: 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg-2); }
 .agent-prompt { width: 100%; margin-top: 6px; resize: vertical; background: var(--bg); color: var(--fg); border: 1px solid var(--line-2); border-radius: 7px; padding: 7px 8px; font: inherit; font-size: .84rem; }
 .agent-task-result { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 7px; }
@@ -753,6 +760,21 @@ body.chat-open .topbar { padding-right: calc(var(--chat-w) + 20px); }
 .agent-task-error { color: var(--err); border-color: color-mix(in srgb, var(--err) 55%, transparent); }
 .agent-answer { margin: 6px 0; padding: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; font-size: .82rem; }
 .agent-task-error { padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--err) 55%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--err) 8%, transparent); }
+
+/* The controller's REFUSAL, drawn as its answer: code, headline, message,
+   request_id and every details[0] field it sent (t_df3120a8). A node that could
+   not be read reads as a warning, not as "this id does not exist". */
+.agent-refusal { display: flex; flex-direction: column; gap: 3px; }
+.agent-refusal-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.agent-refusal-code { color: var(--err); border-color: color-mix(in srgb, var(--err) 55%, transparent); }
+.agent-refusal-node_unreadable,
+.agent-refusal-node_offline,
+.agent-refusal-not_taskable { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.agent-refusal-headline { font-weight: 600; color: var(--fg); }
+.agent-refusal-fields { display: flex; flex-direction: column; gap: 2px; margin-top: 3px; }
+.agent-refusal-field { display: flex; gap: 8px; align-items: baseline; font-size: .76rem; }
+.agent-refusal-name { color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-size: .64rem; min-width: 13ch; }
+.agent-refusal-value { color: var(--fg-dim); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 
 /* Honest inference label: who actually answered. Colour separates a forwarded
    managed model from local inference WITHOUT the text ever implying local GPU. */
