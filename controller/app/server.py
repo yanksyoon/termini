@@ -1903,11 +1903,19 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 "endpoint is required (send `lxd.endpoint` or `lxd_endpoint`)",
                 [{"field": "lxd_endpoint", "reason": "missing"}],
             )
+        # Two accepted secrets, because only one of them actually works on a
+        # deployed node: an LXD certificate-add TOKEN minted on the node's admin
+        # socket is not redeemable by a second party (LXD answers `403 Bad trust
+        # password`), while a short-lived `core.trust_password` the node sets and
+        # clears around this one call is. Both are single-use here: the node
+        # clears the password in a `finally`, whatever this route answers.
         token = body.get("trust_token") or body.get("token")
-        if not isinstance(token, str) or not token.strip():
+        password = body.get("trust_password") or body.get("password")
+        secret = password if isinstance(password, str) and password.strip() else token
+        if not isinstance(secret, str) or not secret.strip():
             raise errors.invalid_argument(
-                "trust_token is required (the node's one-time LXD cert-add token)",
-                [{"field": "trust_token", "reason": "missing"}],
+                "trust_token or trust_password is required (the node's one-time LXD secret)",
+                [{"field": "trust_password", "reason": "missing"}],
             )
         # The endpoint must be the node's own address. A node that reports a
         # different host:port here than the one it registered with is refused:
@@ -1949,7 +1957,7 @@ class ControllerHandler(BaseHTTPRequestHandler):
         # freshly registered node, 2026-10-18).
         base_url = op_target.endpoint_base_url(endpoint, fallback=cfg.lxd_base_url)
         result = lxdtrust.ensure_trusted(
-            base_url, identity, token.strip(),
+            base_url, identity, secret.strip(),
             name=cfg.lxd_trust_name, server_ca=cfg.lxd_server_ca,
             timeout_s=cfg.lxd_request_timeout_s,
         )
@@ -1962,7 +1970,8 @@ class ControllerHandler(BaseHTTPRequestHandler):
                 message=(f"LXD trust for {node['registration_id']} at {endpoint}: "
                          f"{result.status} — {result.detail}"),
                 remediation={"endpoint": endpoint, "trusted": bool(result.ok),
-                             "status": result.status},
+                             "status": result.status,
+                             "secret_kind": "password" if secret is password else "token"},
             )
         log.info("node %s LXD trust at %s: %s — %s",
                  node_id, endpoint, result.status, result.detail)
