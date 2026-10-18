@@ -326,7 +326,12 @@ def probe_trusted(
     401/403 => not trusted (the defect this module repairs).
     Anything else / unreachable => trusted=None with the reason.
     """
-    ex = _executor(base_url, identity, server_ca, timeout_s, retry_max=1)
+    # Two attempts, not one: a node that has *just* started may still be
+    # re-binding its LXD listener (its daemon touches core.https_address on start),
+    # and a single probe in that window answers `Connection refused` — measured
+    # 2026-10-18 on a node seconds after registration, where the identical probe
+    # moments later returned 200.
+    ex = _executor(base_url, identity, server_ca, timeout_s, retry_max=2)
     r = ex.list_instances()
     if r.status == 200:
         return TrustProbe(True, 200, "authenticated GET /1.0/instances -> 200")

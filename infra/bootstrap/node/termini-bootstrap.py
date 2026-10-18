@@ -1440,16 +1440,30 @@ def install_lxd_trust(cfg: dict, identity: dict, *, timeout: float = 30.0) -> bo
     url = cfg["controller_url"].rstrip("/") + f"/v1/nodes/{node_id}/lxd-trust"
     body = {"lxd": {"endpoint": api["endpoint"]}, "trust_password": secret}
     try:
-        try:
-            status, resp = http_json("POST", url, body=body, token=node_token, timeout=timeout)
-        except Exception as e:  # noqa: BLE001 - trust must never break telemetry
-            log(f"LXD_TRUST not installed: {e}")
-            return False
-        if status == 200 and isinstance(resp, dict) and resp.get("trusted"):
-            log(f"LXD_TRUST installed at {resp.get('endpoint') or api['endpoint']} "
-                f"({resp.get('detail')})")
-            return True
-        log(f"LXD_TRUST not installed: HTTP {status} {str(resp)[:400]}")
+        # Retry: the controller's first probe lands in the seconds right after this
+        # daemon started, and at that moment the node's own LXD may still be
+        # re-binding its listener (the start-up `ensure_lxd_api` touches
+        # core.https_address). Measured 2026-10-18: a probe in that window answers
+        # `Connection refused` while the identical probe seconds later gets 200.
+        # The password survives across attempts and is cleared once, below.
+        last_detail = "no attempt"
+        for attempt in range(3):
+            if attempt:
+                time.sleep(1.5 * attempt)
+            try:
+                status, resp = http_json("POST", url, body=body, token=node_token, timeout=timeout)
+            except Exception as e:  # noqa: BLE001 - trust must never break telemetry
+                last_detail = f"transport: {e}"
+                continue
+            if status == 200 and isinstance(resp, dict) and resp.get("trusted"):
+                log(f"LXD_TRUST installed at {resp.get('endpoint') or api['endpoint']} "
+                    f"({resp.get('detail')})")
+                return True
+            last_detail = f"HTTP {status} {str(resp)[:400]}"
+            detail = str((resp or {}).get("detail") if isinstance(resp, dict) else "")
+            if "already_trusted" in detail:
+                return True
+        log(f"LXD_TRUST not installed after 3 attempts: {last_detail}")
         return False
     finally:
         cleared, cdetail = _lxd_config_set_over_socket("core.trust_password", "")
