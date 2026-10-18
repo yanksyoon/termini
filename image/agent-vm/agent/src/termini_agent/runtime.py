@@ -14,6 +14,7 @@ from typing import Any
 
 from .broker import BrokerClient, BrokerUnavailable, Task
 from .config import AgentConfig
+from .grounding import UngroundedClaim, check_answer, ground_messages
 from .inference import InferenceClient, InferenceError
 from .logging_setup import configure_logging
 from .status import StatusServer, StatusState
@@ -145,12 +146,15 @@ class AgentRuntime:
                 self.stats.completed += 1
             log.info("task completed", extra={"termini": {
                 "task_id": task.task_id, "model": result["model"], "tokens": result["tokens"]}})
-        except (InferenceError, BrokerUnavailable) as exc:
+        except (InferenceError, BrokerUnavailable, UngroundedClaim) as exc:
             with self._stats_lock:
                 self.stats.failed += 1
             code = getattr(exc, "code", type(exc).__name__)
+            # `safe_message` keeps answer text (C2) out of the C0 log line: an
+            # UNGROUNDED_CLAIM's own message quotes the offending sentence.
             log.warning("task failed", extra={"termini": {
-                "task_id": task.task_id, "code": code, "error": str(exc)}})
+                "task_id": task.task_id, "code": code,
+                "error": getattr(exc, "safe_message", str(exc))}})
             try:
                 self.broker.ack(task.task_id, "failed", {"code": code})
             except BrokerUnavailable:
@@ -171,6 +175,9 @@ class AgentRuntime:
         messages = task.payload.get("messages") or [
             {"role": "user", "content": task.payload.get("prompt", "ping")}
         ]
+        # Grounding rules go in the system turn of every task, including one the
+        # caller supplied (`ground_messages` extends it, never drops it).
+        messages = ground_messages(messages)
         max_tokens = int(task.payload.get("max_tokens", 256))
         stream = bool(task.payload.get("stream", self.cfg.inference.stream))
         chunks: list[str] = []
@@ -180,6 +187,10 @@ class AgentRuntime:
         else:
             chunks.extend(out)
         content = "".join(chunks)
+        # A governance product does not return a confident false resolution: when
+        # the payload carries a record whose execution.result is not `ok`, an
+        # answer claiming success fails the task with UNGROUNDED_CLAIM.
+        check_answer(content, task.payload)
         # token count is a C0 counter: characters/4 is good enough for telemetry
         return {"task_id": task.task_id, "model": model, "content": content,
                 "tokens": max(1, len(content) // 4)}
@@ -201,6 +212,10 @@ class AgentRuntime:
             streaming=bool(payload.get("stream", self.cfg.inference.stream)),
         )
         # C0 summary only crosses the boundary; the answer text stays on-prem (§7.3).
+        content = "\n".join(t.get("answer", "") for t in report["turns"])
+        # Same post-check as the single-turn path: the joined answer is what the
+        # caller would read, so an ungrounded success claim in any turn fails it.
+        check_answer(content, payload)
         return {
             "task_id": task.task_id,
             "model": model,
@@ -209,7 +224,7 @@ class AgentRuntime:
             "streamed_deltas": report["total_streamed_deltas"],
             "first_token_ms": report["first_token_ms"],
             "total_ms": report["total_ms"],
-            "content": "\n".join(t.get("answer", "") for t in report["turns"]),
+            "content": content,
             "tokens": max(1, sum(t.get("streamed_deltas", 0) for t in report["turns"])),
         }
 

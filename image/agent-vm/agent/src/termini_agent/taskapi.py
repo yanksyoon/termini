@@ -18,14 +18,18 @@ rather than documented-and-hoped:
     the node and an over-bound submission is distinguishable from a slow model.
 
   * **Never a plausible lie.** A task reaches `done` only with non-empty content
-    from the configured on-prem endpoint. Every other outcome is `error` with a
-    distinct `code` from the §10.5 family that names *what* failed: an
+    from the configured on-prem endpoint *and* with an answer that does not
+    contradict the record the payload supplied. Every other outcome is `error`
+    with a distinct `code` from the §10.5 family that names *what* failed: an
     unreachable endpoint is `INFERENCE_UNREACHABLE`, a refused alias is
     `MODEL_NOT_ALLOWED`, a first-token/read deadline is `INFERENCE_TIMEOUT`, a
-    truncated-to-nothing answer is `EMPTY_COMPLETION`. A timeout never reads as
-    success, and the provenance of whatever did answer (which backend, whether it
-    was forwarded off-premises) is carried on the result so no caller has to
-    guess or hardcode it.
+    truncated-to-nothing answer is `EMPTY_COMPLETION`, and an answer that claims
+    success for an execution whose own record says `error` is
+    `UNGROUNDED_CLAIM` (`termini_agent.grounding`, card `t_4533183a`). A timeout
+    never reads as success, a leading prompt never buys a false resolution, and
+    the provenance of whatever did answer (which backend, whether it was
+    forwarded off-premises) is carried on the result so no caller has to guess
+    or hardcode it.
 
 The answer body is the customer's own content (C2): it is written to the on-prem
 result sink (`/var/lib/termini/agent/results/<task_id>.json`, 0600, §7.3) and is
@@ -44,6 +48,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
 
+from .grounding import (
+    UngroundedClaim,
+    check_answer,
+    extract_record,
+    ground_messages,
+)
 from .inference import (
     Completion,
     EmptyCompletion,
@@ -90,6 +100,11 @@ _REMEDIES = {
     "EMPTY_COMPLETION": (
         "the endpoint returned success with empty content: treat as a failure, never "
         "as an empty answer"
+    ),
+    "UNGROUNDED_CLAIM": (
+        "the answer claimed an outcome the supplied record contradicts (its "
+        "execution.result is not 'ok'): the answer was discarded instead of being "
+        "returned as a resolution — re-ask without the false premise, or fix the record"
     ),
     "TASK_BOUND_EXCEEDED": (
         "this instance's task bound is already in flight: wait for a running task to "
@@ -160,6 +175,10 @@ class TaskRecord:
     provenance: dict[str, Any] = field(default_factory=dict)
     error: dict[str, Any] | None = None
     result_ref: str | None = None
+    # The record the payload carried (extracted once at submit time), so the
+    # post-check runs against what the caller supplied — not against the answer's
+    # own account of it. Evidence, never returned by `as_dict`.
+    guard_record: dict[str, Any] | None = field(default=None, repr=False)
 
     def as_dict(self, *, include_answer: bool = True) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -198,12 +217,17 @@ def _iso(ts: float | None) -> str | None:
 
 
 def _error_envelope(code: str | None, message: str, *, param: str | None = None,
-                    actionable: str | None = None) -> dict[str, Any]:
+                    actionable: str | None = None,
+                    sentence: str | None = None) -> dict[str, Any]:
     body: dict[str, Any] = {"code": code or "TASK_ERROR", "message": message}
     if param:
         body["param"] = param
     if actionable:
         body["actionable"] = actionable
+    if sentence:
+        # The offending answer sentence, for the caller that asked for it. This
+        # envelope is returned on the localhost surface only — never logged.
+        body["sentence"] = sentence
     return body
 
 
@@ -327,6 +351,15 @@ class TaskService:
         else:
             record_messages = [{"role": "user", "content": prompt}]
 
+        # The record is what the answer will be checked against, so it is read
+        # from the submission (a `record` key, or JSON pasted into the prompt),
+        # not from whatever the model later says about it.
+        record.guard_record = extract_record({
+            "record": body.get("record"),
+            "incident": body.get("incident"),
+            "messages": record_messages,
+        })
+
         with self._lock:
             if self._in_flight >= self.bound:
                 raise TaskBoundExceeded(
@@ -397,12 +430,17 @@ class TaskService:
             client = self.client
             model = client.resolve_model(record.model_preference)
             completion: Completion = client.complete_with_provenance(
-                messages, model=model, max_tokens=record.max_tokens,
+                ground_messages(messages), model=model, max_tokens=record.max_tokens,
                 temperature=record.temperature,
             )
             if not completion.content or not completion.content.strip():
                 raise EmptyCompletion(
                     "the endpoint answered successfully with empty content")
+            # The last gate before `done`: an answer that claims success for an
+            # execution the supplied record says failed is discarded, not
+            # returned. A resolution note that contradicts the audit row is
+            # exactly the failure this card exists for (t_4533183a).
+            check_answer(completion.content, record.guard_record)
             with self._lock:
                 record.answer = completion.content
                 record.model = completion.model
@@ -419,6 +457,19 @@ class TaskService:
             log.info("task done", extra={"termini": {
                 "task_id": record.task_id, "state": DONE, "model": record.model,
                 "tokens": record.tokens, "backend": record.provenance.get("backend")}})
+        except UngroundedClaim as exc:
+            # Distinct from an inference failure: the endpoint answered, the
+            # answer was wrong. Carry the offending sentence on the localhost
+            # envelope; the log line keeps only the code and the C0-safe summary.
+            with self._lock:
+                record.state = ERROR
+                record.error = _error_envelope(
+                    exc.code, str(exc), actionable=_REMEDIES[exc.code],
+                    sentence=exc.sentence)
+                self.failed += 1
+            log.warning("task failed", extra={"termini": {
+                "task_id": record.task_id, "state": ERROR, "code": exc.code,
+                "grounding": exc.safe_message}})
         except InferenceError as exc:
             code = getattr(exc, "code", "INFERENCE_ERROR")
             with self._lock:
