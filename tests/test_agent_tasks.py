@@ -442,6 +442,41 @@ class AgentTaskRouteTest(_Base):
         self.assertEqual(body["error"]["code"], "AGENT_UNREACHABLE")
         self.assertIn("127.0.0.1", body["error"]["message"])
 
+    def test_a_listener_without_the_task_route_is_a_missing_surface_not_a_refusal(self):
+        """The live 2026-10-18 failure: `501 Unsupported method ('POST')` in HTML.
+
+        That is python's bare `http.server` answering a method it has no handler
+        for — an instance booted from an image older than the §5.6 surface. It was
+        reported to the client as `AGENT_REJECTED` / `field=vm_id`, which says the
+        request was refused and points at the caller. It must instead say the
+        surface is missing and name the image that has to change.
+        """
+        html = ("<!DOCTYPE HTML><html lang=\"en\"><head><meta charset=\"utf-8\">"
+                "<title>Error response</title></head><body><h1>Error response</h1>"
+                "<p>Error code: 501</p><p>Message: Unsupported method ('POST').</p>"
+                "</body></html>")
+        self.lxd.exec_handler = lambda argv: (0, json.dumps(
+            {"status": 501, "body": html, "retry_after": None}), "")
+
+        st, body = self._post_task({"prompt": "x"})
+        self.assertEqual(st, 503, body)
+        err = body["error"]
+        self.assertEqual(err["code"], "AGENT_SURFACE_MISSING")
+        self.assertNotEqual(err["code"], "AGENT_REJECTED")
+        # The message names what actually answered...
+        self.assertIn("501", err["message"])
+        self.assertIn("Unsupported method", err["message"])
+        self.assertNotIn("<!DOCTYPE", err["message"])   # collapsed, not dumped
+        # ...and the remedy is the image, not the request.
+        reason = err["details"][0]["reason"]
+        self.assertIn(self.cfg.lxd_workload_image, reason)
+        self.assertIn("image", reason)
+
+        # Enumerable, not just a response: the task record carries the same code.
+        st, tasks = self._call("GET", f"/v1/projects/{PROJECT_ID}/agents/{VM}/tasks")
+        self.assertEqual(st, 200, tasks)
+        self.assertEqual(tasks["tasks"][0]["error_code"], "AGENT_SURFACE_MISSING")
+
     def test_prompt_bound_and_auth(self):
         st, body = self._post_task({"prompt": "a" * 9000})
         self.assertEqual(st, 413, body)

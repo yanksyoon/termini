@@ -24,6 +24,31 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Client-side deadlines, per class of call.
+ *
+ * ONE blanket timeout cannot serve both a 3 s polling read and a call that runs
+ * an on-prem model or materialises LXD instances: at 20 s the dashboard aborted
+ * its own `/intents` and `/vms/apply` requests while the controller was still
+ * working (live controller log: `200` written to a socket the browser had
+ * already closed — `BrokenPipeError`), and the reader was told the controller
+ * was "unreachable" when it was in fact busy. Reads stay short so a dead backend
+ * cannot wedge the page; anything that reaches a model or creates infrastructure
+ * states its own budget, and a client timeout says so instead of pretending the
+ * backend vanished.
+ *
+ * The budgets below are the controller's own server-side bounds plus slack:
+ *   model      — config.intent_model_timeout_s (120 s) + round-trip
+ *   provision  — config.lxd_create_timeout_s + lxd_start_timeout_s per instance
+ *   assistant  — the model call behind /assistant/ask
+ */
+export const TIMEOUT_MS = {
+  read: 20000,
+  model: 180000,
+  provision: 600000,
+  assistant: 120000,
+};
+
 export class ApiClient {
   constructor(cfg) {
     this.cfg = cfg;
@@ -38,7 +63,7 @@ export class ApiClient {
     return encodeURIComponent(this.cfg.projectId);
   }
 
-  async _request(method, path, { body, query, idempotent } = {}) {
+  async _request(method, path, { body, query, idempotent, timeoutMs = TIMEOUT_MS.read } = {}) {
     const url = apiUrl(this.cfg, path, query);
     const headers = { "X-Termini-Version": "1", Accept: "application/json" };
     if (this.cfg.token) headers.Authorization = `Bearer ${this.cfg.token}`;
@@ -51,11 +76,25 @@ export class ApiClient {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
-        // keep the SSE/polling path from wedging on a dead backend
-        signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
+        // per-call deadline: a read must not outlive a dead backend, and a model
+        // or provisioning call must outlive the controller's own work (TIMEOUT_MS)
+        signal: AbortSignal.timeout ? AbortSignal.timeout(timeoutMs) : undefined,
       });
     } catch (err) {
-      const e = new ApiError(0, { error: { code: "NETWORK", message: `controller unreachable: ${err.message}` } }, url);
+      // A client-side deadline is NOT an unreachable backend: the controller is
+      // (usually) still working, and the operation may have completed. Saying
+      // "unreachable" here sent readers to retry a request that was in fact
+      // being served (and, for /vms/apply, to create a second set of instances).
+      const timedOut = err && (err.name === "TimeoutError" || err.name === "AbortError");
+      const error = timedOut
+        ? {
+            code: "CLIENT_TIMEOUT",
+            message:
+              `gave up after ${Math.round(timeoutMs / 1000)}s — the controller may still be ` +
+              `working on ${path}; check the panel/record before retrying`,
+          }
+        : { code: "NETWORK", message: `controller unreachable: ${err.message}` };
+      const e = new ApiError(0, { error }, url);
       if (this.onResult) this.onResult({ ok: false, error: e });
       throw e;
     }
@@ -150,11 +189,24 @@ export class ApiClient {
   }
 
   submitIntent(body) {
-    return this._request("POST", `/projects/${this._project()}/intents`, { body, idempotent: true });
+    // Runs the on-prem model extraction synchronously (controller bound:
+    // config.intent_model_timeout_s, 120 s) — not a 20 s read.
+    return this._request("POST", `/projects/${this._project()}/intents`, {
+      body,
+      idempotent: true,
+      timeoutMs: TIMEOUT_MS.model,
+    });
   }
 
   applyPlan(planId) {
-    return this._request("POST", `/projects/${this._project()}/vms/apply`, { body: { plan_id: planId }, idempotent: true });
+    // Creates AND starts one LXD instance per committed VM before answering
+    // (lxd_create_timeout_s + lxd_start_timeout_s each). A short deadline here
+    // could only ever abort a call that was about to succeed.
+    return this._request("POST", `/projects/${this._project()}/vms/apply`, {
+      body: { plan_id: planId },
+      idempotent: true,
+      timeoutMs: TIMEOUT_MS.provision,
+    });
   }
 
   /* --------------------------------------------------------------- agents */
@@ -233,7 +285,11 @@ export class ApiClient {
    * controller returns — `executed[]` is what ran, nothing else.
    */
   assistantAsk(body) {
-    return this._request("POST", `/projects/${this._project()}/assistant/ask`, { body });
+    // The answer is a model call on the controller's side; give it its own budget.
+    return this._request("POST", `/projects/${this._project()}/assistant/ask`, {
+      body,
+      timeoutMs: TIMEOUT_MS.assistant,
+    });
   }
 }
 
