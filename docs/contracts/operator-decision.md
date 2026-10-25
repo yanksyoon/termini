@@ -214,7 +214,7 @@ classes before the call is made).
 | `type` | string enum | yes | `oom` \| `disk_fail` \| `disk_degrade` \| `latency` |
 | `trigger` | object | yes | `{metric, value, threshold, fired_at, breach_started_at, episode}` — the §5 trigger linkage |
 | `state` | object | yes | latest telemetry sample, C0 fields only (`node-telemetry.md` §4) |
-| `evidence` | array | yes | bounded window, ≤ 20 samples, oldest first (matches `EVIDENCE_SAMPLE_CAP`) |
+| `evidence` | array | yes | bounded window, oldest first: `TERMINI_OPERATOR_EVIDENCE_SAMPLES` samples (default `6`), hard ceiling `20` (`EVIDENCE_SAMPLE_CAP`) — see §10.4 for why the bound and the default differ |
 | `target_resource.node_id` | string (ULID) | yes | target node (== `node_id`) |
 | `target_resource.instances` | array | yes | the node's `lxd_instances[]`; the model's only valid `instance_name` targets |
 | `allowed_action_space` | array | yes | the whitelist the model may choose from (generated from §5 `ACTION_SPACE`, intersected with `allowed_actions`) |
@@ -828,6 +828,54 @@ timestamp (persisted, §11):
   `(node, rule)` and uses deterministic, emitting one `warn` log line at entry.
 - This caps model calls for a stuck fault and guarantees the deterministic
   fast-path still fires every poll — no remediation is ever lost to a broken model.
+
+### 10.3 Model-call budget (spend guard)
+
+§10.2 caps calls only after a **fallback** streak, so a fault the model keeps
+answering *successfully* is bounded by nothing but the per-`(node_id, rule_id)`
+cooldown. That is one config value away from unbounded spend, and it happened: a
+leftover drop-in set `TERMINI_OPERATOR_COOLDOWN_S=0` on the standing fleet while
+the loop polled every `2 s` in `model` mode, and the provider's own usage metrics
+recorded **41.7M input tokens on one day and 76.8M over five** (4,300
+`GenerateContent` calls, 12 of them HTTP `429`) for work whose useful decisions
+numbered in the tens.
+
+The invariant this section freezes:
+
+- The loop holds a **global, sliding one-hour budget** of model-call *attempts*,
+  `TERMINI_OPERATOR_MODEL_CALLS_PER_HOUR` (default `120`). It is global because
+  the thing it bounds — the cloud bill — is global; the per-`(node, rule)`
+  cooldown remains the dedup rule it always was. `0` disables the guard.
+- An **attempt is counted before the transport**, because a call that times out
+  or is rejected on the wire may still be billed.
+- Over budget, the loop **skips the model path and decides deterministically** —
+  the same fast-path §10.2 already specifies — and emits **one** `warn` log line
+  and operator-log entry per exhausted window, not one per poll. A spend cap is
+  therefore never a cap on self-healing: a cap that stopped remediating would be
+  a worse failure than the bill.
+- **Known limitation, stated rather than hidden:** the window is in-process, so a
+  controller restart begins a fresh window. Persisting it would need a schema
+  migration for a bound that is a safety net, not an accounting ledger — the
+  authoritative spend record is the provider's own usage metrics. A verifier
+  asserting "at most N calls per hour across restarts" would be asserting
+  something this section does not promise.
+
+### 10.4 Evidence window (the other half of the bill)
+
+`evidence` is bounded at `≤ 20` samples (§3.1) and the controller chooses how
+many of that bound to spend: `TERMINI_OPERATOR_EVIDENCE_SAMPLES` (default `6`,
+clamped to `1 .. 20`). Each sample is a full C0 snapshot costing roughly 840
+prompt tokens, so the window is the dominant term in a diagnosis call — the
+20-sample window measures 20,601 prompt tokens against Vertex `:countTokens`,
+the 6-sample window ~9k. The prompt still asks the model to read a breach that
+held "for two consecutive samples" and to use `derived` (§3.2) for deltas, both
+satisfied at `6`.
+
+**The trade, explicitly:** a shorter window carries less raw history. A fault
+whose signature only appears across many samples (a slow creep) is better
+diagnosed with more of them, so the knob is configurable per deployment rather
+than fixed — but the default is the cheaper one, because the expensive default
+was paying for 14 redundant copies of the latest snapshot on every single call.
 
 The existing hysteresis latch + cooldown (`trigger_state`, `recent_audit`) already
 prevent re-fire within an episode; the fallback cap is a separate guard against

@@ -50,11 +50,27 @@ import threading
 import time
 
 from .. import db, store, ulid
+from . import budget as budget_mod
 from . import decision, detect, executor, target, triggers, vmids
 from . import store as opstore
 from .models import ExecResult, RemediationAction
 
 log = logging.getLogger("termini.operator.loop")
+
+# How many telemetry samples the model sees (operator-decision.md §3 allows <= 20).
+# Each sample is a full snapshot and costs ~840 prompt tokens, so this is the
+# single biggest lever on the diagnosis bill: 20 samples measure 20,521 prompt
+# tokens per decision and 6 measure 8,900 (Vertex :countTokens, via
+# docs/evidence/2026-10-25-model-spend/tools/measure_decision_prompt.py). The
+# prompt's own requirement — a breach that held "for two consecutive samples",
+# plus the controller-computed window deltas — is satisfied at 6.
+DEFAULT_EVIDENCE_SAMPLES = 6
+
+# The spend guard's default, used when a config object does not carry the knob at
+# all (a hand-built config in a test, an older deployment). It defaults to ON: a
+# safety guard that is off unless someone configures it has the same failure mode
+# as no guard. See operator-decision.md §10.3.
+DEFAULT_MODEL_CALLS_PER_HOUR = 120
 
 
 def _refusal_summary(result) -> str:
@@ -152,6 +168,26 @@ class OperatorLoop(threading.Thread):
             cfg, "operator_decision_max_fallbacks", 3))
         self.decision_fallback_cooldown_s = float(getattr(
             cfg, "operator_decision_fallback_cooldown_s", 300.0))
+        # The spend guard (operator-decision.md §10.3): a GLOBAL sliding one-hour
+        # cap on model-call attempts, independent of the per-(node, rule) cooldown.
+        # §10.2 caps calls only after a *fallback* streak, so a fault the model
+        # keeps answering successfully has no ceiling but the cooldown — and one
+        # mistaken cooldown (0, as a leftover evidence drop-in set on the standing
+        # fleet) produced 41.7M input tokens in a single day. This bound does not
+        # depend on any other config value being right.
+        self.model_budget = budget_mod.HourlyCallBudget(int(getattr(
+            cfg, "operator_model_calls_per_hour", DEFAULT_MODEL_CALLS_PER_HOUR)))
+        self._budget_warned_at: float | None = None
+        # Evidence window handed to the model (operator-decision.md §10.4: <= 20
+        # samples). Every sample is a full telemetry snapshot costing ~840 prompt
+        # tokens, so the window is the dominant term in the diagnosis bill; 6 keeps
+        # the hysteresis story the prompt asks the model to tell without paying for
+        # 14 more copies of the same snapshot.
+        self.evidence_samples = max(
+            1, min(int(getattr(cfg, "operator_evidence_samples",
+                               DEFAULT_EVIDENCE_SAMPLES) or 0),
+                   opstore.EVIDENCE_SAMPLE_CAP))
+
         self.allowed_actions = list(getattr(cfg, "operator_decision_allowed_actions",
                                             None) or list(decision.ACTION_IDS))
         self.provider = provider or self._deterministic
@@ -535,8 +571,13 @@ class OperatorLoop(threading.Thread):
 
     # ---------------------------------------------------------------- decision
     def _build_context(self, event, samples_asc: list[dict]) -> decision.DecisionContext:
-        """Assemble the C0 decision context from the event + latest telemetry."""
-        evidence = samples_asc[-opstore.EVIDENCE_SAMPLE_CAP:]
+        """Assemble the C0 decision context from the event + latest telemetry.
+
+        The evidence window is `self.evidence_samples` long (default 6, contract
+        ceiling 20). It is the dominant term in the prompt's token count, so it is
+        the knob that sets the per-decision bill; see DEFAULT_EVIDENCE_SAMPLES.
+        """
+        evidence = samples_asc[-self.evidence_samples:]
         latest = samples_asc[-1] if samples_asc else {}
         instances = latest.get("lxd_instances", []) if isinstance(latest, dict) else []
         return decision.DecisionContext(
@@ -574,6 +615,30 @@ class OperatorLoop(threading.Thread):
                 node_id, f"{event.rule_id}: forced deterministic (fallback cooldown)",
                 severity="warn")
             return self._deterministic.decide(event, ctx)
+
+        # Spend guard (§10.3): the GLOBAL hourly cap on model-call attempts. The
+        # per-(node, rule) cooldown is a dedup rule and can be misconfigured to 0;
+        # this one cannot be, because it is not derived from anything else. Over
+        # budget the loop takes the same deterministic fast-path §10.2 already
+        # specifies for a fallback streak — a remediation is never lost — and says
+        # so in one warn line per exhausted window rather than one per poll.
+        if not self.model_budget.allows():
+            if self._budget_warned_at != self.model_budget.resume_at():
+                self._budget_warned_at = self.model_budget.resume_at()
+                log.warning(
+                    "node %s rule %s: model-call budget exhausted (%s); "
+                    "deterministic fast-path until the window frees", node_id,
+                    event.rule_id, self.model_budget.describe())
+                self._emit_log_line(
+                    node_id,
+                    f"{event.rule_id}: model-call budget exhausted "
+                    f"({self.model_budget.limit}/h); deterministic fast-path",
+                    severity="warn")
+            return self._deterministic.decide(event, ctx)
+
+        # Count the ATTEMPT before the transport: a call that times out or is
+        # rejected on the wire may still be billed by the provider.
+        self.model_budget.record()
 
         # NO transaction is open across the model call.
         result = self.provider.decide(event, ctx)

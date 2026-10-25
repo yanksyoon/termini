@@ -163,6 +163,10 @@ class Config:
     operator_decision_min_confidence: float
     operator_decision_max_fallbacks: int
     operator_decision_fallback_cooldown_s: float
+    # Spend guard (operator-decision.md §10.2): a global sliding-hour cap on model
+    # calls, and the size of the evidence window handed to the model (<= 20).
+    operator_model_calls_per_hour: int
+    operator_evidence_samples: int
     # Detection thresholds (config, not code — task requirement).
     oom_ram_pct: float
     oom_clear_pct: float
@@ -332,6 +336,14 @@ class Config:
             operator_decision_min_confidence=_float_env("TERMINI_OPERATOR_DECISION_MIN_CONFIDENCE", 0.5),
             operator_decision_max_fallbacks=_int_env("TERMINI_OPERATOR_DECISION_MAX_FALLBACKS", 3),
             operator_decision_fallback_cooldown_s=_float_env("TERMINI_OPERATOR_DECISION_FALLBACK_COOLDOWN_S", 300.0),
+            # 120/hr = one diagnosis every 30 s sustained, which is well past what a
+            # demo or a soak needs while still bounding a runaway loop to ~2,880
+            # calls/day instead of one per poll. 0 disables the guard.
+            operator_model_calls_per_hour=_int_env("TERMINI_OPERATOR_MODEL_CALLS_PER_HOUR", 120),
+            # 6 samples, not 20: the prompt needs a breach that held for two
+            # consecutive samples plus the derived window deltas. See
+            # operator/loop.py DEFAULT_EVIDENCE_SAMPLES for the measured cost.
+            operator_evidence_samples=_int_env("TERMINI_OPERATOR_EVIDENCE_SAMPLES", 6),
             oom_ram_pct=_float_env("TERMINI_OOM_RAM_PCT", 95.0),
             oom_clear_pct=_float_env("TERMINI_OOM_CLEAR_PCT", 90.0),
             oom_consecutive=_int_env("TERMINI_OOM_CONSECUTIVE", 2),
