@@ -34,8 +34,16 @@ Three things to note in that table:
 * **12 calls came back HTTP 429.** The loop was not just expensive, it was
   outrunning the provider's quota.
 * **Usage stops dead after 10-20.** The loop only calls the model when a trigger
-  fires, and the fleet has had no telemetry since, so nothing is currently being
-  spent. The cost is a *recurrence* risk, not an open tap.
+  fires. Nothing has breached a threshold since, so nothing is currently being
+  spent — measured, not assumed: on 2026-10-25 20:45Z the controller's journal
+  held **0 `externalModelCall` lines and 0 `FIRED` events in 24 h** while three
+  registered nodes were posting telemetry every second (84,758 request lines in
+  that day: 79,141 telemetry `202`s and 5,291 heartbeats). The fleet is live and
+  healthy, not idle; the cost is a *recurrence* risk, not an open tap. (An earlier
+  draft of this paragraph said the fleet "has had no telemetry", which was read
+  off a stale `nodes.last_seen_at` row for a superseded demo node — the live
+  nodes are `01M4TGD31WXH97JAA5S6A4R10D` / `01M4ZQ7Q2J80ATY3K32PY3PPJH` /
+  `01M57SG0A4Q5EPX4V8YNBHMFQ9` on node-a / node-c / node-d.)
 
 ## 2. Why the call count was unbounded
 
@@ -101,10 +109,13 @@ the window clamp).
 
 ## 5. What is NOT verified here — stated plainly
 
-* **The deployed controller still runs the pre-change code.** The live fix is the
-  config one (cooldown 60). The budget and the 6-sample window land on the next
-  `deploy-termini-tree.sh` from a merge of this branch; until then the fleet has
-  one bound (cooldown), not two.
+* **The deployed controller ran the pre-change code until 20:28Z.** The config fix
+  (cooldown 60) went live at 20:18Z and the code fix was then deployed as
+  `ac1de32` (`/opt/termini/DEPLOYED_COMMIT`); after that restart the fleet carries
+  both bounds. The deployed tree's own `OperatorLoop._build_context` against real
+  `/data/controller.db` samples measures 18,297 → 7,979 prompt tokens per decision
+  (−56%) — real samples are smaller than the synthetic fixture used in §3, so
+  quote the live pair when the question is "did you test it on the fleet".
 * **No live fault was injected to watch the budget trip on the fleet.** The guard
   is proven by unit and wiring tests against the real `OperatorLoop._decide`
   (provider call counts), not by a production run.
