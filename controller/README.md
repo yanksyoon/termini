@@ -47,6 +47,8 @@ is hardcoded.
 | `TERMINI_OPERATOR_CADENCE_REPORT_S` | `30.0` | log a poll-cadence summary every N s |
 | `TERMINI_OPERATOR_DRY_RUN` | `0` | log intended LXD command, send nothing |
 | `TERMINI_OPERATOR_COOLDOWN_S` | `60` | suppress re-fire of the same rule on a node |
+| `TERMINI_OPERATOR_MODEL_CALLS_PER_HOUR` | `120` | global spend guard: model-call attempts per sliding hour; `0` disables (operator-decision.md §10.3) |
+| `TERMINI_OPERATOR_EVIDENCE_SAMPLES` | `6` | telemetry samples in the model's evidence window, `1..20` (operator-decision.md §10.4) |
 | `TERMINI_OPERATOR_WINDOW` | `60` | telemetry samples inspected per node |
 | `TERMINI_PLAYBOOKS_DIR` | `playbooks/` | remediation playbook directory |
 | `TERMINI_OOM_RAM_PCT` | `95.0` | oom-guard-01: mem% enter threshold |
