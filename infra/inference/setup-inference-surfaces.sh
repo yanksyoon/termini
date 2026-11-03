@@ -65,6 +65,10 @@ GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"
 GEMINI_TIMEOUT_S="${GEMINI_TIMEOUT_S:-30}"
 DECISION_TIMEOUT_S="${DECISION_TIMEOUT_S:-120}"
 INTENT_BASE_URL="${INTENT_BASE_URL:-}"
+# The agent-facing surface on Node C (:8080): what an agent VM dials for
+# inference (`agent-runtime.md` §4.4). Distinct from both the controller's
+# loopback provider and Node C's intent-only :8090 instance.
+AGENT_BASE_URL="${AGENT_BASE_URL:-http://$NODE_C_HOST:8080}"
 ROUNDTRIP_TIMEOUT_S="${ROUNDTRIP_TIMEOUT_S:-60}"
 
 BIN_DIR="${BIN_DIR:-/opt/termini/inference}"
@@ -206,6 +210,13 @@ Environment=TERMINI_INTENT_MODEL_TIMEOUT_S=$DECISION_TIMEOUT_S
 # step 5) — a compute node running llama.cpp for the whole fleet must not take
 # agent workloads.
 Environment=TERMINI_AGENT_PLACEMENT_EXCLUDE_HOSTS=$NODE_C_HOST
+# The address an AGENT VM dials (`agent-runtime.md` §4.4 launch config). It is its
+# own knob because `TERMINI_INFERENCE_BASE_URL` above now names the controller's
+# LOOPBACK provider (127.0.0.1:8085), which a guest has no route to — and the
+# image's first-boot selfcheck refuses a guest config pointing there, so an
+# instance created without this var boots with a termini-agent that cannot start.
+Environment=TERMINI_AGENT_INFERENCE_BASE_URL=$AGENT_BASE_URL
+Environment=TERMINI_AGENT_MODEL=$ALIAS
 EOF
 log "wrote $UNIT_DIR/$CONTROLLER_UNIT.d/$DROPIN_NAME"
 
