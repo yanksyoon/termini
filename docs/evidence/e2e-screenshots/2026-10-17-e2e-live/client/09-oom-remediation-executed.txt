@@ -1,0 +1,293 @@
+frame      : 09-oom-remediation-executed.png
+card step  : 08
+captured_at: 2026-10-17T20:53:29Z
+window     : 1280x1000 (Xvfb :99, headful Chromium, full window incl. browser chrome)
+url        : see address bar
+command    : python3 tools/capture-e2e-client.py
+
+WHAT IT PROVES
+an injected OOM scenario on the REAL node-a produced a guardrail-admitted remediation: the decision names the rule (oom-guard-01), the action (instance.restart) and its target, and the audit row records the LXD call that executed it against 10.10.0.11:8443
+
+--- injection (POST /demo/faults, HTTP None) ---
+{
+ "note": "reused a remediation already produced for node-a inside the capture window"
+}
+
+--- the decision (GET /operator/decisions) ---
+{
+ "action_kind": "instance.restart",
+ "action_params": {
+  "_vm_id": "NNB9287WRHGFDPEZ995TKCXDNW",
+  "force": true,
+  "instance_name": "demo-workload",
+  "timeout_s": 30
+ },
+ "confidence": 0.95,
+ "conversation_id": null,
+ "decided_at": "2026-10-17T20:52:26.737Z",
+ "decision_source": "model",
+ "decision_trace": {
+  "decided_by": "model",
+  "steps": [
+   {
+    "detail": "rule_id=oom-guard-01 event_id=01M55T6AEZMA9SNK08T68CR5YN fired_at=2026-10-17T20:52:26.719Z detection_latency_ms=3554",
+    "label": "rule oom-guard-01 fired",
+    "state": "ok",
+    "step": "threshold_fired",
+    "ts": "2026-10-17T20:52:26.761Z"
+   },
+   {
+    "detail": "seq 296..37842 (20 samples) C0 fields: cpu_core_count, cpu_util_pct, disk, kernel_version, load_avg_1m, lxd_cluster_role, lxd_instances, net, os_name, os_version, processes, ram_total_bytes, ram_used_bytes, seq, services, swap_used_bytes, ts, uptime_sec",
+    "label": "evidence window captured",
+    "state": "ok",
+    "step": "evidence_window",
+    "ts": "2026-10-17T20:52:26.761Z"
+   },
+   {
+    "detail": "template=operator-decision v2 sha256=89a55a01-ef9bc4b2-4435e70a-055ccedc-ff72b42d-540ab62a-baefe80c-c585219f substituted_fields=7648 C0_assertion=ok",
+    "label": "prompt rendered (C0 assertion ok)",
+    "state": "ok",
+    "step": "prompt_built",
+    "ts": "2026-10-17T20:52:29.756Z"
+   },
+   {
+    "detail": "endpoint=external model=gemini-2.5-flash answered_by=forwarded-managed-model latency_ms=2994 request_id=01M55T6AG9XT8FGJRJ36HPNC5Z",
+    "label": "model answered",
+    "state": "ok",
+    "step": "model_call",
+    "ts": "2026-10-17T20:52:29.756Z"
+   },
+   {
+    "detail": "{\"schema_version\":1,\"request_id\":\"01M55T6AG9XT8FGJRJ36HPNC5Z\",\"action_id\":\"instance.restart\",\"params\":{\"instance_name\":\"NNB9287WRHGFDPEZ995TKCXDNW\",\"force\":true,\"timeout_s\":30},\"confidence\":0.95,\"rationale\":\"Host RAM is at 96.99% of total, with instance NNB9287WRHGFDPEZ995TKCXDNW consuming 85% of the node's RAM; restarting it will reclaim memory.\",\"incident_title\":\"Host memory exhaustion from a single runaway instance\",\"explanation\":\"The node's ram_used_bytes is 8,070,137,774 out of 8,319,729,664 (96.99%), indicating severe memory pressure. The instance NNB9287WRHGFDPEZ995TKCXDNW is consuming 7,071,770,214 bytes of RAM, which is approximately 85% of the total node RAM. This instance is clearly the heaviest consumer and the primary cause of the OOM event. Restarting this instance is the most effective way to alleviate the memory pressure and restore node stability.\",\"evidence\":[{\"field\":\"ram_used_bytes\",\"value\":\"8,070,137,774\",\"seq\":299},{\"field\":\"ram_total_bytes\",\"value\":\"8,319,729,664\",\"seq\":299},{\"field\":\"lxd_instances.ram_used_bytes\",\"value\":\"7,071,770,214\",\"seq\":299},{\"field\":\"lxd_instances.vm_id\",\"value\":\"NNB9287WRHGFDPEZ995TKCXDNW\",\"seq\":299}],\"actions\":[{\"action_kind\":\"instance.restart\",\"target\":\"NNB9287WRHGFDPEZ995TKCXDNW\",\"note\":\"reclaim memory from the heaviest instance\"}]}",
+    "label": "model reply received",
+    "state": "ok",
+    "step": "reply_received",
+    "truncated": false,
+    "ts": "2026-10-17T20:52:29.757Z"
+   },
+   {
+    "detail": "rule=G7 field=rationale decision=accept (C0-safe, within bounds)",
+    "label": "G7 rationale",
+    "state": "ok",
+    "step": "gates",
+    "ts": "2026-10-17T20:52:29.757Z"
+   },
+   {
+    "detail": "rule=G9 decision=accept (record clean or absent)",
+    "label": "G9 incident record",
+    "state": "ok",
+    "step": "gates",
+    "ts": "2026-10-17T20:52:29.757Z"
+   },
+   {
+    "detail": "action_kind=instance.restart target=demo-workload",
+    "label": "action decided: instance.restart",
+    "state": "ok",
+    "step": "action_decided",
+    "ts": "2026-10-17T20:52:29.757Z"
+   },
+   {
+    "detail": "result=ok latency_ms=4111",
+    "label": "action executed: ok",
+    "state": "ok",
+    "step": "executed",
+    "ts": "2026-10-17T20:52:30.870Z"
+   },
+   {
+    "detail": "audit_id=01M55T6EGP245FHYYQSAGY8KA8 decision_id=01M55T6DE1AM2B96GNY7BTNZZD",
+    "label": "audit row written",
+    "state": "ok",
+    "step": "audit_recorded",
+    "ts": "2026-10-17T20:52:30.870Z"
+   }
+  ],
+  "trace_version": 1
+ },
+ "event_id": "01M55T6AEZMA9SNK08T68CR5YN",
+ "fallback_reason": null,
+ "id": "01M55T6DE1AM2B96GNY7BTNZZD",
+ "incident_actions": [
+  {
+   "action_kind": "instance.restart",
+   "note": "reclaim memory from the heaviest instance",
+   "target": "NNB9287WRHGFDPEZ995TKCXDNW"
+  }
+ ],
+ "incident_evidence": [
+  {
+   "field": "ram_used_bytes",
+   "seq": 299,
+   "value": "8,070,137,774"
+  },
+  {
+   "field": "ram_total_bytes",
+   "seq": 299,
+   "value": "8,319,729,664"
+  },
+  {
+   "field": "lxd_instances.ram_used_bytes",
+   "seq": 299,
+   "value": "7,071,770,214"
+  },
+  {
+   "field": "lxd_instances.vm_id",
+   "seq": 299,
+   "value": "NNB9287WRHGFDPEZ995TKCXDNW"
+  }
+ ],
+ "incident_explanation": "The node's ram_used_bytes is 8,070,137,774 out of 8,319,729,664 (96.99%), indicating severe memory pressure. The instance NNB9287WRHGFDPEZ995TKCXDNW is consuming 7,071,770,214 bytes of RAM, which is approximately 85% of the total node RAM. This instance is clearly the heaviest consumer and the primary cause of the OOM event. Restarting this instance is the most effective way to alleviate the memory pressure and restore node stability.",
+ "incident_generated": "model",
+ "incident_title": "Host memory exhaustion from a single runaway instance",
+ "initiated_by": "operator",
+ "message_id": null,
+ "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+ "playbook": "oom-guard-01",
+ "reason": "Host RAM is at 96.99% of total, with instance NNB9287WRHGFDPEZ995TKCXDNW consuming 85% of the node's RAM; restarting it will reclaim memory.",
+ "rule_id": "oom-guard-01",
+ "trace_version": 1
+}
+
+--- DOM read back ---
+{
+ "count": "50 shown / 50 decisions \u00b7 model 15 \u00b7 fallback 6 \u00b7 incident records 21 (AI 15 \u00b7 controller-generated 6) \u00b7 thinking logs 21 (model 15 \u00b7 fallback 6)",
+ "detail": "Decision feed unavailable (20): The user aborted a request. 20:53:25DETERMINISTICdemo-node-c (demo)oom-guard-01\u2192instance.restart demo-workloadnot executed20:52:26AI MODEL 0.95ba1f1faeacb4501aed12cf8ea1e5713boom-guard-01\u2192instance.restart demo-workloadok \u00b7 10.10.0.11:844320:52:22AI MODEL 0.90demo-node-a (demo)disk-degrade-01\u2192instance.stop demo-workloadok \u00b7 10.10.0.11:844320:51:30DETERMINISTICdemo-node-c (demo)oom-guard-01\u2192instance.restart demo-workloadok \u00b7 10.10.0.11:844320:51:22AI MODEL 0.90demo-node-a (demo)disk-degrade-01\u2192instance.stop demo-workloadok \u00b7 10.10.0.11:844320:51:17DETERMINISTICdemo-node-c (demo)oom-guard-01\u2192instance.restart demo-workloadok \u00b7 10.10.0.11:844320:51:07DETERMINISTICdemo-node-c (demo)oom-guard-01\u2192instance.restart demo-workloadok \u00b7 10.10.0.11:844320:50:13DETERMINISTICdemo-node-c (demo)oom-guard-01\u2192instance.restart demo-workloadok \u00b7 10.10.0.11:844320:50:05AI MODEL 0",
+ "selected": "20:50:13DETERMINISTICdemo-node-c (demo)oom-guard-01\u2192instance.restart demo-workloadok \u00b7 10.10.0.11:8443"
+}
+
+--- GET /operator/audits?limit=6 (HTTP 200) ---
+{
+ "audits": [
+  {
+   "action_kind": "instance.restart",
+   "conversation_id": null,
+   "decision_id": "01M55T84609J6K9V6WTNDJ9Y8P",
+   "detail": "operation Success: /1.0/operations/236b58d9-fe15-4374-9240-ce7607a950ab; action=restart; state Running -> Running",
+   "dry_run": 0,
+   "event_id": "01M55T843MNXQZMJAP34TGQ4AB",
+   "executed_at": "2026-10-17T20:53:25.771Z",
+   "id": "01M55T868160GSEJ474M6KRBH8",
+   "idempotency_key": "01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:demo-workload:3553",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"restart\", \"force\": true, \"timeout\": 30}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/236b58d9-fe15-4374-9240-ce7607a950ab",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "oom-guard-01"
+  },
+  {
+   "action_kind": "instance.restart",
+   "conversation_id": null,
+   "decision_id": "01M55T6DE1AM2B96GNY7BTNZZD",
+   "detail": "operation Success: /1.0/operations/a0839185-9eee-41c1-be9c-3547b364542d; action=start; state Stopped -> Running",
+   "dry_run": 0,
+   "event_id": "01M55T6AEZMA9SNK08T68CR5YN",
+   "executed_at": "2026-10-17T20:52:26.737Z",
+   "id": "01M55T6EGP245FHYYQSAGY8KA8",
+   "idempotency_key": "01M4TGD31WXH97JAA5S6A4R10D:oom-guard-01:instance.restart:demo-workload:21",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"start\", \"timeout\": 30}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/a0839185-9eee-41c1-be9c-3547b364542d",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "oom-guard-01"
+  },
+  {
+   "action_kind": "instance.stop",
+   "conversation_id": null,
+   "decision_id": "01M55T69C7B9DX8NKQ43P89SWQ",
+   "detail": "operation Success: /1.0/operations/10911cd7-3d8a-4b21-8cb4-f57dfe1adac9; action=stop; state ? -> Stopped",
+   "dry_run": 0,
+   "event_id": "01M55T65X4B8Y8N7MT7WQ9D2DV",
+   "executed_at": "2026-10-17T20:52:22.093Z",
+   "id": "01M55T6ADSJ03JBXKAAPFB2F06",
+   "idempotency_key": "01M4NZK46WXG5ZEFAGAAV5JRXM:disk-degrade-01:instance.stop:demo-workload:1412",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"stop\", \"force\": true}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/10911cd7-3d8a-4b21-8cb4-f57dfe1adac9",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4NZK46WXG5ZEFAGAAV5JRXM",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "disk-degrade-01"
+  },
+  {
+   "action_kind": "instance.restart",
+   "conversation_id": null,
+   "decision_id": "01M55T4K65NHH1ZA93JDCSPFJK",
+   "detail": "operation Success: /1.0/operations/1e85de99-d7b3-44bb-974c-58819ac114ac; action=start; state Stopped -> Running",
+   "dry_run": 0,
+   "event_id": "01M55T4K4CA4DF9HK5WT3HDS8S",
+   "executed_at": "2026-10-17T20:51:30.081Z",
+   "id": "01M55T4M95F0BFYSVZ2XYGVM14",
+   "idempotency_key": "01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:demo-workload:3552",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"start\", \"timeout\": 30}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/1e85de99-d7b3-44bb-974c-58819ac114ac",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "oom-guard-01"
+  },
+  {
+   "action_kind": "instance.stop",
+   "conversation_id": null,
+   "decision_id": "01M55T4E44BAH1APCN32WTGB7J",
+   "detail": "operation Success: /1.0/operations/82016cec-fdc9-4ca1-922d-e7f225664719; action=stop; state ? -> Stopped",
+   "dry_run": 0,
+   "event_id": "01M55T4B96V1R6S04XT9E04KG5",
+   "executed_at": "2026-10-17T20:51:22.046Z",
+   "id": "01M55T4F65R41W3GEB02X3Q62J",
+   "idempotency_key": "01M4NZK46WXG5ZEFAGAAV5JRXM:disk-degrade-01:instance.stop:demo-workload:1411",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"stop\", \"force\": true}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/82016cec-fdc9-4ca1-922d-e7f225664719",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4NZK46WXG5ZEFAGAAV5JRXM",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "disk-degrade-01"
+  },
+  {
+   "action_kind": "instance.restart",
+   "conversation_id": null,
+   "decision_id": "01M55T4776QXSC5CFN2FZBG8CQ",
+   "detail": "operation Success: /1.0/operations/17af6d36-5463-415a-a78e-4768795ac3ba; action=restart; state Running -> Running",
+   "dry_run": 0,
+   "event_id": "01M55T4756G28NBM1F0AB3EYX6",
+   "executed_at": "2026-10-17T20:51:17.823Z",
+   "id": "01M55T499NBXAXHT36AABMQ3WY",
+   "idempotency_key": "01M4NZK474BVARFBXYQBMVA8GV:oom-guard-01:instance.restart:demo-workload:3551",
+   "initiated_by": "operator",
+   "lxd_body": "{\"action\": \"restart\", \"force\": true, \"timeout\": 30}",
+   "lxd_endpoint": "https://10.10.0.11:8443",
+   "lxd_method": "PUT",
+   "lxd_operation": "/1.0/operations/17af6d36-5463-415a-a78e-4768795ac3ba",
+   "lxd_path": "/1.0/instances/demo-workload/state",
+   "message_id": null,
+   "node_id": "01M4NZK474BVARFBXYQBMVA8GV",
+   "reason": "",
+   "result": "ok",
+   "rule_id": "oom-guard-01"
+  }
+ ]
+}

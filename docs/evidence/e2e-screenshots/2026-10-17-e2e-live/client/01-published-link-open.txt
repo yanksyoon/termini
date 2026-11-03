@@ -1,0 +1,36 @@
+frame      : 01-published-link-open.png
+card step  : 01
+captured_at: 2026-10-17T20:24:40Z
+window     : 1280x1000 (Xvfb :99, headful Chromium, full window incl. browser chrome)
+url        : https://termini-510609.web.app/?apiBase=https://34-93-190-64.sslip.io/v1&projectId=01J0DEM0WARM000000000000AB&token=demo-project-token
+command    : python3 tools/capture-e2e-client.py
+
+WHAT IT PROVES
+the published Firebase link opens the real dashboard and resolves apiBase + projectId from the query string; the legacy ?token= parameter is refused and stripped from the address bar, and the app asks the viewer to sign in instead
+
+--- DOM read back ---
+{
+ "agents": "No nodes registered yet.Agents are read from each node's telemetry, so a node must register and report before one can be shown.",
+ "agents_inference": "inference: inference backend not yet reported",
+ "apply_disabled": true,
+ "banner": "Controller unreachable for 13 attempts (UNAUTHENTICATED). Showing last known data.Retry now",
+ "chart_text": "",
+ "charts": 0,
+ "decider": "decider: decider unknownno externalModelCall record on the operator log stream yet",
+ "decisions_count": "0 decisions",
+ "intent_result": "",
+ "log_count": "0 lines",
+ "log_state": "error \u00b7 401 \u2014 not signed in (open Settings)",
+ "overview": "",
+ "pills": [
+  "agents \u2014",
+  "nodes \u2014",
+  "backend UNAUTHENTICATED",
+  "stream error"
+ ],
+ "terminal_hidden": true,
+ "url": "https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1&projectId=01J0DEM0WARM000000000000AB&dest=fleet"
+}
+
+--- note ---
+The published link carries apiBase/projectId (and the demo project token, because this legacy-shaped link includes one). The deployed bundle refuses a credential in the URL by design (dashboard/js/core/config.js resolveConfig/urlTokenIgnored, task t_5649d117): it strips ?token= out of the address bar and asks the viewer to sign in through Settings. The address bar in this frame therefore no longer shows the token — that absence IS the behaviour, and it is recorded here rather than smoothed over.

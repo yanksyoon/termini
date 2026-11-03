@@ -1,0 +1,177 @@
+frame      : 06-instances-running.png
+card step  : 06
+captured_at: 2026-10-17T20:41:17Z
+window     : 1280x1000 (Xvfb :99, headful Chromium, full window incl. browser chrome)
+url        : see address bar
+command    : python3 tools/capture-e2e-client.py
+
+WHAT IT PROVES
+POST /projects/{pid}/vms/apply returned state=ready with the plan's real vm ids, and the dashboard's Agents panel lists those instances as running on node-a, so the plan became real LXD instances rather than a drawing
+
+--- raw response the page received (POST /vms/apply) ---
+null
+
+--- plan_id ---
+null
+
+--- DOM read back ---
+{
+ "agents": "ba1f1faeacb4501aed12cf8ea1e5713bonline8 reported runningsample 7s ago6G652ZVC\u2026runningid6G652ZVCBKDJHBB13DYF2X09TMnodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM274.3 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u20267NM4JV8B\u2026runningid7NM4JV8BSD1P8KYBYP8B7BT7CYnodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM102.8 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026J2DFSZ2V\u2026runningidJ2DFSZ2VRKD2EVF2ZAJFCE2H8Enodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM107.1 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026R3P229VX\u2026runningidR3P229VXA4EM2QSJS38WB411C8nodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM84.6 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026T6K2AZ0P\u2026runningidT6K2AZ0PQ08AGKMZTKGRM7QGB0nodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM84.3 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026V5N6VH70\u2026runningidV5N6VH70NA04PEZ5AP90WHM8D8nodeba1f1faeacb4501aed12cf8ea1e5713bCPU2.3%RAM112.0 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026VW4XZD24\u2026runningidVW4XZD24288MCXGT4557CDYFF9nodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM94.8 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u2026W28PW7PZ\u2026runningidW28PW7PZSPVVEZ4JR37F7VV51Mnodeba1f1faeacb4501aed12cf8ea1e5713bCPU0.1%RAM126.7 MiB / 1.00 GiBdisk used0 Bstate agenot reportedrestartsnot reportedimage aliasnot reportedIPnot reportedvCPUnot reportedStartStopRestartGive a task\u202633678f54a5e3e25cc03620b1bd2486e6online0 reported runningsample 5s agoThe node reports zero running agent instances.",
+ "agents_inference": "inference: inference backend not yet reported",
+ "apply_disabled": false,
+ "banner": "",
+ "chart_text": "CPU utilizationderived%Ask AICPU %mean over 5 s buckets (derived by the controller) \u00b7 CPU %: mean over 5 s buckets (derived by the controller)MemoryderivedGiBAsk AIRAM usedswap usedmean over 5 s buckets (derived by the controller) \u00b7 RAM used: mean over 5 s buckets (derived by the controller) \u00b7 swap used: mean over 5 s buckets (derived by the controller)decisions: oom-guard-01 \u2192 instance.restart | threshold: oom-guard-01: 95% of ram_total_bytesDisk write latencyderivedmsAsk AIwrite latencymean over 5 s buckets (derived by the controller) \u00b7 write latency: disk[0] \u00b7 collector write probe, not a kernel latencyNetwork throughputderivedGiBAsk AIRXTXmean over 5 s buckets (derived by the controller) \u00b7 RX: net[0] \u00b7 TX: net[0]Top processes10 of 10lxdsleeping1.5%191.8 MiB25tsystemd-journalsleeping0.0%76.0 MiB1ttermini-agentsleeping0.0%57.2 MiB5ttermini-agentsleeping0.0%54.4 MiB5ttermini-agentsleeping0.0%53.8 MiB5ttermini-agentsleeping0.0%53.6 MiB5ttermini-agentsleeping0.3%53.6 MiB5ttermini-agentsleeping0.0%46.6 MiB5ttermini-agentsleeping0.2%42.7 MiB5ttermini-agentsleeping0.0%41.6 MiB5tPSI pressure (latest sample)raw samplerank 1not reported \u2014 no \u00a74.12\u2013\u00a74.14 fields on this node's latest sample",
+ "charts": 11,
+ "decider": "decider: forwarded managed model \u00b7 gemini-2.5-flashbackend=gemini-proxy \u00b7 model=gemini-2.5-flash \u00b7 egress=external \u00b7 destination=aiplatform.googleapis.com \u00b7 answered by=forwarded-managed-model \u00b7 endpoint=http://127.0.0.1:8085the decision was not computed by local weights on this fleet: the operator's model call was answered by a forwarded managed model reached over egress",
+ "decisions_count": "50 shown / 50 decisions \u00b7 model 12 \u00b7 fallback 3 \u00b7 incident records 15 (AI 12 \u00b7 controller-generated 3) \u00b7 thinking logs 15 (model 12 \u00b7 fallback 3)",
+ "intent_result": "NETWORK: controller unreachable: signal timed out",
+ "log_count": "2000 shown / 2000 buffered",
+ "log_state": "live \u00b7 resumed from the oldest retained line",
+ "overview": "ba1f1faeacb4501aed12cf8ea1e5713b01M4TG\u2026R10DcomputeonlineCPU0.0%RAM45.2%Diskok \u00b7 48.1 GiB free\u2022\u2022\u2022\u25cf ChartsAsk AIRestartDrain33678f54a5e3e25cc03620b1bd2486e601M4ZQ\u2026PPJHcomputeonlineCPU0.0%RAM17.9%Diskok \u00b7 99.1 GiB free\u2022\u2022\u2022ChartsAsk AIRestartDrain",
+ "pills": [
+  "agents 8",
+  "nodes 2",
+  "backend ok",
+  "stream open"
+ ],
+ "terminal_hidden": true,
+ "url": "https://termini-510609.web.app/?apiBase=https%3A%2F%2F34-93-190-64.sslip.io%2Fv1&projectId=01J0DEM0WARM000000000000AB&dest=fleet"
+}
+
+--- GET /projects/{pid}/nodes after apply (HTTP 200) ---
+{
+ "nodes": [
+  {
+   "capacity": {
+    "cpu_allocated": 4,
+    "cpu_cores": 2,
+    "cpu_free": 0,
+    "disk_allocated_gb": 32,
+    "disk_free_gb": 20,
+    "disk_gb": 57,
+    "disk_known": true,
+    "gpu_free": 0,
+    "ram_allocated_gb": 4,
+    "ram_free_gb": 1,
+    "ram_gb": 7
+   },
+   "hardware": {
+    "cpu": {
+     "cores": 2,
+     "model": "Intel(R) Xeon(R) CPU @ 2.80GHz",
+     "sockets": 1,
+     "threads": 2
+    },
+    "disks": [
+     {
+      "device": "/dev/root",
+      "health": "ok",
+      "size_bytes": 61285326848,
+      "type": "ssd"
+     }
+    ],
+    "gpus": [],
+    "memory": {
+     "total_bytes": 8319729664
+    }
+   },
+   "health": {
+    "cpu_util_pct": 0.0,
+    "degraded_reasons": [],
+    "disk_ok": true,
+    "gpu_ok": null,
+    "inference_ok": null,
+    "ram_used_pct": 45.2,
+    "services": [
+     {
+      "name": "termini-bootstrap",
+      "status": "running"
+     },
+     {
+      "name": "lxd",
+      "status": "running"
+     },
+     {
+      "name": "sshd",
+      "status": "running"
+     }
+    ]
+   },
+   "last_seen_at": "2026-10-17T20:41:14Z",
+   "node_id": "01M4TGD31WXH97JAA5S6A4R10D",
+   "registration_id": "ba1f1faeacb4501aed12cf8ea1e5713b",
+   "role": "compute",
+   "status": "online",
+   "synthetic": false,
+   "uptime_sec": 14952
+  },
+  {
+   "capacity": {
+    "cpu_allocated": 0,
+    "cpu_cores": 8,
+    "cpu_free": 16,
+    "disk_allocated_gb": 0,
+    "disk_free_gb": 52,
+    "disk_gb": 57,
+    "disk_known": true,
+    "gpu_free": 0,
+    "ram_allocated_gb": 0,
+    "ram_free_gb": 29,
+    "ram_gb": 31
+   },
+   "hardware": {
+    "cpu": {
+     "cores": 8,
+     "model": "Intel(R) Xeon(R) CPU @ 2.20GHz",
+     "sockets": 1,
+     "threads": 8
+    },
+    "disks": [
+     {
+      "device": "/dev/root",
+      "health": "ok",
+      "size_bytes": 61285326848,
+      "type": "ssd"
+     }
+    ],
+    "gpus": [],
+    "memory": {
+     "total_bytes": 33646968832
+    }
+   },
+   "health": {
+    "cpu_util_pct": 0.0,
+    "degraded_reasons": [],
+    "disk_ok": true,
+    "gpu_ok": null,
+    "inference_ok": null,
+    "ram_used_pct": 17.9,
+    "services": [
+     {
+      "name": "termini-bootstrap",
+      "status": "running"
+     },
+     {
+      "name": "lxd",
+      "status": "running"
+     },
+     {
+      "name": "sshd",
+      "status": "running"
+     },
+     {
+      "name": "llama-cpp",
+      "status": "running"
+     }
+    ]
+   },
+   "last_seen_at": "2026-10-17T20:41:16Z",
+   "node_id": "01M4ZQ7Q2J80ATY3K32PY3PPJH",
+   "registration_id": "33678f54a5e3e25cc03620b1bd2486e6",
+   "role": "compute",
+   "status": "online",
+   "synthetic": false,
+   "uptime_sec": 84994
+  }
+ ]
+}
