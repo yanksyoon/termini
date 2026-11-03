@@ -1,0 +1,29 @@
+# GCP resources removed (t_14b567d4) — 2026-11-03T02:04:56Z
+
+## instances
+NAME                STATUS      MACHINE_TYPE                    ZONE
+node-d              TERMINATED  e2-standard-2                   asia-south1-a
+termini-controller  TERMINATED  e2-standard-2                   asia-south1-a
+termini-node-a      TERMINATED  e2-standard-2                   asia-south1-a
+termini-node-c      TERMINATED  custom (e2, 2 vCPU, 12.00 GiB)  asia-south1-a
+
+## disks
+NAME                SIZE_GB  TYPE         USERS
+node-d              20       pd-standard  ['https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/node-d']
+termini-controller  30       pd-balanced  ['https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-controller']
+termini-node-a      60       pd-balanced  ['https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-node-a']
+termini-node-c      60       pd-balanced  ['https://www.googleapis.com/compute/v1/projects/termini-510609/zones/asia-south1-a/instances/termini-node-c']
+
+## addresses
+NAME                   ADDRESS       ADDRESS_TYPE  STATUS
+termini-controller-ip  34.93.190.64  EXTERNAL      IN_USE
+termini-node-a-ip      10.10.0.11    INTERNAL      IN_USE
+termini-node-b-ip      10.10.0.12    INTERNAL      RESERVED
+termini-node-c-ip      10.10.0.13    INTERNAL      IN_USE
+
+## images
+NAME               DISK_SIZE_GB
+termini-node-os-8  20
+
+## buckets
+termini-510609-models	ASIA-SOUTHEAST1

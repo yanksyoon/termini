@@ -86,7 +86,14 @@ AFTER VMs STOPPED         20.37 $/mo   (disks + image, billed while they exist)
 Stopping the instances is what removes the compute charge; the disks
 (`$18.96/mo`), the node image (`$1.20/mo`), the model bucket (`$0.21/mo`) and any
 reserved-but-unattached static IP (`$0.012/h` ≈ `$8.76/mo`) keep billing until
-they are deleted or released. Vertex AI tokens are usage-based and continue as
+they are deleted or released.
+
+**Current state (t_14b567d4, after retirement): `0.00 $/mo`.** Every GCP resource
+the fleet owned — four instances and their disks, four addresses, the node image,
+the Cloud Run service, the Artifact Registry repo and the model bucket — has been
+deleted; `evidence/gcp-before-removal.txt` and `evidence/gcp-after-removal.txt`
+record both sides of that removal. Only Vertex AI token usage remains, and it is
+charged per call, not per month. Vertex AI tokens are usage-based and continue as
 long as the inference front door answers.
 
 ## Not replicated here

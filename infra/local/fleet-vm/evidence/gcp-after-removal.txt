@@ -1,0 +1,11 @@
+# GCP after removal — 2026-11-03T02:06:52Z
+
+instances=0 disks=0 addresses=0 images=0 snapshots=0 buckets=0 run=0 artifact_repos=0
+
+cost-report.py TOTAL NOW = 0.00 USD/mo
+
+Deleted: termini-controller, termini-node-a, termini-node-c, node-d (+ their disks);
+addresses termini-controller-ip/34.93.190.64, termini-node-a-ip, termini-node-b-ip, termini-node-c-ip;
+image termini-node-os-8; Cloud Run termini-gemma; Artifact Registry repo termini; bucket gs://termini-510609-models (Gemma GGUF).
+
+The local LXD-VM fleet is independent: 3 nodes online, gemini-proxy still answers (Vertex only).
